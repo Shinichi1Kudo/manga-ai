@@ -17,6 +17,16 @@ def asset_detail(request, asset_id):
     return JsonResponse(asset)
 
 
+def asset_prompt(request, asset_id):
+    """获取资产生成时使用的提示词"""
+    client = BackendClient()
+    try:
+        prompt = client.get(f'/v1/assets/{asset_id}/prompt')
+        return JsonResponse({'data': prompt})
+    except BackendAPIError as e:
+        return JsonResponse({'data': None, 'error': e.message}, status=400)
+
+
 def asset_download(request, asset_id):
     """下载资产"""
     client = BackendClient()
@@ -45,6 +55,33 @@ def set_default_clothing(request, role_id, clothing_id):
     client = BackendClient()
     try:
         client.post(f'/v1/assets/role/{role_id}/default/{clothing_id}')
+        return JsonResponse({'success': True})
+    except BackendAPIError as e:
+        return JsonResponse({'success': False, 'error': e.message}, status=400)
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def rollback_asset(request, asset_id):
+    """回滚到指定版本的资产"""
+    client = BackendClient()
+    try:
+        client.post(f'/v1/assets/{asset_id}/rollback')
+        return JsonResponse({'success': True})
+    except BackendAPIError as e:
+        return JsonResponse({'success': False, 'error': e.message}, status=400)
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def rename_clothing(request, role_id, clothing_id):
+    """重命名服装"""
+    client = BackendClient()
+    try:
+        import json
+        data = json.loads(request.body)
+        clothing_name = data.get('clothingName', '')
+        client.put(f'/v1/assets/role/{role_id}/clothing/{clothing_id}/name', {'clothingName': clothing_name})
         return JsonResponse({'success': True})
     except BackendAPIError as e:
         return JsonResponse({'success': False, 'error': e.message}, status=400)

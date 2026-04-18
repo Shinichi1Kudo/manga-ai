@@ -34,6 +34,15 @@ public class AssetController {
     }
 
     /**
+     * 获取资产生成时使用的提示词
+     */
+    @GetMapping("/{id}/prompt")
+    public Result<String> getAssetPrompt(@PathVariable Long id) {
+        String prompt = assetService.getAssetPrompt(id);
+        return Result.success(prompt);
+    }
+
+    /**
      * 获取角色的所有资产
      */
     @GetMapping("/role/{roleId}")
@@ -57,6 +66,26 @@ public class AssetController {
     @PostMapping("/role/{roleId}/default/{clothingId}")
     public Result<Void> setDefaultClothing(@PathVariable Long roleId, @PathVariable Integer clothingId) {
         assetService.setDefaultClothing(roleId, clothingId);
+        return Result.success();
+    }
+
+    /**
+     * 回滚到指定版本的资产
+     */
+    @PostMapping("/{assetId}/rollback")
+    public Result<Void> rollbackAsset(@PathVariable Long assetId) {
+        assetService.rollbackToAsset(assetId);
+        return Result.success();
+    }
+
+    /**
+     * 重命名服装
+     */
+    @PutMapping("/role/{roleId}/clothing/{clothingId}/name")
+    public Result<Void> renameClothing(@PathVariable Long roleId, @PathVariable Integer clothingId,
+                                        @RequestBody java.util.Map<String, String> request) {
+        String clothingName = request.get("clothingName");
+        assetService.renameClothing(roleId, clothingId, clothingName);
         return Result.success();
     }
 

@@ -11,6 +11,7 @@ import com.manga.ai.asset.mapper.RoleAssetMapper;
 import com.manga.ai.asset.service.AssetService;
 import com.manga.ai.common.enums.AssetStatus;
 import com.manga.ai.common.enums.RoleStatus;
+import com.manga.ai.common.service.OssService;
 import com.manga.ai.image.dto.ImageGenerateRequest;
 import com.manga.ai.image.dto.ImageGenerateResponse;
 import com.manga.ai.image.service.ImageGenerateService;
@@ -54,16 +55,18 @@ public class ImageGenerateServiceImpl implements ImageGenerateService {
     private final AssetMetadataMapper assetMetadataMapper;
     @Lazy
     private final AssetService assetService;
+    private final OssService ossService;
 
     public ImageGenerateServiceImpl(RoleMapper roleMapper, SeriesMapper seriesMapper,
                                     RoleAssetMapper roleAssetMapper, AssetMetadataMapper assetMetadataMapper,
-                                    @Lazy AssetService assetService) {
+                                    @Lazy AssetService assetService, OssService ossService) {
         this.restTemplate = new RestTemplate();
         this.roleMapper = roleMapper;
         this.seriesMapper = seriesMapper;
         this.roleAssetMapper = roleAssetMapper;
         this.assetMetadataMapper = assetMetadataMapper;
         this.assetService = assetService;
+        this.ossService = ossService;
     }
 
     @Override
@@ -356,8 +359,8 @@ public class ImageGenerateServiceImpl implements ImageGenerateService {
 
     @Override
     @Async("taskExecutor")
-    public void generateNewClothingWithReference(Long roleId, String referenceImageUrl, String clothingPrompt) {
-        log.info("异步生成新服装（图生图）: roleId={}, referenceUrl={}", roleId, referenceImageUrl);
+    public void generateNewClothingWithReference(Long roleId, String referenceImageUrl, String clothingPrompt, String clothingName) {
+        log.info("异步生成新服装（图生图）: roleId={}, referenceUrl={}, clothingName={}", roleId, referenceImageUrl, clothingName);
 
         Role role = roleMapper.selectById(roleId);
         if (role == null) {
@@ -385,6 +388,7 @@ public class ImageGenerateServiceImpl implements ImageGenerateService {
                 .roleId(roleId)
                 .referenceImageUrl(referenceImageUrl)
                 .clothingPrompt(clothingPrompt)
+                .clothingName(clothingName)
                 .clothingId(clothingId)
                 .build();
 
@@ -393,7 +397,7 @@ public class ImageGenerateServiceImpl implements ImageGenerateService {
 
         if ("success".equals(response.getStatus())) {
             saveAsset(role, response, request);
-            log.info("新服装生成完成: roleId={}, clothingId={}", roleId, clothingId);
+            log.info("新服装生成完成: roleId={}, clothingId={}, clothingName={}", roleId, clothingId, clothingName);
         } else {
             log.error("新服装生成失败: {}", response.getErrorMessage());
         }
@@ -422,6 +426,7 @@ public class ImageGenerateServiceImpl implements ImageGenerateService {
             asset.setAssetType("CHARACTER_SHEET");
             asset.setViewType("ALL");
             asset.setClothingId(clothingId);
+            asset.setClothingName(clothingId == 1 ? "默认" : request.getClothingName());
             asset.setVersion(version);
             asset.setFileName(role.getRoleName() + "_C" + String.format("%02d", clothingId) + "_V" + String.format("%02d", version) + ".png");
             asset.setStatus(AssetStatus.PENDING_REVIEW.getCode());
@@ -430,18 +435,37 @@ public class ImageGenerateServiceImpl implements ImageGenerateService {
             asset.setCreatedAt(LocalDateTime.now());
             asset.setUpdatedAt(LocalDateTime.now());
 
-            // 保存图片URL
+            // 上传图片到OSS并保存URL
             if (response.getImageUrl() != null) {
-                asset.setFilePath(response.getImageUrl());
-                asset.setThumbnailPath(response.getImageUrl());
-                asset.setTransparentPath(response.getImageUrl());
+                String ossUrl = ossService.uploadImageFromUrl(response.getImageUrl(), "characters");
+                if (ossUrl != null) {
+                    asset.setFilePath(ossUrl);
+                    asset.setThumbnailPath(ossUrl);
+                    asset.setTransparentPath(ossUrl);
+                    log.info("图片已上传到OSS: {}", ossUrl.substring(0, Math.min(80, ossUrl.length())));
+                } else {
+                    // OSS上传失败，使用原始URL
+                    log.warn("OSS上传失败，使用原始URL");
+                    asset.setFilePath(response.getImageUrl());
+                    asset.setThumbnailPath(response.getImageUrl());
+                    asset.setTransparentPath(response.getImageUrl());
+                }
             }
 
             roleAssetMapper.insert(asset);
 
+            // 构建并保存提示词
+            String usedPrompt;
+            if (request.getReferenceImageUrl() != null && !request.getReferenceImageUrl().isEmpty()) {
+                usedPrompt = buildClothingChangePrompt(request);
+            } else {
+                usedPrompt = buildCharacterSheetPrompt(request);
+            }
+
             // 保存元数据
             AssetMetadata metadata = new AssetMetadata();
             metadata.setAssetId(asset.getId());
+            metadata.setPrompt(usedPrompt);
             metadata.setSeed(response.getSeed());
             metadata.setModelVersion("volcengine-" + model);
             metadata.setImageWidth(response.getWidth());

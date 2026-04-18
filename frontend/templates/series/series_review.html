@@ -68,7 +68,7 @@
 <!-- Role Cards Container -->
 <div class="space-y-6" id="roleContainer">
 {% for role in roles %}
-<div class="glass-card glass-card-hover p-6 role-card" data-role-id="{{ role.id }}" data-role-status="{{ role.status }}">
+<div class="glass-card glass-card-hover p-6 role-card" id="role-{{ role.id }}" data-role-id="{{ role.id }}" data-role-status="{{ role.status }}">
     <!-- Role Header -->
     <div class="flex items-start justify-between mb-4">
         <div class="flex items-center gap-4">
@@ -112,14 +112,28 @@
         <!-- 服装选择器 -->
         <div class="flex gap-2 mb-4 clothing-tabs">
             {% for asset in role.assets %}
-            <div class="clothing-tab {% if forloop.first %}active{% endif %} px-4 py-2 rounded-lg cursor-pointer transition-all flex items-center gap-2"
+            <div class="clothing-tab {% if forloop.first %}active bg-violet-500/20{% endif %} px-4 py-2 rounded-lg cursor-pointer transition-all flex items-center gap-2 group relative"
                  data-clothing-id="{{ asset.clothingId }}"
                  data-asset-id="{{ asset.id }}"
-                 data-image-url="{{ asset.filePath }}"
+                 data-image-url="{{ asset.filePath|safe }}"
+                 data-clothing-name="{{ asset.clothingName|default:'' }}"
+                 data-is-active="{{ asset.isActive }}"
                  onclick="selectClothing(this)">
-                <span class="text-sm font-medium">服装 {{ asset.clothingId }}</span>
-                {% if asset.isActive == 1 %}
-                <span class="text-xs px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-400">默认</span>
+                <!-- 默认服装标识 - 只有clothingId=1才显示星星 -->
+                {% if asset.clothingId == 1 %}
+                <i data-lucide="star" class="w-3 h-3 text-amber-400 fill-amber-400"></i>
+                {% endif %}
+                <span class="text-sm font-medium clothing-name-display">
+                    {% if asset.clothingId == 1 %}默认
+                    {% elif asset.clothingName %}{{ asset.clothingName }}
+                    {% else %}服装 {{ asset.clothingId }}{% endif %}
+                </span>
+                {% if asset.clothingId != 1 %}
+                <button class="edit-clothing-name-btn opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded hover:bg-white/10"
+                        onclick="event.stopPropagation(); editClothingName({{ role.id }}, {{ asset.clothingId }}, '{{ asset.clothingName|default:'' }}')"
+                        title="修改名称">
+                    <i data-lucide="pencil" class="w-3 h-3 text-white/50"></i>
+                </button>
                 {% endif %}
                 <span class="text-xs text-white/40">v{{ asset.version }}</span>
             </div>
@@ -129,7 +143,7 @@
         <!-- 主图片显示 -->
         <div class="relative rounded-xl overflow-hidden bg-white/5">
             <img id="mainImage-{{ role.id }}"
-                 src="{{ role.assets.0.filePath }}"
+                 src="{{ role.assets.0.filePath|safe }}"
                  class="w-full max-h-96 object-contain cursor-pointer"
                  onclick="openModal(this.src)">
 
@@ -169,14 +183,14 @@
     </div>
 
     <!-- Prompt Info -->
-    {% if role.customPrompt %}
     <div class="p-4 rounded-xl bg-violet-500/10 border border-violet-500/20">
         <div class="text-xs text-violet-300 mb-1 flex items-center gap-1">
             <i data-lucide="sparkles" class="w-3 h-3"></i>提示词
         </div>
-        <div class="text-sm text-white/80">{{ role.customPrompt }}</div>
+        <div class="text-sm text-white/80 prompt-display truncate" title="{{ role.customPrompt|default:'暂无提示词' }}">
+            {{ role.customPrompt|default:'暂无提示词' }}
+        </div>
     </div>
-    {% endif %}
 
     <!-- Edit Button -->
     <button class="mt-4 w-full py-2 rounded-lg bg-white/5 hover:bg-white/10 text-white/60 text-sm transition-colors flex items-center justify-center gap-2 edit-prompt-btn"
@@ -267,13 +281,25 @@
 
 <!-- Generate New Clothing Modal -->
 <div class="modal-backdrop" id="newClothingModal">
-    <div class="modal-content max-w-lg">
+    <div class="modal-content max-w-2xl">
         <div class="p-6 border-b border-white/10">
             <h3 class="text-xl font-bold">生成新服装</h3>
-            <p class="text-white/50 text-sm mt-1">为角色生成一套新的服装图片</p>
+            <p class="text-white/50 text-sm mt-1">基于参考图生成新的服装，保持角色特征不变</p>
         </div>
         <div class="p-6 space-y-4">
             <input type="hidden" id="newClothingRoleId">
+            <input type="hidden" id="newClothingReferenceUrl">
+            <div>
+                <label class="block text-sm text-white/60 mb-2">服装名称 <span class="text-red-400">*</span></label>
+                <input type="text" id="newClothingName" class="input-modern" placeholder="例如：运动装、礼服、休闲装">
+            </div>
+            <div>
+                <label class="block text-sm text-white/60 mb-2">参考图片 <span class="text-red-400">*</span></label>
+                <p class="text-xs text-white/40 mb-2">选择一张现有图片作为参考，新服装将保持相同的角色特征</p>
+                <div id="referenceImageSelector" class="grid grid-cols-4 gap-3">
+                    <!-- 动态填充 -->
+                </div>
+            </div>
             <div>
                 <label class="block text-sm text-white/60 mb-2">服装描述（可选）</label>
                 <textarea id="newClothingPrompt" class="input-modern" rows="3" placeholder="描述新服装的特点，留空则使用默认提示词"></textarea>
@@ -282,6 +308,27 @@
         <div class="p-6 border-t border-white/10 flex justify-end gap-3">
             <button onclick="closeNewClothingModal()" class="px-5 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 transition-colors font-medium">取消</button>
             <button onclick="submitNewClothing()" class="btn-neon">生成</button>
+        </div>
+    </div>
+</div>
+
+<!-- Edit Clothing Name Modal -->
+<div class="modal-backdrop" id="editClothingNameModal">
+    <div class="modal-content max-w-md">
+        <div class="p-6 border-b border-white/10">
+            <h3 class="text-xl font-bold">修改服装名称</h3>
+        </div>
+        <div class="p-6 space-y-4">
+            <input type="hidden" id="editClothingNameRoleId">
+            <input type="hidden" id="editClothingNameClothingId">
+            <div>
+                <label class="block text-sm text-white/60 mb-2">服装名称</label>
+                <input type="text" id="editClothingNameInput" class="input-modern" placeholder="输入新名称">
+            </div>
+        </div>
+        <div class="p-6 border-t border-white/10 flex justify-end gap-3">
+            <button onclick="closeEditClothingNameModal()" class="px-5 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 transition-colors font-medium">取消</button>
+            <button onclick="submitEditClothingName()" class="btn-neon">保存</button>
         </div>
     </div>
 </div>
@@ -296,6 +343,7 @@ let currentClothingId = null;
 function selectClothing(tab) {
     const section = tab.closest('.clothing-section');
     const roleId = section.dataset.roleId;
+    const roleCard = tab.closest('.role-card');
 
     // 更新选中状态
     section.querySelectorAll('.clothing-tab').forEach(t => t.classList.remove('active', 'bg-violet-500/20'));
@@ -304,16 +352,69 @@ function selectClothing(tab) {
     // 更新图片
     const imageUrl = tab.dataset.imageUrl;
     const mainImage = document.getElementById(`mainImage-${roleId}`);
-    if (mainImage && imageUrl) {
-        mainImage.src = imageUrl;
+    let generatingOverlay = mainImage?.parentElement.querySelector('.generating-overlay');
+
+    if (mainImage) {
+        if (imageUrl && imageUrl.trim() !== '') {
+            // 有图片URL，显示图片
+            mainImage.src = imageUrl;
+            mainImage.style.display = 'block';
+            // 隐藏生成中提示
+            if (generatingOverlay) {
+                generatingOverlay.style.display = 'none';
+            }
+        } else {
+            // 没有图片URL，显示生成中状态
+            mainImage.style.display = 'none';
+            if (!generatingOverlay) {
+                generatingOverlay = document.createElement('div');
+                generatingOverlay.className = 'generating-overlay w-full h-96 flex flex-col items-center justify-center bg-violet-500/10 rounded-xl';
+                generatingOverlay.innerHTML = `
+                    <div class="spinner mb-4"></div>
+                    <p class="text-violet-300">正在生成新服装...</p>
+                    <p class="text-white/40 text-sm mt-2">预计需要 30-60 秒</p>
+                `;
+                mainImage.parentElement.appendChild(generatingOverlay);
+            }
+            generatingOverlay.style.display = 'flex';
+        }
+    }
+
+    // 更新提示词显示
+    const assetId = tab.dataset.assetId;
+    const promptDisplay = roleCard.querySelector('.prompt-display');
+    if (promptDisplay && assetId) {
+        fetch(`/api/${assetId}/prompt/`)
+        .then(response => response.json())
+        .then(data => {
+            if (data.data) {
+                promptDisplay.textContent = data.data;
+                promptDisplay.title = data.data;
+            } else {
+                promptDisplay.textContent = '暂无提示词';
+            }
+        })
+        .catch(() => {
+            promptDisplay.textContent = '暂无提示词';
+        });
     }
 
     currentClothingId = tab.dataset.clothingId;
+
+    // 根据是否为默认服装显示/隐藏"设为默认"按钮
+    const setDefaultBtn = roleCard.querySelector('.set-default-btn');
+    if (setDefaultBtn) {
+        if (tab.dataset.clothingId == '1') {
+            setDefaultBtn.style.display = 'none';
+        } else {
+            setDefaultBtn.style.display = 'flex';
+        }
+    }
 }
 
 // 设置默认服装
 function setDefaultClothing(roleId, clothingId) {
-    fetch(`/api/assets/role/${roleId}/default/${clothingId}/`, {
+    fetch(`/api/role/${roleId}/default/${clothingId}/`, {
         method: 'POST',
         headers: {'X-CSRFToken': getCookie('csrftoken')}
     })
@@ -321,7 +422,11 @@ function setDefaultClothing(roleId, clothingId) {
     .then(data => {
         if (data.success) {
             showToast('已设为默认服装', 'success');
-            setTimeout(() => location.reload(), 1000);
+            // 刷新页面并滚动到当前角色，默认tab会自动选中
+            setTimeout(() => {
+                window.location.href = window.location.pathname + `#role-${roleId}`;
+                location.reload();
+            }, 500);
         } else {
             showToast(data.error || '设置失败', 'error');
         }
@@ -331,7 +436,42 @@ function setDefaultClothing(roleId, clothingId) {
 // 生成新服装
 function generateNewClothing(roleId) {
     document.getElementById('newClothingRoleId').value = roleId;
+    document.getElementById('newClothingName').value = '';
     document.getElementById('newClothingPrompt').value = '';
+    document.getElementById('newClothingReferenceUrl').value = '';
+
+    // 获取该角色所有服装作为参考图选项
+    const section = document.querySelector(`.clothing-section[data-role-id="${roleId}"]`);
+    const tabs = section.querySelectorAll('.clothing-tab');
+    const selector = document.getElementById('referenceImageSelector');
+
+    selector.innerHTML = '';
+    tabs.forEach((tab, index) => {
+        const imageUrl = tab.dataset.imageUrl;
+        const clothingName = tab.dataset.clothingName || (tab.dataset.clothingId == 1 ? '默认' : `服装${tab.dataset.clothingId}`);
+
+        if (imageUrl) {
+            const div = document.createElement('div');
+            div.className = `relative rounded-lg overflow-hidden cursor-pointer border-2 transition-all ${index === 0 ? 'border-violet-500' : 'border-transparent hover:border-white/30'}`;
+            div.dataset.imageUrl = imageUrl;
+            div.onclick = function() {
+                selector.querySelectorAll('div').forEach(d => d.classList.remove('border-violet-500', 'border-2'));
+                this.classList.add('border-violet-500', 'border-2');
+                document.getElementById('newClothingReferenceUrl').value = this.dataset.imageUrl;
+            };
+            div.innerHTML = `
+                <img src="${imageUrl}" class="w-full aspect-square object-cover">
+                <div class="absolute bottom-0 left-0 right-0 p-1 bg-black/60 text-xs text-center truncate">${clothingName}</div>
+            `;
+            selector.appendChild(div);
+
+            // 默认选中第一个
+            if (index === 0) {
+                document.getElementById('newClothingReferenceUrl').value = imageUrl;
+            }
+        }
+    });
+
     document.getElementById('newClothingModal').classList.add('active');
 }
 
@@ -341,7 +481,19 @@ function closeNewClothingModal() {
 
 function submitNewClothing() {
     const roleId = document.getElementById('newClothingRoleId').value;
-    const prompt = document.getElementById('newClothingPrompt').value;
+    const clothingName = document.getElementById('newClothingName').value.trim();
+    const prompt = document.getElementById('newClothingPrompt').value.trim();
+    const referenceUrl = document.getElementById('newClothingReferenceUrl').value;
+
+    if (!clothingName) {
+        showToast('请输入服装名称', 'error');
+        return;
+    }
+
+    if (!referenceUrl) {
+        showToast('请选择参考图片', 'error');
+        return;
+    }
 
     fetch(`/roles/${roleId}/regenerate/`, {
         method: 'POST',
@@ -350,8 +502,10 @@ function submitNewClothing() {
             'Content-Type': 'application/json'
         },
         body: JSON.stringify({
+            clothingName: clothingName,
             modifiedPrompt: prompt,
-            isNewClothing: true
+            isNewClothing: true,
+            referenceImageUrl: referenceUrl
         })
     })
     .then(response => response.json())
@@ -360,7 +514,6 @@ function submitNewClothing() {
             showToast('正在生成新服装...', 'success');
             closeNewClothingModal();
 
-            // 在服装列表中添加一个"生成中"的标签，而不是刷新页面
             const section = document.querySelector(`.clothing-section[data-role-id="${roleId}"]`);
             const tabsContainer = section.querySelector('.clothing-tabs');
 
@@ -374,26 +527,41 @@ function submitNewClothing() {
                 });
                 const newClothingId = maxClothingId + 1;
 
+                // 取消所有现有标签的选中状态
+                existingTabs.forEach(tab => {
+                    tab.classList.remove('active', 'bg-violet-500/20');
+                });
+
                 // 创建新的"生成中"标签
                 const newTab = document.createElement('div');
                 newTab.className = 'clothing-tab active px-4 py-2 rounded-lg cursor-pointer transition-all flex items-center gap-2 bg-violet-500/20';
+                newTab.dataset.clothingId = newClothingId;
+                newTab.dataset.clothingName = clothingName;
+                newTab.dataset.imageUrl = ''; // 暂时为空，生成完成后会有图片
+                newTab.onclick = function() { selectClothing(this); };
                 newTab.innerHTML = `
-                    <span class="text-sm font-medium">服装 ${newClothingId}</span>
+                    <span class="text-sm font-medium">${clothingName}</span>
                     <div class="spinner" style="width:14px;height:14px;border-width:2px;"></div>
                 `;
                 tabsContainer.appendChild(newTab);
 
-                // 更新主图片显示为"生成中"
+                // 更新主图片显示为"生成中"，但不影响原有图片
                 const mainImage = document.getElementById(`mainImage-${roleId}`);
                 if (mainImage) {
-                    const imageContainer = mainImage.parentElement;
-                    imageContainer.innerHTML = `
-                        <div class="w-full h-96 flex flex-col items-center justify-center bg-violet-500/10">
+                    mainImage.style.display = 'none';
+                    // 在图片后面插入生成中提示
+                    let generatingDiv = mainImage.parentElement.querySelector('.generating-overlay');
+                    if (!generatingDiv) {
+                        generatingDiv = document.createElement('div');
+                        generatingDiv.className = 'generating-overlay w-full h-96 flex flex-col items-center justify-center bg-violet-500/10 rounded-xl';
+                        generatingDiv.innerHTML = `
                             <div class="spinner mb-4"></div>
                             <p class="text-violet-300">正在生成新服装...</p>
                             <p class="text-white/40 text-sm mt-2">预计需要 30-60 秒</p>
-                        </div>
-                    `;
+                        `;
+                        mainImage.parentElement.appendChild(generatingDiv);
+                    }
+                    generatingDiv.style.display = 'flex';
                 }
 
                 // 更新资产计数
@@ -480,11 +648,16 @@ function showVersions(roleId, clothingId) {
             versionList.innerHTML = `
                 <div class="grid grid-cols-3 gap-4">
                     ${data.data.map(asset => `
-                        <div class="relative rounded-lg overflow-hidden bg-white/5 cursor-pointer hover:ring-2 hover:ring-violet-500"
-                             onclick="openModal('${asset.filePath}')">
-                            <img src="${asset.filePath}" class="w-full aspect-square object-cover">
+                        <div class="relative rounded-lg overflow-hidden bg-white/5 cursor-pointer hover:ring-2 hover:ring-violet-500 group">
+                            <img src="${asset.filePath}" class="w-full aspect-square object-cover" onclick="openModal('${asset.filePath}')">
                             <div class="absolute bottom-0 left-0 right-0 p-2 bg-gradient-to-t from-black/80">
-                                <div class="text-xs text-white/80">版本 ${asset.version}</div>
+                                <div class="flex items-center justify-between">
+                                    <div class="text-xs text-white/80">版本 ${asset.version}</div>
+                                    <button class="px-2 py-1 text-xs rounded bg-violet-500/80 hover:bg-violet-500 text-white opacity-0 group-hover:opacity-100 transition-opacity"
+                                            onclick="event.stopPropagation(); rollbackToVersion(${roleId}, ${asset.id})">
+                                        选择此版本
+                                    </button>
+                                </div>
                             </div>
                         </div>
                     `).join('')}
@@ -498,8 +671,76 @@ function showVersions(roleId, clothingId) {
     });
 }
 
+// 回滚到指定版本
+function rollbackToVersion(roleId, assetId) {
+    if (!confirm('确定要切换到此版本吗？')) return;
+
+    fetch(`/api/${assetId}/rollback/`, {
+        method: 'POST',
+        headers: {'X-CSRFToken': getCookie('csrftoken')}
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            showToast('已切换到此版本', 'success');
+            closeVersionModal();
+            setTimeout(() => location.reload(), 1000);
+        } else {
+            showToast(data.error || '切换失败', 'error');
+        }
+    });
+}
+
 function closeVersionModal() {
     document.getElementById('versionModal').classList.remove('active');
+}
+
+// 编辑服装名称
+function editClothingName(roleId, clothingId, currentName) {
+    document.getElementById('editClothingNameRoleId').value = roleId;
+    document.getElementById('editClothingNameClothingId').value = clothingId;
+    document.getElementById('editClothingNameInput').value = currentName;
+    document.getElementById('editClothingNameModal').classList.add('active');
+}
+
+function closeEditClothingNameModal() {
+    document.getElementById('editClothingNameModal').classList.remove('active');
+}
+
+function submitEditClothingName() {
+    const roleId = document.getElementById('editClothingNameRoleId').value;
+    const clothingId = document.getElementById('editClothingNameClothingId').value;
+    const newName = document.getElementById('editClothingNameInput').value.trim();
+
+    if (!newName) {
+        showToast('请输入服装名称', 'error');
+        return;
+    }
+
+    fetch(`/api/assets/role/${roleId}/clothing/${clothingId}/rename/`, {
+        method: 'POST',
+        headers: {
+            'X-CSRFToken': getCookie('csrftoken'),
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ clothingName: newName })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            showToast('名称已更新', 'success');
+            closeEditClothingNameModal();
+            // 更新页面上的名称
+            const tab = document.querySelector(`.clothing-tab[data-clothing-id="${clothingId}"]`);
+            if (tab) {
+                const nameSpan = tab.querySelector('.clothing-name-display');
+                if (nameSpan) nameSpan.textContent = newName;
+                tab.dataset.clothingName = newName;
+            }
+        } else {
+            showToast(data.error || '更新失败', 'error');
+        }
+    });
 }
 
 // 初始化统计
@@ -522,6 +763,17 @@ function updateStats() {
     document.getElementById('assetCount').textContent = assets;
 }
 updateStats();
+
+// 初始化"设为默认"按钮可见性
+document.querySelectorAll('.role-card').forEach(card => {
+    const activeTab = card.querySelector('.clothing-tab.active');
+    const setDefaultBtn = card.querySelector('.set-default-btn');
+    if (activeTab && setDefaultBtn) {
+        if (activeTab.dataset.clothingId == '1') {
+            setDefaultBtn.style.display = 'none';
+        }
+    }
+});
 
 // 确认单个角色
 document.querySelectorAll('.confirm-btn:not([disabled])').forEach(btn => {
@@ -719,12 +971,23 @@ function showToast(message, type = 'info') {
 }
 
 // Close modals on backdrop click
-['addRoleModal', 'editRoleModal', 'versionModal', 'newClothingModal'].forEach(id => {
+['addRoleModal', 'editRoleModal', 'versionModal', 'newClothingModal', 'editClothingNameModal'].forEach(id => {
     document.getElementById(id).addEventListener('click', (e) => {
         if (e.target === e.currentTarget) {
             e.currentTarget.classList.remove('active');
         }
     });
 });
+
+// 页面加载时检查hash并滚动到对应角色
+if (window.location.hash) {
+    const targetId = window.location.hash.substring(1);
+    const targetElement = document.getElementById(targetId);
+    if (targetElement) {
+        setTimeout(() => {
+            targetElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }, 100);
+    }
+}
 </script>
 {% endblock %}

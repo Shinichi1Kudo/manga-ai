@@ -72,4 +72,9 @@ public class ImageGenerateRequest implements Serializable {
      * 新服装描述（用于生成新服装）
      */
     private String clothingPrompt;
+
+    /**
+     * 服装名称
+     */
+    private String clothingName;
 }

@@ -228,12 +228,16 @@ public class RoleServiceImpl implements RoleService {
 
         if (isNewClothing) {
             // 生成新服装 - 使用图生图
-            // 获取当前默认服装的图片作为参考
-            String referenceImageUrl = getDefaultAssetImageUrl(roleId);
+            // 使用用户选择的参考图，如果没有则使用默认服装图片
+            String referenceImageUrl = request.getReferenceImageUrl();
+            if (referenceImageUrl == null || referenceImageUrl.trim().isEmpty()) {
+                referenceImageUrl = getDefaultAssetImageUrl(roleId);
+            }
             imageGenerateService.generateNewClothingWithReference(
                     roleId,
                     referenceImageUrl,
-                    request.getModifiedPrompt()
+                    request.getModifiedPrompt(),
+                    request.getClothingName()
             );
         } else {
             // 重新生成当前服装 - 改变角色状态

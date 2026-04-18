@@ -69,9 +69,12 @@ def role_regenerate(request, role_id):
         data = json.loads(request.body)
         result = client.post(f'/v1/roles/{role_id}/regenerate', {
             'viewTypes': data.get('viewTypes', []),
-            'clothingId': data.get('clothingId', 1),
+            'clothingId': data.get('clothingId'),
             'modifiedPrompt': data.get('modifiedPrompt', ''),
             'keepSeed': data.get('keepSeed', True),
+            'isNewClothing': data.get('isNewClothing', False),
+            'clothingName': data.get('clothingName', ''),
+            'referenceImageUrl': data.get('referenceImageUrl', ''),
         })
         return JsonResponse({'success': True, 'data': result})
     except BackendAPIError as e:

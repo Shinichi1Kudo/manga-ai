@@ -11,5 +11,8 @@ urlpatterns = [
     path('roles/', include('apps.role.urls')),
 
     # 资产管理
-    path('assets/', include('apps.asset.urls')),
+    path('assets/', include(('apps.asset.urls', 'asset'), namespace='asset')),
+
+    # API routes (for AJAX calls)
+    path('api/', include(('apps.asset.urls', 'asset-api'), namespace='asset-api')),
 ]

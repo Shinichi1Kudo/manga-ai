@@ -95,10 +95,10 @@ def series_review(request, series_id):
         series = client.get(f'/v1/series/{series_id}')
         roles = client.get(f'/v1/roles/series/{series_id}')
 
-        # 为每个角色获取资产
+        # 为每个角色获取所有服装（每个服装的最新版本）
         for role in roles:
             try:
-                role['assets'] = client.get(f'/v1/assets/role/{role["id"]}')
+                role['assets'] = client.get(f'/v1/assets/role/{role["id"]}/clothings')
             except:
                 role['assets'] = []
     except BackendAPIError as e:

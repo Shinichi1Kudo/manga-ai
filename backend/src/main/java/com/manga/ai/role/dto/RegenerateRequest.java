@@ -24,6 +24,11 @@ public class RegenerateRequest implements Serializable {
     private Integer clothingId;
 
     /**
+     * 服装名称
+     */
+    private String clothingName;
+
+    /**
      * 修改的 Prompt
      */
     private String modifiedPrompt;
@@ -39,4 +44,9 @@ public class RegenerateRequest implements Serializable {
      * false: 重新生成当前服装（改变角色状态为生成中）
      */
     private Boolean isNewClothing = false;
+
+    /**
+     * 参考图片URL（用于图生图）
+     */
+    private String referenceImageUrl;
 }

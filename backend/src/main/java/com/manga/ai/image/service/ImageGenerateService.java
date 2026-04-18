@@ -39,6 +39,7 @@ public interface ImageGenerateService {
      * @param roleId 角色ID
      * @param referenceImageUrl 参考图片URL
      * @param clothingPrompt 新服装描述
+     * @param clothingName 服装名称
      */
-    void generateNewClothingWithReference(Long roleId, String referenceImageUrl, String clothingPrompt);
+    void generateNewClothingWithReference(Long roleId, String referenceImageUrl, String clothingPrompt, String clothingName);
 }

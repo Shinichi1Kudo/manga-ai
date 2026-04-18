@@ -56,4 +56,23 @@ public interface AssetService {
      * 获取角色的所有资产（包括历史版本）
      */
     List<RoleAsset> getAllAssetsByRoleId(Long roleId);
+
+    /**
+     * 获取资产生成时使用的提示词
+     */
+    String getAssetPrompt(Long assetId);
+
+    /**
+     * 回滚到指定版本的资产
+     * @param assetId 目标资产ID
+     */
+    void rollbackToAsset(Long assetId);
+
+    /**
+     * 重命名服装
+     * @param roleId 角色ID
+     * @param clothingId 服装ID
+     * @param clothingName 新名称
+     */
+    void renameClothing(Long roleId, Integer clothingId, String clothingName);
 }
