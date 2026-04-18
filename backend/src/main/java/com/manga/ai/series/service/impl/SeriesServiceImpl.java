@@ -1,0 +1,542 @@
+package com.manga.ai.series.service.impl;
+
+import com.alibaba.fastjson2.JSON;
+import com.alibaba.fastjson2.JSONArray;
+import com.alibaba.fastjson2.JSONObject;
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.manga.ai.asset.entity.AssetMetadata;
+import com.manga.ai.asset.entity.RoleAsset;
+import com.manga.ai.asset.mapper.AssetMetadataMapper;
+import com.manga.ai.asset.mapper.RoleAssetMapper;
+import com.manga.ai.common.enums.AssetStatus;
+import com.manga.ai.common.enums.RoleStatus;
+import com.manga.ai.common.enums.SeriesStatus;
+import com.manga.ai.common.enums.ViewType;
+import com.manga.ai.common.exception.BusinessException;
+import com.manga.ai.image.dto.ImageGenerateRequest;
+import com.manga.ai.image.dto.ImageGenerateResponse;
+import com.manga.ai.image.service.ImageGenerateService;
+import com.manga.ai.nlp.model.CharacterProfile;
+import com.manga.ai.nlp.service.NLPExtractService;
+import com.manga.ai.role.entity.Role;
+import com.manga.ai.role.mapper.RoleMapper;
+import com.manga.ai.series.dto.SeriesDetailVO;
+import com.manga.ai.series.dto.SeriesInitRequest;
+import com.manga.ai.series.dto.SeriesProgressVO;
+import com.manga.ai.series.entity.Series;
+import com.manga.ai.series.mapper.SeriesMapper;
+import com.manga.ai.series.service.SeriesService;
+import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.BeanUtils;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.annotation.Lazy;
+import org.springframework.scheduling.annotation.Async;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.io.IOException;
+import java.math.BigDecimal;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.time.LocalDateTime;
+import java.util.List;
+
+/**
+ * 系列服务实现
+ */
+@Slf4j
+@Service
+@RequiredArgsConstructor
+public class SeriesServiceImpl implements SeriesService {
+
+    private final SeriesMapper seriesMapper;
+    private final RoleMapper roleMapper;
+    private final RoleAssetMapper roleAssetMapper;
+    private final AssetMetadataMapper assetMetadataMapper;
+    private final NLPExtractService nlpExtractService;
+    @Lazy
+    private final ImageGenerateService imageGenerateService;
+
+    @Value("${storage.project-path:./storage/projects}")
+    private String projectPath;
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public SeriesDetailVO initSeries(SeriesInitRequest request) {
+        // 1. 创建系列记录
+        Series series = new Series();
+        series.setSeriesName(request.getSeriesName());
+        series.setOutline(request.getOutline());
+        series.setBackground(request.getBackground());
+        series.setCharacterIntro(request.getCharacterIntro());
+        series.setStyleKeywords(request.getStyleKeywords());
+        series.setColorPreference(request.getColorPreference());
+        series.setArtStyleRef(request.getArtStyleRef());
+        series.setAspectRatio(request.getAspectRatio());
+        series.setQuality(request.getQuality());
+        series.setStatus(SeriesStatus.INITIALIZING.getCode());
+        series.setCreatedAt(LocalDateTime.now());
+        series.setUpdatedAt(LocalDateTime.now());
+        seriesMapper.insert(series);
+
+        // 2. 创建目录结构
+        String projectDir = createProjectDirectory(series.getId());
+        series.setProjectPath(projectDir);
+        seriesMapper.updateById(series);
+
+        // 3. 异步处理角色提取和图片生成
+        if (request.getCharactersJson() != null && !request.getCharactersJson().isEmpty()) {
+            // 新格式：直接使用前端传来的角色数据
+            asyncProcessCharacters(series.getId(), request.getCharactersJson());
+        } else if (request.getCharacterIntro() != null && !request.getCharacterIntro().isEmpty()) {
+            // 旧格式：NLP 提取
+            asyncProcessRoleExtract(series.getId(), request.getCharacterIntro());
+        } else {
+            throw new BusinessException("请添加至少一个角色");
+        }
+
+        return convertToVO(series);
+    }
+
+    @Override
+    public SeriesDetailVO getSeriesDetail(Long seriesId) {
+        Series series = seriesMapper.selectById(seriesId);
+        if (series == null) {
+            throw new BusinessException("系列不存在");
+        }
+
+        SeriesDetailVO vo = convertToVO(series);
+
+        // 统计角色和资产数量
+        LambdaQueryWrapper<Role> roleWrapper = new LambdaQueryWrapper<>();
+        roleWrapper.eq(Role::getSeriesId, seriesId);
+        Long totalRoles = roleMapper.selectCount(roleWrapper);
+        vo.setRoleCount(totalRoles.intValue());
+
+        LambdaQueryWrapper<Role> confirmedWrapper = new LambdaQueryWrapper<>();
+        confirmedWrapper.eq(Role::getSeriesId, seriesId)
+                .ge(Role::getStatus, 2);
+        Long confirmedRoles = roleMapper.selectCount(confirmedWrapper);
+        vo.setConfirmedRoleCount(confirmedRoles.intValue());
+
+        return vo;
+    }
+
+    @Override
+    public List<SeriesDetailVO> getSeriesList(Integer page, Integer pageSize) {
+        LambdaQueryWrapper<Series> wrapper = new LambdaQueryWrapper<>();
+        wrapper.orderByDesc(Series::getCreatedAt);
+
+        // 分页查询
+        int offset = (page - 1) * pageSize;
+        wrapper.last("LIMIT " + pageSize + " OFFSET " + offset);
+        List<Series> seriesList = seriesMapper.selectList(wrapper);
+
+        // 批量查询所有系列的角色数量，避免 N+1 查询
+        java.util.Map<Long, Integer> roleCountMap = new java.util.HashMap<>();
+        if (!seriesList.isEmpty()) {
+            List<Long> seriesIds = seriesList.stream().map(Series::getId).collect(java.util.stream.Collectors.toList());
+            LambdaQueryWrapper<Role> roleWrapper = new LambdaQueryWrapper<>();
+            roleWrapper.in(Role::getSeriesId, seriesIds);
+            List<Role> allRoles = roleMapper.selectList(roleWrapper);
+
+            // 统计每个系列的角色数量
+            for (Role role : allRoles) {
+                roleCountMap.merge(role.getSeriesId(), 1, Integer::sum);
+            }
+        }
+
+        return seriesList.stream().map(series -> {
+            SeriesDetailVO vo = convertToVO(series);
+            vo.setRoleCount(roleCountMap.getOrDefault(series.getId(), 0));
+            return vo;
+        }).collect(java.util.stream.Collectors.toList());
+    }
+
+    @Override
+    public Integer getSeriesCount() {
+        return Math.toIntExact(seriesMapper.selectCount(null));
+    }
+
+    @Override
+    public List<SeriesDetailVO> getAllSeries() {
+        LambdaQueryWrapper<Series> wrapper = new LambdaQueryWrapper<>();
+        wrapper.orderByDesc(Series::getCreatedAt);
+        List<Series> seriesList = seriesMapper.selectList(wrapper);
+
+        // 批量查询所有系列的角色数量，避免 N+1 查询
+        java.util.Map<Long, Integer> roleCountMap = new java.util.HashMap<>();
+        if (!seriesList.isEmpty()) {
+            List<Long> seriesIds = seriesList.stream().map(Series::getId).collect(java.util.stream.Collectors.toList());
+            LambdaQueryWrapper<Role> roleWrapper = new LambdaQueryWrapper<>();
+            roleWrapper.in(Role::getSeriesId, seriesIds);
+            List<Role> allRoles = roleMapper.selectList(roleWrapper);
+
+            // 统计每个系列的角色数量
+            for (Role role : allRoles) {
+                roleCountMap.merge(role.getSeriesId(), 1, Integer::sum);
+            }
+        }
+
+        return seriesList.stream().map(series -> {
+            SeriesDetailVO vo = convertToVO(series);
+            vo.setRoleCount(roleCountMap.getOrDefault(series.getId(), 0));
+            return vo;
+        }).collect(java.util.stream.Collectors.toList());
+    }
+
+    @Override
+    public SeriesProgressVO getSeriesProgress(Long seriesId) {
+        Series series = seriesMapper.selectById(seriesId);
+        if (series == null) {
+            throw new BusinessException("系列不存在");
+        }
+
+        SeriesProgressVO progress = new SeriesProgressVO();
+        progress.setSeriesId(seriesId);
+        progress.setSeriesName(series.getSeriesName());
+        progress.setSeriesStatus(series.getStatus());
+
+        // 统计角色
+        LambdaQueryWrapper<Role> roleWrapper = new LambdaQueryWrapper<>();
+        roleWrapper.eq(Role::getSeriesId, seriesId);
+        Long totalRoles = roleMapper.selectCount(roleWrapper);
+        progress.setTotalRoles(totalRoles.intValue());
+
+        LambdaQueryWrapper<Role> confirmedWrapper = new LambdaQueryWrapper<>();
+        confirmedWrapper.eq(Role::getSeriesId, seriesId)
+                .ge(Role::getStatus, 2);
+        Long confirmedRoles = roleMapper.selectCount(confirmedWrapper);
+        progress.setConfirmedRoles(confirmedRoles.intValue());
+
+        // 计算进度
+        if (totalRoles > 0) {
+            // 状态为待审核（1）时显示100%
+            if (series.getStatus() == 1) {
+                progress.setProgressPercent(100);
+            } else {
+                progress.setProgressPercent((int) (confirmedRoles * 100 / totalRoles));
+            }
+        }
+
+        return progress;
+    }
+
+    @Override
+    public void updateSeriesStatus(Long seriesId, Integer status) {
+        Series series = seriesMapper.selectById(seriesId);
+        if (series == null) {
+            throw new BusinessException("系列不存在");
+        }
+        series.setStatus(status);
+        series.setUpdatedAt(LocalDateTime.now());
+        seriesMapper.updateById(series);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void lockSeries(Long seriesId) {
+        Series series = seriesMapper.selectById(seriesId);
+        if (series == null) {
+            throw new BusinessException("系列不存在");
+        }
+
+        if (SeriesStatus.LOCKED.getCode().equals(series.getStatus())) {
+            throw new BusinessException("系列已锁定");
+        }
+
+        // 检查所有角色是否已确认
+        LambdaQueryWrapper<Role> wrapper = new LambdaQueryWrapper<>();
+        wrapper.eq(Role::getSeriesId, seriesId)
+                .lt(Role::getStatus, 2);
+        Long unconfirmedCount = roleMapper.selectCount(wrapper);
+        if (unconfirmedCount > 0) {
+            throw new BusinessException("存在 " + unconfirmedCount + " 个未确认的角色，无法锁定");
+        }
+
+        // 锁定所有角色
+        Role updateRole = new Role();
+        updateRole.setStatus(RoleStatus.LOCKED.getCode());
+        roleMapper.update(updateRole, new LambdaQueryWrapper<Role>()
+                .eq(Role::getSeriesId, seriesId));
+
+        // 锁定系列
+        series.setStatus(SeriesStatus.LOCKED.getCode());
+        series.setUpdatedAt(LocalDateTime.now());
+        seriesMapper.updateById(series);
+
+        log.info("系列已锁定: seriesId={}", seriesId);
+    }
+
+    /**
+     * 创建项目目录结构
+     */
+    private String createProjectDirectory(Long seriesId) {
+        String projectDir = Paths.get(projectPath, String.valueOf(seriesId)).toString();
+
+        try {
+            Files.createDirectories(Paths.get(projectDir));
+            Files.createDirectories(Paths.get(projectDir, "roles"));
+            Files.createDirectories(Paths.get(projectDir, "assets"));
+            Files.createDirectories(Paths.get(projectDir, "temp"));
+
+            Path configFile = Paths.get(projectDir, "series.json");
+            if (!Files.exists(configFile)) {
+                Files.writeString(configFile, "{}");
+            }
+
+            log.info("创建项目目录: {}", projectDir);
+        } catch (IOException e) {
+            log.error("创建项目目录失败", e);
+            throw new BusinessException("创建项目目录失败: " + e.getMessage());
+        }
+
+        return projectDir;
+    }
+
+    /**
+     * 异步处理角色提取和图片生成
+     */
+    @Async("taskExecutor")
+    protected void asyncProcessRoleExtract(Long seriesId, String characterIntro) {
+        log.info("开始异步处理角色提取: seriesId={}", seriesId);
+
+        try {
+            // 1. 调用 NLP 服务提取角色
+            List<CharacterProfile> profiles = nlpExtractService.extractCharacters(characterIntro);
+            log.info("NLP提取到 {} 个角色", profiles.size());
+
+            int roleIndex = 1;
+            for (CharacterProfile profile : profiles) {
+                // 2. 创建角色记录
+                Role role = new Role();
+                role.setSeriesId(seriesId);
+                role.setRoleName(profile.getName() != null ? profile.getName() : "角色" + roleIndex);
+                role.setRoleCode(String.format("ROLE_%03d", roleIndex));
+                role.setStatus(RoleStatus.PENDING_REVIEW.getCode()); // 直接设为待审核
+                role.setAge(profile.getAge());
+                role.setGender(profile.getGender());
+                role.setAppearance(profile.getAppearance());
+                role.setPersonality(profile.getPersonality());
+                role.setClothing(profile.getClothing());
+                role.setOriginalText(profile.getOriginalText());
+                role.setExtractConfidence(profile.getOverallConfidence());
+                role.setCreatedAt(LocalDateTime.now());
+                role.setUpdatedAt(LocalDateTime.now());
+                roleMapper.insert(role);
+
+                log.info("创建角色: id={}, name={}", role.getId(), role.getRoleName());
+
+                // 3. 生成 Mock 图片资产
+                generateMockAssets(role);
+
+                roleIndex++;
+            }
+
+            // 4. 更新系列状态为待审核
+            updateSeriesStatus(seriesId, SeriesStatus.PENDING_REVIEW.getCode());
+
+            log.info("角色提取和图片生成完成: seriesId={}, count={}", seriesId, roleIndex - 1);
+        } catch (Exception e) {
+            log.error("角色提取失败: seriesId={}", seriesId, e);
+            // 即使失败也更新状态，避免卡住
+            updateSeriesStatus(seriesId, SeriesStatus.PENDING_REVIEW.getCode());
+        }
+    }
+
+    /**
+     * 异步处理前端传来的角色数据
+     */
+    @Async("taskExecutor")
+    protected void asyncProcessCharacters(Long seriesId, String charactersJson) {
+        log.info("开始异步处理角色数据: seriesId={}", seriesId);
+
+        try {
+            JSONArray characters = JSON.parseArray(charactersJson);
+            log.info("解析到 {} 个角色", characters.size());
+
+            int roleIndex = 1;
+            for (int i = 0; i < characters.size(); i++) {
+                JSONObject charData = characters.getJSONObject(i);
+
+                // 创建角色记录
+                Role role = new Role();
+                role.setSeriesId(seriesId);
+                role.setRoleName(charData.getString("roleName"));
+                role.setRoleCode(String.format("ROLE_%03d", roleIndex));
+                role.setStatus(RoleStatus.EXTRACTING.getCode()); // 生成中
+                role.setCustomPrompt(charData.getString("customPrompt"));
+                role.setStyleKeywords(charData.getString("styleKeywords"));
+                role.setExtractConfidence(new BigDecimal("1.0"));
+                role.setCreatedAt(LocalDateTime.now());
+                role.setUpdatedAt(LocalDateTime.now());
+                roleMapper.insert(role);
+
+                log.info("创建角色: id={}, name={}, styleKeywords={}, aspectRatio={}, quality={}, customPrompt={}",
+                        role.getId(), role.getRoleName(), role.getStyleKeywords(),
+                        charData.getString("aspectRatio"), charData.getString("quality"),
+                        role.getCustomPrompt());
+
+                // 调用火山方舟API生成图片并保存资产
+                try {
+                    // 构建请求
+                    ImageGenerateRequest imageRequest = ImageGenerateRequest.builder()
+                            .roleName(role.getRoleName())
+                            .styleKeywords(role.getStyleKeywords())
+                            .aspectRatio(charData.getString("aspectRatio"))
+                            .quality(charData.getString("quality"))
+                            .customPrompt(role.getCustomPrompt())
+                            .seriesId(seriesId)
+                            .roleId(role.getId())
+                            .build();
+
+                    // 生成图片
+                    ImageGenerateResponse imageResponse = imageGenerateService.generateCharacterSheet(imageRequest);
+
+                    if ("success".equals(imageResponse.getStatus())) {
+                        log.info("角色图片生成成功: roleId={}, imageUrl={}", role.getId(), imageResponse.getImageUrl());
+
+                        // 保存资产到数据库
+                        saveAsset(role, imageResponse, imageRequest);
+
+                        // 更新角色状态为待审核
+                        role.setStatus(RoleStatus.PENDING_REVIEW.getCode());
+                        role.setUpdatedAt(LocalDateTime.now());
+                        roleMapper.updateById(role);
+                    } else {
+                        log.error("角色图片生成失败: roleId={}, error={}", role.getId(), imageResponse.getErrorMessage());
+                        role.setStatus(RoleStatus.PENDING_REVIEW.getCode());
+                        role.setUpdatedAt(LocalDateTime.now());
+                        roleMapper.updateById(role);
+                    }
+                } catch (Exception e) {
+                    log.error("调用图片生成API异常: roleId={}", role.getId(), e);
+                    role.setStatus(RoleStatus.PENDING_REVIEW.getCode());
+                    role.setUpdatedAt(LocalDateTime.now());
+                    roleMapper.updateById(role);
+                }
+
+                roleIndex++;
+            }
+
+            // 更新系列状态为待审核
+            updateSeriesStatus(seriesId, SeriesStatus.PENDING_REVIEW.getCode());
+
+            log.info("角色处理和图片生成完成: seriesId={}, count={}", seriesId, roleIndex - 1);
+        } catch (Exception e) {
+            log.error("角色处理失败: seriesId={}", seriesId, e);
+            updateSeriesStatus(seriesId, SeriesStatus.PENDING_REVIEW.getCode());
+        }
+    }
+
+    /**
+     * 保存角色资产
+     */
+    private void saveAsset(Role role, ImageGenerateResponse response, ImageGenerateRequest request) {
+        try {
+            // 创建资产记录
+            RoleAsset asset = new RoleAsset();
+            asset.setRoleId(role.getId());
+            asset.setAssetType("CHARACTER_SHEET"); // 三视图合并在一张图
+            asset.setViewType("ALL"); // 包含所有视图
+            asset.setClothingId(1);
+            asset.setVersion(1);
+            asset.setFileName(role.getRoleName() + "_charactersheet_v1.png");
+            asset.setStatus(AssetStatus.PENDING_REVIEW.getCode());
+            asset.setIsActive(1);
+            asset.setValidationPassed(1);
+            asset.setCreatedAt(LocalDateTime.now());
+            asset.setUpdatedAt(LocalDateTime.now());
+
+            // 保存图片URL
+            if (response.getImageUrl() != null) {
+                asset.setFilePath(response.getImageUrl());
+                asset.setThumbnailPath(response.getImageUrl());
+                asset.setTransparentPath(response.getImageUrl());
+            }
+
+            roleAssetMapper.insert(asset);
+
+            // 保存元数据
+            AssetMetadata metadata = new AssetMetadata();
+            metadata.setAssetId(asset.getId());
+            metadata.setSeed(response.getSeed());
+            metadata.setModelVersion("volcengine-ark");
+            metadata.setImageWidth(response.getWidth());
+            metadata.setImageHeight(response.getHeight());
+            metadata.setAspectRatio(request.getAspectRatio());
+            metadata.setGenerationTimeMs(0L);
+            metadata.setCreatedAt(LocalDateTime.now());
+            assetMetadataMapper.insert(metadata);
+
+            log.info("资产保存成功: assetId={}, roleId={}", asset.getId(), role.getId());
+        } catch (Exception e) {
+            log.error("保存资产失败: roleId={}", role.getId(), e);
+        }
+    }
+
+    /**
+     * 生成 Mock 图片资产（模拟 Seedream API）
+     */
+    private void generateMockAssets(Role role) {
+        ViewType[] viewTypes = {ViewType.FRONT, ViewType.SIDE, ViewType.BACK, ViewType.THREE_QUARTER};
+
+        // 使用 picsum.photos 在线占位图服务
+        String baseUrl = "https://picsum.photos/seed/" + role.getId() + "/";
+
+        for (ViewType viewType : viewTypes) {
+            // 创建资产记录
+            RoleAsset asset = new RoleAsset();
+            asset.setRoleId(role.getId());
+            asset.setAssetType("MULTI_VIEW");
+            asset.setViewType(viewType.getCode());
+            asset.setClothingId(1);
+            asset.setVersion(1);
+            asset.setFileName(generateFileName(role.getRoleName(), viewType, 1, false));
+            asset.setStatus(AssetStatus.PENDING_REVIEW.getCode());
+            asset.setIsActive(1);
+            asset.setValidationPassed(1);
+            asset.setCreatedAt(LocalDateTime.now());
+            asset.setUpdatedAt(LocalDateTime.now());
+
+            // 使用在线占位图 - 每个视图不同
+            int seed = (int) (role.getId() * 10 + viewType.ordinal());
+            String mockImagePath = baseUrl + viewType.ordinal() + "/768/1024";
+            asset.setFilePath(mockImagePath);
+            asset.setThumbnailPath(baseUrl + viewType.ordinal() + "/200/267");
+            asset.setTransparentPath(mockImagePath);
+
+            roleAssetMapper.insert(asset);
+
+            // 创建元数据
+            AssetMetadata metadata = new AssetMetadata();
+            metadata.setAssetId(asset.getId());
+            metadata.setPrompt("Mock prompt for " + role.getRoleName() + " " + viewType.getDesc());
+            metadata.setNegativePrompt("mock negative prompt");
+            metadata.setSeed((long) seed);
+            metadata.setModelVersion("mock-v1.0");
+            metadata.setImageWidth(768);
+            metadata.setImageHeight(1024);
+            metadata.setAspectRatio("3:4");
+            metadata.setGenerationTimeMs(1000L);
+            metadata.setCreatedAt(LocalDateTime.now());
+            assetMetadataMapper.insert(metadata);
+
+            log.info("创建Mock资产: roleId={}, viewType={}, assetId={}", role.getId(), viewType, asset.getId());
+        }
+    }
+
+    private String generateFileName(String roleName, ViewType viewType, int version, boolean transparent) {
+        String sanitized = roleName.replaceAll("[\\\\/:*?\"<>|\\s]", "_");
+        String suffix = transparent ? "_transparent" : "";
+        return String.format("%s_%s_C01_V%02d%s.png", sanitized, viewType.getShortName(), version, suffix);
+    }
+
+    private SeriesDetailVO convertToVO(Series series) {
+        SeriesDetailVO vo = new SeriesDetailVO();
+        BeanUtils.copyProperties(series, vo);
+        return vo;
+    }
+}

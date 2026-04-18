@@ -1,0 +1,60 @@
+# 敏感配置文件
+backend/src/main/resources/application.yml
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+*.egg-info/
+dist/
+build/
+
+# Django
+*.log
+local_settings.py
+db.sqlite3
+media/
+staticfiles/
+
+# Java
+*.class
+*.jar
+*.war
+*.ear
+target/
+.mvn/
+
+# 数据库文件
+*.mv.db
+*.trace.db
+
+# Cookies文件
+cookies.txt
+
+# IDE
+.idea/
+*.iml
+.vscode/
+*.swp
+*.swo
+
+# 系统文件
+.DS_Store
+Thumbs.db
+
+# 存储目录
+storage/
+
+# 临时文件
+*.tmp
+*.temp
+.cache/
+
+# 数据目录
+backend/data/
+backend/cookies.txt

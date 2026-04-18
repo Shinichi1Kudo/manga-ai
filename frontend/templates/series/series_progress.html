@@ -1,0 +1,173 @@
+{% extends "base.html" %}
+
+{% block title %}处理中 - {{ series.seriesName }}{% endblock %}
+
+{% block content %}
+<!-- Progress Steps -->
+<div class="step-indicator mb-16">
+    <div class="step-item completed">
+        <div class="step-circle"><i data-lucide="check" class="w-5 h-5"></i></div>
+        <div class="step-label">输入信息</div>
+    </div>
+    <div class="step-line completed"></div>
+    <div class="step-item active">
+        <div class="step-circle">
+            <div class="spinner" style="width:24px;height:24px;border-width:2px;"></div>
+        </div>
+        <div class="step-label">AI 处理</div>
+    </div>
+    <div class="step-line"></div>
+    <div class="step-item">
+        <div class="step-circle">3</div>
+        <div class="step-label">角色审核</div>
+    </div>
+    <div class="step-line"></div>
+    <div class="step-item">
+        <div class="step-circle">4</div>
+        <div class="step-label">完成</div>
+    </div>
+</div>
+
+<!-- Main Content -->
+<div class="max-w-2xl mx-auto">
+    <div class="glass-card p-10 text-center">
+        <!-- Spinner -->
+        <div class="flex justify-center mb-8">
+            <div class="relative">
+                <div class="w-24 h-24 rounded-full border-4 border-white/10"></div>
+                <div class="absolute top-0 left-0 w-24 h-24 rounded-full border-4 border-transparent border-t-violet-500 animate-spin"></div>
+                <div class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2">
+                    <i data-lucide="sparkles" class="w-8 h-8 text-violet-400"></i>
+                </div>
+            </div>
+        </div>
+
+        <!-- Title -->
+        <h2 class="text-2xl font-bold mb-2">{{ series.seriesName }}</h2>
+        <p class="text-white/50 mb-8">AI 正在处理中，请稍候...</p>
+
+        <!-- Progress Bar -->
+        <div class="mb-8">
+            <div class="progress-container">
+                <div class="progress-fill" id="progressBar" style="width: 0%"></div>
+            </div>
+            <div class="flex justify-between mt-3 text-sm text-white/50">
+                <span>处理进度</span>
+                <span id="progressText">0%</span>
+            </div>
+        </div>
+
+        <!-- Task List -->
+        <div class="text-left space-y-4" id="taskList">
+            <div class="flex items-center gap-4 p-4 rounded-xl bg-white/5">
+                <div class="w-10 h-10 rounded-full bg-green-500/20 flex items-center justify-center">
+                    <i data-lucide="check" class="w-5 h-5 text-green-400"></i>
+                </div>
+                <div class="flex-1">
+                    <div class="font-medium">系列信息已保存</div>
+                    <div class="text-sm text-white/40">创建项目目录结构</div>
+                </div>
+            </div>
+
+            <div class="flex items-center gap-4 p-4 rounded-xl bg-white/5">
+                <div class="w-10 h-10 rounded-full bg-green-500/20 flex items-center justify-center">
+                    <i data-lucide="check" class="w-5 h-5 text-green-400"></i>
+                </div>
+                <div class="flex-1">
+                    <div class="font-medium">目录结构已创建</div>
+                    <div class="text-sm text-white/40">初始化资产库</div>
+                </div>
+            </div>
+
+            <div class="flex items-center gap-4 p-4 rounded-xl bg-violet-500/10 border border-violet-500/20" id="taskExtract">
+                <div class="w-10 h-10 rounded-full bg-violet-500/20 flex items-center justify-center">
+                    <div class="spinner" style="width:20px;height:20px;border-width:2px;"></div>
+                </div>
+                <div class="flex-1">
+                    <div class="font-medium">正在提取角色信息...</div>
+                    <div class="text-sm text-white/40">NLP 智能分析人物介绍</div>
+                </div>
+            </div>
+
+            <div class="flex items-center gap-4 p-4 rounded-xl bg-white/5 opacity-50" id="taskGenerate">
+                <div class="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center">
+                    <i data-lucide="image" class="w-5 h-5 text-white/40"></i>
+                </div>
+                <div class="flex-1">
+                    <div class="font-medium">生成角色图片</div>
+                    <div class="text-sm text-white/40">等待角色提取完成</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Tips -->
+        <div class="mt-8 p-4 rounded-xl bg-blue-500/10 border border-blue-500/20 text-left">
+            <div class="flex items-start gap-3">
+                <i data-lucide="info" class="w-5 h-5 text-blue-400 mt-0.5"></i>
+                <div class="text-sm text-white/70">
+                    <p class="font-medium text-blue-300 mb-1">温馨提示</p>
+                    <p>AI 生成过程可能需要 1-3 分钟，处理完成后将自动跳转到审核页面。</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const seriesId = {{ series_id }};
+let checkInterval;
+
+function checkProgress() {
+    fetch(`/api/${seriesId}/progress/`)
+        .then(response => response.json())
+        .then(data => {
+            // 更新进度条
+            const percent = data.progressPercent || 0;
+            document.getElementById('progressBar').style.width = percent + '%';
+            document.getElementById('progressText').textContent = percent + '%';
+
+            // 更新任务状态
+            if (data.totalRoles > 0) {
+                document.getElementById('taskExtract').innerHTML = `
+                    <div class="w-10 h-10 rounded-full bg-green-500/20 flex items-center justify-center">
+                        <i data-lucide="check" class="w-5 h-5 text-green-400"></i>
+                    </div>
+                    <div class="flex-1">
+                        <div class="font-medium">角色提取完成</div>
+                        <div class="text-sm text-white/40">识别到 ${data.totalRoles} 个角色</div>
+                    </div>
+                `;
+                lucide.createIcons();
+
+                document.getElementById('taskGenerate').innerHTML = `
+                    <div class="w-10 h-10 rounded-full bg-violet-500/20 flex items-center justify-center">
+                        <div class="spinner" style="width:20px;height:20px;border-width:2px;"></div>
+                    </div>
+                    <div class="flex-1">
+                        <div class="font-medium">正在生成角色图片...</div>
+                        <div class="text-sm text-white/40">${data.confirmedRoles || 0}/${data.totalRoles} 已处理</div>
+                    </div>
+                `;
+                document.getElementById('taskGenerate').classList.remove('opacity-50');
+                document.getElementById('taskGenerate').classList.add('bg-violet-500/10', 'border', 'border-violet-500/20');
+            }
+
+            // 如果处理完成，跳转到审核页面
+            if (data.seriesStatus === 1) {
+                clearInterval(checkInterval);
+                window.location.href = `/${seriesId}/review/`;
+            }
+        })
+        .catch(error => {
+            console.error('Error checking progress:', error);
+        });
+}
+
+// 每2秒检查一次进度
+checkInterval = setInterval(checkProgress, 2000);
+// 立即执行一次
+checkProgress();
+</script>
+{% endblock %}

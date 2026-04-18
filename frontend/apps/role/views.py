@@ -1,0 +1,91 @@
+import json
+from django.shortcuts import render
+from django.http import JsonResponse
+from django.views.decorators.http import require_http_methods
+from django.views.decorators.csrf import csrf_exempt
+
+from api.backend_client import BackendClient, BackendAPIError
+
+
+def role_detail(request, role_id):
+    """角色详情页面"""
+    client = BackendClient()
+    try:
+        role = client.get(f'/v1/roles/{role_id}')
+        assets = client.get(f'/v1/assets/role/{role_id}')
+    except BackendAPIError as e:
+        return render(request, 'error.html', {'message': e.message})
+
+    return render(request, 'role/role_detail.html', {
+        'role': role,
+        'assets': assets,
+    })
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def role_create(request, series_id):
+    """创建角色"""
+    client = BackendClient()
+    try:
+        data = json.loads(request.body)
+        data['seriesId'] = series_id
+        result = client.post('/v1/roles', data)
+        return JsonResponse({'success': True, 'roleId': result})
+    except BackendAPIError as e:
+        return JsonResponse({'success': False, 'error': e.message}, status=400)
+
+
+@csrf_exempt
+@require_http_methods(["DELETE"])
+def role_delete(request, role_id):
+    """删除角色"""
+    client = BackendClient()
+    try:
+        client.delete(f'/v1/roles/{role_id}')
+        return JsonResponse({'success': True})
+    except BackendAPIError as e:
+        return JsonResponse({'success': False, 'error': e.message}, status=400)
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def role_confirm(request, role_id):
+    """确认角色"""
+    client = BackendClient()
+    try:
+        client.post(f'/v1/roles/{role_id}/confirm')
+        return JsonResponse({'success': True})
+    except BackendAPIError as e:
+        return JsonResponse({'success': False, 'error': e.message}, status=400)
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def role_regenerate(request, role_id):
+    """重新生成角色图片"""
+    client = BackendClient()
+    try:
+        data = json.loads(request.body)
+        result = client.post(f'/v1/roles/{role_id}/regenerate', {
+            'viewTypes': data.get('viewTypes', []),
+            'clothingId': data.get('clothingId', 1),
+            'modifiedPrompt': data.get('modifiedPrompt', ''),
+            'keepSeed': data.get('keepSeed', True),
+        })
+        return JsonResponse({'success': True, 'data': result})
+    except BackendAPIError as e:
+        return JsonResponse({'success': False, 'error': e.message}, status=400)
+
+
+@csrf_exempt
+@require_http_methods(["PUT"])
+def role_update(request, role_id):
+    """更新角色属性"""
+    client = BackendClient()
+    try:
+        data = json.loads(request.body)
+        result = client.put(f'/v1/roles/{role_id}', data)
+        return JsonResponse({'success': True, 'data': result})
+    except BackendAPIError as e:
+        return JsonResponse({'success': False, 'error': e.message}, status=400)

@@ -1,0 +1,80 @@
+package com.manga.ai.series.controller;
+
+import com.manga.ai.common.result.Result;
+import com.manga.ai.series.dto.SeriesDetailVO;
+import com.manga.ai.series.dto.SeriesInitRequest;
+import com.manga.ai.series.dto.SeriesProgressVO;
+import com.manga.ai.series.service.SeriesService;
+import jakarta.validation.Valid;
+import lombok.RequiredArgsConstructor;
+import org.springframework.web.bind.annotation.*;
+
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+
+/**
+ * 系列控制器
+ */
+@RestController
+@RequestMapping("/v1/series")
+@RequiredArgsConstructor
+public class SeriesController {
+
+    private final SeriesService seriesService;
+
+    /**
+     * 初始化系列
+     */
+    @PostMapping("/init")
+    public Result<SeriesDetailVO> initSeries(@Valid @RequestBody SeriesInitRequest request) {
+        SeriesDetailVO result = seriesService.initSeries(request);
+        return Result.success(result);
+    }
+
+    /**
+     * 获取系列详情
+     */
+    @GetMapping("/{id}")
+    public Result<SeriesDetailVO> getSeriesDetail(@PathVariable Long id) {
+        SeriesDetailVO result = seriesService.getSeriesDetail(id);
+        return Result.success(result);
+    }
+
+    /**
+     * 获取系列列表（分页）
+     */
+    @GetMapping("/list")
+    public Result<Map<String, Object>> getSeriesList(
+            @RequestParam(defaultValue = "1") Integer page,
+            @RequestParam(defaultValue = "9") Integer pageSize) {
+        List<SeriesDetailVO> list = seriesService.getSeriesList(page, pageSize);
+        Integer total = seriesService.getSeriesCount();
+
+        Map<String, Object> result = new HashMap<>();
+        result.put("list", list);
+        result.put("total", total);
+        result.put("page", page);
+        result.put("pageSize", pageSize);
+
+        return Result.success(result);
+    }
+
+    /**
+     * 获取系列进度
+     */
+    @GetMapping("/{id}/progress")
+    public Result<SeriesProgressVO> getSeriesProgress(@PathVariable Long id) {
+        SeriesProgressVO result = seriesService.getSeriesProgress(id);
+        return Result.success(result);
+    }
+
+    /**
+     * 锁定系列
+     */
+    @PostMapping("/{id}/lock")
+    public Result<Void> lockSeries(@PathVariable Long id) {
+        seriesService.lockSeries(id);
+        return Result.success();
+    }
+}

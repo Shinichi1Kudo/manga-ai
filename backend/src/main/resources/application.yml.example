@@ -1,0 +1,75 @@
+server:
+  port: 8081
+  servlet:
+    context-path: /api
+
+spring:
+  application:
+    name: manga-ai
+
+  datasource:
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    url: jdbc:mysql://YOUR_HOST:3306/manga_ai?useUnicode=true&characterEncoding=utf8&useSSL=false&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&connectTimeout=10000&socketTimeout=60000&autoReconnect=true
+    username: YOUR_USERNAME
+    password: YOUR_PASSWORD
+    hikari:
+      minimum-idle: 2
+      maximum-pool-size: 10
+      connection-timeout: 30000
+      idle-timeout: 600000
+      max-lifetime: 1800000
+
+  servlet:
+    multipart:
+      max-file-size: 50MB
+      max-request-size: 100MB
+
+  jackson:
+    date-format: yyyy-MM-dd HH:mm:ss
+    time-zone: Asia/Shanghai
+    default-property-inclusion: non_null
+
+mybatis-plus:
+  mapper-locations: classpath:mapper/**/*.xml
+  type-aliases-package: com.manga.ai.*.entity
+  configuration:
+    map-underscore-to-camel-case: true
+    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
+  global-config:
+    db-config:
+      id-type: auto
+      logic-delete-field: isDeleted
+      logic-delete-value: 1
+      logic-not-delete-value: 0
+    banner: false
+
+# 火山方舟 API 配置
+volcengine:
+  ark:
+    api-key: YOUR_API_KEY
+    model: doubao-seedream-5-0-260128
+    base-url: https://ark.cn-beijing.volces.com/api/v3
+    timeout: 120000
+
+# 文件存储配置
+storage:
+  base-path: ./storage
+  temp-path: ./storage/temp
+  project-path: ./storage/projects
+
+# NLP 配置
+nlp:
+  confidence-threshold: 0.6
+
+# 异步任务配置
+task:
+  executor:
+    core-pool-size: 5
+    max-pool-size: 10
+    queue-capacity: 100
+    thread-name-prefix: manga-ai-
+
+logging:
+  level:
+    com.manga.ai: debug
+    org.springframework.web: info

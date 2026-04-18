@@ -1,0 +1,560 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}AI 智能漫剧制作系统{% endblock %}</title>
+
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Noto+Sans+SC:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'Noto Sans SC', 'sans-serif'],
+                    },
+                    colors: {
+                        primary: {
+                            50: '#f0f9ff',
+                            100: '#e0f2fe',
+                            200: '#bae6fd',
+                            300: '#7dd3fc',
+                            400: '#38bdf8',
+                            500: '#0ea5e9',
+                            600: '#0284c7',
+                            700: '#0369a1',
+                            800: '#075985',
+                            900: '#0c4a6e',
+                        },
+                        accent: {
+                            50: '#fdf4ff',
+                            100: '#fae8ff',
+                            200: '#f5d0fe',
+                            300: '#f0abfc',
+                            400: '#e879f9',
+                            500: '#d946ef',
+                            600: '#c026d3',
+                            700: '#a21caf',
+                            800: '#86198f',
+                            900: '#701a75',
+                        }
+                    },
+                    animation: {
+                        'gradient': 'gradient 8s ease infinite',
+                        'float': 'float 6s ease-in-out infinite',
+                        'pulse-slow': 'pulse 4s cubic-bezier(0.4, 0, 0.6, 1) infinite',
+                    }
+                }
+            }
+        }
+    </script>
+
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', 'Noto Sans SC', sans-serif;
+            background: linear-gradient(135deg, #0f0c29 0%, #302b63 50%, #24243e 100%);
+            min-height: 100vh;
+            color: #fff;
+        }
+
+        /* Animated Background */
+        .bg-animated {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: -1;
+            overflow: hidden;
+        }
+
+        .bg-animated::before {
+            content: '';
+            position: absolute;
+            width: 200%;
+            height: 200%;
+            top: -50%;
+            left: -50%;
+            background: radial-gradient(circle at 20% 80%, rgba(120, 0, 255, 0.3) 0%, transparent 50%),
+                        radial-gradient(circle at 80% 20%, rgba(0, 200, 255, 0.3) 0%, transparent 50%),
+                        radial-gradient(circle at 40% 40%, rgba(255, 0, 150, 0.2) 0%, transparent 40%);
+            animation: bgMove 20s ease-in-out infinite;
+        }
+
+        @keyframes bgMove {
+            0%, 100% { transform: translate(0, 0) rotate(0deg); }
+            33% { transform: translate(30px, -30px) rotate(5deg); }
+            66% { transform: translate(-20px, 20px) rotate(-5deg); }
+        }
+
+        /* Glass Card */
+        .glass-card {
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 24px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3),
+                        inset 0 1px 0 rgba(255, 255, 255, 0.1);
+        }
+
+        .glass-card-hover {
+            transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .glass-card-hover:hover {
+            transform: translateY(-8px);
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4),
+                        inset 0 1px 0 rgba(255, 255, 255, 0.2);
+            border-color: rgba(255, 255, 255, 0.2);
+        }
+
+        /* Gradient Text */
+        .gradient-text {
+            background: linear-gradient(135deg, #fff 0%, #a78bfa 50%, #38bdf8 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        /* Neon Button */
+        .btn-neon {
+            position: relative;
+            padding: 12px 32px;
+            background: linear-gradient(135deg, #7c3aed 0%, #2563eb 100%);
+            border: none;
+            border-radius: 12px;
+            color: white;
+            font-weight: 600;
+            cursor: pointer;
+            overflow: hidden;
+            transition: all 0.3s ease;
+        }
+
+        .btn-neon::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.3), transparent);
+            transition: left 0.5s ease;
+        }
+
+        .btn-neon:hover::before {
+            left: 100%;
+        }
+
+        .btn-neon:hover {
+            transform: scale(1.05);
+            box-shadow: 0 0 30px rgba(124, 58, 237, 0.5);
+        }
+
+        .btn-neon:active {
+            transform: scale(0.98);
+        }
+
+        /* Input Style */
+        .input-modern {
+            width: 100%;
+            padding: 16px 20px;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 12px;
+            color: white;
+            font-size: 16px;
+            transition: all 0.3s ease;
+        }
+
+        .input-modern::placeholder {
+            color: rgba(255, 255, 255, 0.4);
+        }
+
+        .input-modern:focus {
+            outline: none;
+            border-color: rgba(124, 58, 237, 0.5);
+            background: rgba(255, 255, 255, 0.08);
+            box-shadow: 0 0 20px rgba(124, 58, 237, 0.2);
+        }
+
+        textarea.input-modern {
+            min-height: 120px;
+            resize: vertical;
+        }
+
+        /* Progress Steps */
+        .step-indicator {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0;
+        }
+
+        .step-item {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            position: relative;
+        }
+
+        .step-circle {
+            width: 48px;
+            height: 48px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 600;
+            font-size: 18px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 2px solid rgba(255, 255, 255, 0.2);
+            transition: all 0.4s ease;
+        }
+
+        .step-item.active .step-circle {
+            background: linear-gradient(135deg, #7c3aed 0%, #2563eb 100%);
+            border-color: transparent;
+            box-shadow: 0 0 30px rgba(124, 58, 237, 0.5);
+        }
+
+        .step-item.completed .step-circle {
+            background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+            border-color: transparent;
+        }
+
+        .step-label {
+            margin-top: 12px;
+            font-size: 14px;
+            color: rgba(255, 255, 255, 0.5);
+            font-weight: 500;
+        }
+
+        .step-item.active .step-label,
+        .step-item.completed .step-label {
+            color: rgba(255, 255, 255, 0.9);
+        }
+
+        .step-line {
+            width: 80px;
+            height: 2px;
+            background: rgba(255, 255, 255, 0.1);
+            margin: 0 16px;
+            margin-bottom: 28px;
+        }
+
+        .step-line.completed {
+            background: linear-gradient(90deg, #10b981, #059669);
+        }
+
+        /* Role Card */
+        .role-card {
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 20px;
+            padding: 24px;
+            transition: all 0.4s ease;
+        }
+
+        .role-card:hover {
+            background: rgba(255, 255, 255, 0.06);
+            border-color: rgba(255, 255, 255, 0.15);
+            transform: translateY(-4px);
+        }
+
+        /* Image Grid */
+        .image-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 16px;
+        }
+
+        .image-item {
+            aspect-ratio: 3/4;
+            border-radius: 16px;
+            overflow: hidden;
+            position: relative;
+            cursor: pointer;
+            border: 2px solid transparent;
+            transition: all 0.3s ease;
+        }
+
+        .image-item img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .image-item:hover {
+            border-color: rgba(124, 58, 237, 0.5);
+            transform: scale(1.02);
+        }
+
+        .image-item .overlay {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            padding: 12px;
+            background: linear-gradient(transparent, rgba(0,0,0,0.8));
+            text-align: center;
+            font-size: 13px;
+            font-weight: 500;
+        }
+
+        /* Status Badge */
+        .status-badge {
+            padding: 6px 16px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+
+        .status-initializing { background: rgba(251, 191, 36, 0.2); color: #fbbf24; }
+        .status-pending { background: rgba(59, 130, 246, 0.2); color: #60a5fa; }
+        .status-confirmed { background: rgba(16, 185, 129, 0.2); color: #34d399; }
+        .status-locked { background: rgba(167, 139, 250, 0.2); color: #a78bfa; }
+
+        /* Progress Bar */
+        .progress-container {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 12px;
+            height: 12px;
+            overflow: hidden;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #7c3aed, #2563eb, #38bdf8);
+            background-size: 200% 100%;
+            animation: shimmer 2s ease-in-out infinite;
+            border-radius: 12px;
+        }
+
+        @keyframes shimmer {
+            0% { background-position: -200% 0; }
+            100% { background-position: 200% 0; }
+        }
+
+        /* Spinner */
+        .spinner {
+            width: 48px;
+            height: 48px;
+            border: 3px solid rgba(255, 255, 255, 0.1);
+            border-top-color: #7c3aed;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        /* Modal */
+        .modal-backdrop {
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.8);
+            backdrop-filter: blur(8px);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 100;
+            opacity: 0;
+            visibility: hidden;
+            transition: all 0.3s ease;
+        }
+
+        .modal-backdrop.active {
+            opacity: 1;
+            visibility: visible;
+        }
+
+        .modal-content {
+            background: rgba(30, 30, 50, 0.95);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 24px;
+            padding: 32px;
+            max-width: 90%;
+            max-height: 90%;
+            overflow: auto;
+            transform: scale(0.9);
+            transition: transform 0.3s ease;
+        }
+
+        .modal-backdrop.active .modal-content {
+            transform: scale(1);
+        }
+
+        /* Toast Message */
+        .toast {
+            position: fixed;
+            top: 24px;
+            right: 24px;
+            padding: 16px 24px;
+            border-radius: 12px;
+            background: rgba(30, 30, 50, 0.95);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(20px);
+            z-index: 200;
+            transform: translateX(120%);
+            transition: transform 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .toast.show {
+            transform: translateX(0);
+        }
+
+        .toast.success { border-left: 4px solid #10b981; }
+        .toast.error { border-left: 4px solid #ef4444; }
+        .toast.warning { border-left: 4px solid #f59e0b; }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .image-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+
+            .step-line {
+                width: 40px;
+            }
+        }
+    </style>
+
+    {% block extra_css %}{% endblock %}
+</head>
+<body>
+    <div class="bg-animated"></div>
+
+    <!-- Navigation -->
+    <nav class="fixed top-0 left-0 right-0 z-50 px-6 py-4">
+        <div class="max-w-7xl mx-auto flex items-center justify-between">
+            <a href="/" class="flex items-center gap-3 group">
+                <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-violet-500 to-blue-500 flex items-center justify-center group-hover:scale-110 transition-transform">
+                    <i data-lucide="clapperboard" class="w-5 h-5"></i>
+                </div>
+                <span class="text-xl font-bold gradient-text">Manga AI</span>
+            </a>
+
+            <div class="flex items-center gap-4">
+                <a href="/init/" class="px-5 py-2.5 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 transition-all font-medium text-sm">
+                    <i data-lucide="plus" class="w-4 h-4 inline mr-2"></i>新建系列
+                </a>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <main class="pt-24 pb-12 px-6 min-h-screen">
+        <div class="max-w-7xl mx-auto">
+            {% if messages %}
+            {% for message in messages %}
+            <div class="toast {{ message.tags }} show">
+                <div class="flex items-center gap-3">
+                    <i data-lucide="{% if message.tags == 'success' %}check-circle{% elif message.tags == 'error' %}x-circle{% else %}alert-circle{% endif %}" class="w-5 h-5"></i>
+                    <span>{{ message }}</span>
+                </div>
+            </div>
+            {% endfor %}
+            {% endif %}
+
+            {% block content %}{% endblock %}
+        </div>
+    </main>
+
+    <!-- Image Preview Modal -->
+    <div class="modal-backdrop" id="imageModal">
+        <div class="modal-content p-0">
+            <div class="p-4 border-b border-white/10 flex items-center justify-between">
+                <h3 class="text-lg font-semibold">图片预览</h3>
+                <button onclick="closeModal()" class="p-2 hover:bg-white/10 rounded-lg transition-colors">
+                    <i data-lucide="x" class="w-5 h-5"></i>
+                </button>
+            </div>
+            <div class="p-4">
+                <img id="previewImage" src="" class="max-w-full max-h-[70vh] mx-auto rounded-lg">
+            </div>
+            <div class="p-4 border-t border-white/10 flex justify-end gap-3">
+                <button onclick="closeModal()" class="px-5 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 transition-colors font-medium">
+                    关闭
+                </button>
+                <button id="downloadBtn" class="btn-neon">
+                    <i data-lucide="download" class="w-4 h-4 inline mr-2"></i>下载
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Initialize Lucide icons
+        lucide.createIcons();
+
+        // Modal functions
+        function openModal(imgSrc) {
+            document.getElementById('previewImage').src = imgSrc;
+            document.getElementById('imageModal').classList.add('active');
+            document.getElementById('downloadBtn').onclick = () => downloadImage(imgSrc);
+        }
+
+        function closeModal() {
+            document.getElementById('imageModal').classList.remove('active');
+        }
+
+        function downloadImage(src) {
+            const a = document.createElement('a');
+            a.href = src;
+            a.download = src.split('/').pop();
+            a.click();
+        }
+
+        // Close modal on backdrop click
+        document.getElementById('imageModal').addEventListener('click', (e) => {
+            if (e.target === e.currentTarget) closeModal();
+        });
+
+        // Close modal on Escape key
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') closeModal();
+        });
+
+        // Toast auto-hide
+        document.querySelectorAll('.toast').forEach(toast => {
+            setTimeout(() => toast.classList.remove('show'), 5000);
+        });
+
+        // CSRF token helper
+        function getCookie(name) {
+            let cookieValue = null;
+            if (document.cookie && document.cookie !== '') {
+                const cookies = document.cookie.split(';');
+                for (let i = 0; i < cookies.length; i++) {
+                    const cookie = cookies[i].trim();
+                    if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                        cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                        break;
+                    }
+                }
+            }
+            return cookieValue;
+        }
+    </script>
+
+    {% block extra_js %}{% endblock %}
+</body>
+</html>
