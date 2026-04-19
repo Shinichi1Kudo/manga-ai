@@ -12,4 +12,5 @@ urlpatterns = [
     path('role/<int:role_id>/default/<int:clothing_id>/', views.set_default_clothing, name='set_default'),
     path('assets/role/<int:role_id>/versions/<int:clothing_id>/', views.get_clothing_versions, name='versions'),
     path('assets/role/<int:role_id>/clothing/<int:clothing_id>/rename/', views.rename_clothing, name='rename_clothing'),
+    path('assets/role/<int:role_id>/clothing/<int:clothing_id>/delete/', views.delete_clothing, name='delete_clothing'),
 ]

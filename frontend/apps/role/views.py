@@ -14,7 +14,14 @@ def role_detail(request, role_id):
         role = client.get(f'/v1/roles/{role_id}')
         assets = client.get(f'/v1/assets/role/{role_id}')
     except BackendAPIError as e:
+        # 如果是API请求，返回JSON
+        if request.headers.get('X-Requested-With') == 'XMLHttpRequest' or request.path.startswith('/api/'):
+            return JsonResponse({'success': False, 'error': e.message}, status=400)
         return render(request, 'error.html', {'message': e.message})
+
+    # 如果是API请求，返回JSON
+    if request.headers.get('X-Requested-With') == 'XMLHttpRequest' or request.path.startswith('/api/'):
+        return JsonResponse({'success': True, 'data': role})
 
     return render(request, 'role/role_detail.html', {
         'role': role,
@@ -76,6 +83,7 @@ def role_regenerate(request, role_id):
             'clothingName': data.get('clothingName', ''),
             'referenceImageUrl': data.get('referenceImageUrl', ''),
         })
+        # result now contains: {clothingId, version, assetId}
         return JsonResponse({'success': True, 'data': result})
     except BackendAPIError as e:
         return JsonResponse({'success': False, 'error': e.message}, status=400)

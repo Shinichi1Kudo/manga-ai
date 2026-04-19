@@ -50,4 +50,14 @@ public interface SeriesService {
      * 锁定系列
      */
     void lockSeries(Long seriesId);
+
+    /**
+     * 异步处理角色数据（并行生成图片）
+     */
+    void asyncProcessCharacters(Long seriesId, String charactersJson);
+
+    /**
+     * 异步处理角色提取（NLP方式）
+     */
+    void asyncProcessRoleExtract(Long seriesId, String characterIntro);
 }

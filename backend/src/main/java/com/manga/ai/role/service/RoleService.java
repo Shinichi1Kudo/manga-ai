@@ -1,6 +1,7 @@
 package com.manga.ai.role.service;
 
 import com.manga.ai.role.dto.RegenerateRequest;
+import com.manga.ai.role.dto.RegenerateResponse;
 import com.manga.ai.role.dto.RoleCreateRequest;
 import com.manga.ai.role.dto.RoleDetailVO;
 import com.manga.ai.role.dto.RoleUpdateRequest;
@@ -45,5 +46,5 @@ public interface RoleService {
     /**
      * 重新生成角色图片
      */
-    List<Long> regenerateRoleAssets(Long roleId, RegenerateRequest request);
+    RegenerateResponse regenerateRoleAssets(Long roleId, RegenerateRequest request);
 }

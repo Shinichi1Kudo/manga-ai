@@ -50,7 +50,8 @@
                 </label>
                 <input type="text" name="series_name" required
                        class="input-modern"
-                       placeholder="例如：星际迷航之银河冒险">
+                       placeholder="例如：星际迷航之银河冒险"
+                       value="{{ form_data.series_name|default:'' }}">
             </div>
 
             <!-- Outline -->
@@ -59,7 +60,7 @@
                     <i data-lucide="file-text" class="w-4 h-4 inline mr-2"></i>剧本大纲 <span class="text-red-400">*</span>
                 </label>
                 <textarea name="outline" required class="input-modern" rows="4"
-                          placeholder="描述故事的整体走向、核心冲突和结局..."></textarea>
+                          placeholder="描述故事的整体走向、核心冲突和结局...">{{ form_data.outline|default:'' }}</textarea>
             </div>
 
             <!-- Background -->
@@ -68,7 +69,7 @@
                     <i data-lucide="globe" class="w-4 h-4 inline mr-2"></i>背景设定
                 </label>
                 <textarea name="background" class="input-modern" rows="3"
-                          placeholder="时代背景、世界观、科技水平、社会结构..."></textarea>
+                          placeholder="时代背景、世界观、科技水平、社会结构...">{{ form_data.background|default:'' }}</textarea>
             </div>
 
             <!-- Character Cards Container -->
@@ -106,7 +107,7 @@
 let characterCount = 0;
 
 // 创建角色卡片
-function createCharacterCard(index) {
+function createCharacterCard(index, name = '', prompt = '') {
     const card = document.createElement('div');
     card.className = 'glass-card p-5 character-card';
     card.dataset.index = index;
@@ -116,7 +117,7 @@ function createCharacterCard(index) {
                 <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-violet-500 to-blue-500 flex items-center justify-center text-lg font-bold character-number">
                     ${index + 1}
                 </div>
-                <input type="text" class="input-modern text-base font-medium character-name flex-1" placeholder="输入角色名称..." required>
+                <input type="text" class="input-modern text-base font-medium character-name flex-1" placeholder="输入角色名称..." value="${name.replace(/"/g, '&quot;')}" required>
             </div>
             <button type="button" class="remove-character-btn p-2 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-400 transition-colors ml-3" title="删除角色">
                 <i data-lucide="trash-2" class="w-5 h-5"></i>
@@ -125,7 +126,7 @@ function createCharacterCard(index) {
 
         <div>
             <label class="block text-xs text-white/50 mb-1">提示词</label>
-            <textarea class="input-modern text-sm character-prompt" rows="3" placeholder="输入角色描述，用于生成三视图图片。例如：A young man with black short hair and sharp eyes, wearing a black trench coat, anime style, detailed, high quality character design sheet with front, side and back views"></textarea>
+            <textarea class="input-modern text-sm character-prompt" rows="3" placeholder="输入角色描述，用于生成三视图图片。例如：A young man with black short hair and sharp eyes, wearing a black trench coat, anime style, detailed, high quality character design sheet with front, side and back views">${prompt}</textarea>
         </div>
     `;
 
@@ -133,9 +134,9 @@ function createCharacterCard(index) {
 }
 
 // 添加角色
-function addCharacter() {
+function addCharacter(name = '', prompt = '') {
     const container = document.getElementById('characterContainer');
-    const card = createCharacterCard(characterCount);
+    const card = createCharacterCard(characterCount, name, prompt);
     container.appendChild(card);
     characterCount++;
     lucide.createIcons();
@@ -179,11 +180,22 @@ function collectCharacterData() {
 
 // 初始化
 document.addEventListener('DOMContentLoaded', function() {
-    // 添加第一个角色
-    addCharacter();
+    // 恢复之前输入的角色数据
+    const savedCharacters = {{ form_data.characters_json|default:'[]'|safe }};
+    if (savedCharacters.length > 0) {
+        // 有之前的数据，恢复角色卡片
+        savedCharacters.forEach(char => {
+            addCharacter(char.roleName || '', char.customPrompt || '');
+        });
+    } else {
+        // 没有数据，添加一个空的角色卡片
+        addCharacter();
+    }
 
     // 添加角色按钮
-    document.getElementById('addCharacterBtn').addEventListener('click', addCharacter);
+    document.getElementById('addCharacterBtn').addEventListener('click', function() {
+        addCharacter();
+    });
 
     // 删除角色按钮 (事件委托)
     document.getElementById('characterContainer').addEventListener('click', function(e) {

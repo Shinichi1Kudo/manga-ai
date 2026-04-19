@@ -2,6 +2,7 @@ package com.manga.ai.role.controller;
 
 import com.manga.ai.common.result.Result;
 import com.manga.ai.role.dto.RegenerateRequest;
+import com.manga.ai.role.dto.RegenerateResponse;
 import com.manga.ai.role.dto.RoleCreateRequest;
 import com.manga.ai.role.dto.RoleDetailVO;
 import com.manga.ai.role.dto.RoleUpdateRequest;
@@ -80,10 +81,10 @@ public class RoleController {
      * 重新生成角色图片
      */
     @PostMapping("/{id}/regenerate")
-    public Result<List<Long>> regenerateRoleAssets(
+    public Result<RegenerateResponse> regenerateRoleAssets(
             @PathVariable Long id,
             @Valid @RequestBody RegenerateRequest request) {
-        List<Long> result = roleService.regenerateRoleAssets(id, request);
+        RegenerateResponse result = roleService.regenerateRoleAssets(id, request);
         return Result.success(result);
     }
 }

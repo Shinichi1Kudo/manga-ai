@@ -68,7 +68,7 @@
 <!-- Role Cards Container -->
 <div class="space-y-6" id="roleContainer">
 {% for role in roles %}
-<div class="glass-card glass-card-hover p-6 role-card" id="role-{{ role.id }}" data-role-id="{{ role.id }}" data-role-status="{{ role.status }}">
+<div class="glass-card glass-card-hover p-6 role-card" id="role-{{ role.id }}" data-role-id="{{ role.id }}" data-role-status="{{ role.status }}" data-custom-prompt="{{ role.customPrompt|default:'' }}">
     <!-- Role Header -->
     <div class="flex items-start justify-between mb-4">
         <div class="flex items-center gap-4">
@@ -76,7 +76,14 @@
                 {{ role.roleName|slice:":1" }}
             </div>
             <div>
-                <h3 class="text-xl font-bold">{{ role.roleName }}</h3>
+                <div class="flex items-center gap-2">
+                    <h3 class="text-xl font-bold">{{ role.roleName }}</h3>
+                    <button class="p-1.5 rounded-lg hover:bg-white/10 text-white/50 hover:text-white/80 transition-colors"
+                            onclick="editRoleName({{ role.id }}, '{{ role.roleName }}')"
+                            title="编辑角色名">
+                        <i data-lucide="pencil" class="w-4 h-4"></i>
+                    </button>
+                </div>
                 <div class="flex items-center gap-3 mt-1">
                     <span class="status-badge
                         {% if role.status == 0 %}status-initializing
@@ -101,14 +108,72 @@
     </div>
 
     <!-- Clothing Gallery -->
-    <div class="clothing-section mb-4" data-role-id="{{ role.id }}">
+    <div class="clothing-section mb-4" data-role-id="{{ role.id }}" data-generating="{% if role.assets and role.assets.0.status == 0 %}true{% else %}false{% endif %}">
         {% if role.status == 0 %}
         <!-- 生成中状态 -->
-        <div class="text-center py-8 rounded-xl bg-violet-500/10 border border-violet-500/20">
+        <div class="text-center py-8 rounded-xl bg-violet-500/10 border border-violet-500/20 w-full">
             <div class="spinner mx-auto mb-3"></div>
             <p class="text-violet-300">正在生成图片...</p>
         </div>
-        {% elif role.assets %}
+        {% elif role.assets and role.assets.0.status == -1 %}
+        <!-- 生成失败状态 - 也要显示服装标签 -->
+        <div class="flex gap-2 mb-4 clothing-tabs">
+            {% for asset in role.assets %}
+            <div class="clothing-tab {% if forloop.first %}active bg-violet-500/20{% endif %} px-4 py-2 rounded-lg cursor-pointer transition-all flex items-center gap-2 group relative"
+                 data-clothing-id="{{ asset.clothingId }}"
+                 data-asset-id="{{ asset.id }}"
+                 data-image-url="{{ asset.filePath|safe }}"
+                 data-clothing-name="{{ asset.clothingName|default:'' }}"
+                 data-is-active="{{ asset.isActive }}"
+                 data-status="{{ asset.status }}"
+                 data-generating="false"
+                 onclick="selectClothing(this)">
+                {% if asset.clothingId == 1 %}
+                <i data-lucide="star" class="w-3 h-3 text-amber-400 fill-amber-400"></i>
+                {% endif %}
+                <span class="text-sm font-medium clothing-name-display">
+                    {% if asset.clothingId == 1 %}默认
+                    {% elif asset.clothingName %}{{ asset.clothingName }}
+                    {% else %}服装 {{ asset.clothingId }}{% endif %}
+                </span>
+                {% if asset.clothingId != 1 %}
+                <button class="edit-clothing-name-btn opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded hover:bg-white/10"
+                        onclick="event.stopPropagation(); editClothingName({{ role.id }}, {{ asset.clothingId }}, '{{ asset.clothingName|default:'' }}')"
+                        title="修改名称">
+                    <i data-lucide="pencil" class="w-3 h-3 text-white/50"></i>
+                </button>
+                <button class="delete-clothing-btn opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded hover:bg-red-500/20"
+                        onclick="event.stopPropagation(); deleteClothing({{ role.id }}, {{ asset.clothingId }})"
+                        title="删除服装">
+                    <i data-lucide="x" class="w-3 h-3 text-red-400"></i>
+                </button>
+                {% endif %}
+                {% if asset.status == -1 %}
+                <i data-lucide="alert-circle" class="w-3 h-3 text-red-400"></i>
+                {% endif %}
+                <span class="text-xs text-white/40">v{{ asset.version }}</span>
+            </div>
+            {% endfor %}
+        </div>
+        <div class="failed-state text-center py-4 rounded-xl bg-red-500/10 border border-red-500/20">
+            <i data-lucide="alert-circle" class="w-12 h-12 mx-auto mb-3 text-red-400"></i>
+            <p class="text-red-400 font-medium mb-2">
+                {% if 'SensitiveContentDetected' in role.assets.0.validationResult %}
+                图片内容审核未通过，请修改提示词后重试
+                {% elif 'timeout' in role.assets.0.validationResult|lower %}
+                生成超时，请重试
+                {% elif 'AccountOverdue' in role.assets.0.validationResult %}
+                API账户欠费，请联系管理员充值
+                {% else %}
+                图片生成失败，请检查提示词后重试
+                {% endif %}
+            </p>
+            <button class="mt-4 px-4 py-2 rounded-lg bg-red-500/20 hover:bg-red-500/30 text-red-300 text-sm transition-colors"
+                    onclick="regenerateClothing({{ role.id }}, 1)">
+                <i data-lucide="refresh-cw" class="w-4 h-4 inline mr-1"></i>重新生成
+            </button>
+        </div>
+        {% elif role.assets and role.assets.0.filePath %}
         <!-- 服装选择器 -->
         <div class="flex gap-2 mb-4 clothing-tabs">
             {% for asset in role.assets %}
@@ -118,6 +183,8 @@
                  data-image-url="{{ asset.filePath|safe }}"
                  data-clothing-name="{{ asset.clothingName|default:'' }}"
                  data-is-active="{{ asset.isActive }}"
+                 data-status="{{ asset.status }}"
+                 data-generating="{% if asset.status == 0 %}true{% else %}false{% endif %}"
                  onclick="selectClothing(this)">
                 <!-- 默认服装标识 - 只有clothingId=1才显示星星 -->
                 {% if asset.clothingId == 1 %}
@@ -134,21 +201,56 @@
                         title="修改名称">
                     <i data-lucide="pencil" class="w-3 h-3 text-white/50"></i>
                 </button>
+                <button class="delete-clothing-btn opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded hover:bg-red-500/20"
+                        onclick="event.stopPropagation(); deleteClothing({{ role.id }}, {{ asset.clothingId }})"
+                        title="删除服装">
+                    <i data-lucide="x" class="w-3 h-3 text-red-400"></i>
+                </button>
                 {% endif %}
+                {% if asset.status == 0 %}
+                <!-- 生成中状态：显示spinner和版本号 -->
+                <div class="spinner w-3 h-3 border-2 border-violet-400 border-t-transparent rounded-full animate-spin"></div>
+                <span class="text-xs text-violet-400">v{{ asset.version }}</span>
+                {% else %}
                 <span class="text-xs text-white/40">v{{ asset.version }}</span>
+                {% endif %}
             </div>
             {% endfor %}
         </div>
 
         <!-- 主图片显示 -->
-        <div class="relative rounded-xl overflow-hidden bg-white/5">
+        <div class="relative rounded-xl overflow-hidden bg-white/5 min-h-96">
+            {% if role.assets.0.status == 0 %}
+            <!-- 生成中状态 -->
+            <div class="generating-overlay absolute inset-0 flex flex-col items-center justify-center bg-violet-500/10 rounded-xl pointer-events-none z-0"
+                 data-role-id="{{ role.id }}" data-clothing-id="{{ role.assets.0.clothingId }}">
+                <div class="spinner mb-4"></div>
+                <p class="text-violet-300">正在生成图片...</p>
+                <p class="text-white/40 text-sm mt-2">预计需要 30-60 秒</p>
+            </div>
+            <img id="mainImage-{{ role.id }}"
+                 src=""
+                 class="w-full max-h-96 object-contain cursor-pointer hidden"
+                 onclick="openModal(this.src)">
+            {% elif role.assets.0.status == -1 or role.assets.0.filePath is None or role.assets.0.filePath == '' %}
+            <!-- 失败状态或无图片 -->
+            <div class="failed-state text-center py-8 rounded-xl bg-red-500/10 border border-red-500/20 w-full">
+                <i data-lucide="alert-circle" class="w-12 h-12 mx-auto mb-3 text-red-400"></i>
+                <p class="text-red-400 font-medium mb-2">图片生成失败，请检查提示词后重试</p>
+                <button class="mt-4 px-4 py-2 rounded-lg bg-red-500/20 hover:bg-red-500/30 text-red-300 text-sm transition-colors"
+                        onclick="regenerateClothing({{ role.id }}, {{ role.assets.0.clothingId|default:1 }})">
+                    <i data-lucide="refresh-cw" class="w-4 h-4 inline mr-1"></i>重新生成
+                </button>
+            </div>
+            {% else %}
             <img id="mainImage-{{ role.id }}"
                  src="{{ role.assets.0.filePath|safe }}"
                  class="w-full max-h-96 object-contain cursor-pointer"
                  onclick="openModal(this.src)">
+            {% endif %}
 
             <!-- 图片操作按钮 -->
-            <div class="absolute bottom-4 right-4 flex gap-2">
+            <div class="absolute bottom-4 right-4 flex gap-2 z-10 pointer-events-auto">
                 <button class="px-3 py-2 rounded-lg bg-black/50 hover:bg-black/70 text-white text-sm transition-colors flex items-center gap-1"
                         onclick="event.stopPropagation(); showVersions({{ role.id }}, this.closest('.clothing-section').querySelector('.clothing-tab.active').dataset.clothingId)">
                     <i data-lucide="history" class="w-4 h-4"></i>历史版本
@@ -157,7 +259,7 @@
                         onclick="event.stopPropagation(); setDefaultClothing({{ role.id }}, this.closest('.clothing-section').querySelector('.clothing-tab.active').dataset.clothingId)">
                     <i data-lucide="star" class="w-4 h-4"></i>设为默认
                 </button>
-                <button class="px-3 py-2 rounded-lg bg-black/50 hover:bg-black/70 text-white text-sm transition-colors flex items-center gap-1"
+                <button class="px-3 py-2 rounded-lg bg-black/50 hover:bg-black/70 text-white text-sm transition-colors flex items-center gap-1 regenerate-btn"
                         onclick="event.stopPropagation(); regenerateClothing({{ role.id }}, this.closest('.clothing-section').querySelector('.clothing-tab.active').dataset.clothingId)">
                     <i data-lucide="refresh-cw" class="w-4 h-4"></i>重新生成
                 </button>
@@ -169,14 +271,73 @@
                 onclick="generateNewClothing({{ role.id }})">
             <i data-lucide="plus" class="w-4 h-4"></i>生成新服装
         </button>
+        {% elif role.assets and role.assets.0.status == 0 %}
+        <!-- 资产生成中状态（无图片但status=0） -->
+        <div class="flex gap-2 mb-4 clothing-tabs">
+            {% for asset in role.assets %}
+            <div class="clothing-tab {% if forloop.first %}active bg-violet-500/20{% endif %} px-4 py-2 rounded-lg cursor-pointer transition-all flex items-center gap-2 group relative"
+                 data-clothing-id="{{ asset.clothingId }}"
+                 data-asset-id="{{ asset.id }}"
+                 data-image-url="{{ asset.filePath|safe }}"
+                 data-clothing-name="{{ asset.clothingName|default:'' }}"
+                 data-is-active="{{ asset.isActive }}"
+                 data-status="{{ asset.status }}"
+                 data-generating="{% if asset.status == 0 %}true{% else %}false{% endif %}"
+                 onclick="selectClothing(this)">
+                {% if asset.clothingId == 1 %}
+                <i data-lucide="star" class="w-3 h-3 text-amber-400 fill-amber-400"></i>
+                {% endif %}
+                <span class="text-sm font-medium clothing-name-display">
+                    {% if asset.clothingId == 1 %}默认
+                    {% elif asset.clothingName %}{{ asset.clothingName }}
+                    {% else %}服装 {{ asset.clothingId }}{% endif %}
+                </span>
+                {% if asset.clothingId != 1 %}
+                <button class="edit-clothing-name-btn opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded hover:bg-white/10"
+                        onclick="event.stopPropagation(); editClothingName({{ role.id }}, {{ asset.clothingId }}, '{{ asset.clothingName|default:'' }}')"
+                        title="修改名称">
+                    <i data-lucide="pencil" class="w-3 h-3 text-white/50"></i>
+                </button>
+                <button class="delete-clothing-btn opacity-0 group-hover:opacity-100 transition-opacity p-1 rounded hover:bg-red-500/20"
+                        onclick="event.stopPropagation(); deleteClothing({{ role.id }}, {{ asset.clothingId }})"
+                        title="删除服装">
+                    <i data-lucide="x" class="w-3 h-3 text-red-400"></i>
+                </button>
+                {% endif %}
+                <div class="spinner w-3 h-3 border-2 border-violet-400 border-t-transparent rounded-full animate-spin"></div>
+                <span class="text-xs text-violet-400">v{{ asset.version }}</span>
+            </div>
+            {% endfor %}
+        </div>
+
+        <!-- 主图片显示 - 生成中 -->
+        <div class="generating-overlay rounded-xl bg-violet-500/10 border border-violet-500/20 py-8 text-center"
+             data-role-id="{{ role.id }}" data-clothing-id="{{ role.assets.0.clothingId }}">
+            <div class="spinner mb-4 mx-auto"></div>
+            <p class="text-violet-300">正在生成图片...</p>
+            <p class="text-white/40 text-sm mt-2">预计需要 30-60 秒</p>
+            <p class="text-white/30 text-xs mt-1">版本 v{{ role.assets.0.version }}</p>
+            <img id="mainImage-{{ role.id }}"
+                 src=""
+                 class="w-full max-h-96 object-contain cursor-pointer hidden"
+                 onclick="openModal(this.src)">
+        </div>
+
+        <!-- 添加新服装按钮 - 只有在有成功资产时才显示 -->
+        {% if role.has_successful_asset %}
+        <button class="mt-4 w-full py-3 rounded-xl bg-white/5 hover:bg-white/10 border border-dashed border-white/20 text-white/60 text-sm transition-colors flex items-center justify-center gap-2"
+                onclick="generateNewClothing({{ role.id }})">
+            <i data-lucide="plus" class="w-4 h-4"></i>生成新服装
+        </button>
+        {% endif %}
         {% else %}
-        <!-- 无资产 -->
-        <div class="text-center py-8 rounded-xl bg-white/5 border border-dashed border-white/10">
-            <i data-lucide="image-off" class="w-12 h-12 mx-auto mb-3 text-white/20"></i>
-            <p class="text-white/40">暂无资产图片</p>
-            <button class="mt-4 px-4 py-2 rounded-lg bg-violet-500/20 hover:bg-violet-500/30 text-violet-300 text-sm transition-colors"
-                    onclick="generateNewClothing({{ role.id }})">
-                生成图片
+        <!-- 无资产 - 生成失败 -->
+        <div class="failed-state text-center py-8 rounded-xl bg-red-500/10 border border-red-500/20 w-full">
+            <i data-lucide="alert-circle" class="w-12 h-12 mx-auto mb-3 text-red-400"></i>
+            <p class="text-red-400 font-medium mb-2">图片生成失败，请检查提示词后重试</p>
+            <button class="mt-4 px-4 py-2 rounded-lg bg-red-500/20 hover:bg-red-500/30 text-red-300 text-sm transition-colors"
+                    onclick="regenerateClothing({{ role.id }}, 1)">
+                <i data-lucide="refresh-cw" class="w-4 h-4 inline mr-1"></i>重新生成
             </button>
         </div>
         {% endif %}
@@ -191,13 +352,6 @@
             {{ role.customPrompt|default:'暂无提示词' }}
         </div>
     </div>
-
-    <!-- Edit Button -->
-    <button class="mt-4 w-full py-2 rounded-lg bg-white/5 hover:bg-white/10 text-white/60 text-sm transition-colors flex items-center justify-center gap-2 edit-prompt-btn"
-            data-role-id="{{ role.id }}"
-            data-custom-prompt="{{ role.customPrompt|default:'' }}">
-        <i data-lucide="edit-3" class="w-4 h-4"></i>编辑角色
-    </button>
 </div>
 {% empty %}
 <div class="glass-card p-16 text-center">
@@ -239,21 +393,15 @@
 
 <!-- Edit Role Modal -->
 <div class="modal-backdrop" id="editRoleModal">
-    <div class="modal-content max-w-lg">
+    <div class="modal-content max-w-md">
         <div class="p-6 border-b border-white/10">
-            <h3 class="text-xl font-bold">编辑角色</h3>
+            <h3 class="text-xl font-bold">编辑角色名称</h3>
         </div>
-        <div class="p-6 space-y-4">
+        <div class="p-6">
             <input type="hidden" id="editRoleId">
             <div>
                 <label class="block text-sm text-white/60 mb-2">角色名称</label>
                 <input type="text" id="editRoleName" class="input-modern">
-            </div>
-            <div>
-                <label class="block text-sm text-white/60 mb-2">
-                    <i data-lucide="sparkles" class="w-4 h-4 inline mr-1"></i>提示词
-                </label>
-                <textarea id="editCustomPrompt" class="input-modern" rows="4"></textarea>
             </div>
         </div>
         <div class="p-6 border-t border-white/10 flex justify-end gap-3">
@@ -275,6 +423,39 @@
         </div>
         <div class="p-6 border-t border-white/10 flex justify-end">
             <button onclick="closeVersionModal()" class="px-5 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 transition-colors font-medium">关闭</button>
+        </div>
+    </div>
+</div>
+
+<!-- Regenerate Modal -->
+<div class="modal-backdrop" id="regenerateModal">
+    <div class="modal-content max-w-2xl">
+        <div class="p-6 border-b border-white/10">
+            <h3 class="text-xl font-bold">重新生成</h3>
+            <p class="text-white/50 text-sm mt-1">基于参考图生成新版本，修改提示词后生成</p>
+        </div>
+        <div class="p-6 space-y-4">
+            <input type="hidden" id="regenerateRoleId">
+            <input type="hidden" id="regenerateClothingId">
+            <input type="hidden" id="regenerateReferenceUrl">
+            <div>
+                <label class="block text-sm text-white/60 mb-2">参考图片</label>
+                <p class="text-xs text-white/40 mb-2">选择一张现有图片作为参考</p>
+                <div id="regenerateImageSelector" class="grid grid-cols-4 gap-3">
+                    <!-- 动态填充 -->
+                </div>
+            </div>
+            <div>
+                <label class="block text-sm text-white/60 mb-2">
+                    <i data-lucide="sparkles" class="w-4 h-4 inline mr-1"></i>提示词
+                </label>
+                <p class="text-xs text-white/40 mb-2">修改提示词后生成新版本，留空则使用原提示词</p>
+                <textarea id="regeneratePrompt" class="input-modern" rows="4" placeholder="输入新的提示词..."></textarea>
+            </div>
+        </div>
+        <div class="p-6 border-t border-white/10 flex justify-end gap-3">
+            <button onclick="closeRegenerateModal()" class="px-5 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 transition-colors font-medium">取消</button>
+            <button onclick="submitRegenerate()" class="btn-neon">生成</button>
         </div>
     </div>
 </div>
@@ -307,7 +488,7 @@
         </div>
         <div class="p-6 border-t border-white/10 flex justify-end gap-3">
             <button onclick="closeNewClothingModal()" class="px-5 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 transition-colors font-medium">取消</button>
-            <button onclick="submitNewClothing()" class="btn-neon">生成</button>
+            <button id="submitNewClothingBtn" onclick="submitNewClothing()" class="btn-neon">生成</button>
         </div>
     </div>
 </div>
@@ -339,11 +520,177 @@
 let currentRoleId = null;
 let currentClothingId = null;
 
+// localStorage key for generating state
+const GENERATING_STATE_KEY = 'manga_generating_state';
+
+// Save generating state to localStorage
+function saveGeneratingState(roleId, clothingId, version) {
+    const state = {
+        roleId: roleId,
+        clothingId: clothingId,
+        version: version,
+        startTime: Date.now()
+    };
+    localStorage.setItem(GENERATING_STATE_KEY, JSON.stringify(state));
+    console.log('Saved generating state:', state);
+}
+
+// Get generating state from localStorage
+function getGeneratingState() {
+    const stateStr = localStorage.getItem(GENERATING_STATE_KEY);
+    if (!stateStr) return null;
+
+    try {
+        const state = JSON.parse(stateStr);
+        // Check if state is too old (more than 5 minutes)
+        if (Date.now() - state.startTime > 5 * 60 * 1000) {
+            localStorage.removeItem(GENERATING_STATE_KEY);
+            return null;
+        }
+        return state;
+    } catch (e) {
+        return null;
+    }
+}
+
+// Clear generating state from localStorage
+function clearGeneratingState() {
+    localStorage.removeItem(GENERATING_STATE_KEY);
+    console.log('Cleared generating state');
+}
+
+// Restore generating UI from localStorage state
+function restoreGeneratingUI(state) {
+    if (!state) return;
+
+    const { roleId, clothingId, version } = state;
+    console.log('Restoring generating UI for role:', roleId, 'clothing:', clothingId);
+
+    const roleCard = document.querySelector(`.role-card[data-role-id="${roleId}"]`);
+    if (!roleCard) return;
+
+    const currentTab = roleCard.querySelector(`.clothing-tab[data-clothing-id="${clothingId}"]`);
+    const mainImage = document.getElementById(`mainImage-${roleId}`);
+    const clothingSection = roleCard.querySelector('.clothing-section');
+
+    if (!clothingSection) return;
+
+    // Mark tab as generating
+    if (currentTab) {
+        currentTab.dataset.generating = 'true';
+        currentTab.dataset.status = '0';
+
+        // Add spinner
+        let spinner = currentTab.querySelector('.tab-spinner');
+        if (!spinner) {
+            spinner = document.createElement('div');
+            spinner.className = 'tab-spinner spinner w-3 h-3 border-2 border-violet-400 border-t-transparent rounded-full animate-spin ml-1';
+            currentTab.appendChild(spinner);
+        }
+
+        // Update version display
+        const versionSpan = currentTab.querySelector('span.text-xs');
+        if (versionSpan) {
+            versionSpan.textContent = `v${version}`;
+            versionSpan.className = 'text-xs text-violet-400';
+        }
+    }
+
+    // Update clothing section
+    clothingSection.dataset.generating = 'true';
+
+    // Disable buttons
+    const setDefaultBtn = clothingSection.querySelector('.set-default-btn');
+    const regenerateBtn = clothingSection.querySelector('.regenerate-btn');
+    if (setDefaultBtn) {
+        setDefaultBtn.disabled = true;
+        setDefaultBtn.classList.add('opacity-50', 'cursor-not-allowed');
+    }
+    if (regenerateBtn) {
+        regenerateBtn.disabled = true;
+        regenerateBtn.classList.add('opacity-50', 'cursor-not-allowed');
+    }
+
+    // Show generating overlay
+    if (mainImage && mainImage.parentElement) {
+        let overlay = mainImage.parentElement.querySelector('.generating-overlay');
+        if (!overlay) {
+            overlay = document.createElement('div');
+            overlay.className = 'generating-overlay absolute inset-0 flex flex-col items-center justify-center bg-black/60 backdrop-blur-sm rounded-xl pointer-events-none z-0';
+            mainImage.parentElement.appendChild(overlay);
+        }
+        overlay.innerHTML = `
+            <div class="spinner mb-3"></div>
+            <p class="text-violet-300">正在生成图片...</p>
+            <p class="text-white/40 text-sm mt-2">预计需要 30-60 秒</p>
+            <p class="text-white/30 text-xs mt-1 version-display">版本 v${version}</p>
+        `;
+        overlay.style.display = 'flex';
+        mainImage.style.opacity = '0.3';
+    }
+
+    // Start polling
+    pollGenerationStatus(roleId, clothingId);
+}
+
+// 将API错误信息转换为友好的中文提示
+function getFriendlyErrorMessage(errorMsg) {
+    if (!errorMsg) return '生成失败，请重试';
+
+    // 如果是对象，尝试提取错误信息
+    if (typeof errorMsg === 'object') {
+        errorMsg = errorMsg.message || errorMsg.error || errorMsg.msg || JSON.stringify(errorMsg);
+    }
+
+    const errorLower = errorMsg.toLowerCase();
+
+    if (errorLower.includes('accountoverdue') || errorLower.includes('overdue') || errorLower.includes('欠费')) {
+        return 'API账户欠费，请联系管理员充值';
+    }
+    if (errorLower.includes('sensitivecontentdetected') || errorLower.includes('sensitive')) {
+        return '图片内容审核未通过，请修改提示词后重试';
+    }
+    if (errorLower.includes('timeout')) {
+        return '生成超时，请重试';
+    }
+    if (errorLower.includes('bad_request')) {
+        return '请求参数有误，请检查提示词';
+    }
+    if (errorLower.includes('rate_limit') || errorLower.includes('ratelimit')) {
+        return '请求过于频繁，请稍后再试';
+    }
+    if (errorLower.includes('insufficient_quota') || errorLower.includes('quota')) {
+        return 'API额度不足，请联系管理员';
+    }
+    if (errorLower.includes('invalid_api_key') || errorLower.includes('unauthorized') || errorLower.includes('forbidden')) {
+        return 'API配置错误或账户异常，请联系管理员';
+    }
+
+    // 默认返回简化后的错误信息（去掉技术细节）
+    if (errorMsg.length > 100) {
+        return '生成失败，请检查提示词后重试';
+    }
+    return errorMsg;
+}
+
 // 选择服装
 function selectClothing(tab) {
     const section = tab.closest('.clothing-section');
     const roleId = section.dataset.roleId;
+    const clothingId = tab.dataset.clothingId;
     const roleCard = tab.closest('.role-card');
+
+    // 更新 URL 参数，记住当前选中的服装
+    const url = new URL(window.location);
+    url.searchParams.set('role', roleId);
+    url.searchParams.set('clothing', clothingId);
+    window.history.replaceState({}, '', url);
+
+    // 调试日志
+    console.log('selectClothing: clothingId=' + clothingId +
+                ', generating=' + tab.dataset.generating +
+                ', status=' + tab.dataset.status +
+                ', assetId=' + tab.dataset.assetId);
 
     // 更新选中状态
     section.querySelectorAll('.clothing-tab').forEach(t => t.classList.remove('active', 'bg-violet-500/20'));
@@ -351,55 +698,133 @@ function selectClothing(tab) {
 
     // 更新图片
     const imageUrl = tab.dataset.imageUrl;
+    const isGenerating = tab.dataset.generating === 'true';
+    const status = parseInt(tab.dataset.status);
+    const isFailed = status === -1 || status === '-1';
     const mainImage = document.getElementById(`mainImage-${roleId}`);
     let generatingOverlay = mainImage?.parentElement.querySelector('.generating-overlay');
+    let failedState = section.querySelector('.failed-state');
+
+    // 获取自定义提示词用于重新生成按钮
+    const customPrompt = roleCard?.dataset?.customPrompt || '';
 
     if (mainImage) {
-        if (imageUrl && imageUrl.trim() !== '') {
+        // 检查mainImage的父元素是否就是generating-overlay（模板已渲染的生成中状态）
+        const parentIsGeneratingOverlay = mainImage.parentElement?.classList.contains('generating-overlay');
+
+        if (isGenerating) {
+            // 如果父元素是generating-overlay且没有imageUrl，说明模板已经正确渲染了生成中状态
+            if (parentIsGeneratingOverlay && (!imageUrl || imageUrl.trim() === '')) {
+                // 模板已渲染生成中状态，不需要再处理，直接返回
+                currentClothingId = tab.dataset.clothingId;
+                return;
+            }
+
+            // 正在生成中，显示生成中状态（图片变暗，显示遮罩）
+            if (imageUrl && imageUrl.trim() !== '') {
+                mainImage.src = imageUrl;
+            }
+            mainImage.style.display = 'block';
+            mainImage.style.opacity = '0.3';
+
+            if (!generatingOverlay) {
+                generatingOverlay = document.createElement('div');
+                generatingOverlay.className = 'generating-overlay absolute inset-0 flex flex-col items-center justify-center bg-black/60 backdrop-blur-sm rounded-xl pointer-events-none z-0';
+                mainImage.parentElement.appendChild(generatingOverlay);
+            }
+            generatingOverlay.innerHTML = `
+                <div class="spinner mb-3"></div>
+                <p class="text-violet-300">正在生成图片...</p>
+                <p class="text-white/40 text-sm mt-2">预计需要 30-60 秒</p>
+            `;
+            generatingOverlay.style.display = 'flex';
+            // 隐藏失败状态
+            if (failedState) failedState.style.display = 'none';
+        } else if (isFailed || !imageUrl || imageUrl.trim() === '') {
+            // 失败状态或无图片：显示失败提示
+            mainImage.style.display = 'none';
+            if (generatingOverlay) generatingOverlay.style.display = 'none';
+
+            if (!failedState) {
+                failedState = document.createElement('div');
+                failedState.className = 'failed-state text-center py-8 rounded-xl bg-red-500/10 border border-red-500/20 w-full';
+                mainImage.parentElement.appendChild(failedState);
+            }
+            failedState.style.display = 'block';
+            failedState.innerHTML = `
+                <i data-lucide="alert-circle" class="w-12 h-12 mx-auto mb-3 text-red-400"></i>
+                <p class="text-red-400 font-medium mb-2">图片生成失败，请检查提示词后重试</p>
+                <button class="mt-4 px-4 py-2 rounded-lg bg-red-500/20 hover:bg-red-500/30 text-red-300 text-sm transition-colors"
+                        onclick="regenerateClothing(${roleId}, ${clothingId})">
+                    <i data-lucide="refresh-cw" class="w-4 h-4 inline mr-1"></i>重新生成
+                </button>
+            `;
+            lucide.createIcons();
+        } else {
             // 有图片URL，显示图片
             mainImage.src = imageUrl;
             mainImage.style.display = 'block';
-            // 隐藏生成中提示
-            if (generatingOverlay) {
-                generatingOverlay.style.display = 'none';
-            }
-        } else {
-            // 没有图片URL，显示生成中状态
-            mainImage.style.display = 'none';
-            if (!generatingOverlay) {
-                generatingOverlay = document.createElement('div');
-                generatingOverlay.className = 'generating-overlay w-full h-96 flex flex-col items-center justify-center bg-violet-500/10 rounded-xl';
-                generatingOverlay.innerHTML = `
-                    <div class="spinner mb-4"></div>
-                    <p class="text-violet-300">正在生成新服装...</p>
-                    <p class="text-white/40 text-sm mt-2">预计需要 30-60 秒</p>
-                `;
-                mainImage.parentElement.appendChild(generatingOverlay);
-            }
-            generatingOverlay.style.display = 'flex';
+            mainImage.style.opacity = '1';
+            // 隐藏生成中提示和失败状态
+            if (generatingOverlay) generatingOverlay.style.display = 'none';
+            if (failedState) failedState.style.display = 'none';
         }
     }
 
-    // 更新提示词显示
-    const assetId = tab.dataset.assetId;
+    currentClothingId = tab.dataset.clothingId;
+
+    // 更新提示词显示 - 优先使用缓存
     const promptDisplay = roleCard.querySelector('.prompt-display');
-    if (promptDisplay && assetId) {
-        fetch(`/api/${assetId}/prompt/`)
-        .then(response => response.json())
-        .then(data => {
-            if (data.data) {
-                promptDisplay.textContent = data.data;
-                promptDisplay.title = data.data;
+
+    if (promptDisplay) {
+        // 先尝试从缓存读取
+        let cachedPrompt = tab.dataset.prompt;
+
+        if (cachedPrompt !== undefined) {
+            // 有缓存，直接使用
+            if (cachedPrompt) {
+                promptDisplay.textContent = cachedPrompt;
+                promptDisplay.title = cachedPrompt;
+                roleCard.dataset.customPrompt = cachedPrompt;
             } else {
                 promptDisplay.textContent = '暂无提示词';
+                promptDisplay.title = '';
             }
-        })
-        .catch(() => {
-            promptDisplay.textContent = '暂无提示词';
-        });
+        } else {
+            // 没有缓存，异步获取（首次加载或动态创建的tab）
+            const assetId = tab.dataset.assetId;
+            if (assetId) {
+                fetch(`/api/${assetId}/prompt/`)
+                .then(response => response.json())
+                .then(data => {
+                    let prompt = data.data;
+                    if (prompt && typeof prompt === 'object') {
+                        prompt = prompt.message || prompt.error || JSON.stringify(prompt);
+                    }
+                    if (prompt && typeof prompt === 'string') {
+                        tab.dataset.prompt = prompt; // 缓存起来
+                        if (tab.classList.contains('active')) {
+                            promptDisplay.textContent = prompt;
+                            promptDisplay.title = prompt;
+                            roleCard.dataset.customPrompt = prompt;
+                        }
+                    } else {
+                        tab.dataset.prompt = '';
+                        if (tab.classList.contains('active')) {
+                            promptDisplay.textContent = '暂无提示词';
+                            promptDisplay.title = '';
+                        }
+                    }
+                })
+                .catch(() => {
+                    tab.dataset.prompt = '';
+                });
+            } else {
+                promptDisplay.textContent = '暂无提示词';
+                promptDisplay.title = '';
+            }
+        }
     }
-
-    currentClothingId = tab.dataset.clothingId;
 
     // 根据是否为默认服装显示/隐藏"设为默认"按钮
     const setDefaultBtn = roleCard.querySelector('.set-default-btn');
@@ -408,6 +833,32 @@ function selectClothing(tab) {
             setDefaultBtn.style.display = 'none';
         } else {
             setDefaultBtn.style.display = 'flex';
+        }
+    }
+
+    // 更新 clothing-section 的 generating 属性
+    const clothingSection = roleCard.querySelector('.clothing-section');
+    clothingSection.dataset.generating = isGenerating ? 'true' : 'false';
+
+    // 根据生成状态更新按钮
+    const regenerateBtn = roleCard.querySelector('.regenerate-btn');
+    if (isGenerating) {
+        if (setDefaultBtn) {
+            setDefaultBtn.disabled = true;
+            setDefaultBtn.classList.add('opacity-50', 'cursor-not-allowed');
+        }
+        if (regenerateBtn) {
+            regenerateBtn.disabled = true;
+            regenerateBtn.classList.add('opacity-50', 'cursor-not-allowed');
+        }
+    } else {
+        if (setDefaultBtn && tab.dataset.clothingId != '1') {
+            setDefaultBtn.disabled = false;
+            setDefaultBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+        }
+        if (regenerateBtn) {
+            regenerateBtn.disabled = false;
+            regenerateBtn.classList.remove('opacity-50', 'cursor-not-allowed');
         }
     }
 }
@@ -475,8 +926,123 @@ function generateNewClothing(roleId) {
     document.getElementById('newClothingModal').classList.add('active');
 }
 
+// 为没有资产的角色生成默认服装
+function generateDefaultClothing(roleId) {
+    const roleCard = document.querySelector(`.role-card[data-role-id="${roleId}"]`);
+    const customPrompt = roleCard?.dataset?.customPrompt || '';
+    const clothingSection = roleCard.querySelector('.clothing-section');
+
+    // 显示生成中状态
+    clothingSection.innerHTML = `
+        <div class="text-center py-8 rounded-xl bg-violet-500/10 border border-violet-500/20">
+            <div class="spinner mx-auto mb-3"></div>
+            <p class="text-violet-300">正在生成图片...</p>
+            <p class="text-white/40 text-sm mt-2">预计需要 30-60 秒</p>
+        </div>
+    `;
+
+    fetch(`/roles/${roleId}/regenerate/`, {
+        method: 'POST',
+        headers: {
+            'X-CSRFToken': getCookie('csrftoken'),
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+            clothingId: 1,
+            modifiedPrompt: customPrompt,
+            isNewClothing: true,
+            referenceImageUrl: ''
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            showToast('正在生成图片...', 'success');
+            // 开始轮询检查生成状态
+            pollGenerationStatusForNewAsset(roleId);
+        } else {
+            showToast(data.error || '生成失败', 'error');
+            // 恢复失败状态显示
+            clothingSection.innerHTML = `
+                <div class="failed-state text-center py-8 rounded-xl bg-red-500/10 border border-red-500/20 w-full">
+                    <i data-lucide="alert-circle" class="w-12 h-12 mx-auto mb-3 text-red-400"></i>
+                    <p class="text-red-400 font-medium mb-2">${data.error || '图片生成失败，请检查提示词后重试'}</p>
+                    <button class="mt-4 px-4 py-2 rounded-lg bg-red-500/20 hover:bg-red-500/30 text-red-300 text-sm transition-colors"
+                            onclick="regenerateClothing(${roleId}, 1)">
+                        <i data-lucide="refresh-cw" class="w-4 h-4 inline mr-1"></i>重新生成
+                    </button>
+                </div>
+            `;
+            lucide.createIcons();
+        }
+    })
+    .catch(err => {
+        showToast('生成失败：网络错误', 'error');
+        location.reload();
+    });
+}
+
+// 显示重新生成弹窗（支持修改提示词）
+function showRegenerateModal(roleId, currentPrompt) {
+    document.getElementById('regenerateRoleId').value = roleId;
+    document.getElementById('regenerateClothingId').value = 1;
+    document.getElementById('regeneratePrompt').value = currentPrompt || '';
+    document.getElementById('regenerateReferenceUrl').value = '';
+
+    // 清空参考图选择器（因为没有资产）
+    const selector = document.getElementById('regenerateImageSelector');
+    selector.innerHTML = '<p class="text-white/40 text-sm col-span-4 text-center">无参考图片，将使用提示词生成</p>';
+
+    document.getElementById('regenerateModal').classList.add('active');
+}
+
+// 轮询检查生成状态（用于新生成的资产）
+function pollGenerationStatusForNewAsset(roleId) {
+    let attempts = 0;
+    const maxAttempts = 60;
+
+    const interval = setInterval(() => {
+        attempts++;
+
+        fetch(`/api/assets/role/${roleId}/clothings`)
+        .then(response => response.json())
+        .then(data => {
+            if (data.data && data.data.length > 0) {
+                const asset = data.data[0];
+                if (asset.status !== 0 && asset.status !== '0') {
+                    clearInterval(interval);
+                    if (asset.status === -1 || asset.status === '-1') {
+                        showToast(getFriendlyErrorMessage(asset.validationResult), 'error');
+                        location.reload();
+                    } else {
+                        showToast('生成完成！', 'success');
+                        setTimeout(() => location.reload(), 1000);
+                    }
+                }
+            } else if (attempts >= maxAttempts) {
+                clearInterval(interval);
+                showToast('生成超时，请稍后刷新页面查看', 'error');
+                location.reload();
+            }
+        })
+        .catch(err => {
+            if (attempts >= maxAttempts) {
+                clearInterval(interval);
+                location.reload();
+            }
+        });
+    }, 2000);
+}
+
 function closeNewClothingModal() {
     document.getElementById('newClothingModal').classList.remove('active');
+    // 重置按钮状态
+    const submitBtn = document.getElementById('submitNewClothingBtn');
+    if (submitBtn) {
+        submitBtn.disabled = false;
+        submitBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+        submitBtn.innerHTML = '生成';
+    }
 }
 
 function submitNewClothing() {
@@ -484,6 +1050,7 @@ function submitNewClothing() {
     const clothingName = document.getElementById('newClothingName').value.trim();
     const prompt = document.getElementById('newClothingPrompt').value.trim();
     const referenceUrl = document.getElementById('newClothingReferenceUrl').value;
+    const submitBtn = document.getElementById('submitNewClothingBtn');
 
     if (!clothingName) {
         showToast('请输入服装名称', 'error');
@@ -493,6 +1060,13 @@ function submitNewClothing() {
     if (!referenceUrl) {
         showToast('请选择参考图片', 'error');
         return;
+    }
+
+    // 防连点：禁用按钮并显示加载状态
+    if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.classList.add('opacity-50', 'cursor-not-allowed');
+        submitBtn.innerHTML = '<div class="spinner w-4 h-4 inline-block mr-2"></div>生成中...';
     }
 
     fetch(`/roles/${roleId}/regenerate/`, {
@@ -518,16 +1092,21 @@ function submitNewClothing() {
             const tabsContainer = section.querySelector('.clothing-tabs');
 
             if (tabsContainer) {
-                // 获取当前最大的服装ID
-                const existingTabs = tabsContainer.querySelectorAll('.clothing-tab');
-                let maxClothingId = 0;
-                existingTabs.forEach(tab => {
-                    const id = parseInt(tab.dataset.clothingId);
-                    if (id > maxClothingId) maxClothingId = id;
-                });
-                const newClothingId = maxClothingId + 1;
+                // 使用后端返回的 clothingId（确保与数据库一致）
+                const responseData = data.data || {};
+                const newClothingId = responseData.clothingId;
+                const newAssetId = responseData.assetId;
+                const newVersion = responseData.version || 1;
+
+                console.log('后端返回的生成信息:', { clothingId: newClothingId, assetId: newAssetId, version: newVersion });
+
+                if (!newClothingId) {
+                    console.error('后端未返回 clothingId，无法创建标签');
+                    return;
+                }
 
                 // 取消所有现有标签的选中状态
+                const existingTabs = tabsContainer.querySelectorAll('.clothing-tab');
                 existingTabs.forEach(tab => {
                     tab.classList.remove('active', 'bg-violet-500/20');
                 });
@@ -537,13 +1116,28 @@ function submitNewClothing() {
                 newTab.className = 'clothing-tab active px-4 py-2 rounded-lg cursor-pointer transition-all flex items-center gap-2 bg-violet-500/20';
                 newTab.dataset.clothingId = newClothingId;
                 newTab.dataset.clothingName = clothingName;
+                newTab.dataset.assetId = newAssetId || '';
                 newTab.dataset.imageUrl = ''; // 暂时为空，生成完成后会有图片
+                newTab.dataset.generating = 'true'; // 标记正在生成
+                newTab.dataset.status = '0'; // 生成中状态
+                newTab.dataset.prompt = prompt || ''; // 缓存提示词
                 newTab.onclick = function() { selectClothing(this); };
                 newTab.innerHTML = `
                     <span class="text-sm font-medium">${clothingName}</span>
                     <div class="spinner" style="width:14px;height:14px;border-width:2px;"></div>
                 `;
                 tabsContainer.appendChild(newTab);
+
+                // 保存用户输入的提示词到 roleCard（用于失败时恢复）
+                const roleCard = document.querySelector(`.role-card[data-role-id="${roleId}"]`);
+                if (roleCard && prompt) {
+                    roleCard.dataset.customPrompt = prompt;
+                    const promptDisplay = roleCard.querySelector('.prompt-display');
+                    if (promptDisplay) {
+                        promptDisplay.textContent = prompt;
+                        promptDisplay.title = prompt;
+                    }
+                }
 
                 // 更新主图片显示为"生成中"，但不影响原有图片
                 const mainImage = document.getElementById(`mainImage-${roleId}`);
@@ -575,6 +1169,21 @@ function submitNewClothing() {
             }
         } else {
             showToast(data.error || '生成失败', 'error');
+            // 恢复按钮状态
+            if (submitBtn) {
+                submitBtn.disabled = false;
+                submitBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+                submitBtn.innerHTML = '生成';
+            }
+        }
+    })
+    .catch(err => {
+        showToast('网络错误，请重试', 'error');
+        // 恢复按钮状态
+        if (submitBtn) {
+            submitBtn.disabled = false;
+            submitBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+            submitBtn.innerHTML = '生成';
         }
     });
 }
@@ -583,36 +1192,272 @@ function submitNewClothing() {
 function pollGenerationStatus(roleId, clothingId) {
     let attempts = 0;
     const maxAttempts = 60; // 最多轮询60次，每次2秒，共120秒
+    let interval = null;
 
-    const interval = setInterval(() => {
+    // 检查函数
+    function checkStatus() {
         attempts++;
 
         fetch(`/api/assets/role/${roleId}/versions/${clothingId}/`)
         .then(response => response.json())
         .then(data => {
+            console.log('轮询结果:', data);
             if (data.data && data.data.length > 0) {
-                // 找到了新生成的资产
-                clearInterval(interval);
-                showToast('新服装生成完成！', 'success');
-                setTimeout(() => location.reload(), 1000);
+                // 获取版本号最大的资产
+                const latestAsset = data.data.reduce((max, a) => a.version > max.version ? a : max, data.data[0]);
+                console.log('最新资产:', latestAsset);
+
+                // 检查是否生成失败 (status = -1)
+                if (latestAsset.status === -1 || latestAsset.status === '-1') {
+                    if (interval) clearInterval(interval);
+                    // 优先找到当前激活的版本（isActive = 1），如果没有激活版本，再找最新的有效版本
+                    let previousAsset = data.data.find(a => a.isActive === 1 || a.isActive === true);
+                    if (!previousAsset || previousAsset.status === 0 || previousAsset.status === -1) {
+                        // 激活版本不存在或状态无效，找最新的有效版本
+                        previousAsset = data.data.find(a => a.status !== 0 && a.status !== -1 && a.status !== '-1');
+                    }
+                    const errorMsg = getFriendlyErrorMessage(latestAsset.validationResult);
+                    handleGenerationFailed(roleId, clothingId, errorMsg, previousAsset);
+                    return;
+                }
+
+                // 检查状态是否从 GENERATING(0) 变成其他状态（成功）
+                if (latestAsset.status !== 0 && latestAsset.status !== '0') {
+                    // 检查是否有有效的filePath
+                    if (!latestAsset.filePath || latestAsset.filePath.trim() === '') {
+                        console.log('生成完成但filePath为空，继续轮询...', latestAsset);
+                        // 继续轮询，可能文件还在上传
+                        if (attempts >= maxAttempts) {
+                            if (interval) clearInterval(interval);
+                            // 超时了，刷新页面看看最新状态
+                            location.reload();
+                        }
+                        return; // 继续轮询
+                    }
+
+                    if (interval) clearInterval(interval);
+                    showToast('生成完成！', 'success');
+
+                    // 清除生成状态
+                    clearGeneratingState();
+
+                    // 刷新页面以显示最新数据（包括提示词和图片）
+                    setTimeout(() => location.reload(), 500);
+                    return;
+                } else if (attempts >= maxAttempts) {
+                    if (interval) clearInterval(interval);
+                    handleGenerationFailed(roleId, clothingId, '生成超时，请稍后重试');
+                }
             } else if (attempts >= maxAttempts) {
-                clearInterval(interval);
-                showToast('生成超时，请刷新页面查看', 'warning');
+                if (interval) clearInterval(interval);
+                handleGenerationFailed(roleId, clothingId, '生成超时，请稍后重试');
             }
         })
         .catch(err => {
             console.error('Poll error:', err);
             if (attempts >= maxAttempts) {
-                clearInterval(interval);
+                if (interval) clearInterval(interval);
+                handleGenerationFailed(roleId, clothingId, '生成失败：网络错误');
             }
         });
-    }, 2000);
+    }
+
+    // 立即检查一次
+    checkStatus();
+
+    // 然后每2秒检查一次
+    interval = setInterval(checkStatus, 2000);
+}
+
+// 处理生成失败
+function handleGenerationFailed(roleId, clothingId, errorMessage, previousAsset) {
+    showToast(errorMessage, 'error');
+    clearGeneratingState();
+    setTimeout(() => location.reload(), 500);
 }
 
 // 重新生成当前服装
 function regenerateClothing(roleId, clothingId) {
-    if (!confirm('确定要重新生成当前服装吗？这将创建一个新版本。')) return;
+    console.log('regenerateClothing called:', roleId, clothingId);
 
+    if (!clothingId) {
+        console.error('clothingId is undefined');
+        showToast('请先选择一个服装', 'error');
+        return;
+    }
+
+    currentRoleId = roleId;
+    currentClothingId = clothingId;
+
+    // 获取用户原始的自定义提示词
+    const roleCard = document.querySelector(`.role-card[data-role-id="${roleId}"]`);
+    const customPrompt = roleCard?.dataset?.customPrompt || '';
+
+    document.getElementById('regenerateRoleId').value = roleId;
+    document.getElementById('regenerateClothingId').value = clothingId;
+    document.getElementById('regeneratePrompt').value = customPrompt;
+    document.getElementById('regenerateReferenceUrl').value = '';
+
+    // 填充参考图选择器 - 只显示有图片的服装
+    const selector = document.getElementById('regenerateImageSelector');
+    const tabs = roleCard.querySelectorAll('.clothing-tab');
+    selector.innerHTML = '';
+
+    let hasValidImage = false;
+    let firstValidImage = null;
+
+    tabs.forEach((tab, index) => {
+        const imageUrl = tab.dataset.imageUrl;
+        // 只添加有有效图片URL的选项
+        if (imageUrl && imageUrl.trim() !== '' && imageUrl !== 'undefined') {
+            hasValidImage = true;
+            const img = document.createElement('div');
+            img.className = 'relative rounded-lg overflow-hidden cursor-pointer border-2 border-transparent hover:border-violet-500 transition-colors regenerate-ref-option';
+            img.dataset.url = imageUrl;
+            img.dataset.clothingId = tab.dataset.clothingId;
+
+            // 获取服装名称
+            const clothingName = tab.querySelector('.clothing-name-display')?.textContent || `服装${tab.dataset.clothingId}`;
+            img.innerHTML = `
+                <img src="${imageUrl}" class="w-full aspect-square object-cover">
+                <div class="absolute bottom-0 left-0 right-0 p-1 bg-black/60 text-xs text-center truncate">${clothingName}</div>
+            `;
+            img.onclick = function() {
+                selector.querySelectorAll('.regenerate-ref-option').forEach(o => o.classList.remove('border-violet-500'));
+                this.classList.add('border-violet-500');
+                document.getElementById('regenerateReferenceUrl').value = this.dataset.url;
+            };
+            selector.appendChild(img);
+
+            if (!firstValidImage) {
+                firstValidImage = img;
+            }
+
+            // 默认选中当前服装（如果当前服装有图片）
+            if (tab.dataset.clothingId == clothingId) {
+                img.classList.add('border-violet-500');
+                document.getElementById('regenerateReferenceUrl').value = imageUrl;
+            }
+        }
+    });
+
+    // 如果没有找到任何有效图片，显示提示
+    if (!hasValidImage) {
+        selector.innerHTML = '<p class="text-white/40 text-sm col-span-4 text-center py-4">暂无可用的参考图片</p>';
+    } else {
+        // 如果当前服装没有图片，默认选中第一个有效的图片
+        if (!document.getElementById('regenerateReferenceUrl').value && firstValidImage) {
+            firstValidImage.classList.add('border-violet-500');
+            document.getElementById('regenerateReferenceUrl').value = firstValidImage.dataset.url;
+        }
+    }
+
+    document.getElementById('regenerateModal').classList.add('active');
+}
+
+function closeRegenerateModal() {
+    document.getElementById('regenerateModal').classList.remove('active');
+}
+
+function submitRegenerate() {
+    const roleId = document.getElementById('regenerateRoleId').value;
+    const clothingId = document.getElementById('regenerateClothingId').value;
+    const prompt = document.getElementById('regeneratePrompt').value.trim();
+    const referenceUrl = document.getElementById('regenerateReferenceUrl').value;
+
+    closeRegenerateModal();
+
+    const roleCard = document.querySelector(`.role-card[data-role-id="${roleId}"]`);
+    const currentTab = roleCard.querySelector('.clothing-tab.active');
+    const mainImage = document.getElementById(`mainImage-${roleId}`);
+    const clothingSection = roleCard.querySelector('.clothing-section');
+
+    // 检查是否处于失败状态（tab status = -1 或有 failed-state 元素）
+    const tabStatus = currentTab?.dataset.status;
+    const isFailedState = tabStatus === '-1' || tabStatus === -1 || !!clothingSection.querySelector('.failed-state');
+
+    // 获取当前版本号
+    // 如果是失败状态，版本号保持不变（因为失败的版本会被复用）
+    // 如果是正常状态，新版本号+1
+    let currentVersion = 1;
+    const versionSpan = currentTab?.querySelector('span.text-xs');
+    if (versionSpan) {
+        const match = versionSpan.textContent.match(/v(\d+)/);
+        if (match) currentVersion = parseInt(match[1]);
+    }
+    // 失败状态下版本号不变，正常状态下版本号+1
+    const newVersion = isFailedState ? currentVersion : currentVersion + 1;
+
+    // 标记当前tab正在生成
+    if (currentTab) {
+        currentTab.dataset.generating = 'true';
+        currentTab.dataset.status = '0';
+
+        // 添加生成中spinner到tab
+        let spinner = currentTab.querySelector('.tab-spinner');
+        if (!spinner) {
+            spinner = document.createElement('div');
+            spinner.className = 'tab-spinner spinner w-3 h-3 border-2 border-violet-400 border-t-transparent rounded-full animate-spin ml-1';
+            currentTab.appendChild(spinner);
+        }
+
+        // 更新版本号显示（失败状态保持原版本号）
+        if (versionSpan) {
+            versionSpan.textContent = `v${newVersion}`;
+            versionSpan.className = 'text-xs text-violet-400';
+        }
+    }
+
+    // 更新 clothing-section 状态
+    clothingSection.dataset.generating = 'true';
+
+    // 禁用按钮
+    const setDefaultBtn = clothingSection.querySelector('.set-default-btn');
+    const regenerateBtn = clothingSection.querySelector('.regenerate-btn');
+    if (setDefaultBtn) {
+        setDefaultBtn.disabled = true;
+        setDefaultBtn.classList.add('opacity-50', 'cursor-not-allowed');
+    }
+    if (regenerateBtn) {
+        regenerateBtn.disabled = true;
+        regenerateBtn.classList.add('opacity-50', 'cursor-not-allowed');
+    }
+
+    // 处理失败状态或正常状态
+    const failedStateEl = clothingSection.querySelector('.failed-state');
+    if (isFailedState && failedStateEl) {
+        // 失败状态：替换整个内容为生成中状态（版本号等 API 返回后更新）
+        // 先清除可能存在的 generating-overlay（防止重复显示）
+        const existingOverlay = mainImage?.parentElement.querySelector('.generating-overlay');
+        if (existingOverlay) existingOverlay.remove();
+
+        failedStateEl.outerHTML = `
+            <div class="text-center py-8 rounded-xl bg-violet-500/10 border border-violet-500/20 generating-state">
+                <div class="spinner mx-auto mb-3"></div>
+                <p class="text-violet-300">正在生成图片...</p>
+                <p class="text-white/40 text-sm mt-2">预计需要 30-60 秒</p>
+                <p class="text-white/30 text-xs mt-1 version-display">正在获取版本...</p>
+            </div>
+        `;
+    } else if (mainImage && mainImage.parentElement) {
+        // 正常状态：在图片上显示加载遮罩（版本号等 API 返回后更新）
+        let overlay = mainImage.parentElement.querySelector('.generating-overlay');
+        if (!overlay) {
+            overlay = document.createElement('div');
+            overlay.className = 'generating-overlay absolute inset-0 flex flex-col items-center justify-center bg-black/60 backdrop-blur-sm rounded-xl pointer-events-none z-0';
+            mainImage.parentElement.appendChild(overlay);
+        }
+        overlay.innerHTML = `
+            <div class="spinner mb-3"></div>
+            <p class="text-violet-300">正在生成图片...</p>
+            <p class="text-white/40 text-sm mt-2">预计需要 30-60 秒</p>
+            <p class="text-white/30 text-xs mt-1 version-display">正在获取版本...</p>
+        `;
+        overlay.style.display = 'flex';
+        mainImage.style.opacity = '0.3';
+    }
+
+    // 调用生成接口
     fetch(`/roles/${roleId}/regenerate/`, {
         method: 'POST',
         headers: {
@@ -621,17 +1466,134 @@ function regenerateClothing(roleId, clothingId) {
         },
         body: JSON.stringify({
             clothingId: parseInt(clothingId),
-            isNewClothing: false
+            modifiedPrompt: prompt,
+            referenceImageUrl: referenceUrl || '',
+            isNewClothing: !referenceUrl
         })
     })
     .then(response => response.json())
     .then(data => {
-        if (data.success) {
-            showToast('正在重新生成...', 'success');
-            setTimeout(() => location.reload(), 2000);
-        } else {
-            showToast(data.error || '生成失败', 'error');
+        // API成功返回后，更新提示词显示
+        if (data.success && prompt && prompt.trim()) {
+            const promptDisplay = roleCard.querySelector('.prompt-display');
+            if (promptDisplay) {
+                promptDisplay.textContent = prompt;
+                promptDisplay.title = prompt;
+            }
+            roleCard.dataset.customPrompt = prompt;
+            if (currentTab) {
+                currentTab.dataset.prompt = prompt;
+            }
         }
+        if (data.success) {
+            // 使用后端返回的版本号更新 UI
+            // 后端返回格式: {success: true, data: {code: 200, data: [version]}}
+            // 或者 {success: true, data: [version]} (取决于 Django 是否解包)
+            let returnedVersion = newVersion;
+            if (data.data) {
+                if (Array.isArray(data.data) && data.data[0]) {
+                    returnedVersion = data.data[0];
+                } else if (data.data.data && Array.isArray(data.data.data) && data.data.data[0]) {
+                    returnedVersion = data.data.data[0];
+                }
+            }
+            if (versionSpan) {
+                versionSpan.textContent = `v${returnedVersion}`;
+            }
+            // 更新生成中状态的版本号显示
+            const generatingState = clothingSection.querySelector('.generating-state');
+            if (generatingState) {
+                const versionText = generatingState.querySelector('.version-display');
+                if (versionText) {
+                    versionText.textContent = `版本 v${returnedVersion}`;
+                }
+            }
+            // 更新 overlay 的版本号显示
+            const overlay = mainImage?.parentElement.querySelector('.generating-overlay');
+            if (overlay) {
+                const versionText = overlay.querySelector('.version-display');
+                if (versionText) {
+                    versionText.textContent = `版本 v${returnedVersion}`;
+                }
+            }
+
+            showToast('正在生成...', 'success');
+
+            // 保存生成状态到 localStorage
+            saveGeneratingState(roleId, parseInt(clothingId), returnedVersion);
+
+            // 轮询检查生成状态
+            pollGenerationStatus(roleId, parseInt(clothingId));
+        } else {
+            const errorMsg = getFriendlyErrorMessage(data.error);
+            showToast(errorMsg, 'error');
+
+            // 恢复UI状态
+            if (currentTab) {
+                currentTab.dataset.generating = 'false';
+                const spinner = currentTab.querySelector('.tab-spinner');
+                if (spinner) spinner.remove();
+
+                // 恢复版本号显示
+                const versionSpan = currentTab.querySelector('span.text-violet-400');
+                if (versionSpan) {
+                    versionSpan.className = 'text-xs text-white/40';
+                    versionSpan.textContent = `v${currentVersion}`;
+                }
+            }
+            clothingSection.dataset.generating = 'false';
+            if (setDefaultBtn) {
+                setDefaultBtn.disabled = false;
+                setDefaultBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+            }
+            if (regenerateBtn) {
+                regenerateBtn.disabled = false;
+                regenerateBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+            }
+
+            // 处理从失败状态重新生成的情况
+            const generatingState = clothingSection.querySelector('.generating-state');
+            if (generatingState) {
+                // 清除可能存在的 generating-overlay（防止重复显示）
+                const existingOverlay = mainImage?.parentElement.querySelector('.generating-overlay');
+                if (existingOverlay) existingOverlay.remove();
+
+                // 获取自定义提示词用于重新生成按钮
+                const roleCard = document.querySelector(`.role-card[data-role-id="${roleId}"]`);
+                const customPrompt = roleCard?.dataset?.customPrompt || '';
+                generatingState.outerHTML = `
+                    <div class="text-center py-8 rounded-xl bg-red-500/10 border border-red-500/20 failed-state w-full">
+                        <i data-lucide="alert-circle" class="w-12 h-12 mx-auto mb-3 text-red-400"></i>
+                        <p class="text-red-400 font-medium mb-2">${errorMsg}</p>
+                        <button class="mt-4 px-4 py-2 rounded-lg bg-red-500/20 hover:bg-red-500/30 text-red-300 text-sm transition-colors"
+                                onclick="regenerateClothing(${roleId}, ${clothingId})">
+                            <i data-lucide="refresh-cw" class="w-4 h-4 inline mr-1"></i>重新生成
+                        </button>
+                    </div>
+                `;
+                lucide.createIcons();
+            } else {
+                // 正常状态的情况：显示错误遮罩
+                const overlay = mainImage?.parentElement.querySelector('.generating-overlay');
+                if (overlay) {
+                    overlay.innerHTML = `
+                        <div class="text-center">
+                            <i data-lucide="alert-circle" class="w-10 h-10 text-red-400 mx-auto mb-2"></i>
+                            <p class="text-red-400 font-medium">${errorMsg}</p>
+                            <button onclick="this.parentElement.parentElement.style.display='none'; document.getElementById('mainImage-${roleId}').style.opacity='1';"
+                                    class="mt-3 px-4 py-2 rounded-lg bg-red-500/20 hover:bg-red-500/30 text-red-300 text-sm">
+                                确定
+                            </button>
+                        </div>
+                    `;
+                    lucide.createIcons();
+                }
+            }
+        }
+    })
+    .catch(err => {
+        showToast('网络错误', 'error');
+        location.reload();
     });
 }
 
@@ -640,27 +1602,59 @@ function showVersions(roleId, clothingId) {
     currentRoleId = roleId;
     currentClothingId = clothingId;
 
+    // 检查当前服装tab是否正在生成中
+    const roleCard = document.querySelector(`.role-card[data-role-id="${roleId}"]`);
+    let isGenerating = false;
+    if (roleCard) {
+        const currentTab = roleCard.querySelector('.clothing-tab.active');
+        if (currentTab) {
+            isGenerating = currentTab.dataset.generating === 'true';
+        }
+    }
+
     fetch(`/api/assets/role/${roleId}/versions/${clothingId}/`)
     .then(response => response.json())
     .then(data => {
         const versionList = document.getElementById('versionList');
-        if (data.data && data.data.length > 0) {
+        // 过滤掉 GENERATING(status=0) 和 FAILED(status=-1) 状态的资产
+        const validAssets = data.data ? data.data.filter(a => a.status !== 0 && a.status !== -1 && a.status !== '-1' && a.filePath) : [];
+
+        if (validAssets.length > 0) {
             versionList.innerHTML = `
+                ${isGenerating ? `
+                <div class="mb-3 p-2 bg-amber-500/20 border border-amber-500/30 rounded-lg text-amber-300 text-sm text-center">
+                    图片正在生成中，暂不支持选择历史版本
+                </div>
+                ` : ''}
                 <div class="grid grid-cols-3 gap-4">
-                    ${data.data.map(asset => `
-                        <div class="relative rounded-lg overflow-hidden bg-white/5 cursor-pointer hover:ring-2 hover:ring-violet-500 group">
-                            <img src="${asset.filePath}" class="w-full aspect-square object-cover" onclick="openModal('${asset.filePath}')">
+                    ${validAssets.map(asset => `
+                        <div class="relative rounded-lg overflow-hidden bg-white/5 cursor-pointer hover:ring-2 hover:ring-violet-500 group ${asset.isActive ? 'ring-2 ring-emerald-500' : ''}"
+                             data-asset-id="${asset.id}"
+                             data-asset-version="${asset.version}"
+                             data-asset-url="${asset.filePath.replace(/"/g, '&quot;')}">
+                            <img src="${asset.filePath}" class="w-full aspect-square object-cover" onclick="openModal(this.src)">
+                            ${asset.isActive ? '<div class="absolute top-2 right-2 px-2 py-1 text-xs rounded bg-emerald-500 text-white">当前</div>' : ''}
                             <div class="absolute bottom-0 left-0 right-0 p-2 bg-gradient-to-t from-black/80">
                                 <div class="flex items-center justify-between">
                                     <div class="text-xs text-white/80">版本 ${asset.version}</div>
-                                    <button class="px-2 py-1 text-xs rounded bg-violet-500/80 hover:bg-violet-500 text-white opacity-0 group-hover:opacity-100 transition-opacity"
-                                            onclick="event.stopPropagation(); rollbackToVersion(${roleId}, ${asset.id})">
-                                        选择此版本
+                                    ${!asset.isActive ? `
+                                    <button class="px-2 py-1 text-xs rounded ${isGenerating ? 'bg-gray-500 cursor-not-allowed opacity-50' : 'bg-violet-500 hover:bg-violet-600'} text-white transition-colors"
+                                            ${isGenerating ? 'disabled' : ''}
+                                            onclick="event.stopPropagation(); ${isGenerating ? '' : 'rollbackToVersionFromCard(this)'}">
+                                        选择
                                     </button>
+                                    ` : ''}
                                 </div>
                             </div>
                         </div>
                     `).join('')}
+                </div>
+            `;
+        } else if (isGenerating) {
+            // 只有生成中的资产，没有已完成的历史版本
+            versionList.innerHTML = `
+                <div class="p-4 bg-amber-500/20 border border-amber-500/30 rounded-lg text-amber-300 text-sm text-center">
+                    图片正在生成中，暂无历史版本可查看
                 </div>
             `;
         } else {
@@ -671,10 +1665,17 @@ function showVersions(roleId, clothingId) {
     });
 }
 
-// 回滚到指定版本
-function rollbackToVersion(roleId, assetId) {
-    if (!confirm('确定要切换到此版本吗？')) return;
+// 从版本卡片回滚
+function rollbackToVersionFromCard(btn) {
+    const card = btn.closest('[data-asset-id]');
+    const assetId = card.dataset.assetId;
+    const newVersion = card.dataset.assetVersion;
+    const imageUrl = card.dataset.assetUrl;
+    rollbackToVersion(currentRoleId, currentClothingId, assetId, newVersion, imageUrl);
+}
 
+// 回滚到指定版本
+function rollbackToVersion(roleId, clothingId, assetId, newVersion, imageUrl) {
     fetch(`/api/${assetId}/rollback/`, {
         method: 'POST',
         headers: {'X-CSRFToken': getCookie('csrftoken')}
@@ -684,7 +1685,50 @@ function rollbackToVersion(roleId, assetId) {
         if (data.success) {
             showToast('已切换到此版本', 'success');
             closeVersionModal();
-            setTimeout(() => location.reload(), 1000);
+
+            // 更新tab上的版本号
+            const roleCard = document.querySelector(`.role-card[data-role-id="${roleId}"]`);
+            if (roleCard) {
+                const tab = roleCard.querySelector(`.clothing-tab[data-clothing-id="${clothingId}"]`);
+                if (tab) {
+                    // 使用更精确的选择器
+                    const versionSpan = tab.querySelector('span.text-xs.text-white\\/40');
+                    if (versionSpan) {
+                        versionSpan.textContent = `v${newVersion}`;
+                    }
+                    // 更新图片URL
+                    tab.dataset.imageUrl = imageUrl;
+                    tab.dataset.assetId = assetId;
+
+                    // 获取选中版本的提示词并更新
+                    fetch(`/api/${assetId}/prompt/`)
+                    .then(res => res.json())
+                    .then(promptData => {
+                        let prompt = promptData.data;
+                        if (prompt && typeof prompt === 'object') {
+                            prompt = prompt.message || prompt.error || JSON.stringify(prompt);
+                        }
+                        if (prompt && typeof prompt === 'string') {
+                            // 更新缓存
+                            tab.dataset.prompt = prompt;
+                            // 更新角色卡片
+                            roleCard.dataset.customPrompt = prompt;
+                            // 更新提示词显示
+                            const promptDisplay = roleCard.querySelector('.prompt-display');
+                            if (promptDisplay) {
+                                promptDisplay.textContent = prompt;
+                                promptDisplay.title = prompt;
+                            }
+                        }
+                    });
+                }
+            }
+
+            // 更新主图片
+            const mainImage = document.getElementById(`mainImage-${roleId}`);
+            if (mainImage) {
+                mainImage.src = imageUrl;
+            }
         } else {
             showToast(data.error || '切换失败', 'error');
         }
@@ -743,6 +1787,42 @@ function submitEditClothingName() {
     });
 }
 
+// 删除服装
+function deleteClothing(roleId, clothingId) {
+    if (!confirm('确定要删除这个服装吗？删除后无法恢复。')) return;
+
+    fetch(`/api/assets/role/${roleId}/clothing/${clothingId}/delete/`, {
+        method: 'DELETE',
+        headers: {'X-CSRFToken': getCookie('csrftoken')}
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            showToast('服装已删除', 'success');
+            // 移除tab
+            const tab = document.querySelector(`.clothing-tab[data-clothing-id="${clothingId}"]`);
+            if (tab) {
+                const isActive = tab.classList.contains('active');
+                tab.remove();
+                // 如果删除的是当前选中的tab，切换到默认服装
+                if (isActive) {
+                    const defaultTab = document.querySelector(`.clothing-section[data-role-id="${roleId}"] .clothing-tab[data-clothing-id="1"]`);
+                    if (defaultTab) {
+                        selectClothing(defaultTab);
+                    }
+                }
+            }
+            // 更新资产计数
+            const assetCount = document.getElementById('assetCount');
+            if (assetCount) {
+                assetCount.textContent = parseInt(assetCount.textContent) - 1;
+            }
+        } else {
+            showToast(data.error || '删除失败', 'error');
+        }
+    });
+}
+
 // 初始化统计
 function updateStats() {
     const cards = document.querySelectorAll('.role-card');
@@ -764,16 +1844,69 @@ function updateStats() {
 }
 updateStats();
 
-// 初始化"设为默认"按钮可见性
-document.querySelectorAll('.role-card').forEach(card => {
-    const activeTab = card.querySelector('.clothing-tab.active');
-    const setDefaultBtn = card.querySelector('.set-default-btn');
-    if (activeTab && setDefaultBtn) {
-        if (activeTab.dataset.clothingId == '1') {
-            setDefaultBtn.style.display = 'none';
+// 初始化按钮状态
+function initButtonStates() {
+    document.querySelectorAll('.role-card').forEach(card => {
+        const activeTab = card.querySelector('.clothing-tab.active');
+        const setDefaultBtn = card.querySelector('.set-default-btn');
+        const regenerateBtn = card.querySelector('.regenerate-btn');
+        const clothingSection = card.querySelector('.clothing-section');
+
+        if (!activeTab) return;
+
+        // 检查当前tab的状态
+        const tabStatus = activeTab.dataset.status;
+        const isGenerating = tabStatus === '0' || activeTab.dataset.generating === 'true';
+        const clothingId = activeTab.dataset.clothingId;
+
+        console.log('初始化按钮状态:', {
+            clothingId,
+            tabStatus,
+            isGenerating
+        });
+
+        // 设为默认按钮可见性（默认服装不显示）
+        if (setDefaultBtn) {
+            if (clothingId === '1') {
+                setDefaultBtn.style.display = 'none';
+            } else {
+                setDefaultBtn.style.display = 'flex';
+            }
         }
-    }
-});
+
+        // 设置按钮状态
+        if (isGenerating) {
+            // 正在生成中
+            if (regenerateBtn) {
+                regenerateBtn.disabled = true;
+                regenerateBtn.classList.add('opacity-50', 'cursor-not-allowed');
+            }
+            if (setDefaultBtn) {
+                setDefaultBtn.disabled = true;
+                setDefaultBtn.classList.add('opacity-50', 'cursor-not-allowed');
+            }
+            if (clothingSection) {
+                clothingSection.dataset.generating = 'true';
+            }
+        } else {
+            // 不在生成中
+            if (regenerateBtn) {
+                regenerateBtn.disabled = false;
+                regenerateBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+            }
+            if (setDefaultBtn && clothingId !== '1') {
+                setDefaultBtn.disabled = false;
+                setDefaultBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+            }
+            if (clothingSection) {
+                clothingSection.dataset.generating = 'false';
+            }
+        }
+    });
+}
+
+// 页面加载时初始化
+initButtonStates();
 
 // 确认单个角色
 document.querySelectorAll('.confirm-btn:not([disabled])').forEach(btn => {
@@ -931,8 +2064,21 @@ function closeEditRoleModal() {
     currentRoleId = null;
 }
 
+// 编辑角色名称
+function editRoleName(roleId, currentName) {
+    document.getElementById('editRoleId').value = roleId;
+    document.getElementById('editRoleName').value = currentName;
+    document.getElementById('editRoleModal').classList.add('active');
+}
+
 function submitEditRole() {
     const roleId = document.getElementById('editRoleId').value;
+    const roleName = document.getElementById('editRoleName').value.trim();
+
+    if (!roleName) {
+        showToast('请输入角色名称', 'error');
+        return;
+    }
 
     fetch(`/roles/${roleId}/update/`, {
         method: 'PUT',
@@ -941,8 +2087,7 @@ function submitEditRole() {
             'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-            roleName: document.getElementById('editRoleName').value,
-            customPrompt: document.getElementById('editCustomPrompt').value
+            roleName: roleName
         })
     })
     .then(response => response.json())
@@ -971,7 +2116,7 @@ function showToast(message, type = 'info') {
 }
 
 // Close modals on backdrop click
-['addRoleModal', 'editRoleModal', 'versionModal', 'newClothingModal', 'editClothingNameModal'].forEach(id => {
+['addRoleModal', 'editRoleModal', 'versionModal', 'newClothingModal', 'editClothingNameModal', 'regenerateModal'].forEach(id => {
     document.getElementById(id).addEventListener('click', (e) => {
         if (e.target === e.currentTarget) {
             e.currentTarget.classList.remove('active');
@@ -988,6 +2133,273 @@ if (window.location.hash) {
             targetElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
         }, 100);
     }
+}
+
+// 预加载所有服装的提示词到缓存
+(function preloadPrompts() {
+    const tabs = document.querySelectorAll('.clothing-tab[data-asset-id]');
+
+    // 找到当前激活的 tab
+    const activeTab = document.querySelector('.clothing-tab.active');
+    const activeRoleCard = activeTab ? activeTab.closest('.role-card') : null;
+
+    tabs.forEach(tab => {
+        const assetId = tab.dataset.assetId;
+        if (assetId) {
+            fetch(`/api/${assetId}/prompt/`)
+            .then(res => res.json())
+            .then(data => {
+                let prompt = data.data;
+                console.log('获取提示词: assetId=' + assetId + ', prompt=' + prompt);
+                if (prompt && typeof prompt === 'object') {
+                    prompt = prompt.message || prompt.error || JSON.stringify(prompt);
+                }
+                if (prompt && typeof prompt === 'string' && prompt.trim()) {
+                    tab.dataset.prompt = prompt;
+                } else {
+                    tab.dataset.prompt = '';
+                }
+
+                // 如果这是当前激活的 tab，更新提示词显示
+                if (tab.classList.contains('active') && tab.closest('.role-card')) {
+                    const roleCard = tab.closest('.role-card');
+                    const promptDisplay = roleCard.querySelector('.prompt-display');
+                    if (promptDisplay) {
+                        if (prompt && typeof prompt === 'string' && prompt.trim()) {
+                            promptDisplay.textContent = prompt;
+                            promptDisplay.title = prompt;
+                            console.log('更新激活 tab 提示词显示: ' + prompt);
+                        } else {
+                            promptDisplay.textContent = '暂无提示词';
+                        }
+                    }
+                }
+            })
+            .catch(err => {
+                console.error('获取提示词失败: assetId=' + assetId, err);
+                tab.dataset.prompt = '';
+            });
+        }
+    });
+})();
+
+// 页面加载时打印所有 tab 的状态（调试用）
+document.querySelectorAll('.clothing-tab').forEach(tab => {
+    console.log('Tab状态: clothingId=' + tab.dataset.clothingId +
+                ', status=' + tab.dataset.status +
+                ', generating=' + tab.dataset.generating +
+                ', isActive=' + tab.dataset.isActive +
+                ', assetId=' + tab.dataset.assetId);
+});
+
+// 页面加载时恢复生成中的状态并开始轮询
+document.querySelectorAll('.clothing-tab[data-generating="true"]').forEach(tab => {
+    const roleCard = tab.closest('.role-card');
+    const clothingSection = tab.closest('.clothing-section');
+    const roleId = roleCard.dataset.roleId;
+    const clothingId = tab.dataset.clothingId;
+
+    // 设置 clothing-section 的 generating 属性
+    clothingSection.dataset.generating = 'true';
+
+    // 获取最新的角色提示词（可能在其他标签页已更新）
+    fetch(`/api/roles/${roleId}/`)
+        .then(res => res.json())
+        .then(data => {
+            if (data.data && data.data.customPrompt) {
+                const newPrompt = data.data.customPrompt;
+                const promptDisplay = roleCard.querySelector('.prompt-display');
+                if (promptDisplay) {
+                    promptDisplay.textContent = newPrompt;
+                    promptDisplay.title = newPrompt;
+                }
+                roleCard.dataset.customPrompt = newPrompt;
+                tab.dataset.prompt = newPrompt;
+                console.log('更新提示词: ' + newPrompt);
+            }
+        })
+        .catch(err => console.error('获取角色提示词失败:', err));
+
+    // 开始轮询
+    console.log('恢复生成状态: roleId=' + roleId + ', clothingId=' + clothingId);
+    pollGenerationStatus(roleId, parseInt(clothingId));
+});
+
+// 页面加载时检查 localStorage 中是否有正在生成的状态
+(function() {
+    const generatingState = getGeneratingState();
+    if (generatingState) {
+        console.log('发现 localStorage 中的生成状态:', generatingState);
+        // 检查 DOM 中是否已经在显示生成状态
+        const roleCard = document.querySelector(`.role-card[data-role-id="${generatingState.roleId}"]`);
+        const existingGenerating = roleCard?.querySelector(`.clothing-tab[data-clothing-id="${generatingState.clothingId}"][data-generating="true"]`);
+
+        if (!existingGenerating) {
+            // DOM 中没有显示生成状态，需要恢复
+            restoreGeneratingUI(generatingState);
+        }
+    }
+})();
+
+// 页面加载时，检查是否有生成中的asset，获取最新提示词
+(function fetchLatestPromptForGeneratingAssets() {
+    document.querySelectorAll('.clothing-tab[data-generating="true"]').forEach(tab => {
+        const assetId = tab.dataset.assetId;
+        const roleCard = tab.closest('.role-card');
+        if (assetId && roleCard) {
+            fetch(`/api/${assetId}/prompt/`)
+                .then(res => res.json())
+                .then(data => {
+                    if (data.data) {
+                        let prompt = data.data;
+                        if (typeof prompt === 'object') {
+                            prompt = prompt.message || prompt.error || JSON.stringify(prompt);
+                        }
+                        if (prompt && typeof prompt === 'string') {
+                            tab.dataset.prompt = prompt;
+                            // 如果这个tab是激活的，更新显示
+                            if (tab.classList.contains('active')) {
+                                roleCard.dataset.customPrompt = prompt;
+                                const promptDisplay = roleCard.querySelector('.prompt-display');
+                                if (promptDisplay) {
+                                    promptDisplay.textContent = prompt;
+                                    promptDisplay.title = prompt;
+                                }
+                            }
+                        }
+                    }
+                })
+                .catch(err => console.error('获取提示词失败:', err));
+        }
+    });
+})();
+
+// 页面加载时检查 URL 参数并选中对应的服装
+(function restoreSelectedClothingFromURL() {
+    const urlParams = new URLSearchParams(window.location.search);
+    const roleId = urlParams.get('role');
+    const clothingId = urlParams.get('clothing');
+
+    if (roleId && clothingId) {
+        console.log('从 URL 恢复选中的服装: roleId=' + roleId + ', clothingId=' + clothingId);
+        const section = document.querySelector(`.clothing-section[data-role-id="${roleId}"]`);
+        if (section) {
+            const tab = section.querySelector(`.clothing-tab[data-clothing-id="${clothingId}"]`);
+            if (tab) {
+                // 先取消所有选中状态
+                section.querySelectorAll('.clothing-tab').forEach(t => t.classList.remove('active', 'bg-violet-500/20'));
+                // 选中目标 tab
+                tab.classList.add('active', 'bg-violet-500/20');
+                // 触发选中逻辑（但不更新 URL，避免循环）
+                selectClothingWithoutURL(tab);
+            }
+        }
+    }
+})();
+
+// 选择服装但不更新 URL（用于页面加载时恢复状态）
+function selectClothingWithoutURL(tab) {
+    const section = tab.closest('.clothing-section');
+    const roleId = section.dataset.roleId;
+    const clothingId = tab.dataset.clothingId;
+    const roleCard = tab.closest('.role-card');
+
+    // 更新选中状态
+    section.querySelectorAll('.clothing-tab').forEach(t => t.classList.remove('active', 'bg-violet-500/20'));
+    tab.classList.add('active', 'bg-violet-500/20');
+
+    // 更新图片
+    const imageUrl = tab.dataset.imageUrl;
+    const isGenerating = tab.dataset.generating === 'true';
+    const status = parseInt(tab.dataset.status);
+    const isFailed = status === -1 || status === '-1';
+    const mainImage = document.getElementById(`mainImage-${roleId}`);
+    let generatingOverlay = mainImage?.parentElement.querySelector('.generating-overlay');
+    let failedState = section.querySelector('.failed-state');
+
+    const customPrompt = roleCard?.dataset?.customPrompt || '';
+
+    if (mainImage) {
+        // 检查mainImage的父元素是否就是generating-overlay（模板已渲染的生成中状态）
+        const parentIsGeneratingOverlay = mainImage.parentElement?.classList.contains('generating-overlay');
+
+        if (isGenerating) {
+            // 如果父元素是generating-overlay，说明模板已经正确渲染了生成中状态，无需处理
+            if (parentIsGeneratingOverlay) {
+                // 模板已渲染生成中状态，不需要再处理
+                return;
+            }
+
+            if (imageUrl && imageUrl.trim() !== '') {
+                mainImage.src = imageUrl;
+            }
+            mainImage.style.display = 'block';
+            mainImage.style.opacity = '0.3';
+
+            if (!generatingOverlay) {
+                generatingOverlay = document.createElement('div');
+                generatingOverlay.className = 'generating-overlay absolute inset-0 flex flex-col items-center justify-center bg-black/60 backdrop-blur-sm rounded-xl pointer-events-none z-0';
+                mainImage.parentElement.appendChild(generatingOverlay);
+            }
+            generatingOverlay.innerHTML = `
+                <div class="spinner mb-3"></div>
+                <p class="text-violet-300">正在生成图片...</p>
+                <p class="text-white/40 text-sm mt-2">预计需要 30-60 秒</p>
+            `;
+            generatingOverlay.style.display = 'flex';
+            if (failedState) failedState.style.display = 'none';
+        } else if (isFailed || !imageUrl || imageUrl.trim() === '') {
+            mainImage.style.display = 'none';
+            if (generatingOverlay) generatingOverlay.style.display = 'none';
+
+            // 获取错误信息
+            const validationResult = tab.dataset.validationResult || '';
+            let errorMsg = '图片生成失败，请检查提示词后重试';
+            if (validationResult.includes('SensitiveContentDetected')) {
+                errorMsg = '图片内容审核未通过，请修改提示词后重试';
+            } else if (validationResult.toLowerCase().includes('timeout')) {
+                errorMsg = '生成超时，请重试';
+            } else if (validationResult.includes('AccountOverdue')) {
+                errorMsg = 'API账户欠费，请联系管理员充值';
+            }
+
+            if (!failedState) {
+                failedState = document.createElement('div');
+                failedState.className = 'failed-state text-center py-8 rounded-xl bg-red-500/10 border border-red-500/20 w-full';
+                mainImage.parentElement.appendChild(failedState);
+            }
+            failedState.style.display = 'block';
+            failedState.innerHTML = `
+                <i data-lucide="alert-circle" class="w-12 h-12 mx-auto mb-3 text-red-400"></i>
+                <p class="text-red-400 font-medium mb-2">${errorMsg}</p>
+                <button class="mt-4 px-4 py-2 rounded-lg bg-red-500/20 hover:bg-red-500/30 text-red-300 text-sm transition-colors"
+                        onclick="regenerateClothing(${roleId}, ${clothingId})">
+                    <i data-lucide="refresh-cw" class="w-4 h-4 inline mr-1"></i>重新生成
+                </button>
+            `;
+            lucide.createIcons();
+        } else {
+            mainImage.src = imageUrl;
+            mainImage.style.display = 'block';
+            mainImage.style.opacity = '1';
+            if (generatingOverlay) generatingOverlay.style.display = 'none';
+            if (failedState) failedState.style.display = 'none';
+        }
+    }
+
+    // 更新提示词显示
+    const promptDisplay = roleCard?.querySelector('.prompt-display');
+    if (promptDisplay) {
+        const cachedPrompt = tab.dataset.prompt;
+        if (cachedPrompt !== undefined && cachedPrompt) {
+            promptDisplay.textContent = cachedPrompt;
+            promptDisplay.title = cachedPrompt;
+            roleCard.dataset.customPrompt = cachedPrompt;
+        }
+    }
+
+    // 更新按钮状态
+    initButtonStates();
 }
 </script>
 {% endblock %}

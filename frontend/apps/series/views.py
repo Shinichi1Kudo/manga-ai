@@ -3,6 +3,7 @@ from django.http import JsonResponse
 from django.views.decorators.http import require_http_methods
 from django.views.decorators.csrf import csrf_exempt
 from django.contrib import messages
+import json
 
 from api.backend_client import BackendClient, BackendAPIError
 
@@ -19,7 +20,21 @@ def series_list(request):
             return JsonResponse({'data': result})
         except BackendAPIError as e:
             return JsonResponse({'data': [], 'error': e.message}, status=500)
-    return render(request, 'series/series_list.html')
+
+    # 获取第一页系列，提取处理中的系列ID
+    client = BackendClient()
+    try:
+        result = client.get('/v1/series/list?page=1&pageSize=100')
+        series_list = result.get('list', [])
+        # 只提取状态为"处理中"(status=0)的系列ID
+        processing_ids = [s['id'] for s in series_list if s.get('status') == 0]
+    except BackendAPIError:
+        series_list = []
+        processing_ids = []
+
+    return render(request, 'series/series_list.html', {
+        'processing_series_ids': json.dumps(processing_ids),
+    })
 
 
 @csrf_exempt
@@ -31,16 +46,24 @@ def series_init(request):
         background = request.POST.get('background', '').strip()
         characters_json = request.POST.get('characters_json', '').strip()
 
+        # 构建表单数据，用于验证失败时回填
+        form_data = {
+            'series_name': series_name,
+            'outline': outline,
+            'background': background,
+            'characters_json': characters_json,
+        }
+
         # 验证必填字段
         if not series_name:
             messages.error(request, '请输入系列名称')
-            return render(request, 'series/series_init.html')
+            return render(request, 'series/series_init.html', {'form_data': form_data})
         if not outline:
             messages.error(request, '请输入剧本大纲')
-            return render(request, 'series/series_init.html')
+            return render(request, 'series/series_init.html', {'form_data': form_data})
         if not characters_json:
             messages.error(request, '请至少添加一个角色')
-            return render(request, 'series/series_init.html')
+            return render(request, 'series/series_init.html', {'form_data': form_data})
 
         client = BackendClient()
         try:
@@ -50,9 +73,12 @@ def series_init(request):
                 'background': background,
                 'charactersJson': characters_json,
             })
-            return redirect('series:progress', series_id=result['id'])
+            # 创建成功后跳转首页，显示提示消息
+            messages.success(request, f'系列 "{series_name}" 创建成功！角色图片正在后台生成中，完成后可进入审核。')
+            return redirect('series:list')
         except BackendAPIError as e:
             messages.error(request, f'初始化失败: {e.message}')
+            return render(request, 'series/series_init.html', {'form_data': form_data})
 
     return render(request, 'series/series_init.html')
 
@@ -101,15 +127,26 @@ def series_review(request, series_id):
                 role['assets'] = client.get(f'/v1/assets/role/{role["id"]}/clothings')
             except:
                 role['assets'] = []
+
+            # 检查是否有任何成功生成的资产（用于决定是否显示"生成新服装"按钮）
+            role['has_successful_asset'] = any(
+                a.get('filePath') and a.get('filePath').strip()
+                for a in role.get('assets', [])
+            )
     except BackendAPIError as e:
         messages.error(request, f'获取系列信息失败: {e.message}')
         return redirect('series:list')
 
-    return render(request, 'series/series_review.html', {
+    response = render(request, 'series/series_review.html', {
         'series': series,
         'roles': roles,
         'series_id': series_id,
     })
+    # 禁止缓存，确保每次都从服务器获取最新数据
+    response['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+    response['Pragma'] = 'no-cache'
+    response['Expires'] = '0'
+    return response
 
 
 @require_http_methods(["POST"])

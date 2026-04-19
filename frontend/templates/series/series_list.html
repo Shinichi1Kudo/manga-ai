@@ -32,10 +32,104 @@
 {% endblock %}
 
 {% block extra_js %}
+<!-- SockJS 和 STOMP.js for WebSocket -->
+<script src="https://cdn.jsdelivr.net/npm/sockjs-client@1/dist/sockjs.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/stompjs@2.3.3/lib/stomp.min.js"></script>
 <script>
 let currentPage = 1;
 const pageSize = 9;
 let totalSeries = 0;
+let stompClient = null;
+const processingSeries = {{ processing_series_ids|safe }};
+
+// 从 localStorage 恢复进度
+let seriesProgress = JSON.parse(localStorage.getItem('seriesProgress') || '{}');
+
+// 保存进度到 localStorage
+function saveProgress() {
+    localStorage.setItem('seriesProgress', JSON.stringify(seriesProgress));
+}
+
+// 监听其他页面的 localStorage 变化，同步进度
+window.addEventListener('storage', function(e) {
+    if (e.key === 'seriesProgress' && e.newValue) {
+        try {
+            const newProgress = JSON.parse(e.newValue);
+
+            // 更新所有处理中的卡片进度显示（只接受更大的进度）
+            Object.keys(newProgress).forEach(seriesId => {
+                const newProg = newProgress[seriesId];
+                const currentProg = seriesProgress[seriesId];
+
+                // 只有当新进度比当前进度大，或者是完成/失败状态时才更新
+                const currentPercent = currentProg ? (currentProg.progressPercent || 0) : 0;
+                const newPercent = newProg.progressPercent || 0;
+
+                if (newPercent > currentPercent || newProg.status === 'COMPLETED' || newProg.status === 'FAILED') {
+                    // 更新内存中的进度
+                    seriesProgress[seriesId] = newProg;
+
+                    const card = document.querySelector(`.series-card[data-series-id="${seriesId}"]`);
+                    if (card) {
+                        const progressBar = card.querySelector('.progress-bar');
+                        const progressText = card.querySelector('.progress-text');
+                        const progressPercentEl = card.querySelector('.progress-percent');
+
+                        if (progressBar && newProg.progressPercent !== undefined) {
+                            progressBar.style.width = newProg.progressPercent + '%';
+                        }
+                        if (progressText && newProg.message) {
+                            progressText.textContent = newProg.message;
+                        }
+                        if (progressPercentEl && newProg.progressPercent !== undefined) {
+                            progressPercentEl.textContent = newProg.progressPercent.toFixed(2) + '%';
+                        }
+
+                        // 处理完成状态
+                        if (newProg.status === 'COMPLETED') {
+                            const overlay = card.querySelector('.processing-overlay');
+                            if (overlay) {
+                                overlay.innerHTML = `
+                                    <div class="text-center">
+                                        <i data-lucide="check-circle" class="w-12 h-12 text-green-400 mx-auto mb-2"></i>
+                                        <p class="text-green-400 font-medium">处理完成！</p>
+                                    </div>
+                                `;
+                                lucide.createIcons();
+                            }
+                            // 停止模拟进度
+                            stopFakeProgress(parseInt(seriesId));
+                            // 从处理中列表移除
+                            const idx = processingSeries.indexOf(parseInt(seriesId));
+                            if (idx > -1) {
+                                processingSeries.splice(idx, 1);
+                            }
+                            // 2秒后刷新
+                            setTimeout(() => loadSeries(currentPage), 2000);
+                        }
+
+                        // 处理失败状态
+                        if (newProg.status === 'FAILED') {
+                            const overlay = card.querySelector('.processing-overlay');
+                            if (overlay) {
+                                overlay.innerHTML = `
+                                    <div class="text-center">
+                                        <i data-lucide="alert-circle" class="w-12 h-12 text-red-400 mx-auto mb-2"></i>
+                                        <p class="text-red-400 font-medium">${newProg.message || '处理失败'}</p>
+                                    </div>
+                                `;
+                                lucide.createIcons();
+                            }
+                            stopFakeProgress(parseInt(seriesId));
+                        }
+                    }
+                }
+            });
+        } catch (err) {
+            console.error('同步进度失败:', err);
+        }
+    }
+});
 
 function loadSeries(page) {
     currentPage = page;
@@ -47,23 +141,12 @@ function loadSeries(page) {
         .then(result => {
             if (result.data && result.data.list && result.data.list.length > 0) {
                 totalSeries = result.data.total;
-                container.innerHTML = result.data.list.map(series => `
-                    <div class="glass-card glass-card-hover p-6 cursor-pointer" onclick="location.href='/${series.id}/review/'">
-                        <div class="flex items-start justify-between mb-3">
-                            <h3 class="text-lg font-bold truncate flex-1 mr-2">${series.seriesName || '未命名'}</h3>
-                            <span class="status-badge ${series.status === 2 ? 'status-locked' : series.status === 1 ? 'status-pending' : 'status-initializing'} flex-shrink-0">
-                                ${series.statusDesc || '待审核'}
-                            </span>
-                        </div>
-                        <p class="text-sm text-white/60 mb-4 line-clamp-2 h-10">${series.outline || '暂无简介'}</p>
-                        <div class="flex items-center justify-between text-sm text-white/40">
-                            <span><i data-lucide="users" class="w-4 h-4 inline mr-1"></i>${series.roleCount || 0} 个角色</span>
-                            <span>${series.createdAt ? series.createdAt.substring(0, 10) : ''}</span>
-                        </div>
-                    </div>
-                `).join('');
+                container.innerHTML = result.data.list.map(series => renderSeriesCard(series)).join('');
                 lucide.createIcons();
                 renderPagination(result.data.total, page);
+
+                // 渲染完成后启动进度动画
+                processingSeries.forEach(seriesId => startFakeProgress(seriesId));
             } else {
                 container.innerHTML = '<div class="glass-card p-8 text-center col-span-full"><p class="text-white/50">暂无系列，点击上方按钮创建</p></div>';
                 document.getElementById('pagination').innerHTML = '';
@@ -72,6 +155,61 @@ function loadSeries(page) {
         .catch(err => {
             container.innerHTML = '<div class="glass-card p-8 text-center col-span-full"><p class="text-red-400">加载失败: ' + err.message + '</p></div>';
         });
+}
+
+function renderSeriesCard(series) {
+    // 只根据系列状态判断是否处理中（不依赖 processingSeries 列表）
+    const isProcessing = series.status === 0;
+    const progress = seriesProgress[series.id] || {};
+    // 恢复之前的进度，或者从 10% 开始，格式化为2位小数
+    const progressPercent = isProcessing ? (progress.progressPercent || 10) : (progress.progressPercent || 0);
+    const progressPercentDisplay = typeof progressPercent === 'number' ? progressPercent.toFixed(2) : progressPercent;
+    const progressMessage = progress.message || '正在初始化...';
+
+    if (isProcessing) {
+        // 处理中状态 - 添加模拟进度动画
+        return `
+            <div class="glass-card p-6 relative overflow-hidden series-card" data-series-id="${series.id}">
+                <!-- 处理中遮罩层 -->
+                <div class="processing-overlay absolute inset-0 bg-black/60 backdrop-blur-sm flex flex-col items-center justify-center z-10">
+                    <div class="spinner mb-3"></div>
+                    <p class="text-violet-300 text-sm mb-2 progress-text">${progressMessage}</p>
+                    <div class="w-48 h-2 bg-white/20 rounded-full overflow-hidden">
+                        <div class="progress-bar h-full bg-gradient-to-r from-violet-500 to-purple-500 transition-all duration-300" style="width: ${progressPercent}%"></div>
+                    </div>
+                    <p class="text-white/40 text-xs mt-2 progress-percent">${progressPercentDisplay}%</p>
+                </div>
+
+                <!-- 卡片内容 -->
+                <div class="flex items-start justify-between mb-3 opacity-50">
+                    <h3 class="text-lg font-bold truncate flex-1 mr-2">${series.seriesName || '未命名'}</h3>
+                    <span class="status-badge status-initializing flex-shrink-0">处理中</span>
+                </div>
+                <p class="text-sm text-white/60 mb-4 line-clamp-2 h-10">${series.outline || '暂无简介'}</p>
+                <div class="flex items-center justify-between text-sm text-white/40">
+                    <span><i data-lucide="users" class="w-4 h-4 inline mr-1"></i>${series.roleCount || 0} 个角色</span>
+                    <span>${series.createdAt ? series.createdAt.substring(0, 10) : ''}</span>
+                </div>
+            </div>
+        `;
+    } else {
+        // 正常状态
+        return `
+            <div class="glass-card glass-card-hover p-6 cursor-pointer" onclick="location.href='/${series.id}/review/'">
+                <div class="flex items-start justify-between mb-3">
+                    <h3 class="text-lg font-bold truncate flex-1 mr-2">${series.seriesName || '未命名'}</h3>
+                    <span class="status-badge ${series.status === 2 ? 'status-locked' : 'status-pending'} flex-shrink-0">
+                        ${series.statusDesc || '待审核'}
+                    </span>
+                </div>
+                <p class="text-sm text-white/60 mb-4 line-clamp-2 h-10">${series.outline || '暂无简介'}</p>
+                <div class="flex items-center justify-between text-sm text-white/40">
+                    <span><i data-lucide="users" class="w-4 h-4 inline mr-1"></i>${series.roleCount || 0} 个角色</span>
+                    <span>${series.createdAt ? series.createdAt.substring(0, 10) : ''}</span>
+                </div>
+            </div>
+        `;
+    }
 }
 
 function renderPagination(total, currentPage) {
@@ -128,8 +266,284 @@ function renderPagination(total, currentPage) {
     lucide.createIcons();
 }
 
+// WebSocket 连接
+function connectWebSocket() {
+    if (processingSeries.length === 0) return;
+
+    // WebSocket 连接到后端服务器（端口 8081）
+    const socket = new SockJS('http://localhost:8081/api/ws');
+    stompClient = Stomp.over(socket);
+
+    // 禁用调试日志
+    stompClient.debug = null;
+
+    stompClient.connect({}, function(frame) {
+        console.log('WebSocket 连接成功');
+
+        // 订阅所有处理中系列的进度
+        processingSeries.forEach(seriesId => {
+            stompClient.subscribe('/topic/series/' + seriesId, function(message) {
+                const progress = JSON.parse(message.body);
+                updateSeriesProgress(progress);
+            });
+        });
+    }, function(error) {
+        console.log('WebSocket 连接失败，5秒后重试');
+        setTimeout(connectWebSocket, 5000);
+    });
+}
+
+function updateSeriesProgress(progress) {
+    // 停止模拟进度
+    stopFakeProgress(progress.seriesId);
+
+    // 存储进度
+    seriesProgress[progress.seriesId] = progress;
+    saveProgress();
+
+    // 更新对应的卡片
+    const card = document.querySelector(`.series-card[data-series-id="${progress.seriesId}"]`);
+    if (!card) return;
+
+    const progressBar = card.querySelector('.progress-bar');
+    const progressText = card.querySelector('.progress-text');
+    const progressPercentEl = card.querySelector('.progress-percent');
+
+    if (progressBar) {
+        progressBar.style.width = progress.progressPercent + '%';
+    }
+    if (progressText) {
+        progressText.textContent = progress.message;
+    }
+    if (progressPercentEl) {
+        progressPercentEl.textContent = progress.progressPercent + '%';
+    }
+
+    // 处理完成
+    if (progress.status === 'COMPLETED') {
+        // 清除保存的进度
+        delete seriesProgress[progress.seriesId];
+        saveProgress();
+
+        // 停止模拟进度
+        stopFakeProgress(progress.seriesId);
+
+        // 从处理中列表移除
+        const idx = processingSeries.indexOf(progress.seriesId);
+        if (idx > -1) {
+            processingSeries.splice(idx, 1);
+        }
+
+        // 显示完成提示
+        const overlay = card.querySelector('.processing-overlay');
+        if (overlay) {
+            overlay.innerHTML = `
+                <div class="text-center">
+                    <i data-lucide="check-circle" class="w-12 h-12 text-green-400 mx-auto mb-2"></i>
+                    <p class="text-green-400 font-medium">处理完成！</p>
+                </div>
+            `;
+            lucide.createIcons();
+        }
+
+        // 2秒后刷新页面
+        setTimeout(() => {
+            loadSeries(currentPage);
+        }, 2000);
+    }
+
+    // 处理失败
+    if (progress.status === 'FAILED') {
+        // 清除保存的进度
+        delete seriesProgress[progress.seriesId];
+        saveProgress();
+
+        // 停止模拟进度
+        stopFakeProgress(progress.seriesId);
+
+        // 从处理中列表移除
+        const idx = processingSeries.indexOf(progress.seriesId);
+        if (idx > -1) {
+            processingSeries.splice(idx, 1);
+        }
+
+        const overlay = card.querySelector('.processing-overlay');
+        if (overlay) {
+            overlay.innerHTML = `
+                <div class="text-center">
+                    <i data-lucide="alert-circle" class="w-12 h-12 text-red-400 mx-auto mb-2"></i>
+                    <p class="text-red-400 font-medium">${progress.message}</p>
+                </div>
+            `;
+            lucide.createIcons();
+        }
+    }
+}
+
+// 模拟进度动画（当没有 WebSocket 真实进度时使用）
+const fakeProgressTimers = {};
+const messages = ['正在初始化...', '正在生成角色图片...', '正在优化图片质量...', '即将完成，请稍候...'];
+
+function startFakeProgress(seriesId) {
+    if (fakeProgressTimers[seriesId]) return; // 已经在运行
+
+    const card = document.querySelector(`.series-card[data-series-id="${seriesId}"]`);
+    if (!card) return;
+
+    // 从内存中获取当前进度（可能已被 storage 事件更新）
+    let percent = 15;
+    if (seriesProgress[seriesId] && typeof seriesProgress[seriesId].progressPercent === 'number') {
+        percent = seriesProgress[seriesId].progressPercent;
+    }
+
+    // 如果已经到达或超过99%，不再启动模拟
+    if (percent >= 99) {
+        console.log('进度已到99%以上，不再模拟');
+        return;
+    }
+
+    console.log('启动进度模拟，起始进度:', percent);
+
+    fakeProgressTimers[seriesId] = setInterval(() => {
+        // 检查内存中的进度是否比自己大（可能被 storage 事件更新了）
+        const memPercent = seriesProgress[seriesId] && seriesProgress[seriesId].progressPercent;
+        if (typeof memPercent === 'number' && memPercent > percent) {
+            percent = memPercent; // 同步到更大的进度
+        }
+
+        // 如果已完成或失败，停止模拟
+        const status = seriesProgress[seriesId] && seriesProgress[seriesId].status;
+        if (status === 'COMPLETED' || status === 'FAILED') {
+            clearInterval(fakeProgressTimers[seriesId]);
+            delete fakeProgressTimers[seriesId];
+            return;
+        }
+
+        // 模拟进度增长（越来越慢，最高到 99.99%）
+        let increment;
+        if (percent < 30) {
+            // 0-30%: 较快
+            increment = 3 + Math.random() * 2;
+        } else if (percent < 60) {
+            // 30-60%: 中等速度
+            increment = 1.5 + Math.random() * 1;
+        } else if (percent < 85) {
+            // 60-85%: 较慢
+            increment = 0.6 + Math.random() * 0.4;
+        } else if (percent < 95) {
+            // 85-95%: 慢
+            increment = 0.25 + Math.random() * 0.15;
+        } else {
+            // 95-99.99%: 非常慢
+            increment = 0.08 + Math.random() * 0.05;
+        }
+
+        percent = Math.min(percent + increment, 99.99);
+
+        const progressBar = card.querySelector('.progress-bar');
+        const progressText = card.querySelector('.progress-text');
+        const progressPercentEl = card.querySelector('.progress-percent');
+
+        if (progressBar) {
+            progressBar.style.width = percent + '%';
+        }
+        if (progressText) {
+            const msgIndex = Math.min(Math.floor(percent / 25), messages.length - 1);
+            progressText.textContent = messages[msgIndex];
+        }
+        if (progressPercentEl) {
+            // 显示小数点后2位
+            progressPercentEl.textContent = percent.toFixed(2) + '%';
+        }
+
+        // 保存进度到内存和 localStorage
+        seriesProgress[seriesId] = {
+            progressPercent: percent,
+            message: messages[Math.min(Math.floor(percent / 25), messages.length - 1)]
+        };
+        saveProgress();
+
+    }, 1500); // 每1.5秒更新一次
+}
+
+function stopFakeProgress(seriesId) {
+    if (fakeProgressTimers[seriesId]) {
+        clearInterval(fakeProgressTimers[seriesId]);
+        delete fakeProgressTimers[seriesId];
+    }
+}
+
+// 轮询检查系列状态（WebSocket备用方案）
+const pollTimers = {};
+
+function startPolling(seriesId) {
+    if (pollTimers[seriesId]) return;
+
+    pollTimers[seriesId] = setInterval(() => {
+        fetch(`/api/${seriesId}/progress/`)
+            .then(response => response.json())
+            .then(data => {
+                // API 返回 seriesStatus，检查是否不再是处理中状态(0)
+                const status = data.seriesStatus !== undefined ? data.seriesStatus : data.status;
+                if (status !== 0 && status !== '0') {
+                    // 状态不再是处理中，停止轮询和模拟进度
+                    stopPolling(seriesId);
+                    stopFakeProgress(seriesId);
+
+                    // 清除保存的进度
+                    delete seriesProgress[seriesId];
+                    saveProgress();
+
+                    // 从处理中列表移除
+                    const idx = processingSeries.indexOf(seriesId);
+                    if (idx > -1) {
+                        processingSeries.splice(idx, 1);
+                    }
+
+                    // 显示完成提示
+                    const card = document.querySelector(`.series-card[data-series-id="${seriesId}"]`);
+                    if (card) {
+                        const overlay = card.querySelector('.processing-overlay');
+                        if (overlay) {
+                            overlay.innerHTML = `
+                                <div class="text-center">
+                                    <i data-lucide="check-circle" class="w-12 h-12 text-green-400 mx-auto mb-2"></i>
+                                    <p class="text-green-400 font-medium">处理完成！</p>
+                                </div>
+                            `;
+                            lucide.createIcons();
+                        }
+                    }
+
+                    // 2秒后刷新列表
+                    setTimeout(() => loadSeries(currentPage), 2000);
+                }
+            })
+            .catch(err => console.error('轮询失败:', err));
+    }, 5000); // 每5秒检查一次
+}
+
+function stopPolling(seriesId) {
+    if (pollTimers[seriesId]) {
+        clearInterval(pollTimers[seriesId]);
+        delete pollTimers[seriesId];
+    }
+}
+
 document.addEventListener('DOMContentLoaded', function() {
     loadSeries(1);
+
+    // 如果有处理中的系列，连接 WebSocket 并启动模拟进度
+    if (processingSeries.length > 0) {
+        connectWebSocket();
+        // 延迟启动模拟进度，等待卡片渲染完成
+        setTimeout(() => {
+            processingSeries.forEach(seriesId => {
+                startFakeProgress(seriesId);
+                startPolling(seriesId); // 同时启动轮询作为备用
+            });
+        }, 500);
+    }
 });
 </script>
 <style>
@@ -138,6 +552,27 @@ document.addEventListener('DOMContentLoaded', function() {
     -webkit-line-clamp: 2;
     -webkit-box-orient: vertical;
     overflow: hidden;
+}
+
+.series-card {
+    min-height: 180px;
+}
+
+/* 进度条闪烁动画 */
+.progress-animated {
+    animation: pulse-glow 1.5s ease-in-out infinite;
+    background-size: 200% 100%;
+    animation: shimmer 2s linear infinite;
+}
+
+@keyframes shimmer {
+    0% { background-position: -200% 0; }
+    100% { background-position: 200% 0; }
+}
+
+@keyframes pulse-glow {
+    0%, 100% { box-shadow: 0 0 5px rgba(139, 92, 246, 0.5); }
+    50% { box-shadow: 0 0 15px rgba(139, 92, 246, 0.8); }
 }
 </style>
 {% endblock %}

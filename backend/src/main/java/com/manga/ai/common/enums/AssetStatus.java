@@ -9,6 +9,7 @@ import lombok.Getter;
 public enum AssetStatus {
 
     GENERATING(0, "生成中"),
+    FAILED(-1, "生成失败"),
     PENDING_REVIEW(1, "待审核"),
     CONFIRMED(2, "已确认"),
     LOCKED(3, "已锁定");

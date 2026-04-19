@@ -10,10 +10,14 @@ import com.manga.ai.asset.service.AssetService;
 import com.manga.ai.common.enums.AssetStatus;
 import com.manga.ai.common.enums.ViewType;
 import com.manga.ai.common.exception.BusinessException;
+import com.manga.ai.role.entity.Role;
+import com.manga.ai.role.mapper.RoleMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 /**
@@ -26,6 +30,7 @@ public class AssetServiceImpl implements AssetService {
 
     private final RoleAssetMapper roleAssetMapper;
     private final AssetMetadataMapper assetMetadataMapper;
+    private final RoleMapper roleMapper;
 
     @Override
     public RoleAsset getAssetById(Long assetId) {
@@ -141,6 +146,7 @@ public class AssetServiceImpl implements AssetService {
             AssetMetadata newMetadata = new AssetMetadata();
             newMetadata.setAssetId(newDefaultAsset.getId());
             newMetadata.setPrompt(sourceMetadata.getPrompt());
+            newMetadata.setUserPrompt(sourceMetadata.getUserPrompt());
             newMetadata.setNegativePrompt(sourceMetadata.getNegativePrompt());
             newMetadata.setSeed(sourceMetadata.getSeed());
             newMetadata.setModelVersion(sourceMetadata.getModelVersion());
@@ -178,22 +184,68 @@ public class AssetServiceImpl implements AssetService {
 
     @Override
     public List<RoleAsset> getClothingsByRoleId(Long roleId) {
-        // 获取所有服装的最新版本（每个服装取最新版本）
-        LambdaQueryWrapper<RoleAsset> wrapper = new LambdaQueryWrapper<>();
-        wrapper.eq(RoleAsset::getRoleId, roleId)
-                .orderByAsc(RoleAsset::getClothingId)  // 按 clothingId 升序，确保 clothingId=1 在前面
+        // 获取所有资产，按服装和版本排序
+        LambdaQueryWrapper<RoleAsset> allWrapper = new LambdaQueryWrapper<>();
+        allWrapper.eq(RoleAsset::getRoleId, roleId)
+                .orderByAsc(RoleAsset::getClothingId)
                 .orderByDesc(RoleAsset::getVersion);
-        List<RoleAsset> allAssets = roleAssetMapper.selectList(wrapper);
+        List<RoleAsset> allAssets = roleAssetMapper.selectList(allWrapper);
 
-        // 按服装分组，取每个服装的最新版本
-        java.util.Map<Integer, RoleAsset> clothingMap = new java.util.LinkedHashMap<>();
+        log.info("getClothingsByRoleId: roleId={}, 数据库中共有{}条资产记录", roleId, allAssets.size());
+        allAssets.forEach(a -> log.info("  资产: id={}, clothingId={}, status={}, isActive={}, clothingName={}",
+                a.getId(), a.getClothingId(), a.getStatus(), a.getIsActive(), a.getClothingName()));
+
+        // 按服装分组，收集所有版本
+        java.util.Map<Integer, java.util.List<RoleAsset>> clothingVersionsMap = new java.util.LinkedHashMap<>();
         for (RoleAsset asset : allAssets) {
-            if (!clothingMap.containsKey(asset.getClothingId())) {
-                clothingMap.put(asset.getClothingId(), asset);
+            clothingVersionsMap.computeIfAbsent(asset.getClothingId(), k -> new java.util.ArrayList<>())
+                    .add(asset);
+        }
+
+        // 合并结果：
+        // 1. 优先使用激活版本（包括生成中和失败状态）
+        // 2. 如果没有激活版本，使用最新有效版本
+        // 3. 如果只有失败版本，也返回它（用户需要看到失败状态并重新生成）
+        java.util.List<RoleAsset> result = new java.util.ArrayList<>();
+        for (java.util.Map.Entry<Integer, java.util.List<RoleAsset>> entry : clothingVersionsMap.entrySet()) {
+            java.util.List<RoleAsset> versions = entry.getValue();
+
+            // 查找激活版本（包括生成中和失败状态）
+            RoleAsset activeAsset = null;
+            for (RoleAsset asset : versions) {
+                if (asset.getIsActive() != null && asset.getIsActive() == 1) {
+                    activeAsset = asset;
+                    break;
+                }
+            }
+
+            if (activeAsset != null) {
+                // 有激活版本，直接使用
+                result.add(activeAsset);
+            } else {
+                // 没有激活版本，查找最新有效版本（非失败、非生成中）
+                RoleAsset validAsset = null;
+                for (RoleAsset asset : versions) {
+                    if (asset.getStatus() != null
+                            && asset.getStatus() != AssetStatus.FAILED.getCode()
+                            && asset.getStatus() != AssetStatus.GENERATING.getCode()) {
+                        validAsset = asset;
+                        break; // 版本已按降序排列，第一个有效的是最新有效版本
+                    }
+                }
+
+                if (validAsset != null) {
+                    result.add(validAsset);
+                } else {
+                    // 没有有效版本，返回最新版本（包括失败状态，用户需要看到并重新生成）
+                    result.add(versions.get(0));
+                    log.info("服装只有失败资产，返回最新版本: clothingId={}", entry.getKey());
+                }
             }
         }
 
-        return new java.util.ArrayList<>(clothingMap.values());
+        log.info("getClothingsByRoleId: roleId={}, 返回{}个服装", roleId, result.size());
+        return result;
     }
 
     @Override
@@ -209,9 +261,15 @@ public class AssetServiceImpl implements AssetService {
     public String getAssetPrompt(Long assetId) {
         LambdaQueryWrapper<AssetMetadata> wrapper = new LambdaQueryWrapper<>();
         wrapper.eq(AssetMetadata::getAssetId, assetId)
-                .select(AssetMetadata::getPrompt);
+                .select(AssetMetadata::getUserPrompt, AssetMetadata::getPrompt);
         AssetMetadata metadata = assetMetadataMapper.selectOne(wrapper);
-        return metadata != null ? metadata.getPrompt() : null;
+        if (metadata == null) {
+            return null;
+        }
+        // 优先返回用户原始提示词，如果没有则返回系统构建的提示词
+        return metadata.getUserPrompt() != null && !metadata.getUserPrompt().trim().isEmpty()
+                ? metadata.getUserPrompt()
+                : metadata.getPrompt();
     }
 
     @Override
@@ -236,6 +294,28 @@ public class AssetServiceImpl implements AssetService {
         targetAsset.setIsActive(1);
         roleAssetMapper.updateById(targetAsset);
 
+        // 获取回滚资产的提示词并更新角色的 customPrompt
+        LambdaQueryWrapper<AssetMetadata> metadataWrapper = new LambdaQueryWrapper<>();
+        metadataWrapper.eq(AssetMetadata::getAssetId, assetId)
+                .select(AssetMetadata::getUserPrompt, AssetMetadata::getPrompt);
+        AssetMetadata metadata = assetMetadataMapper.selectOne(metadataWrapper);
+
+        if (metadata != null) {
+            String prompt = metadata.getUserPrompt() != null && !metadata.getUserPrompt().trim().isEmpty()
+                    ? metadata.getUserPrompt()
+                    : metadata.getPrompt();
+
+            if (prompt != null && !prompt.trim().isEmpty()) {
+                Role role = roleMapper.selectById(roleId);
+                if (role != null) {
+                    role.setCustomPrompt(prompt);
+                    role.setUpdatedAt(LocalDateTime.now());
+                    roleMapper.updateById(role);
+                    log.info("回滚时更新角色提示词: roleId={}, prompt={}", roleId, prompt);
+                }
+            }
+        }
+
         log.info("回滚资产: assetId={}, roleId={}, clothingId={}, version={}",
                 assetId, roleId, clothingId, targetAsset.getVersion());
     }
@@ -255,5 +335,54 @@ public class AssetServiceImpl implements AssetService {
         roleAssetMapper.update(null, updateWrapper);
 
         log.info("重命名服装: roleId={}, clothingId={}, newName={}", roleId, clothingId, clothingName);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void deleteClothing(Long roleId, Integer clothingId) {
+        // 不允许删除默认服装
+        if (clothingId == 1) {
+            throw new BusinessException("默认服装不能删除");
+        }
+
+        // 删除该服装的所有资产
+        LambdaQueryWrapper<RoleAsset> deleteWrapper = new LambdaQueryWrapper<>();
+        deleteWrapper.eq(RoleAsset::getRoleId, roleId)
+                .eq(RoleAsset::getClothingId, clothingId);
+        int deleted = roleAssetMapper.delete(deleteWrapper);
+
+        // 恢复角色的提示词为默认服装的提示词
+        LambdaQueryWrapper<RoleAsset> defaultAssetWrapper = new LambdaQueryWrapper<>();
+        defaultAssetWrapper.eq(RoleAsset::getRoleId, roleId)
+                .eq(RoleAsset::getClothingId, 1)
+                .eq(RoleAsset::getIsActive, 1)
+                .last("LIMIT 1");
+        RoleAsset defaultAsset = roleAssetMapper.selectOne(defaultAssetWrapper);
+
+        if (defaultAsset != null) {
+            // 获取默认服装的提示词
+            LambdaQueryWrapper<AssetMetadata> metadataWrapper = new LambdaQueryWrapper<>();
+            metadataWrapper.eq(AssetMetadata::getAssetId, defaultAsset.getId())
+                    .select(AssetMetadata::getUserPrompt, AssetMetadata::getPrompt);
+            AssetMetadata metadata = assetMetadataMapper.selectOne(metadataWrapper);
+
+            if (metadata != null) {
+                String prompt = metadata.getUserPrompt() != null && !metadata.getUserPrompt().trim().isEmpty()
+                        ? metadata.getUserPrompt()
+                        : metadata.getPrompt();
+
+                if (prompt != null && !prompt.trim().isEmpty()) {
+                    Role role = roleMapper.selectById(roleId);
+                    if (role != null) {
+                        role.setCustomPrompt(prompt);
+                        role.setUpdatedAt(LocalDateTime.now());
+                        roleMapper.updateById(role);
+                        log.info("删除服装后恢复角色提示词: roleId={}, prompt={}", roleId, prompt);
+                    }
+                }
+            }
+        }
+
+        log.info("删除服装: roleId={}, clothingId={}, 删除资产数量={}", roleId, clothingId, deleted);
     }
 }

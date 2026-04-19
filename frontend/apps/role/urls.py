@@ -11,3 +11,8 @@ urlpatterns = [
     path('<int:role_id>/regenerate/', views.role_regenerate, name='regenerate'),
     path('<int:role_id>/update/', views.role_update, name='update'),
 ]
+
+# API routes
+api_urlpatterns = [
+    path('roles/<int:role_id>/', views.role_detail, name='role-detail-api'),
+]

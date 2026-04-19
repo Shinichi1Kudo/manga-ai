@@ -24,9 +24,14 @@ public class AssetMetadata implements Serializable {
     private Long assetId;
 
     /**
-     * 生成用Prompt
+     * 生成用Prompt（系统构建后的完整提示词）
      */
     private String prompt;
+
+    /**
+     * 用户原始输入的提示词
+     */
+    private String userPrompt;
 
     /**
      * 负向Prompt

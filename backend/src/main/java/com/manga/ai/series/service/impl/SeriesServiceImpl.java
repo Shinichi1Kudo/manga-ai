@@ -22,15 +22,17 @@ import com.manga.ai.role.entity.Role;
 import com.manga.ai.role.mapper.RoleMapper;
 import com.manga.ai.series.dto.SeriesDetailVO;
 import com.manga.ai.series.dto.SeriesInitRequest;
+import com.manga.ai.series.dto.SeriesProgressMessage;
 import com.manga.ai.series.dto.SeriesProgressVO;
 import com.manga.ai.series.entity.Series;
 import com.manga.ai.series.mapper.SeriesMapper;
 import com.manga.ai.series.service.SeriesService;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.BeanUtils;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Lazy;
+import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -41,14 +43,16 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * 系列服务实现
  */
 @Slf4j
 @Service
-@RequiredArgsConstructor
 public class SeriesServiceImpl implements SeriesService {
 
     private final SeriesMapper seriesMapper;
@@ -56,8 +60,30 @@ public class SeriesServiceImpl implements SeriesService {
     private final RoleAssetMapper roleAssetMapper;
     private final AssetMetadataMapper assetMetadataMapper;
     private final NLPExtractService nlpExtractService;
-    @Lazy
     private final ImageGenerateService imageGenerateService;
+    private final SimpMessagingTemplate messagingTemplate;
+
+    // 自注入，用于调用 @Async 方法（解决 Spring 代理问题）
+    private SeriesService self;
+
+    @Autowired
+    public SeriesServiceImpl(SeriesMapper seriesMapper,
+                             RoleMapper roleMapper,
+                             RoleAssetMapper roleAssetMapper,
+                             AssetMetadataMapper assetMetadataMapper,
+                             NLPExtractService nlpExtractService,
+                             @Lazy ImageGenerateService imageGenerateService,
+                             SimpMessagingTemplate messagingTemplate,
+                             @Lazy SeriesService self) {
+        this.seriesMapper = seriesMapper;
+        this.roleMapper = roleMapper;
+        this.roleAssetMapper = roleAssetMapper;
+        this.assetMetadataMapper = assetMetadataMapper;
+        this.nlpExtractService = nlpExtractService;
+        this.imageGenerateService = imageGenerateService;
+        this.messagingTemplate = messagingTemplate;
+        this.self = self;
+    }
 
     @Value("${storage.project-path:./storage/projects}")
     private String projectPath;
@@ -86,13 +112,13 @@ public class SeriesServiceImpl implements SeriesService {
         series.setProjectPath(projectDir);
         seriesMapper.updateById(series);
 
-        // 3. 异步处理角色提取和图片生成
+        // 3. 异步处理角色提取和图片生成（通过 self 调用，确保 @Async 生效）
         if (request.getCharactersJson() != null && !request.getCharactersJson().isEmpty()) {
             // 新格式：直接使用前端传来的角色数据
-            asyncProcessCharacters(series.getId(), request.getCharactersJson());
+            self.asyncProcessCharacters(series.getId(), request.getCharactersJson());
         } else if (request.getCharacterIntro() != null && !request.getCharacterIntro().isEmpty()) {
             // 旧格式：NLP 提取
-            asyncProcessRoleExtract(series.getId(), request.getCharacterIntro());
+            self.asyncProcessRoleExtract(series.getId(), request.getCharacterIntro());
         } else {
             throw new BusinessException("请添加至少一个角色");
         }
@@ -299,8 +325,9 @@ public class SeriesServiceImpl implements SeriesService {
     /**
      * 异步处理角色提取和图片生成
      */
+    @Override
     @Async("taskExecutor")
-    protected void asyncProcessRoleExtract(Long seriesId, String characterIntro) {
+    public void asyncProcessRoleExtract(Long seriesId, String characterIntro) {
         log.info("开始异步处理角色提取: seriesId={}", seriesId);
 
         try {
@@ -347,88 +374,138 @@ public class SeriesServiceImpl implements SeriesService {
     }
 
     /**
-     * 异步处理前端传来的角色数据
+     * 异步处理前端传来的角色数据（并行处理）
      */
+    @Override
     @Async("taskExecutor")
-    protected void asyncProcessCharacters(Long seriesId, String charactersJson) {
+    public void asyncProcessCharacters(Long seriesId, String charactersJson) {
         log.info("开始异步处理角色数据: seriesId={}", seriesId);
 
         try {
             JSONArray characters = JSON.parseArray(charactersJson);
-            log.info("解析到 {} 个角色", characters.size());
+            int totalRoles = characters.size();
+            log.info("解析到 {} 个角色", totalRoles);
 
-            int roleIndex = 1;
+            // 发送开始处理消息
+            sendProgress(seriesId, "PROCESSING", 0, totalRoles, 0, "开始处理角色...");
+
+            // 使用 AtomicInteger 线程安全计数
+            AtomicInteger completedRoles = new AtomicInteger(0);
+            AtomicInteger roleIndex = new AtomicInteger(1);
+            List<CompletableFuture<Void>> futures = new ArrayList<>();
+
             for (int i = 0; i < characters.size(); i++) {
                 JSONObject charData = characters.getJSONObject(i);
 
-                // 创建角色记录
-                Role role = new Role();
-                role.setSeriesId(seriesId);
-                role.setRoleName(charData.getString("roleName"));
-                role.setRoleCode(String.format("ROLE_%03d", roleIndex));
-                role.setStatus(RoleStatus.EXTRACTING.getCode()); // 生成中
-                role.setCustomPrompt(charData.getString("customPrompt"));
-                role.setStyleKeywords(charData.getString("styleKeywords"));
-                role.setExtractConfidence(new BigDecimal("1.0"));
-                role.setCreatedAt(LocalDateTime.now());
-                role.setUpdatedAt(LocalDateTime.now());
-                roleMapper.insert(role);
-
-                log.info("创建角色: id={}, name={}, styleKeywords={}, aspectRatio={}, quality={}, customPrompt={}",
-                        role.getId(), role.getRoleName(), role.getStyleKeywords(),
-                        charData.getString("aspectRatio"), charData.getString("quality"),
-                        role.getCustomPrompt());
-
-                // 调用火山方舟API生成图片并保存资产
-                try {
-                    // 构建请求
-                    ImageGenerateRequest imageRequest = ImageGenerateRequest.builder()
-                            .roleName(role.getRoleName())
-                            .styleKeywords(role.getStyleKeywords())
-                            .aspectRatio(charData.getString("aspectRatio"))
-                            .quality(charData.getString("quality"))
-                            .customPrompt(role.getCustomPrompt())
-                            .seriesId(seriesId)
-                            .roleId(role.getId())
-                            .build();
-
-                    // 生成图片
-                    ImageGenerateResponse imageResponse = imageGenerateService.generateCharacterSheet(imageRequest);
-
-                    if ("success".equals(imageResponse.getStatus())) {
-                        log.info("角色图片生成成功: roleId={}, imageUrl={}", role.getId(), imageResponse.getImageUrl());
-
-                        // 保存资产到数据库
-                        saveAsset(role, imageResponse, imageRequest);
-
-                        // 更新角色状态为待审核
-                        role.setStatus(RoleStatus.PENDING_REVIEW.getCode());
-                        role.setUpdatedAt(LocalDateTime.now());
-                        roleMapper.updateById(role);
-                    } else {
-                        log.error("角色图片生成失败: roleId={}, error={}", role.getId(), imageResponse.getErrorMessage());
-                        role.setStatus(RoleStatus.PENDING_REVIEW.getCode());
-                        role.setUpdatedAt(LocalDateTime.now());
-                        roleMapper.updateById(role);
-                    }
-                } catch (Exception e) {
-                    log.error("调用图片生成API异常: roleId={}", role.getId(), e);
-                    role.setStatus(RoleStatus.PENDING_REVIEW.getCode());
-                    role.setUpdatedAt(LocalDateTime.now());
-                    roleMapper.updateById(role);
-                }
-
-                roleIndex++;
+                futures.add(CompletableFuture.runAsync(() -> {
+                    processSingleCharacter(seriesId, charData, roleIndex, completedRoles, totalRoles);
+                }));
             }
+
+            // 等待所有角色处理完成
+            log.info("等待所有角色处理完成: seriesId={}, totalRoles={}", seriesId, totalRoles);
+            CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
+            log.info("所有角色处理完成: seriesId={}, completedRoles={}", seriesId, completedRoles.get());
 
             // 更新系列状态为待审核
             updateSeriesStatus(seriesId, SeriesStatus.PENDING_REVIEW.getCode());
 
-            log.info("角色处理和图片生成完成: seriesId={}, count={}", seriesId, roleIndex - 1);
+            // 发送完成消息
+            sendProgress(seriesId, "COMPLETED", totalRoles, totalRoles, 100, "全部完成！");
+
+            log.info("角色处理和图片生成完成: seriesId={}, count={}", seriesId, totalRoles);
         } catch (Exception e) {
             log.error("角色处理失败: seriesId={}", seriesId, e);
+            sendProgress(seriesId, "FAILED", 0, 0, 0, "处理失败: " + e.getMessage());
             updateSeriesStatus(seriesId, SeriesStatus.PENDING_REVIEW.getCode());
         }
+    }
+
+    /**
+     * 处理单个角色
+     */
+    private void processSingleCharacter(Long seriesId, JSONObject charData,
+                                         AtomicInteger roleIndex, AtomicInteger completedRoles, int totalRoles) {
+        String roleName = charData.getString("roleName");
+        int currentIndex = roleIndex.getAndIncrement();
+
+        try {
+            // 发送当前处理角色
+            sendProgress(seriesId, "PROCESSING", completedRoles.get(), totalRoles, 0, "正在生成: " + roleName);
+
+            // 创建角色记录
+            Role role = new Role();
+            role.setSeriesId(seriesId);
+            role.setRoleName(roleName);
+            role.setRoleCode(String.format("ROLE_%03d", currentIndex));
+            role.setStatus(RoleStatus.EXTRACTING.getCode());
+            role.setCustomPrompt(charData.getString("customPrompt"));
+            role.setStyleKeywords(charData.getString("styleKeywords"));
+            role.setExtractConfidence(new BigDecimal("1.0"));
+            role.setCreatedAt(LocalDateTime.now());
+            role.setUpdatedAt(LocalDateTime.now());
+            roleMapper.insert(role);
+
+            log.info("创建角色: id={}, name={}", role.getId(), role.getRoleName());
+
+            // 构建请求
+            ImageGenerateRequest imageRequest = ImageGenerateRequest.builder()
+                    .roleName(role.getRoleName())
+                    .styleKeywords(role.getStyleKeywords())
+                    .aspectRatio(charData.getString("aspectRatio"))
+                    .quality(charData.getString("quality"))
+                    .customPrompt(role.getCustomPrompt())
+                    .seriesId(seriesId)
+                    .roleId(role.getId())
+                    .build();
+
+            // 生成图片
+            ImageGenerateResponse imageResponse = imageGenerateService.generateCharacterSheet(imageRequest);
+
+            if ("success".equals(imageResponse.getStatus())) {
+                log.info("角色图片生成成功: roleId={}", role.getId());
+                saveAsset(role, imageResponse, imageRequest);
+                role.setStatus(RoleStatus.PENDING_REVIEW.getCode());
+            } else {
+                log.error("角色图片生成失败: roleId={}, error={}", role.getId(), imageResponse.getErrorMessage());
+                // 即使失败也要保存一个失败状态的资产，方便用户重试
+                role.setStatus(RoleStatus.PENDING_REVIEW.getCode());
+            }
+
+            role.setUpdatedAt(LocalDateTime.now());
+            roleMapper.updateById(role);
+
+            // 更新完成计数（无论成功或失败都算完成一个角色）
+            int completed = completedRoles.incrementAndGet();
+            int percent = (int) (completed * 100.0 / totalRoles);
+            sendProgress(seriesId, "PROCESSING", completed, totalRoles, percent,
+                    "完成: " + roleName + " (" + completed + "/" + totalRoles + ")");
+
+        } catch (Exception e) {
+            log.error("处理角色失败: {}", roleName, e);
+            // 异常时也要更新计数，避免总数不匹配
+            int completed = completedRoles.incrementAndGet();
+            int percent = (int) (completed * 100.0 / totalRoles);
+            sendProgress(seriesId, "PROCESSING", completed, totalRoles, percent,
+                    "角色处理异常: " + roleName + " (" + completed + "/" + totalRoles + ")");
+        }
+    }
+
+    /**
+     * 发送进度消息到 WebSocket
+     */
+    private void sendProgress(Long seriesId, String status, int completed, int total, int percent, String message) {
+        SeriesProgressMessage progress = new SeriesProgressMessage();
+        progress.setSeriesId(seriesId);
+        progress.setStatus(status);
+        progress.setCompletedRoles(completed);
+        progress.setTotalRoles(total);
+        progress.setProgressPercent(percent);
+        progress.setMessage(message);
+
+        messagingTemplate.convertAndSend("/topic/series/" + seriesId, progress);
+        log.debug("发送进度: seriesId={}, status={}, completed={}, total={}, percent={}%",
+                seriesId, status, completed, total, percent);
     }
 
     /**

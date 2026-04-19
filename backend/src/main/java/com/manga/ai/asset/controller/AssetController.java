@@ -90,6 +90,15 @@ public class AssetController {
     }
 
     /**
+     * 删除服装（删除该服装的所有版本）
+     */
+    @DeleteMapping("/role/{roleId}/clothing/{clothingId}")
+    public Result<Void> deleteClothing(@PathVariable Long roleId, @PathVariable Integer clothingId) {
+        assetService.deleteClothing(roleId, clothingId);
+        return Result.success();
+    }
+
+    /**
      * 获取角色的下一个服装编号
      */
     @GetMapping("/role/{roleId}/next-clothing-id")

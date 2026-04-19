@@ -34,8 +34,13 @@ class BackendClient:
         if response.content:
             result = response.json()
             # 处理包装的返回结果
-            if isinstance(result, dict) and 'data' in result:
-                return result['data']
+            if isinstance(result, dict):
+                # 如果有 data 字段，返回 data 的值（可能是 null）
+                if 'data' in result:
+                    return result['data']
+                # 如果是成功响应但没有 data 字段，说明数据为 null
+                if result.get('code') == 200 or result.get('success'):
+                    return None
             return result
         return None
 

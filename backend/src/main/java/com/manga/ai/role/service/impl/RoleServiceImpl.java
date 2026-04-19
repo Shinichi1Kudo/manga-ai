@@ -3,12 +3,14 @@ package com.manga.ai.role.service.impl;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.manga.ai.asset.entity.RoleAsset;
 import com.manga.ai.asset.mapper.RoleAssetMapper;
+import com.manga.ai.asset.service.AssetService;
 import com.manga.ai.common.enums.RoleStatus;
 import com.manga.ai.common.exception.AssetLockedException;
 import com.manga.ai.common.exception.BusinessException;
 import com.manga.ai.common.utils.NamingUtil;
 import com.manga.ai.image.service.ImageGenerateService;
 import com.manga.ai.role.dto.RegenerateRequest;
+import com.manga.ai.role.dto.RegenerateResponse;
 import com.manga.ai.role.dto.RoleCreateRequest;
 import com.manga.ai.role.dto.RoleDetailVO;
 import com.manga.ai.role.dto.RoleUpdateRequest;
@@ -23,9 +25,9 @@ import org.springframework.beans.BeanUtils;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.time.LocalDateTime;
-import java.util.Collections;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -42,6 +44,8 @@ public class RoleServiceImpl implements RoleService {
     private final RoleAssetMapper roleAssetMapper;
     @Lazy
     private final ImageGenerateService imageGenerateService;
+    private final AssetService assetService;
+    private final TransactionTemplate transactionTemplate;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -133,6 +137,9 @@ public class RoleServiceImpl implements RoleService {
                 .orderByAsc(Role::getRoleCode);
         List<Role> roles = roleMapper.selectList(wrapper);
 
+        // 添加日志，打印查询到的角色提示词
+        roles.forEach(role -> log.info("查询角色: roleId={}, customPrompt={}", role.getId(), role.getCustomPrompt()));
+
         return roles.stream()
                 .map(this::convertToVO)
                 .collect(Collectors.toList());
@@ -205,8 +212,7 @@ public class RoleServiceImpl implements RoleService {
     }
 
     @Override
-    @Transactional(rollbackFor = Exception.class)
-    public List<Long> regenerateRoleAssets(Long roleId, RegenerateRequest request) {
+    public RegenerateResponse regenerateRoleAssets(Long roleId, RegenerateRequest request) {
         Role role = roleMapper.selectById(roleId);
         if (role == null) {
             throw new BusinessException("角色不存在");
@@ -217,39 +223,91 @@ public class RoleServiceImpl implements RoleService {
             throw new AssetLockedException("角色已锁定，无法重新生成");
         }
 
-        // 如果有修改的提示词，更新角色的自定义提示词
-        if (request.getModifiedPrompt() != null && !request.getModifiedPrompt().trim().isEmpty()) {
-            role.setCustomPrompt(request.getModifiedPrompt());
-            role.setUpdatedAt(LocalDateTime.now());
-            roleMapper.updateById(role);
+        boolean isNewClothing = Boolean.TRUE.equals(request.getIsNewClothing());
+        String referenceImageUrl = request.getReferenceImageUrl();
+
+        // 判断是否有有效的参考图
+        boolean hasReferenceImage = referenceImageUrl != null && !referenceImageUrl.trim().isEmpty();
+
+        Integer clothingId = request.getClothingId();
+        if (clothingId == null || clothingId <= 0) {
+            clothingId = 1;
         }
 
-        boolean isNewClothing = Boolean.TRUE.equals(request.getIsNewClothing());
+        // 使用 TransactionTemplate 确保角色提示词更新和资产创建在同一个事务中
+        // 这样在返回响应后，新标签页的查询能看到一致的数据
+        final Integer finalClothingId = clothingId;
+        final String clothingName = request.getClothingName();
+        final String modifiedPrompt = request.getModifiedPrompt();
 
-        if (isNewClothing) {
-            // 生成新服装 - 使用图生图
-            // 使用用户选择的参考图，如果没有则使用默认服装图片
-            String referenceImageUrl = request.getReferenceImageUrl();
-            if (referenceImageUrl == null || referenceImageUrl.trim().isEmpty()) {
-                referenceImageUrl = getDefaultAssetImageUrl(roleId);
+        Object[] result = transactionTemplate.execute(status -> {
+            // 1. 先更新角色的自定义提示词（如果有修改）
+            if (modifiedPrompt != null && !modifiedPrompt.trim().isEmpty()) {
+                Role roleToUpdate = roleMapper.selectById(roleId);
+                if (roleToUpdate != null) {
+                    roleToUpdate.setCustomPrompt(modifiedPrompt);
+                    roleToUpdate.setUpdatedAt(LocalDateTime.now());
+                    roleMapper.updateById(roleToUpdate);
+                    log.info("更新角色提示词: roleId={}, prompt={}", roleId, modifiedPrompt);
+                }
             }
+
+            // 2. 创建生成中的资产
+            Integer nextClothingId = finalClothingId;
+            Integer nextVersion = null;
+            Long generatingAssetId = null;
+            Long previousActiveAssetId = null;
+
+            if (isNewClothing && hasReferenceImage) {
+                // 有参考图 - 使用图生图生成新服装
+                nextClothingId = assetService.getNextClothingId(roleId);
+                nextVersion = 1;
+                long[] assetResult = imageGenerateService.createGeneratingAsset(roleId, nextClothingId, clothingName);
+                generatingAssetId = assetResult[0];
+                previousActiveAssetId = assetResult[1] > 0 ? assetResult[1] : null;
+            } else {
+                // 没有参考图 - 使用文生图，在指定服装上生成
+                nextVersion = imageGenerateService.getNextVersion(roleId, nextClothingId);
+                long[] assetResult = imageGenerateService.createGeneratingAsset(roleId, nextClothingId, null);
+                generatingAssetId = assetResult[0];
+                previousActiveAssetId = assetResult[1] > 0 ? assetResult[1] : null;
+            }
+
+            return new Object[]{nextClothingId, nextVersion, generatingAssetId, previousActiveAssetId};
+        });
+
+        // 解析事务结果
+        clothingId = (Integer) result[0];
+        Integer nextVersion = (Integer) result[1];
+        Long generatingAssetId = (Long) result[2];
+        Long previousActiveAssetId = (Long) result[3];
+
+        log.info("资产创建事务已提交: roleId={}, clothingId={}, assetId={}", roleId, clothingId, generatingAssetId);
+
+        // 启动异步生成（在事务提交后）
+        if (isNewClothing && hasReferenceImage) {
             imageGenerateService.generateNewClothingWithReference(
                     roleId,
+                    clothingId,
+                    generatingAssetId,
+                    previousActiveAssetId,
                     referenceImageUrl,
-                    request.getModifiedPrompt(),
-                    request.getClothingName()
+                    modifiedPrompt,
+                    clothingName
             );
         } else {
-            // 重新生成当前服装 - 改变角色状态
-            role.setStatus(RoleStatus.EXTRACTING.getCode());
-            role.setUpdatedAt(LocalDateTime.now());
-            roleMapper.updateById(role);
-            imageGenerateService.generateCharacterAssets(roleId, request.getClothingId());
+            imageGenerateService.generateCharacterAssets(roleId, clothingId, generatingAssetId, previousActiveAssetId);
         }
 
-        log.info("重新生成角色图片: roleId={}, isNewClothing={}", roleId, isNewClothing);
+        log.info("重新生成角色图片: roleId={}, clothingId={}, version={}, isNewClothing={}",
+                roleId, clothingId, nextVersion, isNewClothing);
 
-        return Collections.emptyList();
+        // 返回详细的响应信息
+        return RegenerateResponse.builder()
+                .clothingId(clothingId)
+                .version(nextVersion)
+                .assetId(generatingAssetId)
+                .build();
     }
 
     /**

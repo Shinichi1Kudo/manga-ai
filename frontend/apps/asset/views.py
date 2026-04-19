@@ -87,6 +87,18 @@ def rename_clothing(request, role_id, clothing_id):
         return JsonResponse({'success': False, 'error': e.message}, status=400)
 
 
+@csrf_exempt
+@require_http_methods(["DELETE"])
+def delete_clothing(request, role_id, clothing_id):
+    """删除服装"""
+    client = BackendClient()
+    try:
+        client.delete(f'/v1/assets/role/{role_id}/clothing/{clothing_id}')
+        return JsonResponse({'success': True})
+    except BackendAPIError as e:
+        return JsonResponse({'success': False, 'error': e.message}, status=400)
+
+
 def get_clothing_versions(request, role_id, clothing_id):
     """获取服装的所有版本"""
     client = BackendClient()

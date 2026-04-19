@@ -2,6 +2,7 @@
 URL configuration for manga_ai project.
 """
 from django.urls import path, include
+from apps.role import urls as role_urls
 
 urlpatterns = [
     # 首页
@@ -15,4 +16,5 @@ urlpatterns = [
 
     # API routes (for AJAX calls)
     path('api/', include(('apps.asset.urls', 'asset-api'), namespace='asset-api')),
+    path('api/', include((role_urls.api_urlpatterns, 'role-api'), namespace='role-api')),
 ]

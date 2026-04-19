@@ -75,4 +75,11 @@ public interface AssetService {
      * @param clothingName 新名称
      */
     void renameClothing(Long roleId, Integer clothingId, String clothingName);
+
+    /**
+     * 删除指定服装（删除该服装的所有版本）
+     * @param roleId 角色ID
+     * @param clothingId 服装ID
+     */
+    void deleteClothing(Long roleId, Integer clothingId);
 }
