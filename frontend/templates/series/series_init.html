@@ -100,14 +100,238 @@
         </form>
     </div>
 </div>
+
+<!-- 风格预览弹窗 -->
+<div class="modal-backdrop" id="stylePreviewModal" onclick="closeStylePreview(event)">
+    <div class="modal-content max-w-4xl" onclick="event.stopPropagation()">
+        <div class="p-6 border-b border-white/10 flex items-center justify-between">
+            <div>
+                <h3 class="text-xl font-bold">风格预览</h3>
+                <p class="text-white/50 text-sm mt-1">点击卡片选择风格，点击放大图标查看详情</p>
+            </div>
+            <button onclick="closeStylePreview()" class="p-2 rounded-lg hover:bg-white/10 transition-colors">
+                <i data-lucide="x" class="w-5 h-5"></i>
+            </button>
+        </div>
+        <div class="p-6 grid grid-cols-2 md:grid-cols-3 gap-4 max-h-[70vh] overflow-y-auto">
+            <div class="style-option group cursor-pointer rounded-xl overflow-hidden border border-white/10 hover:border-violet-500/50 transition-all relative">
+                <div onclick="selectStyleFromPreview('3d_anime')">
+                    <div class="aspect-square bg-gradient-to-br from-blue-400 via-purple-400 to-pink-400 flex items-center justify-center relative">
+                        <div class="absolute inset-0 bg-black/20"></div>
+                        <span class="text-4xl relative z-10">🎭</span>
+                    </div>
+                    <div class="p-3 bg-white/5">
+                        <p class="font-medium text-sm">超精细3D动漫</p>
+                        <p class="text-xs text-white/50">Pixar/迪士尼风格，电影级渲染</p>
+                    </div>
+                </div>
+                <button onclick="event.stopPropagation(); zoomStylePreview('3d_anime', '超精细3D动漫', 'Pixar/迪士尼风格，电影级渲染。角色具有精细的3D建模效果，皮肤质感细腻，光影效果逼真，适合制作高质量动画角色。')" class="absolute top-2 right-2 p-1.5 rounded-lg bg-black/50 hover:bg-black/70 transition-colors opacity-0 group-hover:opacity-100">
+                    <i data-lucide="maximize-2" class="w-4 h-4"></i>
+                </button>
+            </div>
+            <div class="style-option group cursor-pointer rounded-xl overflow-hidden border border-white/10 hover:border-violet-500/50 transition-all relative">
+                <div onclick="selectStyleFromPreview('realistic')">
+                    <div class="aspect-square bg-gradient-to-br from-amber-200 via-orange-300 to-rose-400 flex items-center justify-center relative">
+                        <div class="absolute inset-0 bg-black/10"></div>
+                        <span class="text-4xl relative z-10">📷</span>
+                    </div>
+                    <div class="p-3 bg-white/5">
+                        <p class="font-medium text-sm">真人风格</p>
+                        <p class="text-xs text-white/50">真实照片效果，自然光影</p>
+                    </div>
+                </div>
+                <button onclick="event.stopPropagation(); zoomStylePreview('realistic', '真人风格', '真实照片效果，自然光影。角色呈现真人般的质感，皮肤纹理真实，适合制作写实风格的角色插画或概念设计。')" class="absolute top-2 right-2 p-1.5 rounded-lg bg-black/50 hover:bg-black/70 transition-colors opacity-0 group-hover:opacity-100">
+                    <i data-lucide="maximize-2" class="w-4 h-4"></i>
+                </button>
+            </div>
+            <div class="style-option group cursor-pointer rounded-xl overflow-hidden border border-white/10 hover:border-violet-500/50 transition-all relative">
+                <div onclick="selectStyleFromPreview('anime_jp')">
+                    <div class="aspect-square bg-gradient-to-br from-pink-400 via-rose-400 to-red-400 flex items-center justify-center relative">
+                        <div class="absolute inset-0 bg-black/10"></div>
+                        <span class="text-4xl relative z-10">🌸</span>
+                    </div>
+                    <div class="p-3 bg-white/5">
+                        <p class="font-medium text-sm">日系动漫</p>
+                        <p class="text-xs text-white/50">日漫风格，赛璐璐上色</p>
+                    </div>
+                </div>
+                <button onclick="event.stopPropagation(); zoomStylePreview('anime_jp', '日系动漫', '日漫风格，赛璐璐上色。经典日本动画风格，线条清晰流畅，色彩鲜艳明快，适合制作动漫角色和插画。')" class="absolute top-2 right-2 p-1.5 rounded-lg bg-black/50 hover:bg-black/70 transition-colors opacity-0 group-hover:opacity-100">
+                    <i data-lucide="maximize-2" class="w-4 h-4"></i>
+                </button>
+            </div>
+            <div class="style-option group cursor-pointer rounded-xl overflow-hidden border border-white/10 hover:border-violet-500/50 transition-all relative">
+                <div onclick="selectStyleFromPreview('cartoon_us')">
+                    <div class="aspect-square bg-gradient-to-br from-yellow-400 via-orange-400 to-red-500 flex items-center justify-center relative">
+                        <div class="absolute inset-0 bg-black/10"></div>
+                        <span class="text-4xl relative z-10">🎨</span>
+                    </div>
+                    <div class="p-3 bg-white/5">
+                        <p class="font-medium text-sm">美式卡通</p>
+                        <p class="text-xs text-white/50">美漫风格，夸张表情</p>
+                    </div>
+                </div>
+                <button onclick="event.stopPropagation(); zoomStylePreview('cartoon_us', '美式卡通', '美漫风格，夸张表情。典型美国动画风格，线条粗犷有力，表情动作夸张，色彩鲜明，适合制作幽默风格角色。')" class="absolute top-2 right-2 p-1.5 rounded-lg bg-black/50 hover:bg-black/70 transition-colors opacity-0 group-hover:opacity-100">
+                    <i data-lucide="maximize-2" class="w-4 h-4"></i>
+                </button>
+            </div>
+            <div class="style-option group cursor-pointer rounded-xl overflow-hidden border border-white/10 hover:border-violet-500/50 transition-all relative">
+                <div onclick="selectStyleFromPreview('watercolor')">
+                    <div class="aspect-square bg-gradient-to-br from-sky-200 via-blue-300 to-indigo-400 flex items-center justify-center relative">
+                        <div class="absolute inset-0 bg-black/5"></div>
+                        <span class="text-4xl relative z-10">🖼️</span>
+                    </div>
+                    <div class="p-3 bg-white/5">
+                        <p class="font-medium text-sm">水彩插画</p>
+                        <p class="text-xs text-white/50">柔和色彩，艺术手绘感</p>
+                    </div>
+                </div>
+                <button onclick="event.stopPropagation(); zoomStylePreview('watercolor', '水彩插画', '柔和色彩，艺术手绘感。水彩画风格，颜色晕染自然，边缘柔和，具有手绘艺术质感，适合制作文艺风格角色。')" class="absolute top-2 right-2 p-1.5 rounded-lg bg-black/50 hover:bg-black/70 transition-colors opacity-0 group-hover:opacity-100">
+                    <i data-lucide="maximize-2" class="w-4 h-4"></i>
+                </button>
+            </div>
+            <div class="style-option group cursor-pointer rounded-xl overflow-hidden border border-white/10 hover:border-violet-500/50 transition-all relative">
+                <div onclick="selectStyleFromPreview('oil_painting')">
+                    <div class="aspect-square bg-gradient-to-br from-amber-400 via-orange-500 to-red-600 flex items-center justify-center relative">
+                        <div class="absolute inset-0 bg-black/10"></div>
+                        <span class="text-4xl relative z-10">🖌️</span>
+                    </div>
+                    <div class="p-3 bg-white/5">
+                        <p class="font-medium text-sm">油画风格</p>
+                        <p class="text-xs text-white/50">古典艺术，丰富纹理</p>
+                    </div>
+                </div>
+                <button onclick="event.stopPropagation(); zoomStylePreview('oil_painting', '油画风格', '古典艺术，丰富纹理。油画质感，笔触明显，色彩层次丰富，具有古典艺术气息，适合制作艺术品风格角色。')" class="absolute top-2 right-2 p-1.5 rounded-lg bg-black/50 hover:bg-black/70 transition-colors opacity-0 group-hover:opacity-100">
+                    <i data-lucide="maximize-2" class="w-4 h-4"></i>
+                </button>
+            </div>
+            <div class="style-option group cursor-pointer rounded-xl overflow-hidden border border-white/10 hover:border-violet-500/50 transition-all relative">
+                <div onclick="selectStyleFromPreview('cyberpunk')">
+                    <div class="aspect-square bg-gradient-to-br from-purple-600 via-pink-500 to-cyan-400 flex items-center justify-center relative">
+                        <div class="absolute inset-0 bg-black/20"></div>
+                        <span class="text-4xl relative z-10">🌃</span>
+                    </div>
+                    <div class="p-3 bg-white/5">
+                        <p class="font-medium text-sm">赛博朋克</p>
+                        <p class="text-xs text-white/50">霓虹灯光，科幻未来</p>
+                    </div>
+                </div>
+                <button onclick="event.stopPropagation(); zoomStylePreview('cyberpunk', '赛博朋克', '霓虹灯光，科幻未来。赛博朋克美学，霓虹色调，高科技感，暗黑氛围，适合制作科幻风格角色。')" class="absolute top-2 right-2 p-1.5 rounded-lg bg-black/50 hover:bg-black/70 transition-colors opacity-0 group-hover:opacity-100">
+                    <i data-lucide="maximize-2" class="w-4 h-4"></i>
+                </button>
+            </div>
+            <div class="style-option group cursor-pointer rounded-xl overflow-hidden border border-white/10 hover:border-violet-500/50 transition-all relative">
+                <div onclick="selectStyleFromPreview('chinese_style')">
+                    <div class="aspect-square bg-gradient-to-br from-red-300 via-rose-400 to-pink-500 flex items-center justify-center relative">
+                        <div class="absolute inset-0 bg-black/10"></div>
+                        <span class="text-4xl relative z-10">🏯</span>
+                    </div>
+                    <div class="p-3 bg-white/5">
+                        <p class="font-medium text-sm">古风国漫</p>
+                        <p class="text-xs text-white/50">中国风，优雅古典</p>
+                    </div>
+                </div>
+                <button onclick="event.stopPropagation(); zoomStylePreview('chinese_style', '古风国漫', '中国风，优雅古典。国风美学，水墨意境，传统配色，古典韵味，适合制作古风角色和中国风插画。')" class="absolute top-2 right-2 p-1.5 rounded-lg bg-black/50 hover:bg-black/70 transition-colors opacity-0 group-hover:opacity-100">
+                    <i data-lucide="maximize-2" class="w-4 h-4"></i>
+                </button>
+            </div>
+            <div class="style-option group cursor-pointer rounded-xl overflow-hidden border border-white/10 hover:border-violet-500/50 transition-all relative">
+                <div onclick="selectStyleFromPreview('pixel_art')">
+                    <div class="aspect-square bg-gradient-to-br from-green-400 via-teal-500 to-cyan-600 flex items-center justify-center relative" style="image-rendering: pixelated;">
+                        <div class="absolute inset-0 bg-black/10"></div>
+                        <span class="text-4xl relative z-10">👾</span>
+                    </div>
+                    <div class="p-3 bg-white/5">
+                        <p class="font-medium text-sm">像素风格</p>
+                        <p class="text-xs text-white/50">复古游戏，8位像素</p>
+                    </div>
+                </div>
+                <button onclick="event.stopPropagation(); zoomStylePreview('pixel_art', '像素风格', '复古游戏，8位像素。经典像素艺术风格，方块像素构成，怀旧游戏感，适合制作复古风格角色和游戏素材。')" class="absolute top-2 right-2 p-1.5 rounded-lg bg-black/50 hover:bg-black/70 transition-colors opacity-0 group-hover:opacity-100">
+                    <i data-lucide="maximize-2" class="w-4 h-4"></i>
+                </button>
+            </div>
+            <div class="style-option group cursor-pointer rounded-xl overflow-hidden border border-white/10 hover:border-violet-500/50 transition-all relative">
+                <div onclick="selectStyleFromPreview('chibi')">
+                    <div class="aspect-square bg-gradient-to-br from-pink-300 via-purple-300 to-indigo-400 flex items-center justify-center relative">
+                        <div class="absolute inset-0 bg-black/5"></div>
+                        <span class="text-4xl relative z-10">🧸</span>
+                    </div>
+                    <div class="p-3 bg-white/5">
+                        <p class="font-medium text-sm">Q版卡通</p>
+                        <p class="text-xs text-white/50">大头小身，可爱萌系</p>
+                    </div>
+                </div>
+                <button onclick="event.stopPropagation(); zoomStylePreview('chibi', 'Q版卡通', '大头小身，可爱萌系。Q版角色风格，头大身小，表情可爱，圆润线条，适合制作萌系角色和可爱风格插画。')" class="absolute top-2 right-2 p-1.5 rounded-lg bg-black/50 hover:bg-black/70 transition-colors opacity-0 group-hover:opacity-100">
+                    <i data-lucide="maximize-2" class="w-4 h-4"></i>
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- 风格放大预览弹窗 -->
+<div class="modal-backdrop" id="styleZoomModal" onclick="closeZoomModal(event)">
+    <div class="modal-content max-w-5xl" onclick="event.stopPropagation()">
+        <div class="p-6 border-b border-white/10 flex items-center justify-between">
+            <h3 class="text-xl font-bold" id="zoomStyleTitle">风格详情</h3>
+            <div class="flex items-center gap-2">
+                <button onclick="zoomOut()" class="p-2 rounded-lg hover:bg-white/10 transition-colors" title="缩小">
+                    <i data-lucide="zoom-out" class="w-5 h-5"></i>
+                </button>
+                <span id="zoomLevel" class="text-sm text-white/60 w-12 text-center">100%</span>
+                <button onclick="zoomIn()" class="p-2 rounded-lg hover:bg-white/10 transition-colors" title="放大">
+                    <i data-lucide="zoom-in" class="w-5 h-5"></i>
+                </button>
+                <button onclick="resetZoom()" class="p-2 rounded-lg hover:bg-white/10 transition-colors" title="重置">
+                    <i data-lucide="maximize" class="w-5 h-5"></i>
+                </button>
+                <button onclick="closeZoomModal()" class="p-2 rounded-lg hover:bg-white/10 transition-colors">
+                    <i data-lucide="x" class="w-5 h-5"></i>
+                </button>
+            </div>
+        </div>
+        <div class="p-6 flex gap-6">
+            <div class="flex-1 flex items-center justify-center bg-black/20 rounded-xl overflow-hidden min-h-[400px]">
+                <div id="zoomPreviewContent" class="transition-transform duration-200 origin-center" style="transform: scale(1);">
+                </div>
+            </div>
+            <div class="w-64 space-y-4">
+                <div>
+                    <h4 class="text-sm font-medium text-white/70 mb-2">风格描述</h4>
+                    <p id="zoomStyleDescription" class="text-sm text-white/50"></p>
+                </div>
+                <div>
+                    <h4 class="text-sm font-medium text-white/70 mb-2">提示词关键词</h4>
+                    <p id="zoomStyleKeywords" class="text-xs text-white/40 bg-white/5 p-3 rounded-lg"></p>
+                </div>
+                <button onclick="selectFromZoomModal()" class="w-full btn-neon py-3">
+                    <i data-lucide="check" class="w-4 h-4 inline mr-2"></i>选择此风格
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
 {% endblock %}
 
 {% block extra_js %}
 <script>
 let characterCount = 0;
 
+// 风格预设映射
+const STYLE_PRESETS = {
+    '3d_anime': 'ultra detailed 3D anime style, Pixar style, Disney style, high quality render, cinematic lighting',
+    'realistic': 'photorealistic, realistic portrait, real person photography, natural lighting, high detail',
+    'anime_jp': 'Japanese anime style, manga style, cel shading, vibrant colors, clean lines',
+    'cartoon_us': 'American cartoon style, bold lines, expressive features, colorful, stylized',
+    'watercolor': 'watercolor painting style, soft colors, artistic, hand-painted look, illustration',
+    'oil_painting': 'oil painting style, classical art, rich textures, artistic brush strokes',
+    'cyberpunk': 'cyberpunk style, neon lights, futuristic, sci-fi, dark atmosphere, glowing effects',
+    'chinese_style': 'Chinese art style, traditional Chinese painting, guofeng, elegant, classical beauty',
+    'pixel_art': 'pixel art style, retro game aesthetic, 8-bit, nostalgic, blocky pixels',
+    'chibi': 'chibi style, cute, deformed, big head small body, kawaii, adorable'
+};
+
 // 创建角色卡片
-function createCharacterCard(index, name = '', prompt = '') {
+function createCharacterCard(index, name = '', prompt = '', aspectRatio = '', quality = '', style = '') {
     const card = document.createElement('div');
     card.className = 'glass-card p-5 character-card';
     card.dataset.index = index;
@@ -124,9 +348,55 @@ function createCharacterCard(index, name = '', prompt = '') {
             </button>
         </div>
 
-        <div>
-            <label class="block text-xs text-white/50 mb-1">提示词</label>
+        <div class="mb-4">
+            <label class="block text-xs text-white/50 mb-1">提示词 <span class="text-red-400">*</span></label>
             <textarea class="input-modern text-sm character-prompt" rows="3" placeholder="输入角色描述，用于生成三视图图片。例如：A young man with black short hair and sharp eyes, wearing a black trench coat, anime style, detailed, high quality character design sheet with front, side and back views">${prompt}</textarea>
+        </div>
+
+        <div class="grid grid-cols-3 gap-4">
+            <div>
+                <label class="block text-xs text-white/50 mb-1">图片比例 <span class="text-red-400">*</span></label>
+                <select class="input-modern text-sm character-aspect-ratio" required>
+                    <option value="">请选择</option>
+                    <option value="1:1" ${aspectRatio === '1:1' ? 'selected' : ''}>1:1</option>
+                    <option value="3:4" ${aspectRatio === '3:4' ? 'selected' : ''}>3:4</option>
+                    <option value="4:3" ${aspectRatio === '4:3' ? 'selected' : ''}>4:3</option>
+                    <option value="16:9" ${aspectRatio === '16:9' ? 'selected' : ''}>16:9</option>
+                    <option value="9:16" ${aspectRatio === '9:16' ? 'selected' : ''}>9:16</option>
+                    <option value="2:3" ${aspectRatio === '2:3' ? 'selected' : ''}>2:3</option>
+                    <option value="3:2" ${aspectRatio === '3:2' ? 'selected' : ''}>3:2</option>
+                    <option value="21:9" ${aspectRatio === '21:9' ? 'selected' : ''}>21:9</option>
+                </select>
+            </div>
+            <div>
+                <label class="block text-xs text-white/50 mb-1">清晰度 <span class="text-red-400">*</span></label>
+                <select class="input-modern text-sm character-quality" required>
+                    <option value="">请选择</option>
+                    <option value="hd" ${quality === 'hd' ? 'selected' : ''}>高清</option>
+                    <option value="uhd" ${quality === 'uhd' ? 'selected' : ''}>超清</option>
+                </select>
+            </div>
+            <div>
+                <label class="block text-xs text-white/50 mb-1">图片风格 <span class="text-red-400">*</span></label>
+                <div class="flex gap-2">
+                    <select class="input-modern text-sm character-style flex-1" required>
+                        <option value="">请选择</option>
+                        <option value="3d_anime" ${style === '3d_anime' ? 'selected' : ''}>超精细3D动漫</option>
+                        <option value="realistic" ${style === 'realistic' ? 'selected' : ''}>真人风格</option>
+                        <option value="anime_jp" ${style === 'anime_jp' ? 'selected' : ''}>日系动漫</option>
+                        <option value="cartoon_us" ${style === 'cartoon_us' ? 'selected' : ''}>美式卡通</option>
+                        <option value="watercolor" ${style === 'watercolor' ? 'selected' : ''}>水彩插画</option>
+                        <option value="oil_painting" ${style === 'oil_painting' ? 'selected' : ''}>油画风格</option>
+                        <option value="cyberpunk" ${style === 'cyberpunk' ? 'selected' : ''}>赛博朋克</option>
+                        <option value="chinese_style" ${style === 'chinese_style' ? 'selected' : ''}>古风国漫</option>
+                        <option value="pixel_art" ${style === 'pixel_art' ? 'selected' : ''}>像素风格</option>
+                        <option value="chibi" ${style === 'chibi' ? 'selected' : ''}>Q版卡通</option>
+                    </select>
+                    <button type="button" class="style-preview-btn px-3 py-2 rounded-lg bg-white/10 hover:bg-white/20 text-xs transition-colors" onclick="openStylePreview(event)">
+                        <i data-lucide="eye" class="w-4 h-4"></i>
+                    </button>
+                </div>
+            </div>
         </div>
     `;
 
@@ -134,9 +404,9 @@ function createCharacterCard(index, name = '', prompt = '') {
 }
 
 // 添加角色
-function addCharacter(name = '', prompt = '') {
+function addCharacter(name = '', prompt = '', aspectRatio = '', quality = '', style = '') {
     const container = document.getElementById('characterContainer');
-    const card = createCharacterCard(characterCount, name, prompt);
+    const card = createCharacterCard(characterCount, name, prompt, aspectRatio, quality, style);
     container.appendChild(card);
     characterCount++;
     lucide.createIcons();
@@ -169,9 +439,14 @@ function collectCharacterData() {
     document.querySelectorAll('.character-card').forEach(card => {
         const name = card.querySelector('.character-name').value.trim();
         if (name) {
+            const styleKey = card.querySelector('.character-style').value;
+            const styleKeywords = STYLE_PRESETS[styleKey] || '';
             characters.push({
                 roleName: name,
-                customPrompt: card.querySelector('.character-prompt').value.trim()
+                customPrompt: card.querySelector('.character-prompt').value.trim(),
+                aspectRatio: card.querySelector('.character-aspect-ratio').value,
+                quality: card.querySelector('.character-quality').value,
+                styleKeywords: styleKeywords
             });
         }
     });
@@ -185,7 +460,17 @@ document.addEventListener('DOMContentLoaded', function() {
     if (savedCharacters.length > 0) {
         // 有之前的数据，恢复角色卡片
         savedCharacters.forEach(char => {
-            addCharacter(char.roleName || '', char.customPrompt || '');
+            // 反向查找 style key
+            let styleKey = '';
+            if (char.styleKeywords) {
+                for (const [key, value] of Object.entries(STYLE_PRESETS)) {
+                    if (value === char.styleKeywords) {
+                        styleKey = key;
+                        break;
+                    }
+                }
+            }
+            addCharacter(char.roleName || '', char.customPrompt || '', char.aspectRatio || '', char.quality || '', styleKey);
         });
     } else {
         // 没有数据，添加一个空的角色卡片
@@ -208,6 +493,45 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // 表单提交
     document.getElementById('seriesForm').addEventListener('submit', function(e) {
+        // 验证每个角色的必填项
+        let hasError = false;
+        document.querySelectorAll('.character-card').forEach(card => {
+            const name = card.querySelector('.character-name').value.trim();
+            const prompt = card.querySelector('.character-prompt').value.trim();
+            const aspectRatio = card.querySelector('.character-aspect-ratio').value;
+            const quality = card.querySelector('.character-quality').value;
+            const style = card.querySelector('.character-style').value;
+
+            if (name) {
+                if (!prompt) {
+                    e.preventDefault();
+                    alert('请为角色 "' + name + '" 填写提示词');
+                    hasError = true;
+                    return false;
+                }
+                if (!aspectRatio) {
+                    e.preventDefault();
+                    alert('请为角色 "' + name + '" 选择图片比例');
+                    hasError = true;
+                    return false;
+                }
+                if (!quality) {
+                    e.preventDefault();
+                    alert('请为角色 "' + name + '" 选择清晰度');
+                    hasError = true;
+                    return false;
+                }
+                if (!style) {
+                    e.preventDefault();
+                    alert('请为角色 "' + name + '" 选择图片风格');
+                    hasError = true;
+                    return false;
+                }
+            }
+        });
+
+        if (hasError) return false;
+
         const characters = collectCharacterData();
 
         if (characters.length === 0) {
@@ -224,6 +548,134 @@ document.addEventListener('DOMContentLoaded', function() {
         submitBtn.disabled = true;
         submitBtn.innerHTML = '创建中...';
     });
+});
+
+// 风格预览相关函数
+let currentStylePreviewCard = null;
+
+function openStylePreview(event) {
+    event.preventDefault();
+    event.stopPropagation();
+    currentStylePreviewCard = event.target.closest('.character-card');
+    document.getElementById('stylePreviewModal').classList.add('active');
+    lucide.createIcons();
+}
+
+function closeStylePreview(event) {
+    if (event && event.target !== event.currentTarget) return;
+    document.getElementById('stylePreviewModal').classList.remove('active');
+    currentStylePreviewCard = null;
+}
+
+function selectStyleFromPreview(styleKey) {
+    if (currentStylePreviewCard) {
+        const select = currentStylePreviewCard.querySelector('.character-style');
+        if (select) {
+            select.value = styleKey;
+        }
+    }
+    closeStylePreview();
+}
+
+// 放大预览相关函数
+let currentZoomStyleKey = null;
+let currentZoomScale = 1;
+
+const STYLE_BG_MAP = {
+    '3d_anime': 'bg-gradient-to-br from-blue-400 via-purple-400 to-pink-400',
+    'realistic': 'bg-gradient-to-br from-amber-200 via-orange-300 to-rose-400',
+    'anime_jp': 'bg-gradient-to-br from-pink-400 via-rose-400 to-red-400',
+    'cartoon_us': 'bg-gradient-to-br from-yellow-400 via-orange-400 to-red-500',
+    'watercolor': 'bg-gradient-to-br from-sky-200 via-blue-300 to-indigo-400',
+    'oil_painting': 'bg-gradient-to-br from-amber-400 via-orange-500 to-red-600',
+    'cyberpunk': 'bg-gradient-to-br from-purple-600 via-pink-500 to-cyan-400',
+    'chinese_style': 'bg-gradient-to-br from-red-300 via-rose-400 to-pink-500',
+    'pixel_art': 'bg-gradient-to-br from-green-400 via-teal-500 to-cyan-600',
+    'chibi': 'bg-gradient-to-br from-pink-300 via-purple-300 to-indigo-400'
+};
+
+const STYLE_EMOJI_MAP = {
+    '3d_anime': '🎭',
+    'realistic': '📷',
+    'anime_jp': '🌸',
+    'cartoon_us': '🎨',
+    'watercolor': '🖼️',
+    'oil_painting': '🖌️',
+    'cyberpunk': '🌃',
+    'chinese_style': '🏯',
+    'pixel_art': '👾',
+    'chibi': '🧸'
+};
+
+function zoomStylePreview(styleKey, title, description) {
+    currentZoomStyleKey = styleKey;
+    currentZoomScale = 1;
+
+    document.getElementById('zoomStyleTitle').textContent = title;
+    document.getElementById('zoomStyleDescription').textContent = description;
+    document.getElementById('zoomStyleKeywords').textContent = STYLE_PRESETS[styleKey] || '';
+
+    const previewContent = document.getElementById('zoomPreviewContent');
+    previewContent.innerHTML = `
+        <div class="w-80 h-80 ${STYLE_BG_MAP[styleKey]} flex items-center justify-center rounded-2xl shadow-2xl">
+            <span class="text-8xl">${STYLE_EMOJI_MAP[styleKey]}</span>
+        </div>
+    `;
+    previewContent.style.transform = 'scale(1)';
+    document.getElementById('zoomLevel').textContent = '100%';
+
+    document.getElementById('styleZoomModal').classList.add('active');
+    lucide.createIcons();
+}
+
+function closeZoomModal(event) {
+    if (event && event.target !== event.currentTarget) return;
+    document.getElementById('styleZoomModal').classList.remove('active');
+    currentZoomStyleKey = null;
+}
+
+function zoomIn() {
+    if (currentZoomScale < 2) {
+        currentZoomScale += 0.25;
+        updateZoom();
+    }
+}
+
+function zoomOut() {
+    if (currentZoomScale > 0.5) {
+        currentZoomScale -= 0.25;
+        updateZoom();
+    }
+}
+
+function resetZoom() {
+    currentZoomScale = 1;
+    updateZoom();
+}
+
+function updateZoom() {
+    const previewContent = document.getElementById('zoomPreviewContent');
+    previewContent.style.transform = `scale(${currentZoomScale})`;
+    document.getElementById('zoomLevel').textContent = Math.round(currentZoomScale * 100) + '%';
+}
+
+function selectFromZoomModal() {
+    if (currentZoomStyleKey) {
+        selectStyleFromPreview(currentZoomStyleKey);
+        closeZoomModal();
+    }
+}
+
+// 鼠标滚轮缩放
+document.getElementById('styleZoomModal')?.addEventListener('wheel', function(e) {
+    if (e.target.closest('#zoomPreviewContent')) {
+        e.preventDefault();
+        if (e.deltaY < 0) {
+            zoomIn();
+        } else {
+            zoomOut();
+        }
+    }
 });
 </script>
 {% endblock %}

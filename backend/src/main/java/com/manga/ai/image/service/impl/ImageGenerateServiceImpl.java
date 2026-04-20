@@ -89,7 +89,7 @@ public class ImageGenerateServiceImpl implements ImageGenerateService {
 
         try {
             String prompt = buildCharacterSheetPrompt(request);
-            String size = convertAspectRatioToSize(request.getAspectRatio());
+            String size = convertAspectRatioToSize(request.getAspectRatio(), request.getQuality());
 
             JSONObject requestBody = new JSONObject();
             requestBody.put("model", model);
@@ -145,7 +145,7 @@ public class ImageGenerateServiceImpl implements ImageGenerateService {
 
         try {
             String prompt = buildClothingChangePrompt(request);
-            String size = convertAspectRatioToSize(request.getAspectRatio());
+            String size = convertAspectRatioToSize(request.getAspectRatio(), request.getQuality());
 
             JSONObject requestBody = new JSONObject();
             requestBody.put("model", model);
@@ -203,13 +203,46 @@ public class ImageGenerateServiceImpl implements ImageGenerateService {
 
     /**
      * 转换图片比例为SDK支持的size格式
+     * @param aspectRatio 图片比例
+     * @param quality 清晰度 (hd/uhd)
+     */
+    private String convertAspectRatioToSize(String aspectRatio, String quality) {
+        boolean isUHD = "uhd".equalsIgnoreCase(quality);
+
+        if (isUHD) {
+            // 超清 (3K)
+            switch (aspectRatio) {
+                case "1:1": return "3072x3072";
+                case "3:4": return "2592x3456";
+                case "4:3": return "3456x2592";
+                case "16:9": return "4096x2304";
+                case "9:16": return "2304x4096";
+                case "2:3": return "2496x3744";
+                case "3:2": return "3744x2496";
+                case "21:9": return "4704x2016";
+                default: return "2592x3456"; // 默认3:4
+            }
+        } else {
+            // 高清 (2K)
+            switch (aspectRatio) {
+                case "1:1": return "2048x2048";
+                case "3:4": return "1728x2304";
+                case "4:3": return "2304x1728";
+                case "16:9": return "2848x1600";
+                case "9:16": return "1600x2848";
+                case "2:3": return "1664x2496";
+                case "3:2": return "2496x1664";
+                case "21:9": return "3136x1344";
+                default: return "1728x2304"; // 默认3:4
+            }
+        }
+    }
+
+    /**
+     * 转换图片比例为SDK支持的size格式（兼容旧接口）
      */
     private String convertAspectRatioToSize(String aspectRatio) {
-        if ("16:9".equals(aspectRatio)) {
-            return "2560x1440"; // 2K横图
-        } else {
-            return "2048x2048"; // 正方形
-        }
+        return convertAspectRatioToSize(aspectRatio, "hd");
     }
 
     /**
@@ -240,15 +273,27 @@ public class ImageGenerateServiceImpl implements ImageGenerateService {
         // 如果有自定义提示词，优先使用
         if (request.getCustomPrompt() != null && !request.getCustomPrompt().trim().isEmpty()) {
             prompt.append(request.getCustomPrompt());
+
+            // 风格关键词 - 放在用户提示词后面，确保风格生效
+            if (request.getStyleKeywords() != null && !request.getStyleKeywords().trim().isEmpty()) {
+                prompt.append(". Style: ").append(request.getStyleKeywords()).append(". ");
+            }
+
             // 确保包含三视图要求
             if (!request.getCustomPrompt().toLowerCase().contains("three view") &&
                 !request.getCustomPrompt().toLowerCase().contains("character sheet") &&
                 !request.getCustomPrompt().toLowerCase().contains("front") &&
                 !request.getCustomPrompt().toLowerCase().contains("side") &&
                 !request.getCustomPrompt().toLowerCase().contains("back")) {
-                prompt.append(". Character design sheet with three views in ONE image: ");
+                prompt.append("Character design sheet with three views in ONE image: ");
                 prompt.append("front view (center), side view (left), back view (right). ");
             }
+            // 强调完整全身照 - 必须显示脚
+            prompt.append("CRITICAL: MUST show COMPLETE FULL BODY from top of head to bottom of feet. ");
+            prompt.append("FEET MUST BE VISIBLE. Do NOT crop feet, ankles, or any body part. ");
+            prompt.append("Character standing with feet clearly visible on the ground. ");
+            // 强制白色背景
+            prompt.append("MUST have PURE WHITE BACKGROUND (#FFFFFF). NO colored background, NO gradient background. ");
             // 禁止文字
             prompt.append("NO text, NO words, NO letters, NO numbers, NO captions, NO labels, NO watermarks. ");
             return prompt.toString();
@@ -257,7 +302,9 @@ public class ImageGenerateServiceImpl implements ImageGenerateService {
         // 默认提示词构建
         prompt.append("Character design sheet with three views in ONE image: ");
         prompt.append("front view (center), side view (left), back view (right). ");
-        prompt.append("Full body character reference sheet. ");
+        prompt.append("CRITICAL: COMPLETE FULL BODY from top of head to bottom of FEET. ");
+        prompt.append("FEET MUST BE FULLY VISIBLE. Do NOT crop or cut off feet, ankles, or legs. ");
+        prompt.append("MUST have PURE WHITE BACKGROUND (#FFFFFF). NO colored background, NO gradient background. ");
 
         // 角色描述
         prompt.append("Character: ").append(request.getRoleName()).append(". ");
@@ -271,10 +318,11 @@ public class ImageGenerateServiceImpl implements ImageGenerateService {
         }
 
         // 强调要求
-        prompt.append("White background, professional character sheet layout, ");
+        prompt.append("CRITICAL: PURE WHITE BACKGROUND (#FFFFFF) - NO exceptions. ");
+        prompt.append("Professional character sheet layout, ");
         prompt.append("consistent style across all views, ");
-        prompt.append("A-pose standing pose for front view, ");
-        prompt.append("clear outline, high quality, detailed. ");
+        prompt.append("A-pose or T-pose standing pose with FEET CLEARLY VISIBLE, ");
+        prompt.append("showing entire body including feet and shoes. ");
 
         // 禁止文字
         prompt.append("NO text, NO words, NO letters, NO numbers, NO captions, NO labels, NO watermarks, NO Chinese characters, NO English text.");
@@ -294,14 +342,28 @@ public class ImageGenerateServiceImpl implements ImageGenerateService {
         prompt.append("Do NOT change the person's appearance, age, or art style. ");
         prompt.append("Maintain the exact same visual style as the reference image. ");
 
+        // 强调完整全身照 - 必须显示脚
+        prompt.append("CRITICAL: MUST show COMPLETE FULL BODY from top of head to bottom of FEET. ");
+        prompt.append("FEET MUST BE FULLY VISIBLE. Do NOT crop feet, ankles, or any body part. ");
+        prompt.append("Character standing with feet clearly visible on the ground. ");
+
+        // 强制白色背景
+        prompt.append("MUST have PURE WHITE BACKGROUND (#FFFFFF). NO colored background, NO gradient background. ");
+
         // 新服装描述
         if (request.getClothingPrompt() != null && !request.getClothingPrompt().trim().isEmpty()) {
             prompt.append("Only change the outfit to: ").append(request.getClothingPrompt()).append(". ");
         }
 
+        // 风格关键词
+        if (request.getStyleKeywords() != null && !request.getStyleKeywords().trim().isEmpty()) {
+            prompt.append("Style: ").append(request.getStyleKeywords()).append(". ");
+        }
+
         // 三视图要求
         prompt.append("Generate a character sheet with three views: front, side, and back. ");
-        prompt.append("White background, high quality, detailed. ");
+        prompt.append("All views MUST show COMPLETE FULL BODY with FEET VISIBLE. ");
+        prompt.append("CRITICAL: PURE WHITE BACKGROUND (#FFFFFF) - NO exceptions. High quality, detailed. ");
 
         // 禁止文字
         prompt.append("NO text, NO words, NO letters, NO numbers, NO captions, NO labels, NO watermarks, NO Chinese characters, NO English text.");
@@ -312,23 +374,35 @@ public class ImageGenerateServiceImpl implements ImageGenerateService {
     @Override
     @Async("taskExecutor")
     public void generateCharacterAssets(Long roleId) {
-        generateCharacterAssets(roleId, null, null, null);
+        generateCharacterAssets(roleId, null, null, null, null, null);
     }
 
     @Override
     public void generateCharacterAssets(Long roleId, Integer clothingId) {
-        generateCharacterAssets(roleId, clothingId, null, null);
+        generateCharacterAssets(roleId, clothingId, null, null, null, null);
     }
 
     @Override
     public void generateCharacterAssets(Long roleId, Integer clothingId, Long generatingAssetId) {
-        generateCharacterAssets(roleId, clothingId, generatingAssetId, null);
+        generateCharacterAssets(roleId, clothingId, generatingAssetId, null, null, null);
     }
 
     @Override
     @Async("taskExecutor")
     public void generateCharacterAssets(Long roleId, Integer clothingId, Long generatingAssetId, Long previousActiveAssetId) {
-        log.info("异步生成角色资产: roleId={}, clothingId={}, previousActiveAssetId={}", roleId, clothingId, previousActiveAssetId);
+        generateCharacterAssets(roleId, clothingId, generatingAssetId, previousActiveAssetId, null, null);
+    }
+
+    @Override
+    @Async("taskExecutor")
+    public void generateCharacterAssets(Long roleId, Integer clothingId, Long generatingAssetId, Long previousActiveAssetId, String aspectRatio, String quality) {
+        generateCharacterAssets(roleId, clothingId, generatingAssetId, previousActiveAssetId, aspectRatio, quality, null);
+    }
+
+    @Override
+    @Async("taskExecutor")
+    public void generateCharacterAssets(Long roleId, Integer clothingId, Long generatingAssetId, Long previousActiveAssetId, String aspectRatio, String quality, String styleKeywords) {
+        log.info("异步生成角色资产: roleId={}, clothingId={}, previousActiveAssetId={}, aspectRatio={}, quality={}, styleKeywords={}", roleId, clothingId, previousActiveAssetId, aspectRatio, quality, styleKeywords);
 
         Role role = roleMapper.selectById(roleId);
         if (role == null) {
@@ -374,18 +448,21 @@ public class ImageGenerateServiceImpl implements ImageGenerateService {
         if (role.getAppearance() != null) description.append(role.getAppearance()).append(", ");
         if (role.getClothing() != null) description.append("wearing ").append(role.getClothing());
 
-        // 构建请求
-        String aspectRatio = series != null && series.getAspectRatio() != null ? series.getAspectRatio() : "3:4";
-        String quality = series != null && series.getQuality() != null ? series.getQuality() : "hd";
-        String styleKeywords = role.getStyleKeywords() != null ? role.getStyleKeywords() :
-                               (series != null ? series.getStyleKeywords() : "");
+        // 构建请求 - 优先使用传入的参数，否则使用系列默认值
+        String requestAspectRatio = aspectRatio != null ? aspectRatio :
+                (series != null && series.getAspectRatio() != null ? series.getAspectRatio() : "3:4");
+        String requestQuality = quality != null ? quality :
+                (series != null && series.getQuality() != null ? series.getQuality() : "hd");
+        String requestStyleKeywords = styleKeywords != null && !styleKeywords.trim().isEmpty() ? styleKeywords :
+                (role.getStyleKeywords() != null ? role.getStyleKeywords() :
+                (series != null ? series.getStyleKeywords() : ""));
 
         ImageGenerateRequest request = ImageGenerateRequest.builder()
                 .roleName(role.getRoleName())
                 .characterDescription(description.toString())
-                .aspectRatio(aspectRatio)
-                .quality(quality)
-                .styleKeywords(styleKeywords)
+                .aspectRatio(requestAspectRatio)
+                .quality(requestQuality)
+                .styleKeywords(requestStyleKeywords)
                 .seriesId(role.getSeriesId())
                 .roleId(roleId)
                 .customPrompt(role.getCustomPrompt())
@@ -525,7 +602,19 @@ public class ImageGenerateServiceImpl implements ImageGenerateService {
     @Override
     @Async("taskExecutor")
     public void generateNewClothingWithReference(Long roleId, Integer clothingId, Long generatingAssetId, Long previousActiveAssetId, String referenceImageUrl, String clothingPrompt, String clothingName) {
-        log.info("异步生成新服装（图生图）: roleId={}, clothingId={}, referenceUrl={}, clothingName={}", roleId, clothingId, referenceImageUrl, clothingName);
+        generateNewClothingWithReference(roleId, clothingId, generatingAssetId, previousActiveAssetId, referenceImageUrl, clothingPrompt, clothingName, null, null);
+    }
+
+    @Override
+    @Async("taskExecutor")
+    public void generateNewClothingWithReference(Long roleId, Integer clothingId, Long generatingAssetId, Long previousActiveAssetId, String referenceImageUrl, String clothingPrompt, String clothingName, String aspectRatio, String quality) {
+        generateNewClothingWithReference(roleId, clothingId, generatingAssetId, previousActiveAssetId, referenceImageUrl, clothingPrompt, clothingName, aspectRatio, quality, null);
+    }
+
+    @Override
+    @Async("taskExecutor")
+    public void generateNewClothingWithReference(Long roleId, Integer clothingId, Long generatingAssetId, Long previousActiveAssetId, String referenceImageUrl, String clothingPrompt, String clothingName, String aspectRatio, String quality, String styleKeywords) {
+        log.info("异步生成新服装（图生图）: roleId={}, clothingId={}, referenceUrl={}, clothingName={}, aspectRatio={}, quality={}, styleKeywords={}", roleId, clothingId, referenceImageUrl, clothingName, aspectRatio, quality, styleKeywords);
 
         Role role = roleMapper.selectById(roleId);
         if (role == null) {
@@ -550,17 +639,20 @@ public class ImageGenerateServiceImpl implements ImageGenerateService {
             }
         }
 
-        // 构建请求
-        String aspectRatio = series != null && series.getAspectRatio() != null ? series.getAspectRatio() : "3:4";
-        String quality = series != null && series.getQuality() != null ? series.getQuality() : "hd";
-        String styleKeywords = role.getStyleKeywords() != null ? role.getStyleKeywords() :
-                               (series != null ? series.getStyleKeywords() : "");
+        // 构建请求 - 优先使用传入的参数，否则使用系列默认值
+        String requestAspectRatio = aspectRatio != null ? aspectRatio :
+                (series != null && series.getAspectRatio() != null ? series.getAspectRatio() : "3:4");
+        String requestQuality = quality != null ? quality :
+                (series != null && series.getQuality() != null ? series.getQuality() : "hd");
+        String requestStyleKeywords = styleKeywords != null && !styleKeywords.trim().isEmpty() ? styleKeywords :
+                (role.getStyleKeywords() != null ? role.getStyleKeywords() :
+                (series != null ? series.getStyleKeywords() : ""));
 
         ImageGenerateRequest request = ImageGenerateRequest.builder()
                 .roleName(role.getRoleName())
-                .aspectRatio(aspectRatio)
-                .quality(quality)
-                .styleKeywords(styleKeywords)
+                .aspectRatio(requestAspectRatio)
+                .quality(requestQuality)
+                .styleKeywords(requestStyleKeywords)
                 .seriesId(role.getSeriesId())
                 .roleId(roleId)
                 .referenceImageUrl(referenceImageUrl)

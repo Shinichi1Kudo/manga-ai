@@ -52,6 +52,29 @@ public interface ImageGenerateService {
     void generateCharacterAssets(Long roleId, Integer clothingId, Long generatingAssetId, Long previousActiveAssetId);
 
     /**
+     * 为角色生成指定服装的三视图资产（异步，指定图片比例和清晰度）
+     * @param roleId 角色ID
+     * @param clothingId 服装ID
+     * @param generatingAssetId 已创建的生成中资产ID
+     * @param previousActiveAssetId 之前激活的资产ID（用于失败时恢复）
+     * @param aspectRatio 图片比例
+     * @param quality 清晰度
+     */
+    void generateCharacterAssets(Long roleId, Integer clothingId, Long generatingAssetId, Long previousActiveAssetId, String aspectRatio, String quality);
+
+    /**
+     * 为角色生成指定服装的三视图资产（异步，指定图片比例、清晰度和风格）
+     * @param roleId 角色ID
+     * @param clothingId 服装ID
+     * @param generatingAssetId 已创建的生成中资产ID
+     * @param previousActiveAssetId 之前激活的资产ID（用于失败时恢复）
+     * @param aspectRatio 图片比例
+     * @param quality 清晰度
+     * @param styleKeywords 风格关键词
+     */
+    void generateCharacterAssets(Long roleId, Integer clothingId, Long generatingAssetId, Long previousActiveAssetId, String aspectRatio, String quality, String styleKeywords);
+
+    /**
      * 为角色生成新服装资产（基于参考图，异步）
      * @param roleId 角色ID
      * @param clothingId 服装ID
@@ -62,6 +85,35 @@ public interface ImageGenerateService {
      * @param clothingName 服装名称
      */
     void generateNewClothingWithReference(Long roleId, Integer clothingId, Long generatingAssetId, Long previousActiveAssetId, String referenceImageUrl, String clothingPrompt, String clothingName);
+
+    /**
+     * 为角色生成新服装资产（基于参考图，异步，指定图片比例和清晰度）
+     * @param roleId 角色ID
+     * @param clothingId 服装ID
+     * @param generatingAssetId 已创建的生成中资产ID
+     * @param previousActiveAssetId 之前激活的资产ID（用于失败时恢复）
+     * @param referenceImageUrl 参考图片URL
+     * @param clothingPrompt 新服装描述
+     * @param clothingName 服装名称
+     * @param aspectRatio 图片比例
+     * @param quality 清晰度
+     */
+    void generateNewClothingWithReference(Long roleId, Integer clothingId, Long generatingAssetId, Long previousActiveAssetId, String referenceImageUrl, String clothingPrompt, String clothingName, String aspectRatio, String quality);
+
+    /**
+     * 为角色生成新服装资产（基于参考图，异步，指定图片比例、清晰度和风格）
+     * @param roleId 角色ID
+     * @param clothingId 服装ID
+     * @param generatingAssetId 已创建的生成中资产ID
+     * @param previousActiveAssetId 之前激活的资产ID（用于失败时恢复）
+     * @param referenceImageUrl 参考图片URL
+     * @param clothingPrompt 新服装描述
+     * @param clothingName 服装名称
+     * @param aspectRatio 图片比例
+     * @param quality 清晰度
+     * @param styleKeywords 风格关键词
+     */
+    void generateNewClothingWithReference(Long roleId, Integer clothingId, Long generatingAssetId, Long previousActiveAssetId, String referenceImageUrl, String clothingPrompt, String clothingName, String aspectRatio, String quality, String styleKeywords);
 
     /**
      * 创建生成中的资产记录（同步）

@@ -370,15 +370,14 @@
         .modal-backdrop {
             position: fixed;
             inset: 0;
-            background: rgba(0, 0, 0, 0.8);
-            backdrop-filter: blur(8px);
+            background: rgba(0, 0, 0, 0.85);
             display: flex;
             align-items: center;
             justify-content: center;
             z-index: 100;
             opacity: 0;
             visibility: hidden;
-            transition: all 0.3s ease;
+            transition: opacity 0.1s ease;
         }
 
         .modal-backdrop.active {
@@ -387,19 +386,13 @@
         }
 
         .modal-content {
-            background: rgba(30, 30, 50, 0.95);
+            background: rgba(30, 30, 50, 0.98);
             border: 1px solid rgba(255, 255, 255, 0.1);
             border-radius: 24px;
             padding: 32px;
             max-width: 90%;
             max-height: 90%;
             overflow: auto;
-            transform: scale(0.9);
-            transition: transform 0.3s ease;
-        }
-
-        .modal-backdrop.active .modal-content {
-            transform: scale(1);
         }
 
         /* Toast Message */
@@ -480,15 +473,29 @@
 
     <!-- Image Preview Modal -->
     <div class="modal-backdrop" id="imageModal">
-        <div class="modal-content p-0">
+        <div class="modal-content p-0 max-w-4xl">
             <div class="p-4 border-b border-white/10 flex items-center justify-between">
                 <h3 class="text-lg font-semibold">图片预览</h3>
-                <button onclick="closeModal()" class="p-2 hover:bg-white/10 rounded-lg transition-colors">
-                    <i data-lucide="x" class="w-5 h-5"></i>
-                </button>
+                <div class="flex items-center gap-2">
+                    <button onclick="zoomImageOut()" class="p-2 hover:bg-white/10 rounded-lg transition-colors" title="缩小">
+                        <i data-lucide="zoom-out" class="w-5 h-5"></i>
+                    </button>
+                    <span id="imageZoomLevel" class="text-sm text-white/60 w-12 text-center">100%</span>
+                    <button onclick="zoomImageIn()" class="p-2 hover:bg-white/10 rounded-lg transition-colors" title="放大">
+                        <i data-lucide="zoom-in" class="w-5 h-5"></i>
+                    </button>
+                    <button onclick="resetImageZoom()" class="p-2 hover:bg-white/10 rounded-lg transition-colors" title="重置">
+                        <i data-lucide="maximize" class="w-5 h-5"></i>
+                    </button>
+                    <button onclick="closeModal()" class="p-2 hover:bg-white/10 rounded-lg transition-colors" title="关闭">
+                        <i data-lucide="x" class="w-5 h-5"></i>
+                    </button>
+                </div>
             </div>
-            <div class="p-4">
-                <img id="previewImage" src="" class="max-w-full max-h-[70vh] mx-auto rounded-lg">
+            <div class="p-4 overflow-auto" style="max-height: 70vh;">
+                <div id="imagePreviewContainer" class="flex items-center justify-center min-h-[300px]">
+                    <img id="previewImage" src="" class="max-w-full max-h-[65vh] mx-auto rounded-lg transition-transform duration-200 cursor-move" style="transform-origin: center center;">
+                </div>
             </div>
             <div class="p-4 border-t border-white/10 flex justify-end gap-3">
                 <button onclick="closeModal()" class="px-5 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 transition-colors font-medium">
@@ -505,16 +512,96 @@
         // Initialize Lucide icons
         lucide.createIcons();
 
+        // Image zoom state
+        let currentImageZoom = 1;
+        let imageDragStart = { x: 0, y: 0 };
+        let imageTranslate = { x: 0, y: 0 };
+        let isDragging = false;
+
         // Modal functions
         function openModal(imgSrc) {
             document.getElementById('previewImage').src = imgSrc;
             document.getElementById('imageModal').classList.add('active');
             document.getElementById('downloadBtn').onclick = () => downloadImage(imgSrc);
+
+            // Reset zoom
+            currentImageZoom = 1;
+            imageTranslate = { x: 0, y: 0 };
+            updateImageZoom();
         }
 
         function closeModal() {
             document.getElementById('imageModal').classList.remove('active');
         }
+
+        // Zoom functions
+        function zoomImageIn() {
+            if (currentImageZoom < 3) {
+                currentImageZoom += 0.25;
+                updateImageZoom();
+            }
+        }
+
+        function zoomImageOut() {
+            if (currentImageZoom > 0.5) {
+                currentImageZoom -= 0.25;
+                updateImageZoom();
+            }
+        }
+
+        function resetImageZoom() {
+            currentImageZoom = 1;
+            imageTranslate = { x: 0, y: 0 };
+            updateImageZoom();
+        }
+
+        function updateImageZoom() {
+            const img = document.getElementById('previewImage');
+            img.style.transform = `scale(${currentImageZoom}) translate(${imageTranslate.x / currentImageZoom}px, ${imageTranslate.y / currentImageZoom}px)`;
+            document.getElementById('imageZoomLevel').textContent = Math.round(currentImageZoom * 100) + '%';
+        }
+
+        // Image drag for panning when zoomed
+        function initImageDrag() {
+            const img = document.getElementById('previewImage');
+
+            img.addEventListener('mousedown', (e) => {
+                if (currentImageZoom > 1) {
+                    isDragging = true;
+                    imageDragStart = { x: e.clientX - imageTranslate.x, y: e.clientY - imageTranslate.y };
+                    img.style.cursor = 'grabbing';
+                    e.preventDefault();
+                }
+            });
+
+            document.addEventListener('mousemove', (e) => {
+                if (isDragging) {
+                    imageTranslate = {
+                        x: e.clientX - imageDragStart.x,
+                        y: e.clientY - imageDragStart.y
+                    };
+                    updateImageZoom();
+                }
+            });
+
+            document.addEventListener('mouseup', () => {
+                isDragging = false;
+                img.style.cursor = currentImageZoom > 1 ? 'grab' : 'move';
+            });
+        }
+
+        // Mouse wheel zoom
+        document.getElementById('imageModal').addEventListener('wheel', (e) => {
+            const img = document.getElementById('previewImage');
+            if (e.target === img || img.contains(e.target)) {
+                e.preventDefault();
+                if (e.deltaY < 0) {
+                    zoomImageIn();
+                } else {
+                    zoomImageOut();
+                }
+            }
+        });
 
         function downloadImage(src) {
             const a = document.createElement('a');
@@ -532,6 +619,9 @@
         document.addEventListener('keydown', (e) => {
             if (e.key === 'Escape') closeModal();
         });
+
+        // Initialize image drag
+        initImageDrag();
 
         // Toast auto-hide
         document.querySelectorAll('.toast').forEach(toast => {

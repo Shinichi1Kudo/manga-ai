@@ -82,6 +82,9 @@ def role_regenerate(request, role_id):
             'isNewClothing': data.get('isNewClothing', False),
             'clothingName': data.get('clothingName', ''),
             'referenceImageUrl': data.get('referenceImageUrl', ''),
+            'aspectRatio': data.get('aspectRatio'),
+            'quality': data.get('quality'),
+            'styleKeywords': data.get('styleKeywords', ''),
         })
         # result now contains: {clothingId, version, assetId}
         return JsonResponse({'success': True, 'data': result})

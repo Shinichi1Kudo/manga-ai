@@ -78,6 +78,7 @@ public class RoleServiceImpl implements RoleService {
         role.setClothing(request.getClothing());
         role.setSpecialMarks(request.getSpecialMarks());
         role.setCustomPrompt(request.getCustomPrompt());
+        role.setStyleKeywords(request.getStyleKeywords());
         role.setExtractConfidence(new java.math.BigDecimal("1.0"));
         role.setCreatedAt(LocalDateTime.now());
         role.setUpdatedAt(LocalDateTime.now());
@@ -85,9 +86,10 @@ public class RoleServiceImpl implements RoleService {
         roleMapper.insert(role);
         log.info("创建角色: roleId={}, roleName={}", role.getId(), role.getRoleName());
 
-        // 异步生成图片
+        // 异步生成图片 - 传递比例、清晰度和风格参数
         Long roleId = role.getId();
-        imageGenerateService.generateCharacterAssets(roleId);
+        imageGenerateService.generateCharacterAssets(roleId, null, null, null,
+                request.getAspectRatio(), request.getQuality(), request.getStyleKeywords());
 
         return roleId;
     }
@@ -138,7 +140,7 @@ public class RoleServiceImpl implements RoleService {
     public List<RoleDetailVO> getRolesBySeriesId(Long seriesId) {
         LambdaQueryWrapper<Role> wrapper = new LambdaQueryWrapper<>();
         wrapper.eq(Role::getSeriesId, seriesId)
-                .orderByAsc(Role::getRoleCode);
+                .orderByAsc(Role::getCreatedAt);
         List<Role> roles = roleMapper.selectList(wrapper);
 
         // 添加日志，打印查询到的角色提示词
@@ -339,11 +341,15 @@ public class RoleServiceImpl implements RoleService {
                     previousActiveAssetId,
                     referenceImageUrl,
                     modifiedPrompt,
-                    clothingName
+                    clothingName,
+                    request.getAspectRatio(),
+                    request.getQuality(),
+                    request.getStyleKeywords()
             );
         } else {
             log.info("使用文生图模式");
-            imageGenerateService.generateCharacterAssets(roleId, clothingId, generatingAssetId, previousActiveAssetId);
+            imageGenerateService.generateCharacterAssets(roleId, clothingId, generatingAssetId, previousActiveAssetId,
+                    request.getAspectRatio(), request.getQuality(), request.getStyleKeywords());
         }
 
         log.info("重新生成角色图片: roleId={}, clothingId={}, version={}, isNewClothing={}",

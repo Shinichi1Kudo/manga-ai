@@ -139,10 +139,10 @@
     </div>
 
     <!-- Clothing Gallery -->
-    <div class="clothing-section mb-4" data-role-id="{{ role.id }}" data-generating="{% if role.assets and role.assets.0.status == 0 %}true{% else %}false{% endif %}">
+    <div class="clothing-section mb-4" data-role-id="{{ role.id }}" data-generating="{% if role.status == 0 or role.assets and role.assets.0.status == 0 %}true{% else %}false{% endif %}">
         {% if role.status == 0 %}
         <!-- 生成中状态 -->
-        <div class="text-center py-8 rounded-xl bg-violet-500/10 border border-violet-500/20 w-full">
+        <div class="text-center py-8 rounded-xl bg-violet-500/10 border border-violet-500/20 w-full generating-role" data-role-id="{{ role.id }}">
             <div class="spinner mx-auto mb-3"></div>
             <p class="text-violet-300">正在生成图片...</p>
         </div>
@@ -157,6 +157,7 @@
                  data-clothing-name="{{ asset.clothingName|default:'' }}"
                  data-is-active="{{ asset.isActive }}"
                  data-status="{{ asset.status }}"
+                 data-prompt="{{ role.customPrompt|default:'' }}"
                  data-generating="false"
                  onclick="selectClothing(this)">
                 {% if asset.clothingId == 1 %}
@@ -215,6 +216,7 @@
                  data-clothing-name="{{ asset.clothingName|default:'' }}"
                  data-is-active="{{ asset.isActive }}"
                  data-status="{{ asset.status }}"
+                 data-prompt="{{ role.customPrompt|default:'' }}"
                  data-generating="{% if asset.status == 0 %}true{% else %}false{% endif %}"
                  onclick="selectClothing(this)">
                 <!-- 默认服装标识 - 只有clothingId=1才显示星星 -->
@@ -316,6 +318,7 @@
                  data-clothing-name="{{ asset.clothingName|default:'' }}"
                  data-is-active="{{ asset.isActive }}"
                  data-status="{{ asset.status }}"
+                 data-prompt="{{ role.customPrompt|default:'' }}"
                  data-generating="{% if asset.status == 0 %}true{% else %}false{% endif %}"
                  onclick="selectClothing(this)">
                 {% if asset.clothingId == 1 %}
@@ -414,9 +417,55 @@
             </div>
             <div>
                 <label class="block text-sm text-white/60 mb-2">
-                    <i data-lucide="sparkles" class="w-4 h-4 inline mr-1"></i>提示词
+                    <i data-lucide="sparkles" class="w-4 h-4 inline mr-1"></i>提示词 <span class="text-red-400">*</span>
                 </label>
                 <textarea id="newCustomPrompt" class="input-modern" rows="4" placeholder="输入角色描述，用于生成三视图图片。"></textarea>
+            </div>
+            <!-- 图片设置 -->
+            <div class="grid grid-cols-3 gap-4">
+                <div>
+                    <label class="block text-sm text-white/60 mb-2">图片比例 <span class="text-red-400">*</span></label>
+                    <select id="newRoleAspectRatio" class="input-modern" required>
+                        <option value="">请选择</option>
+                        <option value="1:1">1:1</option>
+                        <option value="3:4">3:4</option>
+                        <option value="4:3">4:3</option>
+                        <option value="16:9">16:9</option>
+                        <option value="9:16">9:16</option>
+                        <option value="2:3">2:3</option>
+                        <option value="3:2">3:2</option>
+                        <option value="21:9">21:9</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-sm text-white/60 mb-2">清晰度 <span class="text-red-400">*</span></label>
+                    <select id="newRoleQuality" class="input-modern" required>
+                        <option value="">请选择</option>
+                        <option value="hd">高清</option>
+                        <option value="uhd">超清</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-sm text-white/60 mb-2">图片风格 <span class="text-red-400">*</span></label>
+                    <div class="flex gap-2">
+                        <select id="newRoleStyle" class="input-modern flex-1" required>
+                            <option value="">请选择</option>
+                            <option value="3d_anime">超精细3D动漫</option>
+                            <option value="realistic">真人风格</option>
+                            <option value="anime_jp">日系动漫</option>
+                            <option value="cartoon_us">美式卡通</option>
+                            <option value="watercolor">水彩插画</option>
+                            <option value="oil_painting">油画风格</option>
+                            <option value="cyberpunk">赛博朋克</option>
+                            <option value="chinese_style">古风国漫</option>
+                            <option value="pixel_art">像素风格</option>
+                            <option value="chibi">Q版卡通</option>
+                        </select>
+                        <button type="button" class="px-3 py-2 rounded-lg bg-white/10 hover:bg-white/20 text-xs transition-colors" onclick="openStylePreview('newRoleStyle')">
+                            <i data-lucide="eye" class="w-4 h-4"></i>
+                        </button>
+                    </div>
+                </div>
             </div>
         </div>
         <div class="p-6 border-t border-white/10 flex justify-end gap-3">
@@ -494,25 +543,71 @@
     <div class="modal-content max-w-2xl">
         <div class="p-6 border-b border-white/10">
             <h3 class="text-xl font-bold">重新生成</h3>
-            <p class="text-white/50 text-sm mt-1">基于参考图生成新版本，修改提示词后生成</p>
+            <p class="text-white/50 text-sm mt-1">选择参考图进行图生图，或不选参考图直接文生图</p>
         </div>
         <div class="p-6 space-y-4">
             <input type="hidden" id="regenerateRoleId">
             <input type="hidden" id="regenerateClothingId">
             <input type="hidden" id="regenerateReferenceUrl">
             <div>
-                <label class="block text-sm text-white/60 mb-2">参考图片</label>
-                <p class="text-xs text-white/40 mb-2">选择一张现有图片作为参考</p>
+                <label class="block text-sm text-white/60 mb-2">参考图片（可选）</label>
+                <p class="text-xs text-white/40 mb-2">选择参考图使用图生图，不选则使用文生图</p>
                 <div id="regenerateImageSelector" class="grid grid-cols-4 gap-3">
                     <!-- 动态填充 -->
                 </div>
             </div>
             <div>
                 <label class="block text-sm text-white/60 mb-2">
-                    <i data-lucide="sparkles" class="w-4 h-4 inline mr-1"></i>提示词
+                    <i data-lucide="sparkles" class="w-4 h-4 inline mr-1"></i>提示词 <span class="text-red-400">*</span>
                 </label>
-                <p class="text-xs text-white/40 mb-2">修改提示词后生成新版本，留空则使用原提示词</p>
+                <p class="text-xs text-white/40 mb-2">输入新的提示词用于生成</p>
                 <textarea id="regeneratePrompt" class="input-modern" rows="4" placeholder="输入新的提示词..."></textarea>
+            </div>
+            <!-- 图片设置 -->
+            <div class="grid grid-cols-3 gap-4">
+                <div>
+                    <label class="block text-sm text-white/60 mb-2">图片比例 <span class="text-red-400">*</span></label>
+                    <select id="regenerateAspectRatio" class="input-modern" required>
+                        <option value="">请选择</option>
+                        <option value="1:1">1:1</option>
+                        <option value="3:4">3:4</option>
+                        <option value="4:3">4:3</option>
+                        <option value="16:9">16:9</option>
+                        <option value="9:16">9:16</option>
+                        <option value="2:3">2:3</option>
+                        <option value="3:2">3:2</option>
+                        <option value="21:9">21:9</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-sm text-white/60 mb-2">清晰度 <span class="text-red-400">*</span></label>
+                    <select id="regenerateQuality" class="input-modern" required>
+                        <option value="">请选择</option>
+                        <option value="hd">高清</option>
+                        <option value="uhd">超清</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-sm text-white/60 mb-2">图片风格 <span class="text-red-400">*</span></label>
+                    <div class="flex gap-2">
+                        <select id="regenerateStyle" class="input-modern flex-1" required>
+                            <option value="">请选择</option>
+                            <option value="3d_anime">超精细3D动漫</option>
+                            <option value="realistic">真人风格</option>
+                            <option value="anime_jp">日系动漫</option>
+                            <option value="cartoon_us">美式卡通</option>
+                            <option value="watercolor">水彩插画</option>
+                            <option value="oil_painting">油画风格</option>
+                            <option value="cyberpunk">赛博朋克</option>
+                            <option value="chinese_style">古风国漫</option>
+                            <option value="pixel_art">像素风格</option>
+                            <option value="chibi">Q版卡通</option>
+                        </select>
+                        <button type="button" class="px-3 py-2 rounded-lg bg-white/10 hover:bg-white/20 text-xs transition-colors" onclick="openStylePreview('regenerateStyle')">
+                            <i data-lucide="eye" class="w-4 h-4"></i>
+                        </button>
+                    </div>
+                </div>
             </div>
         </div>
         <div class="p-6 border-t border-white/10 flex justify-end gap-3">
@@ -547,6 +642,52 @@
                 <label class="block text-sm text-white/60 mb-2">服装描述（可选）</label>
                 <textarea id="newClothingPrompt" class="input-modern" rows="3" placeholder="描述新服装的特点，留空则使用默认提示词"></textarea>
             </div>
+            <!-- 图片设置 -->
+            <div class="grid grid-cols-3 gap-4">
+                <div>
+                    <label class="block text-sm text-white/60 mb-2">图片比例 <span class="text-red-400">*</span></label>
+                    <select id="newClothingAspectRatio" class="input-modern" required>
+                        <option value="">请选择</option>
+                        <option value="1:1">1:1</option>
+                        <option value="3:4">3:4</option>
+                        <option value="4:3">4:3</option>
+                        <option value="16:9">16:9</option>
+                        <option value="9:16">9:16</option>
+                        <option value="2:3">2:3</option>
+                        <option value="3:2">3:2</option>
+                        <option value="21:9">21:9</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-sm text-white/60 mb-2">清晰度 <span class="text-red-400">*</span></label>
+                    <select id="newClothingQuality" class="input-modern" required>
+                        <option value="">请选择</option>
+                        <option value="hd">高清</option>
+                        <option value="uhd">超清</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-sm text-white/60 mb-2">图片风格 <span class="text-red-400">*</span></label>
+                    <div class="flex gap-2">
+                        <select id="newClothingStyle" class="input-modern flex-1" required>
+                            <option value="">请选择</option>
+                            <option value="3d_anime">超精细3D动漫</option>
+                            <option value="realistic">真人风格</option>
+                            <option value="anime_jp">日系动漫</option>
+                            <option value="cartoon_us">美式卡通</option>
+                            <option value="watercolor">水彩插画</option>
+                            <option value="oil_painting">油画风格</option>
+                            <option value="cyberpunk">赛博朋克</option>
+                            <option value="chinese_style">古风国漫</option>
+                            <option value="pixel_art">像素风格</option>
+                            <option value="chibi">Q版卡通</option>
+                        </select>
+                        <button type="button" class="px-3 py-2 rounded-lg bg-white/10 hover:bg-white/20 text-xs transition-colors" onclick="openStylePreview('newClothingStyle')">
+                            <i data-lucide="eye" class="w-4 h-4"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
         </div>
         <div class="p-6 border-t border-white/10 flex justify-end gap-3">
             <button onclick="closeNewClothingModal()" class="px-5 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 transition-colors font-medium">取消</button>
@@ -575,6 +716,143 @@
         </div>
     </div>
 </div>
+
+<!-- 风格预览弹窗 -->
+<div class="modal-backdrop" id="stylePreviewModal" onclick="closeStylePreview(event)">
+    <div class="modal-content max-w-4xl" onclick="event.stopPropagation()">
+        <div class="p-6 border-b border-white/10 flex items-center justify-between">
+            <div>
+                <h3 class="text-xl font-bold">风格预览</h3>
+                <p class="text-white/50 text-sm mt-1">点击卡片选择风格，点击放大图标查看详情</p>
+            </div>
+            <button onclick="closeStylePreview()" class="p-2 rounded-lg hover:bg-white/10 transition-colors">
+                <i data-lucide="x" class="w-5 h-5"></i>
+            </button>
+        </div>
+        <div class="p-6 grid grid-cols-2 md:grid-cols-3 gap-4 max-h-[70vh] overflow-y-auto">
+            <div class="style-option group cursor-pointer rounded-xl overflow-hidden border border-white/10 hover:border-violet-500/50 transition-all relative">
+                <div onclick="selectStyleFromPreview('3d_anime')">
+                    <div class="aspect-square bg-gradient-to-br from-blue-400 via-purple-400 to-pink-400 flex items-center justify-center relative">
+                        <div class="absolute inset-0 bg-black/20"></div>
+                        <span class="text-4xl relative z-10">🎭</span>
+                    </div>
+                    <div class="p-3 bg-white/5">
+                        <p class="font-medium text-sm">超精细3D动漫</p>
+                        <p class="text-xs text-white/50">Pixar/迪士尼风格，电影级渲染</p>
+                    </div>
+                </div>
+            </div>
+            <div class="style-option group cursor-pointer rounded-xl overflow-hidden border border-white/10 hover:border-violet-500/50 transition-all relative">
+                <div onclick="selectStyleFromPreview('realistic')">
+                    <div class="aspect-square bg-gradient-to-br from-amber-200 via-orange-300 to-rose-400 flex items-center justify-center relative">
+                        <div class="absolute inset-0 bg-black/10"></div>
+                        <span class="text-4xl relative z-10">📷</span>
+                    </div>
+                    <div class="p-3 bg-white/5">
+                        <p class="font-medium text-sm">真人风格</p>
+                        <p class="text-xs text-white/50">真实照片效果，自然光影</p>
+                    </div>
+                </div>
+            </div>
+            <div class="style-option group cursor-pointer rounded-xl overflow-hidden border border-white/10 hover:border-violet-500/50 transition-all relative">
+                <div onclick="selectStyleFromPreview('anime_jp')">
+                    <div class="aspect-square bg-gradient-to-br from-pink-400 via-rose-400 to-red-400 flex items-center justify-center relative">
+                        <div class="absolute inset-0 bg-black/10"></div>
+                        <span class="text-4xl relative z-10">🌸</span>
+                    </div>
+                    <div class="p-3 bg-white/5">
+                        <p class="font-medium text-sm">日系动漫</p>
+                        <p class="text-xs text-white/50">日漫风格，赛璐璐上色</p>
+                    </div>
+                </div>
+            </div>
+            <div class="style-option group cursor-pointer rounded-xl overflow-hidden border border-white/10 hover:border-violet-500/50 transition-all relative">
+                <div onclick="selectStyleFromPreview('cartoon_us')">
+                    <div class="aspect-square bg-gradient-to-br from-yellow-400 via-orange-400 to-red-500 flex items-center justify-center relative">
+                        <div class="absolute inset-0 bg-black/10"></div>
+                        <span class="text-4xl relative z-10">🎨</span>
+                    </div>
+                    <div class="p-3 bg-white/5">
+                        <p class="font-medium text-sm">美式卡通</p>
+                        <p class="text-xs text-white/50">美漫风格，夸张表情</p>
+                    </div>
+                </div>
+            </div>
+            <div class="style-option group cursor-pointer rounded-xl overflow-hidden border border-white/10 hover:border-violet-500/50 transition-all relative">
+                <div onclick="selectStyleFromPreview('watercolor')">
+                    <div class="aspect-square bg-gradient-to-br from-sky-200 via-blue-300 to-indigo-400 flex items-center justify-center relative">
+                        <div class="absolute inset-0 bg-black/5"></div>
+                        <span class="text-4xl relative z-10">🖼️</span>
+                    </div>
+                    <div class="p-3 bg-white/5">
+                        <p class="font-medium text-sm">水彩插画</p>
+                        <p class="text-xs text-white/50">柔和色彩，艺术手绘感</p>
+                    </div>
+                </div>
+            </div>
+            <div class="style-option group cursor-pointer rounded-xl overflow-hidden border border-white/10 hover:border-violet-500/50 transition-all relative">
+                <div onclick="selectStyleFromPreview('oil_painting')">
+                    <div class="aspect-square bg-gradient-to-br from-amber-400 via-orange-500 to-red-600 flex items-center justify-center relative">
+                        <div class="absolute inset-0 bg-black/10"></div>
+                        <span class="text-4xl relative z-10">🖌️</span>
+                    </div>
+                    <div class="p-3 bg-white/5">
+                        <p class="font-medium text-sm">油画风格</p>
+                        <p class="text-xs text-white/50">古典艺术，丰富纹理</p>
+                    </div>
+                </div>
+            </div>
+            <div class="style-option group cursor-pointer rounded-xl overflow-hidden border border-white/10 hover:border-violet-500/50 transition-all relative">
+                <div onclick="selectStyleFromPreview('cyberpunk')">
+                    <div class="aspect-square bg-gradient-to-br from-purple-600 via-pink-500 to-cyan-400 flex items-center justify-center relative">
+                        <div class="absolute inset-0 bg-black/20"></div>
+                        <span class="text-4xl relative z-10">🌃</span>
+                    </div>
+                    <div class="p-3 bg-white/5">
+                        <p class="font-medium text-sm">赛博朋克</p>
+                        <p class="text-xs text-white/50">霓虹灯光，科幻未来</p>
+                    </div>
+                </div>
+            </div>
+            <div class="style-option group cursor-pointer rounded-xl overflow-hidden border border-white/10 hover:border-violet-500/50 transition-all relative">
+                <div onclick="selectStyleFromPreview('chinese_style')">
+                    <div class="aspect-square bg-gradient-to-br from-red-300 via-rose-400 to-pink-500 flex items-center justify-center relative">
+                        <div class="absolute inset-0 bg-black/10"></div>
+                        <span class="text-4xl relative z-10">🏯</span>
+                    </div>
+                    <div class="p-3 bg-white/5">
+                        <p class="font-medium text-sm">古风国漫</p>
+                        <p class="text-xs text-white/50">中国风，优雅古典</p>
+                    </div>
+                </div>
+            </div>
+            <div class="style-option group cursor-pointer rounded-xl overflow-hidden border border-white/10 hover:border-violet-500/50 transition-all relative">
+                <div onclick="selectStyleFromPreview('pixel_art')">
+                    <div class="aspect-square bg-gradient-to-br from-green-400 via-teal-500 to-cyan-600 flex items-center justify-center relative" style="image-rendering: pixelated;">
+                        <div class="absolute inset-0 bg-black/10"></div>
+                        <span class="text-4xl relative z-10">👾</span>
+                    </div>
+                    <div class="p-3 bg-white/5">
+                        <p class="font-medium text-sm">像素风格</p>
+                        <p class="text-xs text-white/50">复古游戏，8位像素</p>
+                    </div>
+                </div>
+            </div>
+            <div class="style-option group cursor-pointer rounded-xl overflow-hidden border border-white/10 hover:border-violet-500/50 transition-all relative">
+                <div onclick="selectStyleFromPreview('chibi')">
+                    <div class="aspect-square bg-gradient-to-br from-pink-300 via-purple-300 to-indigo-400 flex items-center justify-center relative">
+                        <div class="absolute inset-0 bg-black/5"></div>
+                        <span class="text-4xl relative z-10">🧸</span>
+                    </div>
+                    <div class="p-3 bg-white/5">
+                        <p class="font-medium text-sm">Q版卡通</p>
+                        <p class="text-xs text-white/50">大头小身，可爱萌系</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
 {% endblock %}
 
 {% block extra_js %}
@@ -584,6 +862,20 @@ let currentClothingId = null;
 
 // localStorage key for generating state
 const GENERATING_STATE_KEY = 'manga_generating_state';
+
+// 风格预设映射
+const STYLE_PRESETS = {
+    '3d_anime': 'ultra detailed 3D anime style, Pixar style, Disney style, high quality render, cinematic lighting',
+    'realistic': 'photorealistic, realistic portrait, real person photography, natural lighting, high detail',
+    'anime_jp': 'Japanese anime style, manga style, cel shading, vibrant colors, clean lines',
+    'cartoon_us': 'American cartoon style, bold lines, expressive features, colorful, stylized',
+    'watercolor': 'watercolor painting style, soft colors, artistic, hand-painted look, illustration',
+    'oil_painting': 'oil painting style, classical art, rich textures, artistic brush strokes',
+    'cyberpunk': 'cyberpunk style, neon lights, futuristic, sci-fi, dark atmosphere, glowing effects',
+    'chinese_style': 'Chinese art style, traditional Chinese painting, guofeng, elegant, classical beauty',
+    'pixel_art': 'pixel art style, retro game aesthetic, 8-bit, nostalgic, blocky pixels',
+    'chibi': 'chibi style, cute, deformed, big head small body, kawaii, adorable'
+};
 
 // Save generating state to localStorage
 function saveGeneratingState(roleId, clothingId, version) {
@@ -1162,6 +1454,42 @@ function submitNewClothing() {
         submitBtn.innerHTML = '<div class="spinner w-4 h-4 inline-block mr-2"></div>生成中...';
     }
 
+    const aspectRatio = document.getElementById('newClothingAspectRatio').value;
+    const quality = document.getElementById('newClothingQuality').value;
+    const styleKey = document.getElementById('newClothingStyle').value;
+
+    if (!aspectRatio) {
+        showToast('请选择图片比例', 'error');
+        if (submitBtn) {
+            submitBtn.disabled = false;
+            submitBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+            submitBtn.innerHTML = '生成';
+        }
+        return;
+    }
+
+    if (!quality) {
+        showToast('请选择清晰度', 'error');
+        if (submitBtn) {
+            submitBtn.disabled = false;
+            submitBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+            submitBtn.innerHTML = '生成';
+        }
+        return;
+    }
+
+    if (!styleKey) {
+        showToast('请选择图片风格', 'error');
+        if (submitBtn) {
+            submitBtn.disabled = false;
+            submitBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+            submitBtn.innerHTML = '生成';
+        }
+        return;
+    }
+
+    const styleKeywords = STYLE_PRESETS[styleKey] || '';
+
     fetch(`/roles/${roleId}/regenerate/`, {
         method: 'POST',
         headers: {
@@ -1172,7 +1500,10 @@ function submitNewClothing() {
             clothingName: clothingName,
             modifiedPrompt: prompt,
             isNewClothing: true,
-            referenceImageUrl: referenceUrl
+            referenceImageUrl: referenceUrl,
+            aspectRatio: aspectRatio,
+            quality: quality,
+            styleKeywords: styleKeywords
         })
     })
     .then(response => response.json())
@@ -1382,9 +1713,12 @@ function regenerateClothing(roleId, clothingId) {
     currentRoleId = roleId;
     currentClothingId = clothingId;
 
-    // 获取用户原始的自定义提示词
+    // 获取当前服装tab的提示词
     const roleCard = document.querySelector(`.role-card[data-role-id="${roleId}"]`);
-    const customPrompt = roleCard?.dataset?.customPrompt || '';
+    const currentTab = roleCard?.querySelector(`.clothing-tab[data-clothing-id="${clothingId}"]`);
+    const tabPrompt = currentTab?.dataset?.prompt || '';
+    // 如果tab没有提示词，则使用角色的自定义提示词
+    const customPrompt = tabPrompt || roleCard?.dataset?.customPrompt || '';
 
     document.getElementById('regenerateRoleId').value = roleId;
     document.getElementById('regenerateClothingId').value = clothingId;
@@ -1394,6 +1728,25 @@ function regenerateClothing(roleId, clothingId) {
     // 填充参考图选择器 - 显示所有角色的服装
     const selector = document.getElementById('regenerateImageSelector');
     selector.innerHTML = '';
+
+    // 添加"不使用参考图"选项
+    const noRefOption = document.createElement('div');
+    noRefOption.className = 'relative rounded-lg overflow-hidden cursor-pointer border-2 border-violet-500 transition-colors regenerate-ref-option regenerate-no-ref';
+    noRefOption.dataset.url = '';
+    noRefOption.innerHTML = `
+        <div class="w-full aspect-square bg-white/10 flex flex-col items-center justify-center">
+            <i data-lucide="image-off" class="w-8 h-8 text-white/40 mb-2"></i>
+            <span class="text-sm text-white/60">不使用参考图</span>
+            <span class="text-xs text-white/40">文生图模式</span>
+        </div>
+    `;
+    noRefOption.onclick = function() {
+        selector.querySelectorAll('.regenerate-ref-option').forEach(o => o.classList.remove('border-violet-500'));
+        this.classList.add('border-violet-500');
+        document.getElementById('regenerateReferenceUrl').value = '';
+        console.log('选择不使用参考图');
+    };
+    selector.appendChild(noRefOption);
 
     // 获取所有角色的服装tab
     const allTabs = document.querySelectorAll('.clothing-tab');
@@ -1416,7 +1769,7 @@ function regenerateClothing(roleId, clothingId) {
             const isCurrentRole = tabRoleId === String(roleId);
             const isCurrentClothing = isCurrentRole && tabClothingId === String(clothingId);
 
-            img.className = `relative rounded-lg overflow-hidden cursor-pointer border-2 transition-colors regenerate-ref-option ${isCurrentClothing ? 'border-violet-500' : 'border-transparent hover:border-violet-500'}`;
+            img.className = 'relative rounded-lg overflow-hidden cursor-pointer border-2 transition-colors regenerate-ref-option border-transparent hover:border-violet-500';
             img.dataset.url = imageUrl;
             img.dataset.clothingId = tabClothingId;
             img.dataset.roleId = tabRoleId;
@@ -1438,25 +1791,11 @@ function regenerateClothing(roleId, clothingId) {
             if (!firstValidImage) {
                 firstValidImage = img;
             }
-
-            // 默认选中当前服装
-            if (isCurrentClothing) {
-                currentClothingImage = img;
-                document.getElementById('regenerateReferenceUrl').value = imageUrl;
-            }
         }
     });
 
-    // 如果没有找到任何有效图片，显示提示
-    if (!hasValidImage) {
-        selector.innerHTML = '<p class="text-white/40 text-sm col-span-4 text-center py-4">暂无可用的参考图片</p>';
-    } else {
-        // 如果当前服装没有图片，默认选中第一个有效的图片
-        if (!document.getElementById('regenerateReferenceUrl').value && firstValidImage) {
-            firstValidImage.classList.add('border-violet-500');
-            document.getElementById('regenerateReferenceUrl').value = firstValidImage.dataset.url;
-        }
-    }
+    // 默认选中"不使用参考图"（已默认选中）
+    // regenerateReferenceUrl 已经初始化为空字符串
 
     document.getElementById('regenerateModal').classList.add('active');
 }
@@ -1470,6 +1809,33 @@ function submitRegenerate() {
     const clothingId = document.getElementById('regenerateClothingId').value;
     const prompt = document.getElementById('regeneratePrompt').value.trim();
     const referenceUrl = document.getElementById('regenerateReferenceUrl').value;
+
+    // 验证必填项
+    if (!prompt) {
+        showToast('请输入提示词', 'error');
+        return;
+    }
+
+    const aspectRatio = document.getElementById('regenerateAspectRatio').value;
+    const quality = document.getElementById('regenerateQuality').value;
+    const styleKey = document.getElementById('regenerateStyle').value;
+
+    if (!aspectRatio) {
+        showToast('请选择图片比例', 'error');
+        return;
+    }
+
+    if (!quality) {
+        showToast('请选择清晰度', 'error');
+        return;
+    }
+
+    if (!styleKey) {
+        showToast('请选择图片风格', 'error');
+        return;
+    }
+
+    const styleKeywords = STYLE_PRESETS[styleKey] || '';
 
     closeRegenerateModal();
 
@@ -1571,7 +1937,10 @@ function submitRegenerate() {
             clothingId: parseInt(clothingId),
             modifiedPrompt: prompt,
             referenceImageUrl: referenceUrl || '',
-            isNewClothing: !referenceUrl
+            isNewClothing: false,  // 重新生成始终为false
+            aspectRatio: aspectRatio,
+            quality: quality,
+            styleKeywords: styleKeywords
         })
     })
     .then(response => response.json())
@@ -2289,6 +2658,33 @@ function submitAddRole() {
         return;
     }
 
+    const customPrompt = document.getElementById('newCustomPrompt').value.trim();
+    if (!customPrompt) {
+        showToast('请输入提示词', 'error');
+        return;
+    }
+
+    const aspectRatio = document.getElementById('newRoleAspectRatio').value;
+    const quality = document.getElementById('newRoleQuality').value;
+    const styleKey = document.getElementById('newRoleStyle').value;
+
+    if (!aspectRatio) {
+        showToast('请选择图片比例', 'error');
+        return;
+    }
+
+    if (!quality) {
+        showToast('请选择清晰度', 'error');
+        return;
+    }
+
+    if (!styleKey) {
+        showToast('请选择图片风格', 'error');
+        return;
+    }
+
+    const styleKeywords = STYLE_PRESETS[styleKey] || '';
+
     fetch(`/roles/series/{{ series_id }}/create/`, {
         method: 'POST',
         headers: {
@@ -2297,7 +2693,10 @@ function submitAddRole() {
         },
         body: JSON.stringify({
             roleName: roleName,
-            customPrompt: document.getElementById('newCustomPrompt').value
+            customPrompt: customPrompt,
+            aspectRatio: aspectRatio,
+            quality: quality,
+            styleKeywords: styleKeywords
         })
     })
     .then(response => response.json())
@@ -2434,7 +2833,7 @@ function showToast(message, type = 'info') {
 }
 
 // Close modals on backdrop click
-['addRoleModal', 'editRoleModal', 'versionModal', 'newClothingModal', 'editClothingNameModal', 'regenerateModal'].forEach(id => {
+['addRoleModal', 'editRoleModal', 'versionModal', 'newClothingModal', 'editClothingNameModal', 'regenerateModal', 'stylePreviewModal'].forEach(id => {
     document.getElementById(id).addEventListener('click', (e) => {
         if (e.target === e.currentTarget) {
             e.currentTarget.classList.remove('active');
@@ -2541,6 +2940,14 @@ document.querySelectorAll('.clothing-tab[data-generating="true"]').forEach(tab =
     // 开始轮询
     console.log('恢复生成状态: roleId=' + roleId + ', clothingId=' + clothingId);
     pollGenerationStatus(roleId, parseInt(clothingId));
+});
+
+// 页面加载时对状态为0（生成中）的角色开始轮询
+document.querySelectorAll('.generating-role').forEach(el => {
+    const roleId = el.dataset.roleId;
+    console.log('检测到生成中的角色: roleId=' + roleId);
+    // 新创建的角色，clothingId 从 1 开始
+    pollGenerationStatus(roleId, 1);
 });
 
 // 页面加载时检查 localStorage 中是否有正在生成的状态
@@ -2718,6 +3125,31 @@ function selectClothingWithoutURL(tab) {
 
     // 更新按钮状态
     initButtonStates();
+}
+
+// 风格预览相关函数
+let currentStylePreviewTarget = null;
+
+function openStylePreview(targetId) {
+    currentStylePreviewTarget = targetId;
+    document.getElementById('stylePreviewModal').classList.add('active');
+    lucide.createIcons();
+}
+
+function closeStylePreview(event) {
+    if (event && event.target !== event.currentTarget) return;
+    document.getElementById('stylePreviewModal').classList.remove('active');
+    currentStylePreviewTarget = null;
+}
+
+function selectStyleFromPreview(styleKey) {
+    if (currentStylePreviewTarget) {
+        const select = document.getElementById(currentStylePreviewTarget);
+        if (select) {
+            select.value = styleKey;
+        }
+    }
+    closeStylePreview();
 }
 </script>
 {% endblock %}
