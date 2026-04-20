@@ -229,6 +229,15 @@ public class RoleServiceImpl implements RoleService {
         // 判断是否有有效的参考图
         boolean hasReferenceImage = referenceImageUrl != null && !referenceImageUrl.trim().isEmpty();
 
+        // 详细日志：打印请求参数
+        log.info("========== 重新生成请求 ==========");
+        log.info("roleId={}, roleName={}", roleId, role.getRoleName());
+        log.info("isNewClothing={}, hasReferenceImage={}", isNewClothing, hasReferenceImage);
+        log.info("referenceImageUrl={}", referenceImageUrl);
+        log.info("clothingId={}, clothingName={}", request.getClothingId(), request.getClothingName());
+        log.info("modifiedPrompt={}", request.getModifiedPrompt());
+        log.info("=================================");
+
         Integer clothingId = request.getClothingId();
         if (clothingId == null || clothingId <= 0) {
             clothingId = 1;
@@ -258,15 +267,15 @@ public class RoleServiceImpl implements RoleService {
             Long generatingAssetId = null;
             Long previousActiveAssetId = null;
 
-            if (isNewClothing && hasReferenceImage) {
-                // 有参考图 - 使用图生图生成新服装
+            if (isNewClothing) {
+                // 新服装 - 创建新的clothingId
                 nextClothingId = assetService.getNextClothingId(roleId);
                 nextVersion = 1;
                 long[] assetResult = imageGenerateService.createGeneratingAsset(roleId, nextClothingId, clothingName);
                 generatingAssetId = assetResult[0];
                 previousActiveAssetId = assetResult[1] > 0 ? assetResult[1] : null;
             } else {
-                // 没有参考图 - 使用文生图，在指定服装上生成
+                // 重新生成现有服装 - 在指定服装上生成新版本
                 nextVersion = imageGenerateService.getNextVersion(roleId, nextClothingId);
                 long[] assetResult = imageGenerateService.createGeneratingAsset(roleId, nextClothingId, null);
                 generatingAssetId = assetResult[0];
@@ -285,7 +294,9 @@ public class RoleServiceImpl implements RoleService {
         log.info("资产创建事务已提交: roleId={}, clothingId={}, assetId={}", roleId, clothingId, generatingAssetId);
 
         // 启动异步生成（在事务提交后）
-        if (isNewClothing && hasReferenceImage) {
+        // 只要有参考图就使用图生图，不管是新服装还是重新生成
+        if (hasReferenceImage) {
+            log.info("使用图生图模式: referenceImageUrl={}", referenceImageUrl);
             imageGenerateService.generateNewClothingWithReference(
                     roleId,
                     clothingId,
@@ -296,6 +307,7 @@ public class RoleServiceImpl implements RoleService {
                     clothingName
             );
         } else {
+            log.info("使用文生图模式");
             imageGenerateService.generateCharacterAssets(roleId, clothingId, generatingAssetId, previousActiveAssetId);
         }
 

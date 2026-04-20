@@ -891,19 +891,30 @@ function generateNewClothing(roleId) {
     document.getElementById('newClothingPrompt').value = '';
     document.getElementById('newClothingReferenceUrl').value = '';
 
-    // 获取该角色所有服装作为参考图选项
-    const section = document.querySelector(`.clothing-section[data-role-id="${roleId}"]`);
-    const tabs = section.querySelectorAll('.clothing-tab');
+    // 获取该系列下所有角色的服装作为参考图选项
     const selector = document.getElementById('referenceImageSelector');
-
     selector.innerHTML = '';
-    tabs.forEach((tab, index) => {
+
+    // 获取所有角色的服装tab
+    const allTabs = document.querySelectorAll('.clothing-tab');
+    let index = 0;
+    let firstImageUrl = null;
+    let currentRoleFirstImageUrl = null;
+
+    allTabs.forEach(tab => {
         const imageUrl = tab.dataset.imageUrl;
         const clothingName = tab.dataset.clothingName || (tab.dataset.clothingId == 1 ? '默认' : `服装${tab.dataset.clothingId}`);
+        const tabRoleId = tab.closest('.clothing-section')?.dataset.roleId;
+        const roleCard = tab.closest('.role-card');
+        const roleName = roleCard?.querySelector('h3')?.textContent || `角色${tabRoleId}`;
 
-        if (imageUrl) {
+        // 只添加有图片的选项
+        if (imageUrl && imageUrl.trim() !== '') {
             const div = document.createElement('div');
-            div.className = `relative rounded-lg overflow-hidden cursor-pointer border-2 transition-all ${index === 0 ? 'border-violet-500' : 'border-transparent hover:border-white/30'}`;
+            const isCurrentRole = tabRoleId === String(roleId);
+            const isFirstOfCurrentRole = isCurrentRole && currentRoleFirstImageUrl === null;
+
+            div.className = `relative rounded-lg overflow-hidden cursor-pointer border-2 transition-all ${isFirstOfCurrentRole ? 'border-violet-500' : 'border-transparent hover:border-white/30'}`;
             div.dataset.imageUrl = imageUrl;
             div.onclick = function() {
                 selector.querySelectorAll('div').forEach(d => d.classList.remove('border-violet-500', 'border-2'));
@@ -912,16 +923,36 @@ function generateNewClothing(roleId) {
             };
             div.innerHTML = `
                 <img src="${imageUrl}" class="w-full aspect-square object-cover">
-                <div class="absolute bottom-0 left-0 right-0 p-1 bg-black/60 text-xs text-center truncate">${clothingName}</div>
+                <div class="absolute bottom-0 left-0 right-0 p-1 bg-black/60 text-xs text-center truncate">
+                    <span class="${isCurrentRole ? 'text-violet-300' : 'text-amber-300'}">${roleName}</span> - ${clothingName}
+                </div>
             `;
             selector.appendChild(div);
 
-            // 默认选中第一个
-            if (index === 0) {
+            // 记录第一个图片URL
+            if (firstImageUrl === null) {
+                firstImageUrl = imageUrl;
+            }
+
+            // 默认选中当前角色的第一个服装
+            if (isFirstOfCurrentRole) {
+                currentRoleFirstImageUrl = imageUrl;
                 document.getElementById('newClothingReferenceUrl').value = imageUrl;
             }
+
+            index++;
         }
     });
+
+    // 如果当前角色没有图片，默认选中第一个可用图片
+    if (currentRoleFirstImageUrl === null && firstImageUrl !== null) {
+        document.getElementById('newClothingReferenceUrl').value = firstImageUrl;
+    }
+
+    // 如果没有任何图片，显示提示
+    if (index === 0) {
+        selector.innerHTML = '<p class="text-white/40 text-sm col-span-4 text-center py-4">暂无可用的参考图片</p>';
+    }
 
     document.getElementById('newClothingModal').classList.add('active');
 }
@@ -1298,34 +1329,47 @@ function regenerateClothing(roleId, clothingId) {
     document.getElementById('regeneratePrompt').value = customPrompt;
     document.getElementById('regenerateReferenceUrl').value = '';
 
-    // 填充参考图选择器 - 只显示有图片的服装
+    // 填充参考图选择器 - 显示所有角色的服装
     const selector = document.getElementById('regenerateImageSelector');
-    const tabs = roleCard.querySelectorAll('.clothing-tab');
     selector.innerHTML = '';
 
+    // 获取所有角色的服装tab
+    const allTabs = document.querySelectorAll('.clothing-tab');
     let hasValidImage = false;
     let firstValidImage = null;
+    let currentClothingImage = null;
 
-    tabs.forEach((tab, index) => {
+    allTabs.forEach(tab => {
         const imageUrl = tab.dataset.imageUrl;
         // 只添加有有效图片URL的选项
         if (imageUrl && imageUrl.trim() !== '' && imageUrl !== 'undefined') {
             hasValidImage = true;
-            const img = document.createElement('div');
-            img.className = 'relative rounded-lg overflow-hidden cursor-pointer border-2 border-transparent hover:border-violet-500 transition-colors regenerate-ref-option';
-            img.dataset.url = imageUrl;
-            img.dataset.clothingId = tab.dataset.clothingId;
+            const tabRoleId = tab.closest('.clothing-section')?.dataset.roleId;
+            const tabRoleCard = tab.closest('.role-card');
+            const tabRoleName = tabRoleCard?.querySelector('h3')?.textContent || `角色${tabRoleId}`;
+            const tabClothingId = tab.dataset.clothingId;
+            const tabClothingName = tab.querySelector('.clothing-name-display')?.textContent || `服装${tabClothingId}`;
 
-            // 获取服装名称
-            const clothingName = tab.querySelector('.clothing-name-display')?.textContent || `服装${tab.dataset.clothingId}`;
+            const img = document.createElement('div');
+            const isCurrentRole = tabRoleId === String(roleId);
+            const isCurrentClothing = isCurrentRole && tabClothingId === String(clothingId);
+
+            img.className = `relative rounded-lg overflow-hidden cursor-pointer border-2 transition-colors regenerate-ref-option ${isCurrentClothing ? 'border-violet-500' : 'border-transparent hover:border-violet-500'}`;
+            img.dataset.url = imageUrl;
+            img.dataset.clothingId = tabClothingId;
+            img.dataset.roleId = tabRoleId;
+
             img.innerHTML = `
                 <img src="${imageUrl}" class="w-full aspect-square object-cover">
-                <div class="absolute bottom-0 left-0 right-0 p-1 bg-black/60 text-xs text-center truncate">${clothingName}</div>
+                <div class="absolute bottom-0 left-0 right-0 p-1 bg-black/60 text-xs text-center truncate">
+                    <span class="${isCurrentRole ? 'text-violet-300' : 'text-amber-300'}">${tabRoleName}</span> - ${tabClothingName}
+                </div>
             `;
             img.onclick = function() {
                 selector.querySelectorAll('.regenerate-ref-option').forEach(o => o.classList.remove('border-violet-500'));
                 this.classList.add('border-violet-500');
                 document.getElementById('regenerateReferenceUrl').value = this.dataset.url;
+                console.log('选择参考图:', this.dataset.url);
             };
             selector.appendChild(img);
 
@@ -1333,9 +1377,9 @@ function regenerateClothing(roleId, clothingId) {
                 firstValidImage = img;
             }
 
-            // 默认选中当前服装（如果当前服装有图片）
-            if (tab.dataset.clothingId == clothingId) {
-                img.classList.add('border-violet-500');
+            // 默认选中当前服装
+            if (isCurrentClothing) {
+                currentClothingImage = img;
                 document.getElementById('regenerateReferenceUrl').value = imageUrl;
             }
         }
@@ -1376,17 +1420,14 @@ function submitRegenerate() {
     const tabStatus = currentTab?.dataset.status;
     const isFailedState = tabStatus === '-1' || tabStatus === -1 || !!clothingSection.querySelector('.failed-state');
 
-    // 获取当前版本号
-    // 如果是失败状态，版本号保持不变（因为失败的版本会被复用）
-    // 如果是正常状态，新版本号+1
+    // 获取当前版本号（仅用于失败状态恢复）
+    // 正常状态下版本号由后端返回
     let currentVersion = 1;
     const versionSpan = currentTab?.querySelector('span.text-xs');
     if (versionSpan) {
         const match = versionSpan.textContent.match(/v(\d+)/);
         if (match) currentVersion = parseInt(match[1]);
     }
-    // 失败状态下版本号不变，正常状态下版本号+1
-    const newVersion = isFailedState ? currentVersion : currentVersion + 1;
 
     // 标记当前tab正在生成
     if (currentTab) {
@@ -1401,9 +1442,9 @@ function submitRegenerate() {
             currentTab.appendChild(spinner);
         }
 
-        // 更新版本号显示（失败状态保持原版本号）
+        // 更新版本号显示（等待后端返回真实版本号）
         if (versionSpan) {
-            versionSpan.textContent = `v${newVersion}`;
+            versionSpan.textContent = `获取中...`;
             versionSpan.className = 'text-xs text-violet-400';
         }
     }
@@ -1487,16 +1528,8 @@ function submitRegenerate() {
         }
         if (data.success) {
             // 使用后端返回的版本号更新 UI
-            // 后端返回格式: {success: true, data: {code: 200, data: [version]}}
-            // 或者 {success: true, data: [version]} (取决于 Django 是否解包)
-            let returnedVersion = newVersion;
-            if (data.data) {
-                if (Array.isArray(data.data) && data.data[0]) {
-                    returnedVersion = data.data[0];
-                } else if (data.data.data && Array.isArray(data.data.data) && data.data.data[0]) {
-                    returnedVersion = data.data.data[0];
-                }
-            }
+            // 后端返回格式: {success: true, data: {clothingId, version, assetId}}
+            let returnedVersion = data.data?.version || newVersion;
             if (versionSpan) {
                 versionSpan.textContent = `v${returnedVersion}`;
             }
@@ -1612,10 +1645,20 @@ function showVersions(roleId, clothingId) {
         }
     }
 
+    // 先显示弹窗（带加载状态）
+    const versionList = document.getElementById('versionList');
+    versionList.innerHTML = `
+        <div class="flex items-center justify-center py-8">
+            <div class="spinner mr-3"></div>
+            <span class="text-white/60">加载中...</span>
+        </div>
+    `;
+    document.getElementById('versionModal').classList.add('active');
+
+    // 异步加载数据
     fetch(`/api/assets/role/${roleId}/versions/${clothingId}/`)
     .then(response => response.json())
     .then(data => {
-        const versionList = document.getElementById('versionList');
         // 过滤掉 GENERATING(status=0) 和 FAILED(status=-1) 状态的资产
         const validAssets = data.data ? data.data.filter(a => a.status !== 0 && a.status !== -1 && a.status !== '-1' && a.filePath) : [];
 
@@ -1660,7 +1703,6 @@ function showVersions(roleId, clothingId) {
         } else {
             versionList.innerHTML = '<p class="text-center text-white/40">暂无历史版本</p>';
         }
-        document.getElementById('versionModal').classList.add('active');
         lucide.createIcons();
     });
 }

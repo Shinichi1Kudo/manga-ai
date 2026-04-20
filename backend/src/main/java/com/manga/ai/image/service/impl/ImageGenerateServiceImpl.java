@@ -137,8 +137,11 @@ public class ImageGenerateServiceImpl implements ImageGenerateService {
 
     @Override
     public ImageGenerateResponse generateCharacterSheetWithReference(ImageGenerateRequest request) {
-        log.info("图生图: role={}, referenceUrl={}, clothingPrompt={}",
-                request.getRoleName(), request.getReferenceImageUrl(), request.getClothingPrompt());
+        log.info("========== 图生图开始 ==========");
+        log.info("roleName: {}", request.getRoleName());
+        log.info("referenceImageUrl: {}", request.getReferenceImageUrl());
+        log.info("clothingPrompt: {}", request.getClothingPrompt());
+        log.info("================================");
 
         try {
             String prompt = buildClothingChangePrompt(request);
@@ -157,7 +160,8 @@ public class ImageGenerateServiceImpl implements ImageGenerateService {
             if (request.getReferenceImageUrl() != null && !request.getReferenceImageUrl().isEmpty()) {
                 requestBody.put("image", request.getReferenceImageUrl());
                 // 图生图的强度参数，控制保留原特征的程度
-                requestBody.put("strength", 0.7);
+                // 值越高，保留原图特征越多；0.85 能较好地保持角色特征
+                requestBody.put("strength", 0.85);
             }
 
             HttpHeaders headers = new HttpHeaders();
@@ -279,27 +283,20 @@ public class ImageGenerateServiceImpl implements ImageGenerateService {
     private String buildClothingChangePrompt(ImageGenerateRequest request) {
         StringBuilder prompt = new StringBuilder();
 
-        // 基于参考图生成，保持角色特征不变，只换服装
-        prompt.append("Same character as reference image, keep the same face, body type, and pose. ");
+        // 强调保持参考图的所有特征和风格
+        prompt.append("Keep EXACTLY the same person from the reference image. ");
+        prompt.append("Same face, same age, same gender, same body type, same ethnicity, same art style. ");
+        prompt.append("Do NOT change the person's appearance, age, or art style. ");
+        prompt.append("Maintain the exact same visual style as the reference image. ");
 
         // 新服装描述
         if (request.getClothingPrompt() != null && !request.getClothingPrompt().trim().isEmpty()) {
-            prompt.append("New outfit: ").append(request.getClothingPrompt()).append(". ");
-        }
-
-        // 角色信息
-        prompt.append("Character: ").append(request.getRoleName()).append(". ");
-
-        // 风格
-        if (request.getStyleKeywords() != null && !request.getStyleKeywords().isEmpty()) {
-            prompt.append("Style: ").append(request.getStyleKeywords()).append(". ");
+            prompt.append("Only change the outfit to: ").append(request.getClothingPrompt()).append(". ");
         }
 
         // 三视图要求
-        prompt.append("Character design sheet with three views in ONE image: ");
-        prompt.append("front view (center), side view (left), back view (right). ");
-        prompt.append("White background, professional character sheet layout, ");
-        prompt.append("consistent character across all views, high quality, detailed.");
+        prompt.append("Generate a character sheet with three views: front, side, and back. ");
+        prompt.append("White background, high quality, detailed.");
 
         return prompt.toString();
     }
