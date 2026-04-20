@@ -27,21 +27,45 @@
 </div>
 
 <!-- Header -->
-<div class="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
-    <div>
-        <h1 class="text-3xl font-bold gradient-text mb-2">{{ series.seriesName }}</h1>
-        <p class="text-white/50">审核并确认角色资产，确认后可锁定资产库</p>
+<div class="flex flex-col md:flex-row md:items-start justify-between gap-4 mb-8">
+    <div class="flex-1">
+        <div class="flex items-center gap-3 mb-2">
+            <h1 class="text-3xl font-bold gradient-text" id="seriesNameDisplay">{{ series.seriesName }}</h1>
+            <button id="editSeriesBtn" class="p-2 rounded-lg bg-white/5 hover:bg-white/10 text-white/50 hover:text-white transition-colors" title="编辑系列信息">
+                <i data-lucide="pencil" class="w-4 h-4"></i>
+            </button>
+        </div>
+        <div class="space-y-2 mt-3">
+            <div>
+                <span class="text-white/40 text-xs">剧本大纲</span>
+                <p class="text-white/70 text-sm leading-relaxed" id="outlineDisplay">{{ series.outline|default:"暂无剧本大纲" }}</p>
+            </div>
+            <div>
+                <span class="text-white/40 text-xs">背景设定</span>
+                <p class="text-white/70 text-sm leading-relaxed" id="backgroundDisplay">{{ series.background|default:"暂无背景介绍" }}</p>
+            </div>
+        </div>
     </div>
     <div class="flex gap-3">
+        {% if series.status == 2 %}
+        <span class="px-5 py-2.5 rounded-xl bg-violet-500/20 text-violet-300 font-medium flex items-center gap-2">
+            <i data-lucide="lock" class="w-4 h-4"></i>已锁定
+        </span>
+        <a href="/" class="px-5 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 transition-all font-medium flex items-center gap-2">
+            <i data-lucide="home" class="w-4 h-4"></i>返回首页
+        </a>
+        {% else %}
         <button id="addRoleBtn" class="px-5 py-2.5 rounded-xl bg-gradient-to-r from-blue-500 to-cyan-500 hover:from-blue-600 hover:to-cyan-600 transition-all font-medium flex items-center gap-2">
             <i data-lucide="plus" class="w-4 h-4"></i>添加角色
         </button>
         <button id="confirmAllBtn" class="px-5 py-2.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 transition-all font-medium flex items-center gap-2">
             <i data-lucide="check-check" class="w-4 h-4"></i>全部确认
         </button>
-        <button id="lockSeriesBtn" class="px-5 py-2.5 rounded-xl bg-gradient-to-r from-violet-500 to-purple-500 hover:from-violet-600 hover:to-purple-600 transition-all font-medium flex items-center gap-2">
-            <i data-lucide="lock" class="w-4 h-4"></i>锁定资产库
+        <button id="lockSeriesBtn" class="px-5 py-2.5 rounded-xl bg-gradient-to-r from-violet-500 to-purple-500 hover:from-violet-600 hover:to-purple-600 transition-all font-medium flex items-center gap-2 {% if confirmed_count != roles|length %}opacity-50 cursor-not-allowed{% endif %}"
+                {% if confirmed_count != roles|length %}disabled{% endif %}>
+            <i data-lucide="arrow-right" class="w-4 h-4"></i>下一步
         </button>
+        {% endif %}
     </div>
 </div>
 
@@ -96,13 +120,20 @@
             </div>
         </div>
         <div class="flex gap-2">
-            <button class="delete-btn p-2.5 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-red-400 transition-colors" data-role-id="{{ role.id }}" data-role-name="{{ role.roleName }}" title="删除角色">
+            <button class="delete-btn p-2.5 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-red-400 transition-colors {% if role.status >= 2 %}opacity-50 cursor-not-allowed{% endif %}"
+                    data-role-id="{{ role.id }}" data-role-name="{{ role.roleName }}" title="删除角色"
+                    {% if role.status >= 2 %}disabled{% endif %}>
                 <i data-lucide="trash-2" class="w-4 h-4"></i>
             </button>
             <button class="confirm-btn px-4 py-2.5 rounded-xl bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-400 transition-colors font-medium flex items-center gap-2"
                     data-role-id="{{ role.id }}"
                     {% if role.status >= 2 %}disabled{% endif %}>
                 <i data-lucide="check" class="w-4 h-4"></i>确认
+            </button>
+            <button class="unlock-btn px-4 py-2.5 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 text-amber-400 transition-colors font-medium flex items-center gap-2 {% if role.status < 2 %}opacity-50 cursor-not-allowed{% endif %}"
+                    data-role-id="{{ role.id }}"
+                    {% if role.status < 2 %}disabled{% endif %}>
+                <i data-lucide="unlock" class="w-4 h-4"></i>解锁
             </button>
         </div>
     </div>
@@ -255,20 +286,23 @@
                         onclick="event.stopPropagation(); showVersions({{ role.id }}, this.closest('.clothing-section').querySelector('.clothing-tab.active').dataset.clothingId)">
                     <i data-lucide="history" class="w-4 h-4"></i>历史版本
                 </button>
-                <button class="px-3 py-2 rounded-lg bg-black/50 hover:bg-black/70 text-white text-sm transition-colors flex items-center gap-1 set-default-btn"
-                        onclick="event.stopPropagation(); setDefaultClothing({{ role.id }}, this.closest('.clothing-section').querySelector('.clothing-tab.active').dataset.clothingId)">
+                <button class="px-3 py-2 rounded-lg bg-black/50 hover:bg-black/70 text-white text-sm transition-colors flex items-center gap-1 set-default-btn {% if role.status >= 2 %}opacity-50 cursor-not-allowed{% endif %}"
+                        {% if role.status >= 2 %}disabled{% endif %}
+                        onclick="event.stopPropagation(); {% if role.status < 2 %}setDefaultClothing({{ role.id }}, this.closest('.clothing-section').querySelector('.clothing-tab.active').dataset.clothingId){% endif %}">
                     <i data-lucide="star" class="w-4 h-4"></i>设为默认
                 </button>
-                <button class="px-3 py-2 rounded-lg bg-black/50 hover:bg-black/70 text-white text-sm transition-colors flex items-center gap-1 regenerate-btn"
-                        onclick="event.stopPropagation(); regenerateClothing({{ role.id }}, this.closest('.clothing-section').querySelector('.clothing-tab.active').dataset.clothingId)">
+                <button class="px-3 py-2 rounded-lg bg-black/50 hover:bg-black/70 text-white text-sm transition-colors flex items-center gap-1 regenerate-btn {% if role.status >= 2 %}opacity-50 cursor-not-allowed{% endif %}"
+                        {% if role.status >= 2 %}disabled{% endif %}
+                        onclick="event.stopPropagation(); {% if role.status < 2 %}regenerateClothing({{ role.id }}, this.closest('.clothing-section').querySelector('.clothing-tab.active').dataset.clothingId){% endif %}">
                     <i data-lucide="refresh-cw" class="w-4 h-4"></i>重新生成
                 </button>
             </div>
         </div>
 
         <!-- 添加新服装按钮 -->
-        <button class="mt-4 w-full py-3 rounded-xl bg-white/5 hover:bg-white/10 border border-dashed border-white/20 text-white/60 text-sm transition-colors flex items-center justify-center gap-2"
-                onclick="generateNewClothing({{ role.id }})">
+        <button class="mt-4 w-full py-3 rounded-xl bg-white/5 hover:bg-white/10 border border-dashed border-white/20 text-white/60 text-sm transition-colors flex items-center justify-center gap-2 {% if role.status >= 2 %}opacity-50 cursor-not-allowed{% endif %}"
+                {% if role.status >= 2 %}disabled{% endif %}
+                onclick="{% if role.status < 2 %}generateNewClothing({{ role.id }}){% endif %}">
             <i data-lucide="plus" class="w-4 h-4"></i>生成新服装
         </button>
         {% elif role.assets and role.assets.0.status == 0 %}
@@ -325,8 +359,9 @@
 
         <!-- 添加新服装按钮 - 只有在有成功资产时才显示 -->
         {% if role.has_successful_asset %}
-        <button class="mt-4 w-full py-3 rounded-xl bg-white/5 hover:bg-white/10 border border-dashed border-white/20 text-white/60 text-sm transition-colors flex items-center justify-center gap-2"
-                onclick="generateNewClothing({{ role.id }})">
+        <button class="mt-4 w-full py-3 rounded-xl bg-white/5 hover:bg-white/10 border border-dashed border-white/20 text-white/60 text-sm transition-colors flex items-center justify-center gap-2 {% if role.status >= 2 %}opacity-50 cursor-not-allowed{% endif %}"
+                {% if role.status >= 2 %}disabled{% endif %}
+                onclick="{% if role.status < 2 %}generateNewClothing({{ role.id }}){% endif %}">
             <i data-lucide="plus" class="w-4 h-4"></i>生成新服装
         </button>
         {% endif %}
@@ -407,6 +442,33 @@
         <div class="p-6 border-t border-white/10 flex justify-end gap-3">
             <button onclick="closeEditRoleModal()" class="px-5 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 transition-colors font-medium">取消</button>
             <button onclick="submitEditRole()" class="btn-neon">保存</button>
+        </div>
+    </div>
+</div>
+
+<!-- Edit Series Modal -->
+<div class="modal-backdrop" id="editSeriesModal">
+    <div class="modal-content max-w-2xl">
+        <div class="p-6 border-b border-white/10">
+            <h3 class="text-xl font-bold">编辑系列信息</h3>
+        </div>
+        <div class="p-6 space-y-4">
+            <div>
+                <label class="block text-sm text-white/60 mb-2">系列名称</label>
+                <input type="text" id="editSeriesName" class="input-modern" value="{{ series.seriesName }}">
+            </div>
+            <div>
+                <label class="block text-sm text-white/60 mb-2">剧本大纲</label>
+                <textarea id="editSeriesOutline" class="input-modern" rows="4" placeholder="输入剧本大纲...">{{ series.outline|default:"" }}</textarea>
+            </div>
+            <div>
+                <label class="block text-sm text-white/60 mb-2">背景设定</label>
+                <textarea id="editSeriesBackground" class="input-modern" rows="4" placeholder="输入背景设定、世界观等信息...">{{ series.background|default:"" }}</textarea>
+            </div>
+        </div>
+        <div class="p-6 border-t border-white/10 flex justify-end gap-3">
+            <button onclick="closeEditSeriesModal()" class="px-5 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 transition-colors font-medium">取消</button>
+            <button onclick="submitEditSeries()" class="btn-neon">保存</button>
         </div>
     </div>
 </div>
@@ -1638,11 +1700,15 @@ function showVersions(roleId, clothingId) {
     // 检查当前服装tab是否正在生成中
     const roleCard = document.querySelector(`.role-card[data-role-id="${roleId}"]`);
     let isGenerating = false;
+    let isConfirmed = false;
     if (roleCard) {
         const currentTab = roleCard.querySelector('.clothing-tab.active');
         if (currentTab) {
             isGenerating = currentTab.dataset.generating === 'true';
         }
+        // 检查角色是否已确认或已锁定（status >= 2）
+        const roleStatus = parseInt(roleCard.dataset.roleStatus);
+        isConfirmed = roleStatus >= 2;
     }
 
     // 先显示弹窗（带加载状态）
@@ -1669,6 +1735,11 @@ function showVersions(roleId, clothingId) {
                     图片正在生成中，暂不支持选择历史版本
                 </div>
                 ` : ''}
+                ${isConfirmed ? `
+                <div class="mb-3 p-2 bg-blue-500/20 border border-blue-500/30 rounded-lg text-blue-300 text-sm text-center">
+                    角色已确认，历史版本仅供查看
+                </div>
+                ` : ''}
                 <div class="grid grid-cols-3 gap-4">
                     ${validAssets.map(asset => `
                         <div class="relative rounded-lg overflow-hidden bg-white/5 cursor-pointer hover:ring-2 hover:ring-violet-500 group ${asset.isActive ? 'ring-2 ring-emerald-500' : ''}"
@@ -1680,7 +1751,7 @@ function showVersions(roleId, clothingId) {
                             <div class="absolute bottom-0 left-0 right-0 p-2 bg-gradient-to-t from-black/80">
                                 <div class="flex items-center justify-between">
                                     <div class="text-xs text-white/80">版本 ${asset.version}</div>
-                                    ${!asset.isActive ? `
+                                    ${!asset.isActive && !isConfirmed ? `
                                     <button class="px-2 py-1 text-xs rounded ${isGenerating ? 'bg-gray-500 cursor-not-allowed opacity-50' : 'bg-violet-500 hover:bg-violet-600'} text-white transition-colors"
                                             ${isGenerating ? 'disabled' : ''}
                                             onclick="event.stopPropagation(); ${isGenerating ? '' : 'rollbackToVersionFromCard(this)'}">
@@ -1883,6 +1954,18 @@ function updateStats() {
     document.getElementById('confirmedCount').textContent = confirmed;
     document.getElementById('pendingCount').textContent = cards.length - confirmed;
     document.getElementById('assetCount').textContent = assets;
+
+    // 更新"下一步"按钮状态（仅当按钮存在时）
+    const nextBtn = document.getElementById('lockSeriesBtn');
+    if (nextBtn) {
+        if (confirmed === cards.length && cards.length > 0) {
+            nextBtn.disabled = false;
+            nextBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+        } else {
+            nextBtn.disabled = true;
+            nextBtn.classList.add('opacity-50', 'cursor-not-allowed');
+        }
+    }
 }
 updateStats();
 
@@ -1901,10 +1984,16 @@ function initButtonStates() {
         const isGenerating = tabStatus === '0' || activeTab.dataset.generating === 'true';
         const clothingId = activeTab.dataset.clothingId;
 
+        // 检查角色是否已确认或已锁定
+        const roleStatus = parseInt(card.dataset.roleStatus);
+        const isConfirmed = roleStatus >= 2;
+
         console.log('初始化按钮状态:', {
             clothingId,
             tabStatus,
-            isGenerating
+            isGenerating,
+            roleStatus,
+            isConfirmed
         });
 
         // 设为默认按钮可见性（默认服装不显示）
@@ -1917,8 +2006,8 @@ function initButtonStates() {
         }
 
         // 设置按钮状态
-        if (isGenerating) {
-            // 正在生成中
+        if (isGenerating || isConfirmed) {
+            // 正在生成中 或 已确认
             if (regenerateBtn) {
                 regenerateBtn.disabled = true;
                 regenerateBtn.classList.add('opacity-50', 'cursor-not-allowed');
@@ -1968,12 +2057,72 @@ document.querySelectorAll('.confirm-btn:not([disabled])').forEach(btn => {
                 card.dataset.roleStatus = '2';
                 this.disabled = true;
                 this.classList.add('opacity-50');
+
+                // 禁用角色确认后的操作按钮
+                const regenerateBtn = card.querySelector('.regenerate-btn');
+                const setDefaultBtn = card.querySelector('.set-default-btn');
+                const deleteBtn = card.querySelector('.delete-btn');
+                const newClothingBtns = card.querySelectorAll('button[onclick*="generateNewClothing"]');
+
+                if (regenerateBtn) {
+                    regenerateBtn.disabled = true;
+                    regenerateBtn.classList.add('opacity-50', 'cursor-not-allowed');
+                    regenerateBtn.onclick = null;
+                }
+                if (setDefaultBtn) {
+                    setDefaultBtn.disabled = true;
+                    setDefaultBtn.classList.add('opacity-50', 'cursor-not-allowed');
+                    setDefaultBtn.onclick = null;
+                }
+                if (deleteBtn) {
+                    deleteBtn.disabled = true;
+                    deleteBtn.classList.add('opacity-50', 'cursor-not-allowed');
+                }
+                newClothingBtns.forEach(b => {
+                    b.disabled = true;
+                    b.classList.add('opacity-50', 'cursor-not-allowed');
+                    b.onclick = null;
+                });
+
+                // 启用解锁按钮
+                const unlockBtn = card.querySelector('.unlock-btn');
+                if (unlockBtn) {
+                    unlockBtn.disabled = false;
+                    unlockBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+                }
+
                 updateStats();
                 showToast('角色已确认', 'success');
             } else {
                 showToast(data.error || '确认失败', 'error');
             }
         });
+    });
+});
+
+// 解锁角色（恢复为待审核状态）- 使用事件委托
+document.addEventListener('click', function(e) {
+    const unlockBtn = e.target.closest('.unlock-btn');
+    if (!unlockBtn || unlockBtn.disabled) return;
+
+    const roleId = unlockBtn.dataset.roleId;
+
+    if (!confirm('确定要解锁该角色吗？解锁后系列将恢复为待审核状态。')) return;
+
+    showToast('正在解锁...', 'success');
+
+    fetch(`/roles/${roleId}/unlock/`, {
+        method: 'POST',
+        headers: {'X-CSRFToken': getCookie('csrftoken')}
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            showToast('角色已解锁，页面即将刷新', 'success');
+            setTimeout(() => location.reload(), 1000);
+        } else {
+            showToast(data.error || '解锁失败', 'error');
+        }
     });
 });
 
@@ -2013,20 +2162,99 @@ document.getElementById('confirmAllBtn').addEventListener('click', function() {
         showToast('所有角色已确认', 'warning');
         return;
     }
-    buttons.forEach((btn, index) => {
-        setTimeout(() => btn.click(), index * 300);
+
+    if (!confirm(`确定要确认全部 ${buttons.length} 个角色吗？`)) return;
+
+    // 乐观更新：立即更新所有UI
+    buttons.forEach(btn => {
+        const roleId = btn.dataset.roleId;
+        const card = document.querySelector(`.role-card[data-role-id="${roleId}"]`);
+
+        // 立即更新UI
+        card.querySelector('.status-badge').className = 'status-badge status-confirmed';
+        card.querySelector('.status-badge').textContent = '已确认';
+        card.dataset.roleStatus = '2';
+        btn.disabled = true;
+        btn.classList.add('opacity-50');
+
+        // 禁用操作按钮
+        const regenerateBtn = card.querySelector('.regenerate-btn');
+        const setDefaultBtn = card.querySelector('.set-default-btn');
+        const deleteBtn = card.querySelector('.delete-btn');
+        const newClothingBtns = card.querySelectorAll('button[onclick*="generateNewClothing"]');
+
+        if (regenerateBtn) {
+            regenerateBtn.disabled = true;
+            regenerateBtn.classList.add('opacity-50', 'cursor-not-allowed');
+            regenerateBtn.onclick = null;
+        }
+        if (setDefaultBtn) {
+            setDefaultBtn.disabled = true;
+            setDefaultBtn.classList.add('opacity-50', 'cursor-not-allowed');
+            setDefaultBtn.onclick = null;
+        }
+        if (deleteBtn) {
+            deleteBtn.disabled = true;
+            deleteBtn.classList.add('opacity-50', 'cursor-not-allowed');
+        }
+        newClothingBtns.forEach(b => {
+            b.disabled = true;
+            b.classList.add('opacity-50', 'cursor-not-allowed');
+            b.onclick = null;
+        });
+
+        // 启用解锁按钮
+        const unlockBtn = card.querySelector('.unlock-btn');
+        if (unlockBtn) {
+            unlockBtn.disabled = false;
+            unlockBtn.classList.remove('opacity-50', 'cursor-not-allowed');
+        }
+    });
+
+    // 更新统计
+    updateStats();
+    showToast(`正在确认 ${buttons.length} 个角色...`, 'success');
+
+    // 后台发送请求
+    let confirmed = 0;
+    let failed = 0;
+    const total = buttons.length;
+
+    buttons.forEach(btn => {
+        const roleId = btn.dataset.roleId;
+
+        fetch(`/roles/${roleId}/confirm/`, {
+            method: 'POST',
+            headers: {'X-CSRFToken': getCookie('csrftoken')}
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                confirmed++;
+            } else {
+                failed++;
+            }
+
+            // 检查是否全部完成
+            if (confirmed + failed === total) {
+                if (failed === 0) {
+                    showToast(`已确认全部 ${total} 个角色`, 'success');
+                } else {
+                    showToast(`已确认 ${confirmed} 个，失败 ${failed} 个`, 'warning');
+                }
+            }
+        })
+        .catch(() => {
+            failed++;
+        });
     });
 });
 
-// 锁定系列
+// 下一步（锁定资产库）
 document.getElementById('lockSeriesBtn').addEventListener('click', function() {
-    const pending = document.querySelectorAll('.confirm-btn:not([disabled])').length;
-    if (pending > 0) {
-        showToast(`还有 ${pending} 个角色未确认`, 'error');
-        return;
-    }
+    if (this.disabled) return;
 
-    if (!confirm('确定要锁定资产库吗？锁定后将无法修改。')) return;
+    if (!confirm('确定要进入下一步吗？锁定后将无法修改。')) return;
 
     fetch(`/{{ series_id }}/lock/`, {
         method: 'POST',
@@ -2035,8 +2263,8 @@ document.getElementById('lockSeriesBtn').addEventListener('click', function() {
     .then(response => response.json())
     .then(data => {
         if (data.success) {
-            showToast('资产库已锁定', 'success');
-            setTimeout(() => location.reload(), 1000);
+            showToast('已锁定，正在返回主页...', 'success');
+            setTimeout(() => window.location.href = '/', 1000);
         } else {
             showToast(data.error || '锁定失败', 'error');
         }
@@ -2086,6 +2314,54 @@ function submitAddRole() {
 
 document.getElementById('addRoleBtn').addEventListener('click', openAddRoleModal);
 document.getElementById('addFirstRoleBtn')?.addEventListener('click', openAddRoleModal);
+
+// 编辑系列信息
+function openEditSeriesModal() {
+    document.getElementById('editSeriesModal').classList.add('active');
+}
+
+function closeEditSeriesModal() {
+    document.getElementById('editSeriesModal').classList.remove('active');
+}
+
+function submitEditSeries() {
+    const seriesName = document.getElementById('editSeriesName').value.trim();
+    const outline = document.getElementById('editSeriesOutline').value.trim();
+    const background = document.getElementById('editSeriesBackground').value.trim();
+
+    if (!seriesName) {
+        showToast('请输入系列名称', 'error');
+        return;
+    }
+
+    fetch(`/{{ series_id }}/update/`, {
+        method: 'PUT',
+        headers: {
+            'X-CSRFToken': getCookie('csrftoken'),
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+            seriesName: seriesName,
+            outline: outline,
+            background: background
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            // 更新页面显示
+            document.getElementById('seriesNameDisplay').textContent = seriesName;
+            document.getElementById('outlineDisplay').textContent = outline || '暂无剧本大纲';
+            document.getElementById('backgroundDisplay').textContent = background || '暂无背景介绍';
+            closeEditSeriesModal();
+            showToast('系列信息已更新', 'success');
+        } else {
+            showToast(data.error || '更新失败', 'error');
+        }
+    });
+}
+
+document.getElementById('editSeriesBtn').addEventListener('click', openEditSeriesModal);
 
 // 编辑角色
 document.querySelectorAll('.edit-prompt-btn').forEach(btn => {

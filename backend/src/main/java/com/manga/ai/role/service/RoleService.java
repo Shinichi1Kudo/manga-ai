@@ -44,6 +44,11 @@ public interface RoleService {
     void confirmRole(Long roleId);
 
     /**
+     * 解锁角色（恢复为待审核状态）
+     */
+    void unlockRole(Long roleId);
+
+    /**
      * 重新生成角色图片
      */
     RegenerateResponse regenerateRoleAssets(Long roleId, RegenerateRequest request);

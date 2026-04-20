@@ -296,6 +296,30 @@ public class SeriesServiceImpl implements SeriesService {
         log.info("系列已锁定: seriesId={}", seriesId);
     }
 
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void updateSeries(Long seriesId, String seriesName, String outline, String background) {
+        Series series = seriesMapper.selectById(seriesId);
+        if (series == null) {
+            throw new BusinessException("系列不存在");
+        }
+
+        // 标题、背景设定、剧本大纲不受锁定限制，始终可修改
+        if (seriesName != null && !seriesName.trim().isEmpty()) {
+            series.setSeriesName(seriesName.trim());
+        }
+        if (outline != null) {
+            series.setOutline(outline);
+        }
+        if (background != null) {
+            series.setBackground(background);
+        }
+        series.setUpdatedAt(LocalDateTime.now());
+        seriesMapper.updateById(series);
+
+        log.info("更新系列信息: seriesId={}", seriesId);
+    }
+
     /**
      * 创建项目目录结构
      */

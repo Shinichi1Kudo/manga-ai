@@ -25,6 +25,9 @@ urlpatterns = [
     # 锁定系列
     path('<int:series_id>/lock/', views.series_lock, name='lock'),
 
+    # 更新系列信息
+    path('<int:series_id>/update/', views.series_update, name='update'),
+
     # API: 获取进度
     path('api/<int:series_id>/progress/', views.api_progress, name='api_progress'),
 ]

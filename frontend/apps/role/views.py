@@ -100,3 +100,15 @@ def role_update(request, role_id):
         return JsonResponse({'success': True, 'data': result})
     except BackendAPIError as e:
         return JsonResponse({'success': False, 'error': e.message}, status=400)
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def role_unlock(request, role_id):
+    """解锁角色（恢复为待审核状态）"""
+    client = BackendClient()
+    try:
+        client.post(f'/v1/roles/{role_id}/unlock')
+        return JsonResponse({'success': True})
+    except BackendAPIError as e:
+        return JsonResponse({'success': False, 'error': e.message}, status=400)

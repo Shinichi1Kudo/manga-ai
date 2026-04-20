@@ -78,6 +78,15 @@ public class RoleController {
     }
 
     /**
+     * 解锁角色（恢复为待审核状态）
+     */
+    @PostMapping("/{id}/unlock")
+    public Result<Void> unlockRole(@PathVariable Long id) {
+        roleService.unlockRole(id);
+        return Result.success();
+    }
+
+    /**
      * 重新生成角色图片
      */
     @PostMapping("/{id}/regenerate")

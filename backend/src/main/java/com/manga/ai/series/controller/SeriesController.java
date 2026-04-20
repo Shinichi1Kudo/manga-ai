@@ -77,4 +77,16 @@ public class SeriesController {
         seriesService.lockSeries(id);
         return Result.success();
     }
+
+    /**
+     * 更新系列信息
+     */
+    @PutMapping("/{id}")
+    public Result<Void> updateSeries(@PathVariable Long id, @RequestBody Map<String, String> request) {
+        String seriesName = request.get("seriesName");
+        String outline = request.get("outline");
+        String background = request.get("background");
+        seriesService.updateSeries(id, seriesName, outline, background);
+        return Result.success();
+    }
 }

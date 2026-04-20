@@ -19,6 +19,9 @@ import com.manga.ai.role.entity.RoleAttribute;
 import com.manga.ai.role.mapper.RoleAttributeMapper;
 import com.manga.ai.role.mapper.RoleMapper;
 import com.manga.ai.role.service.RoleService;
+import com.manga.ai.series.entity.Series;
+import com.manga.ai.series.mapper.SeriesMapper;
+import com.manga.ai.common.enums.SeriesStatus;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.BeanUtils;
@@ -42,6 +45,7 @@ public class RoleServiceImpl implements RoleService {
     private final RoleMapper roleMapper;
     private final RoleAttributeMapper roleAttributeMapper;
     private final RoleAssetMapper roleAssetMapper;
+    private final SeriesMapper seriesMapper;
     @Lazy
     private final ImageGenerateService imageGenerateService;
     private final AssetService assetService;
@@ -209,6 +213,37 @@ public class RoleServiceImpl implements RoleService {
         roleMapper.updateById(role);
 
         log.info("确认角色: roleId={}", roleId);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void unlockRole(Long roleId) {
+        Role role = roleMapper.selectById(roleId);
+        if (role == null) {
+            throw new BusinessException("角色不存在");
+        }
+
+        // 检查是否是已确认或已锁定状态（只有这两种状态可以解锁）
+        if (!RoleStatus.CONFIRMED.getCode().equals(role.getStatus())
+                && !RoleStatus.LOCKED.getCode().equals(role.getStatus())) {
+            throw new BusinessException("当前状态不支持解锁操作");
+        }
+
+        // 更新角色状态为待审核
+        role.setStatus(RoleStatus.PENDING_REVIEW.getCode());
+        role.setUpdatedAt(LocalDateTime.now());
+        roleMapper.updateById(role);
+
+        // 同时更新系列状态为待审核
+        Series series = seriesMapper.selectById(role.getSeriesId());
+        if (series != null && SeriesStatus.LOCKED.getCode().equals(series.getStatus())) {
+            series.setStatus(SeriesStatus.PENDING_REVIEW.getCode());
+            series.setUpdatedAt(LocalDateTime.now());
+            seriesMapper.updateById(series);
+            log.info("解锁角色同时更新系列状态: roleId={}, seriesId={}", roleId, role.getSeriesId());
+        }
+
+        log.info("解锁角色: roleId={}", roleId);
     }
 
     @Override

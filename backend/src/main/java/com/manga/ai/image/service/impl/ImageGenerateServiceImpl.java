@@ -249,6 +249,8 @@ public class ImageGenerateServiceImpl implements ImageGenerateService {
                 prompt.append(". Character design sheet with three views in ONE image: ");
                 prompt.append("front view (center), side view (left), back view (right). ");
             }
+            // 禁止文字
+            prompt.append("NO text, NO words, NO letters, NO numbers, NO captions, NO labels, NO watermarks. ");
             return prompt.toString();
         }
 
@@ -272,7 +274,10 @@ public class ImageGenerateServiceImpl implements ImageGenerateService {
         prompt.append("White background, professional character sheet layout, ");
         prompt.append("consistent style across all views, ");
         prompt.append("A-pose standing pose for front view, ");
-        prompt.append("clear outline, high quality, detailed.");
+        prompt.append("clear outline, high quality, detailed. ");
+
+        // 禁止文字
+        prompt.append("NO text, NO words, NO letters, NO numbers, NO captions, NO labels, NO watermarks, NO Chinese characters, NO English text.");
 
         return prompt.toString();
     }
@@ -296,7 +301,10 @@ public class ImageGenerateServiceImpl implements ImageGenerateService {
 
         // 三视图要求
         prompt.append("Generate a character sheet with three views: front, side, and back. ");
-        prompt.append("White background, high quality, detailed.");
+        prompt.append("White background, high quality, detailed. ");
+
+        // 禁止文字
+        prompt.append("NO text, NO words, NO letters, NO numbers, NO captions, NO labels, NO watermarks, NO Chinese characters, NO English text.");
 
         return prompt.toString();
     }

@@ -17,7 +17,12 @@ def series_list(request):
         client = BackendClient()
         try:
             result = client.get(f'/v1/series/list?page={page}&pageSize={page_size}')
-            return JsonResponse({'data': result})
+            response = JsonResponse({'data': result})
+            # 禁止缓存
+            response['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+            response['Pragma'] = 'no-cache'
+            response['Expires'] = '0'
+            return response
         except BackendAPIError as e:
             return JsonResponse({'data': [], 'error': e.message}, status=500)
 
@@ -141,6 +146,7 @@ def series_review(request, series_id):
         'series': series,
         'roles': roles,
         'series_id': series_id,
+        'confirmed_count': sum(1 for r in roles if r.get('status', 0) >= 2),
     })
     # 禁止缓存，确保每次都从服务器获取最新数据
     response['Cache-Control'] = 'no-cache, no-store, must-revalidate'
@@ -155,6 +161,23 @@ def series_lock(request, series_id):
     client = BackendClient()
     try:
         client.post(f'/v1/series/{series_id}/lock')
+        return JsonResponse({'success': True})
+    except BackendAPIError as e:
+        return JsonResponse({'success': False, 'error': e.message}, status=400)
+
+
+@csrf_exempt
+@require_http_methods(["PUT"])
+def series_update(request, series_id):
+    """更新系列信息"""
+    client = BackendClient()
+    try:
+        data = json.loads(request.body)
+        client.put(f'/v1/series/{series_id}', {
+            'seriesName': data.get('seriesName'),
+            'outline': data.get('outline'),
+            'background': data.get('background'),
+        })
         return JsonResponse({'success': True})
     except BackendAPIError as e:
         return JsonResponse({'success': False, 'error': e.message}, status=400)

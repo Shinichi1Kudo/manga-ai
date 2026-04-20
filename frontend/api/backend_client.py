@@ -35,6 +35,19 @@ class BackendClient:
             result = response.json()
             # 处理包装的返回结果
             if isinstance(result, dict):
+                # 检查业务逻辑错误（HTTP 200 但 code != 200 或 success=false）
+                if result.get('code') and result.get('code') != 200:
+                    raise BackendAPIError(
+                        status_code=result.get('code'),
+                        message=result.get('message', 'Unknown error'),
+                        data=result
+                    )
+                if result.get('success') is False:
+                    raise BackendAPIError(
+                        status_code=500,
+                        message=result.get('message', 'Unknown error'),
+                        data=result
+                    )
                 # 如果有 data 字段，返回 data 的值（可能是 null）
                 if 'data' in result:
                     return result['data']

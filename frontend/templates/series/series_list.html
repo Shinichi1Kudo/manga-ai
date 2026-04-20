@@ -136,7 +136,8 @@ function loadSeries(page) {
     const container = document.getElementById('seriesList');
     container.innerHTML = '<div class="glass-card p-8 text-center col-span-full"><div class="spinner mx-auto mb-4"></div><p class="text-white/50">加载中...</p></div>';
 
-    fetch(`/api/series/list/?page=${page}&pageSize=${pageSize}`)
+    // 添加时间戳防止缓存
+    fetch(`/api/series/list/?page=${page}&pageSize=${pageSize}&_t=${Date.now()}`)
         .then(response => response.json())
         .then(result => {
             if (result.data && result.data.list && result.data.list.length > 0) {
@@ -185,7 +186,7 @@ function renderSeriesCard(series) {
                     <h3 class="text-lg font-bold truncate flex-1 mr-2">${series.seriesName || '未命名'}</h3>
                     <span class="status-badge status-initializing flex-shrink-0">处理中</span>
                 </div>
-                <p class="text-sm text-white/60 mb-4 line-clamp-2 h-10">${series.outline || '暂无简介'}</p>
+                <p class="text-sm text-white/60 mb-4 line-clamp-2 h-10">${series.background || '暂无背景设定'}</p>
                 <div class="flex items-center justify-between text-sm text-white/40">
                     <span><i data-lucide="users" class="w-4 h-4 inline mr-1"></i>${series.roleCount || 0} 个角色</span>
                     <span>${series.createdAt ? series.createdAt.substring(0, 10) : ''}</span>
@@ -194,15 +195,19 @@ function renderSeriesCard(series) {
         `;
     } else {
         // 正常状态
+        const isLocked = series.status === 2 || series.status === 3;
+        const statusClass = isLocked ? 'status-locked' : 'status-pending';
+        const statusText = isLocked ? '已锁定' : (series.statusDesc || '待审核');
+
         return `
             <div class="glass-card glass-card-hover p-6 cursor-pointer" onclick="location.href='/${series.id}/review/'">
                 <div class="flex items-start justify-between mb-3">
                     <h3 class="text-lg font-bold truncate flex-1 mr-2">${series.seriesName || '未命名'}</h3>
-                    <span class="status-badge ${series.status === 2 ? 'status-locked' : 'status-pending'} flex-shrink-0">
-                        ${series.statusDesc || '待审核'}
+                    <span class="status-badge ${statusClass} flex-shrink-0">
+                        ${statusText}
                     </span>
                 </div>
-                <p class="text-sm text-white/60 mb-4 line-clamp-2 h-10">${series.outline || '暂无简介'}</p>
+                <p class="text-sm text-white/60 mb-4 line-clamp-2 h-10">${series.background || '暂无背景设定'}</p>
                 <div class="flex items-center justify-between text-sm text-white/40">
                     <span><i data-lucide="users" class="w-4 h-4 inline mr-1"></i>${series.roleCount || 0} 个角色</span>
                     <span>${series.createdAt ? series.createdAt.substring(0, 10) : ''}</span>

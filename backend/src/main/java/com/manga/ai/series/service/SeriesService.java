@@ -52,6 +52,11 @@ public interface SeriesService {
     void lockSeries(Long seriesId);
 
     /**
+     * 更新系列信息
+     */
+    void updateSeries(Long seriesId, String seriesName, String outline, String background);
+
+    /**
      * 异步处理角色数据（并行生成图片）
      */
     void asyncProcessCharacters(Long seriesId, String charactersJson);
