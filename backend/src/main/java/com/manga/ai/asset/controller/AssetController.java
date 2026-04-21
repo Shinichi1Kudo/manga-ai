@@ -13,6 +13,7 @@ import org.springframework.web.bind.annotation.*;
 
 import java.io.File;
 import java.util.List;
+import java.util.Map;
 
 /**
  * 资产控制器
@@ -57,6 +58,15 @@ public class AssetController {
     @GetMapping("/role/{roleId}/clothings")
     public Result<List<RoleAsset>> getClothingsByRoleId(@PathVariable Long roleId) {
         List<RoleAsset> result = assetService.getClothingsByRoleId(roleId);
+        return Result.success(result);
+    }
+
+    /**
+     * 批量获取系列所有角色的服装资产
+     */
+    @GetMapping("/series/{seriesId}/clothings")
+    public Result<Map<Long, List<RoleAsset>>> getClothingsBySeriesId(@PathVariable Long seriesId) {
+        Map<Long, List<RoleAsset>> result = assetService.getClothingsBySeriesId(seriesId);
         return Result.success(result);
     }
 

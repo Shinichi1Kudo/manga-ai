@@ -397,4 +397,141 @@ public class AssetServiceImpl implements AssetService {
 
         log.info("删除服装: roleId={}, clothingId={}, 删除资产数量={}", roleId, clothingId, deleted);
     }
+
+    @Override
+    public java.util.Map<Long, List<RoleAsset>> getClothingsBySeriesId(Long seriesId) {
+        log.info("开始批量获取系列资产: seriesId={}", seriesId);
+
+        try {
+            // 1. 获取该系列所有角色ID
+            LambdaQueryWrapper<Role> roleWrapper = new LambdaQueryWrapper<>();
+            roleWrapper.eq(Role::getSeriesId, seriesId)
+                    .select(Role::getId);
+            List<Role> roles = roleMapper.selectList(roleWrapper);
+
+            if (roles.isEmpty()) {
+                log.info("系列没有角色: seriesId={}", seriesId);
+                return new java.util.HashMap<>();
+            }
+
+            List<Long> roleIds = roles.stream()
+                    .map(Role::getId)
+                    .collect(java.util.stream.Collectors.toList());
+
+            // 2. 批量获取所有角色的资产
+            LambdaQueryWrapper<RoleAsset> assetWrapper = new LambdaQueryWrapper<>();
+            assetWrapper.in(RoleAsset::getRoleId, roleIds)
+                    .orderByAsc(RoleAsset::getRoleId)
+                    .orderByAsc(RoleAsset::getClothingId)
+                    .orderByDesc(RoleAsset::getVersion);
+            List<RoleAsset> allAssets = roleAssetMapper.selectList(assetWrapper);
+
+            log.info("查询到 {} 条资产记录", allAssets.size());
+
+            if (allAssets.isEmpty()) {
+                // 返回空 map，但包含所有角色 ID
+                java.util.Map<Long, List<RoleAsset>> emptyResult = new java.util.HashMap<>();
+                for (Long roleId : roleIds) {
+                    emptyResult.put(roleId, new java.util.ArrayList<>());
+                }
+                return emptyResult;
+            }
+
+            // 3. 批量获取所有资产的元数据
+            List<Long> assetIds = allAssets.stream()
+                    .map(RoleAsset::getId)
+                    .collect(java.util.stream.Collectors.toList());
+
+            java.util.Map<Long, AssetMetadata> metadataMap = new java.util.HashMap<>();
+            if (!assetIds.isEmpty()) {
+                LambdaQueryWrapper<AssetMetadata> metadataWrapper = new LambdaQueryWrapper<>();
+                metadataWrapper.in(AssetMetadata::getAssetId, assetIds)
+                        .select(AssetMetadata::getAssetId, AssetMetadata::getDetailedView);
+                List<AssetMetadata> metadataList = assetMetadataMapper.selectList(metadataWrapper);
+                for (AssetMetadata metadata : metadataList) {
+                    metadataMap.put(metadata.getAssetId(), metadata);
+                }
+            }
+
+            // 4. 按角色分组并处理
+            java.util.Map<Long, List<RoleAsset>> result = new java.util.HashMap<>();
+
+            // 先按 roleId + clothingId 分组
+            java.util.Map<Long, java.util.Map<Integer, List<RoleAsset>>> roleClothingMap = new java.util.HashMap<>();
+            for (RoleAsset asset : allAssets) {
+                Long roleId = asset.getRoleId();
+                Integer clothingId = asset.getClothingId();
+                if (roleId == null || clothingId == null) {
+                    continue;
+                }
+                roleClothingMap
+                        .computeIfAbsent(roleId, k -> new java.util.LinkedHashMap<>())
+                        .computeIfAbsent(clothingId, k -> new java.util.ArrayList<>())
+                        .add(asset);
+            }
+
+            // 对每个角色的每个服装，选择合适的版本
+            for (java.util.Map.Entry<Long, java.util.Map<Integer, List<RoleAsset>>> roleEntry : roleClothingMap.entrySet()) {
+                Long roleId = roleEntry.getKey();
+                List<RoleAsset> roleClothings = new java.util.ArrayList<>();
+
+                for (java.util.Map.Entry<Integer, List<RoleAsset>> clothingEntry : roleEntry.getValue().entrySet()) {
+                    List<RoleAsset> versions = clothingEntry.getValue();
+                    if (versions.isEmpty()) {
+                        continue;
+                    }
+
+                    // 查找激活版本
+                    RoleAsset selectedAsset = null;
+                    for (RoleAsset asset : versions) {
+                        if (asset.getIsActive() != null && asset.getIsActive() == 1) {
+                            selectedAsset = asset;
+                            break;
+                        }
+                    }
+
+                    // 没有激活版本，使用最新有效版本
+                    if (selectedAsset == null) {
+                        for (RoleAsset asset : versions) {
+                            if (asset.getStatus() != null
+                                    && asset.getStatus() != AssetStatus.FAILED.getCode()
+                                    && asset.getStatus() != AssetStatus.GENERATING.getCode()) {
+                                selectedAsset = asset;
+                                break;
+                            }
+                        }
+                    }
+
+                    // 还是没有，使用最新版本
+                    if (selectedAsset == null && !versions.isEmpty()) {
+                        selectedAsset = versions.get(0);
+                    }
+
+                    // 填充 detailedView
+                    if (selectedAsset != null) {
+                        AssetMetadata metadata = metadataMap.get(selectedAsset.getId());
+                        if (metadata != null) {
+                            selectedAsset.setDetailedView(metadata.getDetailedView());
+                        }
+                        roleClothings.add(selectedAsset);
+                    }
+                }
+
+                result.put(roleId, roleClothings);
+            }
+
+            // 确保所有角色都有条目
+            for (Long roleId : roleIds) {
+                if (!result.containsKey(roleId)) {
+                    result.put(roleId, new java.util.ArrayList<>());
+                }
+            }
+
+            log.info("getClothingsBySeriesId 完成: seriesId={}, 共{}个角色, {}条资产", seriesId, roleIds.size(), allAssets.size());
+            return result;
+        } catch (Exception e) {
+            log.error("getClothingsBySeriesId 异常: seriesId={}", seriesId, e);
+            throw e;
+        }
+    }
 }

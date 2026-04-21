@@ -1,0 +1,246 @@
+{% extends "base.html" %}
+
+{% block title %}{{ episode.episodeName|default:"剧集详情" }} - {{ series.seriesName }}{% endblock %}
+
+{% block content %}
+<!-- Header -->
+<div class="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
+    <div>
+        <div class="flex items-center gap-3 mb-2">
+            <a href="{% url 'series:episode_list' series_id=series_id %}" class="text-white/50 hover:text-white transition-colors">
+                <i data-lucide="arrow-left" class="w-5 h-5"></i>
+            </a>
+            <h1 class="text-3xl font-bold gradient-text">{{ episode.episodeName|default:"第"|add:episode.episodeNumber|add:"集" }}</h1>
+            <span class="px-3 py-1 rounded-full text-xs font-medium
+                {% if episode.status == 4 %}bg-emerald-500/20 text-emerald-300
+                {% elif episode.status == 3 %}bg-blue-500/20 text-blue-300
+                {% elif episode.status == 2 %}bg-amber-500/20 text-amber-300
+                {% elif episode.status == 1 %}bg-purple-500/20 text-purple-300
+                {% else %}bg-white/10 text-white/50{% endif %}">
+                {{ episode.statusDesc }}
+            </span>
+        </div>
+        <p class="text-white/50">{{ episode.totalShots|default:0 }} 个分镜 · {{ episode.totalDuration|default:0 }} 秒</p>
+    </div>
+    <div class="flex gap-3">
+        {% if episode.status == 2 %}
+        <button id="generateAllBtn" class="px-5 py-2.5 rounded-xl bg-gradient-to-r from-blue-500 to-cyan-500 hover:from-blue-600 hover:to-cyan-600 transition-all font-medium flex items-center gap-2">
+            <i data-lucide="video" class="w-4 h-4"></i>开始制作视频
+        </button>
+        {% endif %}
+        <a href="{% url 'series:episode_list' series_id=series_id %}" class="px-5 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 transition-all font-medium flex items-center gap-2">
+            <i data-lucide="arrow-left" class="w-4 h-4"></i>返回列表
+        </a>
+    </div>
+</div>
+
+<!-- Stats Cards -->
+<div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+    <div class="glass-card p-5 text-center">
+        <div class="text-3xl font-bold gradient-text mb-1">{{ shots|length }}</div>
+        <div class="text-sm text-white/50">分镜总数</div>
+    </div>
+    <div class="glass-card p-5 text-center">
+        <div class="text-3xl font-bold text-emerald-400 mb-1" id="completedShots">0</div>
+        <div class="text-sm text-white/50">已完成</div>
+    </div>
+    <div class="glass-card p-5 text-center">
+        <div class="text-3xl font-bold text-amber-400 mb-1" id="pendingShots">0</div>
+        <div class="text-sm text-white/50">待生成</div>
+    </div>
+    <div class="glass-card p-5 text-center">
+        <div class="text-3xl font-bold text-blue-400 mb-1" id="progressPercent">0%</div>
+        <div class="text-sm text-white/50">完成进度</div>
+    </div>
+</div>
+
+<!-- Shot List -->
+{% if shots %}
+<div class="space-y-4">
+    {% for shot in shots %}
+    <div class="glass-card glass-card-hover p-6 shot-card" data-shot-id="{{ shot.id }}" data-status="{{ shot.generationStatus }}">
+        <div class="flex items-start gap-6">
+            <!-- 缩略图 -->
+            <div class="w-40 h-24 rounded-xl bg-white/5 flex items-center justify-center flex-shrink-0 overflow-hidden">
+                {% if shot.thumbnailUrl %}
+                <img src="{{ shot.thumbnailUrl }}" class="w-full h-full object-cover">
+                {% elif shot.generationStatus == 1 %}
+                <div class="text-center">
+                    <i data-lucide="loader-2" class="w-8 h-8 text-blue-400 animate-spin mx-auto"></i>
+                    <p class="text-xs text-white/50 mt-1">生成中...</p>
+                </div>
+                {% else %}
+                <i data-lucide="video" class="w-10 h-10 text-white/20"></i>
+                {% endif %}
+            </div>
+
+            <!-- 信息 -->
+            <div class="flex-1">
+                <div class="flex items-center gap-3 mb-2">
+                    <span class="text-lg font-semibold text-white">镜头 {{ shot.shotNumber }}</span>
+                    <span class="px-2 py-0.5 rounded text-xs
+                        {% if shot.generationStatus == 2 %}bg-emerald-500/20 text-emerald-300
+                        {% elif shot.generationStatus == 1 %}bg-blue-500/20 text-blue-300
+                        {% elif shot.generationStatus == 3 %}bg-red-500/20 text-red-300
+                        {% else %}bg-white/10 text-white/50{% endif %}">
+                        {{ shot.generationStatusDesc }}
+                    </span>
+                </div>
+                <p class="text-white/70 text-sm mb-2">{{ shot.description|default:"暂无描述"|truncatewords:30 }}</p>
+                <div class="flex items-center gap-4 text-xs text-white/40">
+                    <span><i data-lucide="clock" class="w-3 h-3 inline mr-1"></i>{{ shot.duration|default:5 }}秒</span>
+                    {% if shot.cameraAngle %}
+                    <span><i data-lucide="camera" class="w-3 h-3 inline mr-1"></i>{{ shot.cameraAngle }}</span>
+                    {% endif %}
+                    {% if shot.cameraMovement %}
+                    <span><i data-lucide="move" class="w-3 h-3 inline mr-1"></i>{{ shot.cameraMovement }}</span>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- 操作按钮 -->
+            <div class="flex items-center gap-2">
+                {% if shot.generationStatus == 0 and episode.status == 2 %}
+                <button class="generate-btn px-4 py-2 rounded-lg bg-white/5 hover:bg-white/10 transition-colors text-sm flex items-center gap-2"
+                        data-shot-id="{{ shot.id }}">
+                    <i data-lucide="play" class="w-4 h-4"></i>生成
+                </button>
+                {% endif %}
+                {% if shot.generationStatus == 2 %}
+                <a href="{{ shot.videoUrl }}" target="_blank"
+                   class="px-4 py-2 rounded-lg bg-emerald-500/20 text-emerald-300 hover:bg-emerald-500/30 transition-colors text-sm flex items-center gap-2">
+                    <i data-lucide="play-circle" class="w-4 h-4"></i>预览
+                </a>
+                <button class="approve-btn px-4 py-2 rounded-lg bg-white/5 hover:bg-white/10 transition-colors text-sm flex items-center gap-2"
+                        data-shot-id="{{ shot.id }}">
+                    <i data-lucide="check" class="w-4 h-4"></i>通过
+                </button>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% else %}
+<div class="glass-card p-12 text-center">
+    <i data-lucide="video" class="w-16 h-16 text-white/20 mx-auto mb-4"></i>
+    <h3 class="text-lg font-medium text-white/70 mb-2">暂无分镜数据</h3>
+    <p class="text-white/40">剧本解析后将生成分镜列表</p>
+</div>
+{% endif %}
+
+<script>
+const episodeId = {{ episode_id }};
+const seriesId = {{ series_id }};
+
+// 统计数据
+const shots = {{ shots|safe|default:'[]' }};
+let completed = 0, pending = 0;
+shots.forEach(s => {
+    if (s.generationStatus === 2) completed++;
+    if (s.generationStatus === 0) pending++;
+});
+document.getElementById('completedShots').textContent = completed;
+document.getElementById('pendingShots').textContent = pending;
+const progress = shots.length > 0 ? Math.round(completed / shots.length * 100) : 0;
+document.getElementById('progressPercent').textContent = progress + '%';
+
+// 批量生成视频
+document.getElementById('generateAllBtn')?.addEventListener('click', async function() {
+    if (!confirm('确定要开始生成所有分镜视频吗？这可能需要较长时间。')) return;
+
+    this.disabled = true;
+    this.innerHTML = '<i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i>提交中...';
+
+    try {
+        const response = await fetch(`/api/episodes/${episodeId}/generate/`, {
+            method: 'POST',
+            headers: { 'X-CSRFToken': getCookie('csrftoken') }
+        });
+        const data = await response.json();
+        if (data.success) {
+            alert('视频生成任务已提交，请稍后刷新查看进度');
+            location.reload();
+        } else {
+            alert('提交失败: ' + data.error);
+        }
+    } catch (e) {
+        alert('请求失败: ' + e.message);
+    }
+    this.disabled = false;
+    this.innerHTML = '<i data-lucide="video" class="w-4 h-4"></i>开始制作视频';
+    lucide.createIcons();
+});
+
+// 单个生成
+document.querySelectorAll('.generate-btn').forEach(btn => {
+    btn.addEventListener('click', async function() {
+        const shotId = this.dataset.shotId;
+        this.disabled = true;
+        this.innerHTML = '<i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i>生成中...';
+        lucide.createIcons();
+
+        try {
+            const response = await fetch(`/api/shots/${shotId}/generate/`, {
+                method: 'POST',
+                headers: { 'X-CSRFToken': getCookie('csrftoken') }
+            });
+            const data = await response.json();
+            if (data.success) {
+                setTimeout(() => location.reload(), 2000);
+            } else {
+                alert('生成失败: ' + data.error);
+                this.disabled = false;
+                this.innerHTML = '<i data-lucide="play" class="w-4 h-4"></i>生成';
+                lucide.createIcons();
+            }
+        } catch (e) {
+            alert('请求失败: ' + e.message);
+            this.disabled = false;
+            this.innerHTML = '<i data-lucide="play" class="w-4 h-4"></i>生成';
+            lucide.createIcons();
+        }
+    });
+});
+
+// 审核通过
+document.querySelectorAll('.approve-btn').forEach(btn => {
+    btn.addEventListener('click', async function() {
+        const shotId = this.dataset.shotId;
+        try {
+            const response = await fetch(`/api/shots/${shotId}/review/`, {
+                method: 'POST',
+                headers: {
+                    'X-CSRFToken': getCookie('csrftoken'),
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ approved: true })
+            });
+            const data = await response.json();
+            if (data.success) {
+                location.reload();
+            } else {
+                alert('审核失败: ' + data.error);
+            }
+        } catch (e) {
+            alert('请求失败: ' + e.message);
+        }
+    });
+});
+
+function getCookie(name) {
+    let cookieValue = null;
+    if (document.cookie && document.cookie !== '') {
+        const cookies = document.cookie.split(';');
+        for (let i = 0; i < cookies.length; i++) {
+            const cookie = cookies[i].trim();
+            if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                break;
+            }
+        }
+    }
+    return cookieValue;
+}
+</script>
+{% endblock %}

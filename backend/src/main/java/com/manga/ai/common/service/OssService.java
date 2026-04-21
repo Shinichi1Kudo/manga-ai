@@ -124,6 +124,44 @@ public class OssService {
     }
 
     /**
+     * 从URL下载视频并上传到OSS
+     * @param videoUrl 视频URL
+     * @param folder 存储文件夹（如 "videos"）
+     * @return OSS文件访问URL
+     */
+    public String uploadVideoFromUrl(String videoUrl, String folder) {
+        try {
+            log.info("开始从URL下载并上传视频: {}", videoUrl.substring(0, Math.min(50, videoUrl.length())) + "...");
+
+            // 下载视频
+            URL url = new URL(videoUrl);
+            InputStream inputStream = url.openStream();
+
+            // 生成文件名
+            String fileName = folder + "/" + UUID.randomUUID().toString().replace("-", "") + ".mp4";
+
+            // 上传到OSS
+            ObjectMetadata metadata = new ObjectMetadata();
+            metadata.setContentType("video/mp4");
+            PutObjectRequest putRequest = new PutObjectRequest(bucketName, fileName, inputStream, metadata);
+            ossClient.putObject(putRequest);
+
+            inputStream.close();
+
+            // 生成访问URL（有效期10年）
+            Date expiration = new Date(System.currentTimeMillis() + (long) urlExpirationYears * 365 * 24 * 60 * 60 * 1000L);
+            URL ossUrl = ossClient.generatePresignedUrl(bucketName, fileName, expiration);
+
+            log.info("视频上传成功: {}", fileName);
+            return ossUrl.toString();
+
+        } catch (Exception e) {
+            log.error("上传视频到OSS失败", e);
+            return null;
+        }
+    }
+
+    /**
      * 删除OSS文件
      * @param fileUrl 文件URL
      */

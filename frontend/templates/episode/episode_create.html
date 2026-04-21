@@ -1,0 +1,106 @@
+{% extends "base.html" %}
+
+{% block title %}创建剧集 - {{ series.seriesName }}{% endblock %}
+
+{% block content %}
+<!-- Header -->
+<div class="flex items-center gap-3 mb-8">
+    <a href="{% url 'series:episode_list' series_id=series_id %}" class="text-white/50 hover:text-white transition-colors">
+        <i data-lucide="arrow-left" class="w-5 h-5"></i>
+    </a>
+    <h1 class="text-3xl font-bold gradient-text">创建剧集</h1>
+</div>
+
+<!-- Form -->
+<div class="glass-card p-8 max-w-4xl mx-auto">
+    <form method="post" id="episodeForm">
+        {% csrf_token %}
+
+        <div class="space-y-6">
+            <!-- 基本信息 -->
+            <div class="grid grid-cols-2 gap-6">
+                <div>
+                    <label class="block text-white/70 text-sm mb-2">集数编号 <span class="text-red-400">*</span></label>
+                    <input type="number" name="episode_number" min="1" step="1"
+                           value="{{ form_data.episode_number|default:'' }}"
+                           placeholder="如：1、2、3"
+                           required
+                           class="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-white/30 focus:outline-none focus:border-blue-500/50">
+                </div>
+                <div>
+                    <label class="block text-white/70 text-sm mb-2">剧集名称 <span class="text-red-400">*</span></label>
+                    <input type="text" name="episode_name"
+                           value="{{ form_data.episode_name|default:'' }}"
+                           placeholder="如：第一章 相遇"
+                           required
+                           class="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-white/30 focus:outline-none focus:border-blue-500/50">
+                </div>
+            </div>
+
+            <!-- 剧本内容 -->
+            <div>
+                <label class="block text-white/70 text-sm mb-2">
+                    <i data-lucide="file-text" class="w-4 h-4 inline mr-1"></i>
+                    剧本内容 <span class="text-red-400">*</span>
+                </label>
+                <textarea name="script_text" rows="15"
+                          placeholder="请输入本集剧本文本，AI将自动解析为分镜...
+
+示例格式：
+【场景1：教室 - 白天】
+小明坐在教室里，看着窗外的樱花。小红走过来，轻声问道："你在想什么？"
+小明转过头，微笑着说："我在想我们的未来。"
+
+【场景2：操场 - 黄昏】
+两人并肩走在操场上，夕阳把影子拉得很长。
+小红停下脚步，认真地看着小明..."
+                          class="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-white/30 focus:outline-none focus:border-blue-500/50 resize-none">{{ form_data.script_text|default:'' }}</textarea>
+                <p class="text-white/40 text-xs mt-2">
+                    <i data-lucide="info" class="w-3 h-3 inline"></i>
+                    AI将分析剧本，自动提取场景、角色动作、分镜信息，每个分镜时长不超过15秒
+                </p>
+            </div>
+
+            <!-- 已有角色提示 -->
+            <div class="bg-white/5 rounded-xl p-4">
+                <h4 class="text-white/70 text-sm mb-2 flex items-center gap-2">
+                    <i data-lucide="users" class="w-4 h-4"></i>
+                    已有角色（请在剧本中使用这些角色名）
+                </h4>
+                <div class="flex flex-wrap gap-2">
+                    {% if series.roles %}
+                        {% for role in series.roles %}
+                        <span class="px-3 py-1 rounded-full bg-violet-500/20 text-violet-300 text-sm">{{ role }}</span>
+                        {% endfor %}
+                    {% else %}
+                    <span class="text-white/40 text-sm">暂无角色信息</span>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- 提交按钮 -->
+            <div class="flex justify-end gap-4 pt-4">
+                <a href="{% url 'series:episode_list' series_id=series_id %}"
+                   class="px-6 py-3 rounded-xl bg-white/5 hover:bg-white/10 transition-colors">
+                    取消
+                </a>
+                <button type="submit"
+                        class="px-6 py-3 rounded-xl bg-gradient-to-r from-blue-500 to-cyan-500 hover:from-blue-600 hover:to-cyan-600 transition-all font-medium flex items-center gap-2">
+                    <i data-lucide="sparkles" class="w-4 h-4"></i>
+                    创建并解析
+                </button>
+            </div>
+        </div>
+    </form>
+</div>
+
+{% if messages %}
+<div class="fixed top-4 right-4 z-50">
+    {% for message in messages %}
+    <div class="glass-card px-4 py-3 rounded-xl mb-2 {% if message.tags == 'error' %}border-red-500/50{% else %}border-emerald-500/50{% endif %}">
+        {{ message }}
+    </div>
+    {% endfor %}
+</div>
+{% endif %}
+{% endblock %}

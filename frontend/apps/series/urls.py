@@ -42,4 +42,29 @@ urlpatterns = [
 
     # API: 获取进度
     path('api/<int:series_id>/progress/', views.api_progress, name='api_progress'),
+
+    # ==================== 剧集管理 ====================
+    # 选择系列（剧集制作入口）
+    path('episodes/', views.select_series_for_episode, name='select_series_for_episode'),
+
+    # 剧集列表
+    path('<int:series_id>/episodes/', views.episode_list, name='episode_list'),
+
+    # 创建剧集
+    path('<int:series_id>/episodes/create/', views.episode_create, name='episode_create'),
+
+    # 剧集详情/分镜审核
+    path('<int:series_id>/episodes/<int:episode_id>/', views.episode_detail, name='episode_detail'),
+
+    # 剧集进度API
+    path('api/episodes/<int:episode_id>/progress/', views.episode_progress, name='episode_progress'),
+
+    # 生成单个分镜视频
+    path('api/shots/<int:shot_id>/generate/', views.shot_generate_video, name='shot_generate'),
+
+    # 批量生成视频
+    path('api/episodes/<int:episode_id>/generate/', views.episode_generate_videos, name='episode_generate'),
+
+    # 审核分镜
+    path('api/shots/<int:shot_id>/review/', views.shot_review, name='shot_review'),
 ]

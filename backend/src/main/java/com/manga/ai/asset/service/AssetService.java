@@ -82,4 +82,11 @@ public interface AssetService {
      * @param clothingId 服装ID
      */
     void deleteClothing(Long roleId, Integer clothingId);
+
+    /**
+     * 批量获取系列所有角色的服装资产
+     * @param seriesId 系列ID
+     * @return Map<roleId, List<RoleAsset>>
+     */
+    java.util.Map<Long, List<RoleAsset>> getClothingsBySeriesId(Long seriesId);
 }

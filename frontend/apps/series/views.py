@@ -126,12 +126,13 @@ def series_review(request, series_id):
         series = client.get(f'/v1/series/{series_id}')
         roles = client.get(f'/v1/roles/series/{series_id}')
 
-        # 为每个角色获取所有服装（每个服装的最新版本）
+        # 批量获取所有角色的资产（一次请求，避免 N+1 问题）
+        assets_map = client.get(f'/v1/assets/series/{series_id}/clothings')
+
+        # 为每个角色分配资产
         for role in roles:
-            try:
-                role['assets'] = client.get(f'/v1/assets/role/{role["id"]}/clothings')
-            except:
-                role['assets'] = []
+            role_id = role.get('id')
+            role['assets'] = assets_map.get(str(role_id), [])  # JSON key 是字符串
 
             # 检查是否有任何成功生成的资产（用于决定是否显示"生成新服装"按钮）
             role['has_successful_asset'] = any(
@@ -242,3 +243,202 @@ def series_permanent_delete(request, series_id):
         return JsonResponse({'success': True})
     except BackendAPIError as e:
         return JsonResponse({'success': False, 'error': e.message}, status=400)
+
+
+# ==================== 剧集管理相关视图 ====================
+
+def select_series_for_episode(request):
+    """选择系列页面 - 用于剧集制作"""
+    client = BackendClient()
+    try:
+        result = client.get('/v1/series/list?page=1&pageSize=100')
+        series_list = result.get('list', [])
+        # 过滤已锁定的系列
+        locked_series = [s for s in series_list if s.get('status') == 2]
+
+        # 获取每个系列的角色
+        for series in locked_series:
+            try:
+                roles = client.get(f'/v1/roles/series/{series["id"]}')
+                series['roles'] = roles
+            except:
+                series['roles'] = []
+    except BackendAPIError as e:
+        messages.error(request, f'获取系列列表失败: {e.message}')
+        locked_series = []
+
+    return render(request, 'episode/select_series.html', {
+        'locked_series': locked_series,
+    })
+
+
+def episode_list(request, series_id):
+    """剧集列表页面"""
+    client = BackendClient()
+    try:
+        series = client.get(f'/v1/series/{series_id}')
+        episodes = client.get(f'/v1/episodes/series/{series_id}')
+    except BackendAPIError as e:
+        messages.error(request, f'获取剧集列表失败: {e.message}')
+        return redirect('series:list')
+
+    return render(request, 'episode/episode_list.html', {
+        'series': series,
+        'episodes': episodes,
+        'series_id': series_id,
+    })
+
+
+@csrf_exempt
+def episode_create(request, series_id):
+    """创建剧集页面"""
+    client = BackendClient()
+    try:
+        series = client.get(f'/v1/series/{series_id}')
+    except BackendAPIError as e:
+        messages.error(request, f'获取系列信息失败: {e.message}')
+        return redirect('series:list')
+
+    if request.method == 'POST':
+        episode_number = request.POST.get('episode_number', '').strip()
+        episode_name = request.POST.get('episode_name', '').strip()
+        script_text = request.POST.get('script_text', '').strip()
+
+        # 验证必填字段
+        if not episode_number:
+            messages.error(request, '请输入集数编号')
+            return render(request, 'episode/episode_create.html', {
+                'series': series,
+                'series_id': series_id,
+                'form_data': request.POST,
+            })
+        if not episode_name:
+            messages.error(request, '请输入剧集名称')
+            return render(request, 'episode/episode_create.html', {
+                'series': series,
+                'series_id': series_id,
+                'form_data': request.POST,
+            })
+        if not script_text:
+            messages.error(request, '请输入剧本内容')
+            return render(request, 'episode/episode_create.html', {
+                'series': series,
+                'series_id': series_id,
+                'form_data': request.POST,
+            })
+
+        # 验证集数编号为正整数
+        try:
+            episode_num = int(episode_number)
+            if episode_num < 1:
+                messages.error(request, '集数编号必须大于0')
+                return render(request, 'episode/episode_create.html', {
+                    'series': series,
+                    'series_id': series_id,
+                    'form_data': request.POST,
+                })
+        except ValueError:
+            messages.error(request, '集数编号必须是整数')
+            return render(request, 'episode/episode_create.html', {
+                'series': series,
+                'series_id': series_id,
+                'form_data': request.POST,
+            })
+
+        try:
+            result = client.post(f'/v1/episodes/series/{series_id}', {
+                'episodeNumber': episode_num,
+                'episodeName': episode_name,
+                'scriptText': script_text,
+            })
+
+            # 启动异步解析
+            episode_id = result.get('data') if isinstance(result, dict) else result
+            if episode_id:
+                client.post(f'/v1/episodes/{episode_id}/parse')
+
+            messages.success(request, f'第{episode_number}集创建成功，正在解析剧本...')
+            return redirect('series:episode_list', series_id=series_id)
+        except BackendAPIError as e:
+            messages.error(request, f'创建剧集失败: {e.message}')
+            return render(request, 'episode/episode_create.html', {
+                'series': series,
+                'series_id': series_id,
+                'form_data': request.POST,
+            })
+
+    return render(request, 'episode/episode_create.html', {
+        'series': series,
+        'series_id': series_id,
+    })
+
+
+def episode_detail(request, series_id, episode_id):
+    """剧集详情/分镜审核页面"""
+    client = BackendClient()
+    try:
+        series = client.get(f'/v1/series/{series_id}')
+        episode = client.get(f'/v1/episodes/{episode_id}')
+        shots = client.get(f'/v1/shots/episode/{episode_id}')
+    except BackendAPIError as e:
+        messages.error(request, f'获取剧集信息失败: {e.message}')
+        return redirect('series:episode_list', series_id=series_id)
+
+    return render(request, 'episode/episode_detail.html', {
+        'series': series,
+        'episode': episode,
+        'shots': shots,
+        'series_id': series_id,
+        'episode_id': episode_id,
+    })
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def shot_generate_video(request, shot_id):
+    """生成单个分镜视频"""
+    client = BackendClient()
+    try:
+        client.post(f'/v1/shots/{shot_id}/generate')
+        return JsonResponse({'success': True})
+    except BackendAPIError as e:
+        return JsonResponse({'success': False, 'error': e.message}, status=400)
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def episode_generate_videos(request, episode_id):
+    """批量生成剧集的所有分镜视频"""
+    client = BackendClient()
+    try:
+        client.post(f'/v1/shots/episode/{episode_id}/generate')
+        return JsonResponse({'success': True})
+    except BackendAPIError as e:
+        return JsonResponse({'success': False, 'error': e.message}, status=400)
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def shot_review(request, shot_id):
+    """审核分镜"""
+    client = BackendClient()
+    try:
+        data = json.loads(request.body)
+        client.post(f'/v1/shots/{shot_id}/review', {
+            'approved': data.get('approved', True),
+            'comment': data.get('comment', ''),
+        })
+        return JsonResponse({'success': True})
+    except BackendAPIError as e:
+        return JsonResponse({'success': False, 'error': e.message}, status=400)
+
+
+def episode_progress(request, episode_id):
+    """获取剧集进度 - AJAX接口"""
+    client = BackendClient()
+    try:
+        result = client.get(f'/v1/episodes/{episode_id}/progress')
+        return JsonResponse(result)
+    except BackendAPIError as e:
+        return JsonResponse({'error': e.message}, status=500)
+
