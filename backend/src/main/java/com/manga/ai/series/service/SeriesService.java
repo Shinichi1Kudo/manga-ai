@@ -65,4 +65,9 @@ public interface SeriesService {
      * 异步处理角色提取（NLP方式）
      */
     void asyncProcessRoleExtract(Long seriesId, String characterIntro);
+
+    /**
+     * 获取已锁定的系列列表
+     */
+    List<SeriesDetailVO> getLockedSeries();
 }

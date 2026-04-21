@@ -6,6 +6,76 @@ from django.views.decorators.csrf import csrf_exempt
 from api.backend_client import BackendClient, BackendAPIError
 
 
+def asset_library_page(request):
+    """资产库页面"""
+    client = BackendClient()
+    try:
+        # 获取已锁定的系列列表
+        locked_series = client.get('/v1/series/locked')
+    except BackendAPIError as e:
+        locked_series = []
+
+    return render(request, 'asset/library.html', {
+        'locked_series': locked_series,
+    })
+
+
+def get_locked_series(request):
+    """API: 获取已锁定的系列列表"""
+    client = BackendClient()
+    try:
+        locked_series = client.get('/v1/series/locked')
+        return JsonResponse({'success': True, 'data': locked_series})
+    except BackendAPIError as e:
+        return JsonResponse({'success': False, 'error': e.message}, status=400)
+
+
+def get_series_assets(request, series_id):
+    """API: 获取系列的所有资产"""
+    client = BackendClient()
+    try:
+        # 获取系列信息
+        series = client.get(f'/v1/series/{series_id}')
+        # 获取角色列表
+        roles = client.get(f'/v1/roles/series/{series_id}')
+
+        # 收集所有角色资产
+        role_assets = []
+        for role in roles:
+            assets = client.get(f'/v1/assets/role/{role["id"]}')
+            # 只取激活的资产
+            active_assets = [a for a in assets if a.get('isActive') == 1 or a.get('isActive') == True]
+            if active_assets:
+                # 按clothingId分组
+                clothing_map = {}
+                for asset in active_assets:
+                    cid = asset.get('clothingId', 1)
+                    if cid not in clothing_map:
+                        clothing_map[cid] = {
+                            'clothingId': cid,
+                            'clothingName': asset.get('clothingName', f'服装{cid}'),
+                            'assets': []
+                        }
+                    clothing_map[cid]['assets'].append(asset)
+
+                role_assets.append({
+                    'roleId': role['id'],
+                    'roleName': role['roleName'],
+                    'roleCode': role.get('roleCode', ''),
+                    'clothings': list(clothing_map.values())
+                })
+
+        return JsonResponse({
+            'success': True,
+            'data': {
+                'series': series,
+                'roles': role_assets
+            }
+        })
+    except BackendAPIError as e:
+        return JsonResponse({'success': False, 'error': e.message}, status=400)
+
+
 def asset_detail(request, asset_id):
     """资产详情"""
     client = BackendClient()

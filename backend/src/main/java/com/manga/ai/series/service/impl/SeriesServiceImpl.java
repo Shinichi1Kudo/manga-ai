@@ -640,4 +640,32 @@ public class SeriesServiceImpl implements SeriesService {
         BeanUtils.copyProperties(series, vo);
         return vo;
     }
+
+    @Override
+    public List<SeriesDetailVO> getLockedSeries() {
+        LambdaQueryWrapper<Series> wrapper = new LambdaQueryWrapper<>();
+        // 状态为 LOCKED(2) 或 LOCKED(3，角色锁定后系列状态)
+        wrapper.in(Series::getStatus, SeriesStatus.LOCKED.getCode(), 3)
+                .orderByDesc(Series::getCreatedAt);
+        List<Series> seriesList = seriesMapper.selectList(wrapper);
+
+        // 批量查询角色数量
+        java.util.Map<Long, Integer> roleCountMap = new java.util.HashMap<>();
+        if (!seriesList.isEmpty()) {
+            List<Long> seriesIds = seriesList.stream().map(Series::getId).collect(java.util.stream.Collectors.toList());
+            LambdaQueryWrapper<Role> roleWrapper = new LambdaQueryWrapper<>();
+            roleWrapper.in(Role::getSeriesId, seriesIds);
+            List<Role> allRoles = roleMapper.selectList(roleWrapper);
+
+            for (Role role : allRoles) {
+                roleCountMap.merge(role.getSeriesId(), 1, Integer::sum);
+            }
+        }
+
+        return seriesList.stream().map(series -> {
+            SeriesDetailVO vo = convertToVO(series);
+            vo.setRoleCount(roleCountMap.getOrDefault(series.getId(), 0));
+            return vo;
+        }).collect(java.util.stream.Collectors.toList());
+    }
 }

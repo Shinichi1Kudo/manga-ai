@@ -1,0 +1,487 @@
+{% extends "base.html" %}
+
+{% block title %}我的资产库 - Manga AI{% endblock %}
+
+{% block content %}
+<!-- Header -->
+<div class="flex items-center justify-between mb-8">
+    <div>
+        <h1 class="text-3xl font-bold">
+            <span class="gradient-text">我的资产库</span>
+        </h1>
+        <p class="text-white/50 mt-2">查看已锁定系列的角色、场景、道具资产</p>
+    </div>
+    <a href="/" class="px-5 py-2.5 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 transition-colors font-medium flex items-center gap-2">
+        <i data-lucide="arrow-left" class="w-4 h-4"></i>返回首页
+    </a>
+</div>
+
+<!-- Series Selector -->
+<div class="glass-card p-6 mb-6">
+    <div class="flex items-center gap-4">
+        <label class="text-sm text-white/60 whitespace-nowrap">选择系列：</label>
+        <select id="seriesSelector" class="input-modern flex-1 max-w-md">
+            {% if locked_series %}
+                {% for series in locked_series %}
+                <option value="{{ series.id }}">{{ series.seriesName }} ({{ series.roleCount }}个角色)</option>
+                {% endfor %}
+            {% else %}
+                <option value="">暂无已锁定的系列</option>
+            {% endif %}
+        </select>
+    </div>
+</div>
+
+<!-- Asset Type Tabs -->
+<div class="flex gap-2 mb-6">
+    <button class="asset-type-tab active px-6 py-3 rounded-xl font-medium transition-all" data-type="role">
+        <i data-lucide="user" class="w-4 h-4 inline mr-2"></i>角色资产
+    </button>
+    <button class="asset-type-tab px-6 py-3 rounded-xl font-medium transition-all" data-type="scene" disabled>
+        <i data-lucide="image" class="w-4 h-4 inline mr-2"></i>场景资产
+        <span class="text-xs text-white/40 ml-1">(敬请期待)</span>
+    </button>
+    <button class="asset-type-tab px-6 py-3 rounded-xl font-medium transition-all" data-type="prop" disabled>
+        <i data-lucide="package" class="w-4 h-4 inline mr-2"></i>道具资产
+        <span class="text-xs text-white/40 ml-1">(敬请期待)</span>
+    </button>
+</div>
+
+<!-- Asset Content -->
+<div id="assetContent" class="glass-card p-6 min-h-[400px]">
+    {% if locked_series %}
+    <div class="flex items-center justify-center py-12">
+        <div class="spinner mr-3"></div>
+        <span class="text-white/60">加载中...</span>
+    </div>
+    {% else %}
+    <div class="text-center py-12">
+        <i data-lucide="folder-x" class="w-16 h-16 text-white/20 mx-auto mb-4"></i>
+        <p class="text-white/50">暂无已锁定的系列</p>
+        <p class="text-white/30 text-sm mt-2">请先创建系列并锁定后再查看资产库</p>
+        <a href="/init/" class="btn-neon mt-6 inline-flex items-center gap-2">
+            <i data-lucide="plus" class="w-4 h-4"></i>创建新系列
+        </a>
+    </div>
+    {% endif %}
+</div>
+
+<!-- Image Preview Modal -->
+<div class="modal-backdrop" id="imagePreviewModal" onclick="closePreviewModal(event)">
+    <div class="modal-content max-w-4xl" onclick="event.stopPropagation()">
+        <div class="p-4 border-b border-white/10 flex items-center justify-between">
+            <h3 class="text-lg font-semibold" id="previewTitle">图片预览</h3>
+            <div class="flex items-center gap-2">
+                <button onclick="zoomOut()" class="p-2 hover:bg-white/10 rounded-lg transition-colors" title="缩小">
+                    <i data-lucide="zoom-out" class="w-5 h-5"></i>
+                </button>
+                <span id="zoomLevel" class="text-sm text-white/60 w-12 text-center">100%</span>
+                <button onclick="zoomIn()" class="p-2 hover:bg-white/10 rounded-lg transition-colors" title="放大">
+                    <i data-lucide="zoom-in" class="w-5 h-5"></i>
+                </button>
+                <button onclick="resetZoom()" class="p-2 hover:bg-white/10 rounded-lg transition-colors" title="重置">
+                    <i data-lucide="maximize" class="w-5 h-5"></i>
+                </button>
+                <button onclick="closePreviewModal()" class="p-2 hover:bg-white/10 rounded-lg transition-colors">
+                    <i data-lucide="x" class="w-5 h-5"></i>
+                </button>
+            </div>
+        </div>
+        <div class="p-4 overflow-auto" style="max-height: 70vh;">
+            <div id="previewContainer" class="flex items-center justify-center min-h-[300px]">
+                <img id="previewImage" src="" class="max-w-full max-h-[65vh] mx-auto rounded-lg transition-transform duration-200 cursor-move">
+            </div>
+        </div>
+        <div class="p-4 border-t border-white/10 flex justify-end gap-3">
+            <button onclick="closePreviewModal()" class="px-5 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 transition-colors font-medium">关闭</button>
+            <a id="downloadBtn" href="#" download class="btn-neon">
+                <i data-lucide="download" class="w-4 h-4 inline mr-2"></i>下载
+            </a>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+.asset-type-tab {
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    color: rgba(255, 255, 255, 0.6);
+}
+
+.asset-type-tab:hover:not(:disabled) {
+    background: rgba(255, 255, 255, 0.1);
+    border-color: rgba(255, 255, 255, 0.2);
+}
+
+.asset-type-tab.active {
+    background: linear-gradient(135deg, rgba(124, 58, 237, 0.3), rgba(37, 99, 235, 0.3));
+    border-color: rgba(124, 58, 237, 0.5);
+    color: white;
+}
+
+.asset-type-tab:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.role-card {
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 16px;
+    padding: 20px;
+    transition: all 0.3s ease;
+}
+
+.role-card:hover {
+    background: rgba(255, 255, 255, 0.06);
+    border-color: rgba(255, 255, 255, 0.15);
+}
+
+.clothing-tab {
+    padding: 8px 16px;
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid transparent;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    font-size: 14px;
+}
+
+.clothing-tab:hover {
+    background: rgba(255, 255, 255, 0.1);
+}
+
+.clothing-tab.active {
+    background: rgba(124, 58, 237, 0.2);
+    border-color: rgba(124, 58, 237, 0.5);
+}
+
+.view-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 16px;
+}
+
+.view-item {
+    aspect-ratio: 3/4;
+    border-radius: 12px;
+    overflow: hidden;
+    cursor: pointer;
+    position: relative;
+    border: 2px solid transparent;
+    transition: all 0.3s ease;
+}
+
+.view-item:hover {
+    border-color: rgba(124, 58, 237, 0.5);
+    transform: scale(1.02);
+}
+
+.view-item img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.view-item .view-label {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    padding: 8px;
+    background: linear-gradient(transparent, rgba(0,0,0,0.8));
+    text-align: center;
+    font-size: 12px;
+    font-weight: 500;
+}
+</style>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+let currentSeriesId = null;
+let currentZoom = 1;
+let imageTranslate = { x: 0, y: 0 };
+let isDragging = false;
+let dragStart = { x: 0, y: 0 };
+
+const lockedSeries = {{ locked_series|safe }};
+
+// 页面加载时加载第一个系列的资产
+document.addEventListener('DOMContentLoaded', function() {
+    if (lockedSeries && lockedSeries.length > 0) {
+        loadSeriesAssets(lockedSeries[0].id);
+    }
+
+    // 系列选择器变化事件
+    document.getElementById('seriesSelector').addEventListener('change', function() {
+        const seriesId = this.value;
+        if (seriesId) {
+            loadSeriesAssets(seriesId);
+        }
+    });
+
+    // 资产类型切换
+    document.querySelectorAll('.asset-type-tab').forEach(tab => {
+        tab.addEventListener('click', function() {
+            if (this.disabled) return;
+            document.querySelectorAll('.asset-type-tab').forEach(t => t.classList.remove('active'));
+            this.classList.add('active');
+        });
+    });
+});
+
+function loadSeriesAssets(seriesId) {
+    currentSeriesId = seriesId;
+    const content = document.getElementById('assetContent');
+
+    content.innerHTML = `
+        <div class="flex items-center justify-center py-12">
+            <div class="spinner mr-3"></div>
+            <span class="text-white/60">加载资产中...</span>
+        </div>
+    `;
+
+    fetch(`/assets/api/series/${seriesId}/assets/`)
+        .then(res => res.json())
+        .then(result => {
+            if (result.success) {
+                renderAssets(result.data);
+            } else {
+                content.innerHTML = `
+                    <div class="text-center py-12">
+                        <i data-lucide="alert-circle" class="w-12 h-12 text-red-400 mx-auto mb-4"></i>
+                        <p class="text-red-400">${result.error || '加载失败'}</p>
+                    </div>
+                `;
+                lucide.createIcons();
+            }
+        })
+        .catch(err => {
+            content.innerHTML = `
+                <div class="text-center py-12">
+                    <i data-lucide="alert-circle" class="w-12 h-12 text-red-400 mx-auto mb-4"></i>
+                    <p class="text-red-400">网络错误，请重试</p>
+                </div>
+            `;
+            lucide.createIcons();
+        });
+}
+
+function renderAssets(data) {
+    const { series, roles } = data;
+    const content = document.getElementById('assetContent');
+
+    if (!roles || roles.length === 0) {
+        content.innerHTML = `
+            <div class="text-center py-12">
+                <i data-lucide="user-x" class="w-16 h-16 text-white/20 mx-auto mb-4"></i>
+                <p class="text-white/50">该系列暂无角色资产</p>
+            </div>
+        `;
+        lucide.createIcons();
+        return;
+    }
+
+    let html = `
+        <div class="mb-6">
+            <h2 class="text-xl font-bold">${series.seriesName}</h2>
+            <p class="text-white/50 text-sm mt-1">${roles.length} 个角色</p>
+        </div>
+        <div class="space-y-6">
+    `;
+
+    roles.forEach(role => {
+        html += `
+            <div class="role-card">
+                <div class="flex items-center justify-between mb-4">
+                    <h3 class="text-lg font-semibold">${role.roleName}</h3>
+                    <span class="text-xs text-white/40">${role.roleCode}</span>
+                </div>
+        `;
+
+        // 服装标签
+        if (role.clothings && role.clothings.length > 0) {
+            html += `
+                <div class="flex flex-wrap gap-2 mb-4">
+            `;
+            role.clothings.forEach((clothing, idx) => {
+                const isActive = idx === 0;
+                html += `
+                    <div class="clothing-tab ${isActive ? 'active' : ''}"
+                         data-role-id="${role.roleId}"
+                         data-clothing-id="${clothing.clothingId}"
+                         onclick="selectClothing(this, '${role.roleId}', '${clothing.clothingId}')">
+                        ${clothing.clothingName}
+                    </div>
+                `;
+            });
+            html += `</div>`;
+
+            // 显示第一个服装的资产
+            const firstClothing = role.clothings[0];
+            html += `
+                <div class="clothing-content" data-role-id="${role.roleId}" data-clothing-id="${firstClothing.clothingId}">
+                    <div class="view-grid">
+            `;
+
+            firstClothing.assets.forEach(asset => {
+                const viewName = getViewName(asset.viewType);
+                html += `
+                    <div class="view-item" onclick="openPreview('${asset.filePath}', '${role.roleName} - ${viewName}')">
+                        <img src="${asset.filePath}" alt="${viewName}">
+                        <div class="view-label">${viewName}</div>
+                    </div>
+                `;
+            });
+
+            html += `
+                    </div>
+                </div>
+            `;
+
+            // 存储其他服装的资产数据
+            role.clothings.forEach(clothing => {
+                let assetsHtml = `<div class="view-grid">`;
+                clothing.assets.forEach(asset => {
+                    const viewName = getViewName(asset.viewType);
+                    assetsHtml += `
+                        <div class="view-item" onclick="openPreview('${asset.filePath}', '${role.roleName} - ${viewName}')">
+                            <img src="${asset.filePath}" alt="${viewName}">
+                            <div class="view-label">${viewName}</div>
+                        </div>
+                    `;
+                });
+                assetsHtml += `</div>`;
+
+                html += `
+                    <template id="clothing-assets-${role.roleId}-${clothing.clothingId}">
+                        ${assetsHtml}
+                    </template>
+                `;
+            });
+        }
+
+        html += `</div>`; // role-card
+    });
+
+    html += `</div>`;
+
+    content.innerHTML = html;
+    lucide.createIcons();
+}
+
+function getViewName(viewType) {
+    const viewNames = {
+        'FRONT': '正面',
+        'SIDE': '侧面',
+        'BACK': '背面',
+        'THREE_QUARTER': '3/4侧',
+        'FULL_BODY': '全身',
+        'PORTRAIT': '头像'
+    };
+    return viewNames[viewType] || viewType;
+}
+
+function selectClothing(tab, roleId, clothingId) {
+    // 更新标签状态
+    const tabs = tab.parentElement.querySelectorAll('.clothing-tab');
+    tabs.forEach(t => t.classList.remove('active'));
+    tab.classList.add('active');
+
+    // 更新内容
+    const container = tab.closest('.role-card');
+    const oldContent = container.querySelector('.clothing-content');
+    const template = document.getElementById(`clothing-assets-${roleId}-${clothingId}`);
+
+    if (template && oldContent) {
+        oldContent.innerHTML = template.innerHTML;
+    }
+}
+
+// 图片预览
+function openPreview(imgSrc, title) {
+    document.getElementById('previewTitle').textContent = title || '图片预览';
+    document.getElementById('previewImage').src = imgSrc;
+    document.getElementById('downloadBtn').href = imgSrc;
+    document.getElementById('imagePreviewModal').classList.add('active');
+
+    currentZoom = 1;
+    imageTranslate = { x: 0, y: 0 };
+    updatePreviewZoom();
+    lucide.createIcons();
+}
+
+function closePreviewModal(event) {
+    if (event && event.target !== event.currentTarget) return;
+    document.getElementById('imagePreviewModal').classList.remove('active');
+}
+
+function zoomIn() {
+    if (currentZoom < 3) {
+        currentZoom += 0.25;
+        updatePreviewZoom();
+    }
+}
+
+function zoomOut() {
+    if (currentZoom > 0.5) {
+        currentZoom -= 0.25;
+        updatePreviewZoom();
+    }
+}
+
+function resetZoom() {
+    currentZoom = 1;
+    imageTranslate = { x: 0, y: 0 };
+    updatePreviewZoom();
+}
+
+function updatePreviewZoom() {
+    const img = document.getElementById('previewImage');
+    img.style.transform = `scale(${currentZoom}) translate(${imageTranslate.x / currentZoom}px, ${imageTranslate.y / currentZoom}px)`;
+    document.getElementById('zoomLevel').textContent = Math.round(currentZoom * 100) + '%';
+}
+
+// 鼠标滚轮缩放
+document.getElementById('imagePreviewModal').addEventListener('wheel', (e) => {
+    const img = document.getElementById('previewImage');
+    if (e.target === img || img.contains(e.target)) {
+        e.preventDefault();
+        if (e.deltaY < 0) {
+            zoomIn();
+        } else {
+            zoomOut();
+        }
+    }
+});
+
+// 图片拖拽
+const previewImg = document.getElementById('previewImage');
+previewImg.addEventListener('mousedown', (e) => {
+    if (currentZoom > 1) {
+        isDragging = true;
+        dragStart = { x: e.clientX - imageTranslate.x, y: e.clientY - imageTranslate.y };
+        previewImg.style.cursor = 'grabbing';
+        e.preventDefault();
+    }
+});
+
+document.addEventListener('mousemove', (e) => {
+    if (isDragging) {
+        imageTranslate = {
+            x: e.clientX - dragStart.x,
+            y: e.clientY - dragStart.y
+        };
+        updatePreviewZoom();
+    }
+});
+
+document.addEventListener('mouseup', () => {
+    isDragging = false;
+    previewImg.style.cursor = currentZoom > 1 ? 'grab' : 'move';
+});
+</script>
+{% endblock %}

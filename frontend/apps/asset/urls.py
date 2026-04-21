@@ -13,4 +13,8 @@ urlpatterns = [
     path('assets/role/<int:role_id>/versions/<int:clothing_id>/', views.get_clothing_versions, name='versions'),
     path('assets/role/<int:role_id>/clothing/<int:clothing_id>/rename/', views.rename_clothing, name='rename_clothing'),
     path('assets/role/<int:role_id>/clothing/<int:clothing_id>/delete/', views.delete_clothing, name='delete_clothing'),
+    # 资产库页面
+    path('library/', views.asset_library_page, name='library_page'),
+    path('api/locked-series/', views.get_locked_series, name='api_locked_series'),
+    path('api/series/<int:series_id>/assets/', views.get_series_assets, name='api_series_assets'),
 ]

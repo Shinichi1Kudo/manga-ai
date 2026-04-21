@@ -89,4 +89,13 @@ public class SeriesController {
         seriesService.updateSeries(id, seriesName, outline, background);
         return Result.success();
     }
+
+    /**
+     * 获取已锁定的系列列表
+     */
+    @GetMapping("/locked")
+    public Result<List<SeriesDetailVO>> getLockedSeries() {
+        List<SeriesDetailVO> result = seriesService.getLockedSeries();
+        return Result.success(result);
+    }
 }
