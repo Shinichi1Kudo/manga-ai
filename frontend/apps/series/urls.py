@@ -13,6 +13,9 @@ urlpatterns = [
     # 创建新系列
     path('init/', views.series_init, name='init'),
 
+    # 回收站页面
+    path('trash/', views.trash_page, name='trash'),
+
     # 系列详情
     path('<int:series_id>/', views.series_detail, name='detail'),
 
@@ -27,6 +30,15 @@ urlpatterns = [
 
     # 更新系列信息
     path('<int:series_id>/update/', views.series_update, name='update'),
+
+    # 删除系列（移入回收站）
+    path('api/series/<int:series_id>/delete/', views.series_delete, name='api_delete'),
+
+    # 恢复系列
+    path('api/series/<int:series_id>/restore/', views.series_restore, name='api_restore'),
+
+    # 彻底删除系列
+    path('api/series/<int:series_id>/permanent/', views.series_permanent_delete, name='api_permanent_delete'),
 
     # API: 获取进度
     path('api/<int:series_id>/progress/', views.api_progress, name='api_progress'),

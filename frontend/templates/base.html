@@ -509,8 +509,13 @@
     </div>
 
     <script>
-        // Initialize Lucide icons
-        lucide.createIcons();
+        // Initialize Lucide icons safely
+        function safeCreateIcons() {
+            if (typeof lucide !== 'undefined' && lucide.createIcons) {
+                lucide.createIcons();
+            }
+        }
+        safeCreateIcons();
 
         // Image zoom state
         let currentImageZoom = 1;

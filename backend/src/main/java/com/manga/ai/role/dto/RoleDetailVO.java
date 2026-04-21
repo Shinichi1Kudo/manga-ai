@@ -31,6 +31,7 @@ public class RoleDetailVO implements Serializable {
     private String clothing;
     private String specialMarks;
     private String customPrompt;
+    private String originalPrompt;
     private String styleKeywords;
     private String originalText;
     private BigDecimal extractConfidence;

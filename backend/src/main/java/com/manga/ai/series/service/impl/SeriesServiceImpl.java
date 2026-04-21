@@ -479,6 +479,7 @@ public class SeriesServiceImpl implements SeriesService {
                     .aspectRatio(charData.getString("aspectRatio"))
                     .quality(charData.getString("quality"))
                     .customPrompt(role.getCustomPrompt())
+                    .originalPrompt(charData.getString("originalPrompt"))
                     .seriesId(seriesId)
                     .roleId(role.getId())
                     .build();
@@ -667,5 +668,60 @@ public class SeriesServiceImpl implements SeriesService {
             vo.setRoleCount(roleCountMap.getOrDefault(series.getId(), 0));
             return vo;
         }).collect(java.util.stream.Collectors.toList());
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void deleteSeries(Long seriesId) {
+        Series series = seriesMapper.selectById(seriesId);
+        if (series == null) {
+            throw new BusinessException("系列不存在");
+        }
+        // 使用自定义SQL绕过@TableLogic拦截
+        seriesMapper.softDeleteById(seriesId, LocalDateTime.now());
+        log.info("系列已移入回收站: seriesId={}", seriesId);
+    }
+
+    @Override
+    public List<SeriesDetailVO> getTrashList() {
+        List<Series> seriesList = seriesMapper.selectTrashList();
+
+        // 批量查询角色数量
+        java.util.Map<Long, Integer> roleCountMap = new java.util.HashMap<>();
+        if (!seriesList.isEmpty()) {
+            List<Long> seriesIds = seriesList.stream().map(Series::getId).collect(java.util.stream.Collectors.toList());
+            LambdaQueryWrapper<Role> roleWrapper = new LambdaQueryWrapper<>();
+            roleWrapper.in(Role::getSeriesId, seriesIds);
+            List<Role> allRoles = roleMapper.selectList(roleWrapper);
+
+            for (Role role : allRoles) {
+                roleCountMap.merge(role.getSeriesId(), 1, Integer::sum);
+            }
+        }
+
+        return seriesList.stream().map(series -> {
+            SeriesDetailVO vo = convertToVO(series);
+            vo.setRoleCount(roleCountMap.getOrDefault(series.getId(), 0));
+            return vo;
+        }).collect(java.util.stream.Collectors.toList());
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void restoreSeries(Long seriesId) {
+        Series series = seriesMapper.selectByIdIncludeDeleted(seriesId);
+        if (series == null) {
+            throw new BusinessException("系列不存在");
+        }
+        // 使用自定义SQL绕过@TableLogic拦截
+        seriesMapper.restoreById(seriesId);
+        log.info("系列已恢复: seriesId={}", seriesId);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void permanentDeleteSeries(Long seriesId) {
+        seriesMapper.realDeleteById(seriesId);
+        log.info("系列已彻底删除: seriesId={}", seriesId);
     }
 }

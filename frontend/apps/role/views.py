@@ -78,6 +78,7 @@ def role_regenerate(request, role_id):
             'viewTypes': data.get('viewTypes', []),
             'clothingId': data.get('clothingId'),
             'modifiedPrompt': data.get('modifiedPrompt', ''),
+            'originalPrompt': data.get('originalPrompt', ''),
             'keepSeed': data.get('keepSeed', True),
             'isNewClothing': data.get('isNewClothing', False),
             'clothingName': data.get('clothingName', ''),
@@ -85,6 +86,7 @@ def role_regenerate(request, role_id):
             'aspectRatio': data.get('aspectRatio'),
             'quality': data.get('quality'),
             'styleKeywords': data.get('styleKeywords', ''),
+            'detailedView': data.get('detailedView', False),
         })
         # result now contains: {clothingId, version, assetId}
         return JsonResponse({'success': True, 'data': result})

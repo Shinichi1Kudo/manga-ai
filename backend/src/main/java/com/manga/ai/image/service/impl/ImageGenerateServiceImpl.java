@@ -70,8 +70,8 @@ public class ImageGenerateServiceImpl implements ImageGenerateService {
                                     TransactionTemplate transactionTemplate) {
         // 配置 RestTemplate 超时
         SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
-        factory.setConnectTimeout(30000);  // 连接超时 30秒
-        factory.setReadTimeout(180000);    // 读取超时 180秒 (图片生成可能需要较长时间)
+        factory.setConnectTimeout(60000);  // 连接超时 60秒
+        factory.setReadTimeout(300000);    // 读取超时 300秒 (5分钟，图生图需要更长时间)
         this.restTemplate = new RestTemplate(factory);
 
         this.roleMapper = roleMapper;
@@ -288,6 +288,13 @@ public class ImageGenerateServiceImpl implements ImageGenerateService {
                 prompt.append("Character design sheet with three views in ONE image: ");
                 prompt.append("front view (center), side view (left), back view (right). ");
             }
+
+            // 关键：强调颜色一致性
+            prompt.append("CRITICAL CONSISTENCY: The SAME EXACT character in all three views. ");
+            prompt.append("SAME clothing color, SAME hair color, SAME skin tone, SAME accessories in EVERY view. ");
+            prompt.append("The front, side, and back views MUST show the IDENTICAL outfit with IDENTICAL colors. ");
+            prompt.append("If wearing pink dress in front view, MUST wear the EXACT SAME pink dress in side and back views. ");
+
             // 强调完整全身照 - 必须显示脚
             prompt.append("CRITICAL: MUST show COMPLETE FULL BODY from top of head to bottom of feet. ");
             prompt.append("FEET MUST BE VISIBLE. Do NOT crop feet, ankles, or any body part. ");
@@ -302,6 +309,13 @@ public class ImageGenerateServiceImpl implements ImageGenerateService {
         // 默认提示词构建
         prompt.append("Character design sheet with three views in ONE image: ");
         prompt.append("front view (center), side view (left), back view (right). ");
+
+        // 关键：强调颜色一致性
+        prompt.append("CRITICAL CONSISTENCY: The SAME EXACT character in all three views. ");
+        prompt.append("SAME clothing color, SAME hair color, SAME skin tone, SAME accessories in EVERY view. ");
+        prompt.append("The front, side, and back views MUST show the IDENTICAL outfit with IDENTICAL colors. ");
+        prompt.append("If wearing pink dress in front view, MUST wear the EXACT SAME pink dress in side and back views. ");
+
         prompt.append("CRITICAL: COMPLETE FULL BODY from top of head to bottom of FEET. ");
         prompt.append("FEET MUST BE FULLY VISIBLE. Do NOT crop or cut off feet, ankles, or legs. ");
         prompt.append("MUST have PURE WHITE BACKGROUND (#FFFFFF). NO colored background, NO gradient background. ");
@@ -341,6 +355,11 @@ public class ImageGenerateServiceImpl implements ImageGenerateService {
         prompt.append("Same face, same age, same gender, same body type, same ethnicity, same art style. ");
         prompt.append("Do NOT change the person's appearance, age, or art style. ");
         prompt.append("Maintain the exact same visual style as the reference image. ");
+
+        // 关键：强调颜色一致性
+        prompt.append("CRITICAL CONSISTENCY: The SAME EXACT character in all three views. ");
+        prompt.append("SAME clothing color, SAME hair color, SAME skin tone, SAME accessories in EVERY view. ");
+        prompt.append("The front, side, and back views MUST show the IDENTICAL outfit with IDENTICAL colors. ");
 
         // 强调完整全身照 - 必须显示脚
         prompt.append("CRITICAL: MUST show COMPLETE FULL BODY from top of head to bottom of FEET. ");
@@ -402,7 +421,19 @@ public class ImageGenerateServiceImpl implements ImageGenerateService {
     @Override
     @Async("taskExecutor")
     public void generateCharacterAssets(Long roleId, Integer clothingId, Long generatingAssetId, Long previousActiveAssetId, String aspectRatio, String quality, String styleKeywords) {
-        log.info("异步生成角色资产: roleId={}, clothingId={}, previousActiveAssetId={}, aspectRatio={}, quality={}, styleKeywords={}", roleId, clothingId, previousActiveAssetId, aspectRatio, quality, styleKeywords);
+        generateCharacterAssets(roleId, clothingId, generatingAssetId, previousActiveAssetId, aspectRatio, quality, styleKeywords, null);
+    }
+
+    @Override
+    @Async("taskExecutor")
+    public void generateCharacterAssets(Long roleId, Integer clothingId, Long generatingAssetId, Long previousActiveAssetId, String aspectRatio, String quality, String styleKeywords, String originalPrompt) {
+        generateCharacterAssets(roleId, clothingId, generatingAssetId, previousActiveAssetId, aspectRatio, quality, styleKeywords, originalPrompt, null);
+    }
+
+    @Override
+    @Async("taskExecutor")
+    public void generateCharacterAssets(Long roleId, Integer clothingId, Long generatingAssetId, Long previousActiveAssetId, String aspectRatio, String quality, String styleKeywords, String originalPrompt, Boolean detailedView) {
+        log.info("异步生成角色资产: roleId={}, clothingId={}, previousActiveAssetId={}, aspectRatio={}, quality={}, styleKeywords={}, originalPrompt={}, detailedView={}", roleId, clothingId, previousActiveAssetId, aspectRatio, quality, styleKeywords, originalPrompt, detailedView);
 
         Role role = roleMapper.selectById(roleId);
         if (role == null) {
@@ -466,6 +497,8 @@ public class ImageGenerateServiceImpl implements ImageGenerateService {
                 .seriesId(role.getSeriesId())
                 .roleId(roleId)
                 .customPrompt(role.getCustomPrompt())
+                .originalPrompt(originalPrompt)
+                .detailedView(detailedView)
                 .clothingId(finalClothingId)
                 .clothingName(clothingName)
                 .build();
@@ -707,6 +740,110 @@ public class ImageGenerateServiceImpl implements ImageGenerateService {
         }
     }
 
+    @Override
+    @Async("taskExecutor")
+    public void generateNewClothingWithReference(Long roleId, Integer clothingId, Long generatingAssetId, Long previousActiveAssetId, String referenceImageUrl, String clothingPrompt, String clothingName, String aspectRatio, String quality, String styleKeywords, String originalPrompt) {
+        generateNewClothingWithReference(roleId, clothingId, generatingAssetId, previousActiveAssetId, referenceImageUrl, clothingPrompt, clothingName, aspectRatio, quality, styleKeywords, originalPrompt, null);
+    }
+
+    @Override
+    @Async("taskExecutor")
+    public void generateNewClothingWithReference(Long roleId, Integer clothingId, Long generatingAssetId, Long previousActiveAssetId, String referenceImageUrl, String clothingPrompt, String clothingName, String aspectRatio, String quality, String styleKeywords, String originalPrompt, Boolean detailedView) {
+        log.info("异步生成新服装（图生图）: roleId={}, clothingId={}, referenceUrl={}, clothingName={}, aspectRatio={}, quality={}, styleKeywords={}, originalPrompt={}, detailedView={}", roleId, clothingId, referenceImageUrl, clothingName, aspectRatio, quality, styleKeywords, originalPrompt, detailedView);
+
+        Role role = roleMapper.selectById(roleId);
+        if (role == null) {
+            log.error("角色不存在: roleId={}", roleId);
+            return;
+        }
+
+        Series series = seriesMapper.selectById(role.getSeriesId());
+
+        // 如果没有传入 clothingId，获取下一个服装编号
+        Integer finalClothingId = clothingId;
+        if (finalClothingId == null) {
+            finalClothingId = assetService.getNextClothingId(roleId);
+        }
+
+        // 如果没有传入 generatingAssetId，创建生成中的资产记录
+        if (generatingAssetId == null) {
+            long[] result = createGeneratingAssetInternal(role, finalClothingId, clothingName);
+            generatingAssetId = result[0];
+            if (previousActiveAssetId == null) {
+                previousActiveAssetId = result[1] > 0 ? result[1] : null;
+            }
+        }
+
+        // 构建请求 - 优先使用传入的参数，否则使用系列默认值
+        String requestAspectRatio = aspectRatio != null ? aspectRatio :
+                (series != null && series.getAspectRatio() != null ? series.getAspectRatio() : "3:4");
+        String requestQuality = quality != null ? quality :
+                (series != null && series.getQuality() != null ? series.getQuality() : "hd");
+        String requestStyleKeywords = styleKeywords != null && !styleKeywords.trim().isEmpty() ? styleKeywords :
+                (role.getStyleKeywords() != null ? role.getStyleKeywords() :
+                (series != null ? series.getStyleKeywords() : ""));
+
+        ImageGenerateRequest request = ImageGenerateRequest.builder()
+                .roleName(role.getRoleName())
+                .aspectRatio(requestAspectRatio)
+                .quality(requestQuality)
+                .styleKeywords(requestStyleKeywords)
+                .seriesId(role.getSeriesId())
+                .roleId(roleId)
+                .referenceImageUrl(referenceImageUrl)
+                .clothingPrompt(clothingPrompt)
+                .originalPrompt(originalPrompt)
+                .detailedView(detailedView)
+                .clothingName(clothingName)
+                .clothingId(finalClothingId)
+                .build();
+
+        // 调用图生图生成
+        ImageGenerateResponse response = generateCharacterSheetWithReference(request);
+
+        if ("success".equals(response.getStatus())) {
+            saveAsset(role, response, request, generatingAssetId);
+            log.info("新服装生成完成: roleId={}, clothingId={}, clothingName={}", roleId, finalClothingId, clothingName);
+        } else {
+            log.error("新服装生成失败: {}", response.getErrorMessage());
+            // 使用事务确保失败处理的原子性
+            final Long finalGeneratingAssetId = generatingAssetId;
+            final Long finalPreviousActiveAssetId = previousActiveAssetId;
+            final Integer finalClothingIdFinal = finalClothingId;
+            final Role finalRole = role;
+            final ImageGenerateRequest finalRequest = request;
+
+            transactionTemplate.executeWithoutResult(status -> {
+                // 将生成中的资产状态改为失败，并保存错误信息
+                if (finalGeneratingAssetId != null) {
+                    RoleAsset failedAsset = roleAssetMapper.selectById(finalGeneratingAssetId);
+                    if (failedAsset != null) {
+                        // 判断是否是新服装的第一个版本
+                        boolean isFirstVersion = failedAsset.getVersion() != null && failedAsset.getVersion() == 1;
+
+                        failedAsset.setStatus(AssetStatus.FAILED.getCode());
+                        failedAsset.setValidationResult(response.getErrorMessage());
+                        // 新服装的第一个版本失败时，保持 isActive=1，让用户能看到并重新生成
+                        // 非第一个版本失败时，设为 isActive=0，后续会恢复之前的版本
+                        failedAsset.setIsActive(isFirstVersion ? 1 : 0);
+                        failedAsset.setUpdatedAt(LocalDateTime.now());
+                        roleAssetMapper.updateById(failedAsset);
+                        log.info("已标记资产为失败状态: assetId={}, isFirstVersion={}, isActive={}",
+                                finalGeneratingAssetId, isFirstVersion, failedAsset.getIsActive());
+
+                        // 保存失败资产的提示词元数据
+                        saveFailedAssetMetadata(failedAsset.getId(), finalRequest);
+
+                        // 只有非第一个版本才恢复之前的版本
+                        if (!isFirstVersion) {
+                            restorePreviousActiveAsset(finalRole.getId(), finalClothingIdFinal, finalPreviousActiveAssetId);
+                        }
+                    }
+                }
+            });
+        }
+    }
+
     /**
      * 保存失败资产的元数据（提示词）
      */
@@ -718,15 +855,21 @@ public class ImageGenerateServiceImpl implements ImageGenerateService {
             AssetMetadata existMetadata = assetMetadataMapper.selectOne(existWrapper);
 
             if (existMetadata != null) {
-                // 已存在，更新提示词
-                String userPrompt = request.getClothingPrompt() != null ? request.getClothingPrompt() : request.getCustomPrompt();
+                // 已存在，更新提示词（优先使用originalPrompt）
+                String userPrompt = request.getOriginalPrompt();
+                if (userPrompt == null || userPrompt.trim().isEmpty()) {
+                    userPrompt = request.getClothingPrompt() != null ? request.getClothingPrompt() : request.getCustomPrompt();
+                }
                 existMetadata.setUserPrompt(userPrompt);
                 existMetadata.setPrompt(userPrompt);
                 assetMetadataMapper.updateById(existMetadata);
                 log.info("更新失败资产的元数据: assetId={}", assetId);
             } else {
-                // 不存在，创建新的元数据
-                String userPrompt = request.getClothingPrompt() != null ? request.getClothingPrompt() : request.getCustomPrompt();
+                // 不存在，创建新的元数据（优先使用originalPrompt）
+                String userPrompt = request.getOriginalPrompt();
+                if (userPrompt == null || userPrompt.trim().isEmpty()) {
+                    userPrompt = request.getClothingPrompt() != null ? request.getClothingPrompt() : request.getCustomPrompt();
+                }
                 AssetMetadata metadata = new AssetMetadata();
                 metadata.setAssetId(assetId);
                 metadata.setPrompt(userPrompt);
@@ -982,25 +1125,47 @@ public class ImageGenerateServiceImpl implements ImageGenerateService {
                 usedPrompt = buildCharacterSheetPrompt(request);
             }
 
-            // 用户原始输入的提示词
-            String userPrompt = request.getCustomPrompt();
+            // 用户原始输入的提示词（优先使用originalPrompt，这是不含系统模板的用户原始输入）
+            String userPrompt = request.getOriginalPrompt();
+            if (userPrompt == null || userPrompt.trim().isEmpty()) {
+                userPrompt = request.getCustomPrompt();
+            }
             if (userPrompt == null || userPrompt.trim().isEmpty()) {
                 userPrompt = role.getCustomPrompt();
             }
 
-            // 保存元数据
-            AssetMetadata metadata = new AssetMetadata();
-            metadata.setAssetId(asset.getId());
-            metadata.setPrompt(usedPrompt);
-            metadata.setUserPrompt(userPrompt);
-            metadata.setSeed(response.getSeed());
-            metadata.setModelVersion("volcengine-" + model);
-            metadata.setImageWidth(response.getWidth());
-            metadata.setImageHeight(response.getHeight());
-            metadata.setAspectRatio(request.getAspectRatio());
-            metadata.setGenerationTimeMs(0L);
-            metadata.setCreatedAt(LocalDateTime.now());
-            assetMetadataMapper.insert(metadata);
+            // 保存元数据 - 先检查是否已存在，避免唯一键冲突
+            LambdaQueryWrapper<AssetMetadata> metadataWrapper = new LambdaQueryWrapper<>();
+            metadataWrapper.eq(AssetMetadata::getAssetId, asset.getId());
+            AssetMetadata existMetadata = assetMetadataMapper.selectOne(metadataWrapper);
+
+            if (existMetadata != null) {
+                // 已存在，更新
+                existMetadata.setPrompt(usedPrompt);
+                existMetadata.setUserPrompt(userPrompt);
+                existMetadata.setSeed(response.getSeed());
+                existMetadata.setModelVersion("volcengine-" + model);
+                existMetadata.setImageWidth(response.getWidth());
+                existMetadata.setImageHeight(response.getHeight());
+                existMetadata.setAspectRatio(request.getAspectRatio());
+                existMetadata.setDetailedView(request.getDetailedView());
+                assetMetadataMapper.updateById(existMetadata);
+            } else {
+                // 不存在，创建新的
+                AssetMetadata metadata = new AssetMetadata();
+                metadata.setAssetId(asset.getId());
+                metadata.setPrompt(usedPrompt);
+                metadata.setUserPrompt(userPrompt);
+                metadata.setSeed(response.getSeed());
+                metadata.setModelVersion("volcengine-" + model);
+                metadata.setImageWidth(response.getWidth());
+                metadata.setImageHeight(response.getHeight());
+                metadata.setAspectRatio(request.getAspectRatio());
+                metadata.setDetailedView(request.getDetailedView());
+                metadata.setGenerationTimeMs(0L);
+                metadata.setCreatedAt(LocalDateTime.now());
+                assetMetadataMapper.insert(metadata);
+            }
 
             // 如果是新服装，更新其他服装为非默认
             if (isNewClothing) {

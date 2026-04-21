@@ -76,6 +76,11 @@ public class Role implements Serializable {
     private String customPrompt;
 
     /**
+     * 用户原始提示词（不含系统模板）
+     */
+    private String originalPrompt;
+
+    /**
      * 风格关键词
      */
     private String styleKeywords;

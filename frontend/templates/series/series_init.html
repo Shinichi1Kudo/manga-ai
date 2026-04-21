@@ -330,8 +330,41 @@ const STYLE_PRESETS = {
     'chibi': 'chibi style, cute, deformed, big head small body, kawaii, adorable'
 };
 
+// 人物精细三视图默认提示词
+const DETAILED_THREE_VIEW_PROMPT = `一张高精度，干净极简的角色设定板/人物三视图参考页，纯白背景，整体像游戏角色建模设定图，时装人物设定sheet、角色turnaround board，排版整齐清晰，信息分区明确，写实高级质感，统一光线、统一人物一致性。
+
+画面左侧为人物全身三视图，占据主要视觉区域，分别展示:
+1.正面全身站姿
+2.左侧面全身站姿
+3.背面全身站姿
+
+三个人物必须是同一个角色，五官，发型、服装，体型，身高比例完全一致，站姿自然，双臂自然下垂，适合做角色建模参考，镜头为平视，中性棚拍光，无遮挡，无夸张透视，无复杂背景。
+
+画面右侧分为上下两个板块:
+右上区域放置六张人物头像/头部视角图，排列整齐，展示同一人物的不同头部角度，包括：
+1.正面头像
+2.低头俯视头顶角度
+3.后脑勺/后方头部视角
+4.左侧脸轮廓
+5.近距离正侧脸对照角度
+6.3/4侧脸头像
+要求头发走向清晰，发缝清晰，五官统一，适合作为人物头部设定参考、
+
+右下区域放置六张人物局部细节图，排列成整齐小方格，展示角色关键细节，包括:
+1.上衣面料质感特写
+2.下身正面局部特写
+3.臀部剪裁特写
+4.腿部或皮肤局部细节
+5.眼部或五官局部特写
+6.鞋子完整单品特写
+
+所有细节图都要与主角色服装和人物完全一致，材质真实，细节干净，适合作为角色服饰建模参考。整体风格要求:极简、专业，写实、统一，干净、高级、类似角色设定板、时装设计参考图，3D角色建模参考页，角色三视图展示板，人物边缘清晰，服装版型明确，发丝自然，皮肤细腻，材质表现准确。整体排版留白充足，像专业美术团队制作的人物设定页。
+
+人物设定
+Ai漫剧教学横版构图，白底，完整人物，不裁切，不出现多余道具，不出现文字说明，不出现LOGO，不出现水印，不出现社交媒体截图感`;
+
 // 创建角色卡片
-function createCharacterCard(index, name = '', prompt = '', aspectRatio = '', quality = '', style = '') {
+function createCharacterCard(index, name = '', prompt = '', aspectRatio = '', quality = '', style = '', detailedView = false) {
     const card = document.createElement('div');
     card.className = 'glass-card p-5 character-card';
     card.dataset.index = index;
@@ -346,6 +379,17 @@ function createCharacterCard(index, name = '', prompt = '', aspectRatio = '', qu
             <button type="button" class="remove-character-btn p-2 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-400 transition-colors ml-3" title="删除角色">
                 <i data-lucide="trash-2" class="w-5 h-5"></i>
             </button>
+        </div>
+
+        <!-- 人物精细三视图选项 -->
+        <div class="mb-4 p-3 rounded-xl bg-violet-500/10 border border-violet-500/30">
+            <label class="flex items-center gap-3 cursor-pointer">
+                <input type="checkbox" class="detailed-view-checkbox w-5 h-5 rounded accent-violet-500" ${detailedView ? 'checked' : ''} onchange="toggleDetailedView(this)">
+                <span class="text-sm font-medium text-violet-300">
+                    <i data-lucide="layout-grid" class="w-4 h-4 inline mr-1"></i>人物精细三视图（含具体细节）
+                </span>
+            </label>
+            <p class="text-xs text-white/40 mt-2 ml-8">勾选后自动使用16:9比例，禁用风格选择，生成包含三视图、头部角度、细节特写的完整角色设定板</p>
         </div>
 
         <div class="mb-4">
@@ -400,16 +444,73 @@ function createCharacterCard(index, name = '', prompt = '', aspectRatio = '', qu
         </div>
     `;
 
+    // 添加后初始化状态
+    setTimeout(() => {
+        if (detailedView) {
+            const checkbox = card.querySelector('.detailed-view-checkbox');
+            applyDetailedViewMode(card, true);
+        }
+    }, 0);
+
     return card;
 }
 
+// 切换精细三视图模式
+function toggleDetailedView(checkbox) {
+    const card = checkbox.closest('.character-card');
+    applyDetailedViewMode(card, checkbox.checked);
+}
+
+// 应用精细三视图模式
+function applyDetailedViewMode(card, enabled) {
+    const aspectSelect = card.querySelector('.character-aspect-ratio');
+    const styleSelect = card.querySelector('.character-style');
+    const stylePreviewBtn = card.querySelector('.style-preview-btn');
+
+    if (enabled) {
+        // 自动选择16:9
+        aspectSelect.value = '16:9';
+        // 禁用其他比例选项
+        aspectSelect.querySelectorAll('option').forEach(opt => {
+            if (opt.value !== '16:9') {
+                opt.disabled = true;
+                opt.style.color = '#666';
+            }
+        });
+        aspectSelect.style.opacity = '0.6';
+
+        // 禁用风格选择
+        styleSelect.disabled = true;
+        styleSelect.style.opacity = '0.6';
+        styleSelect.style.cursor = 'not-allowed';
+        stylePreviewBtn.disabled = true;
+        stylePreviewBtn.style.opacity = '0.5';
+        stylePreviewBtn.style.cursor = 'not-allowed';
+    } else {
+        // 恢复所有比例选项
+        aspectSelect.querySelectorAll('option').forEach(opt => {
+            opt.disabled = false;
+            opt.style.color = '';
+        });
+        aspectSelect.style.opacity = '1';
+
+        // 恢复风格选择
+        styleSelect.disabled = false;
+        styleSelect.style.opacity = '1';
+        styleSelect.style.cursor = '';
+        stylePreviewBtn.disabled = false;
+        stylePreviewBtn.style.opacity = '1';
+        stylePreviewBtn.style.cursor = '';
+    }
+}
+
 // 添加角色
-function addCharacter(name = '', prompt = '', aspectRatio = '', quality = '', style = '') {
+function addCharacter(name = '', prompt = '', aspectRatio = '', quality = '', style = '', detailedView = false) {
     const container = document.getElementById('characterContainer');
-    const card = createCharacterCard(characterCount, name, prompt, aspectRatio, quality, style);
+    const card = createCharacterCard(characterCount, name, prompt, aspectRatio, quality, style, detailedView);
     container.appendChild(card);
     characterCount++;
-    lucide.createIcons();
+    safeCreateIcons();
     updateCharacterNumbers();
 }
 
@@ -439,14 +540,28 @@ function collectCharacterData() {
     document.querySelectorAll('.character-card').forEach(card => {
         const name = card.querySelector('.character-name').value.trim();
         if (name) {
+            const detailedView = card.querySelector('.detailed-view-checkbox').checked;
+            let customPrompt = card.querySelector('.character-prompt').value.trim();
+
+            // 保存用户原始输入的提示词
+            let originalPrompt = customPrompt;
+
+            // 如果启用了精细三视图，追加默认提示词
+            if (detailedView && customPrompt) {
+                customPrompt = customPrompt + '\n\n' + DETAILED_THREE_VIEW_PROMPT;
+            }
+
             const styleKey = card.querySelector('.character-style').value;
-            const styleKeywords = STYLE_PRESETS[styleKey] || '';
+            const styleKeywords = detailedView ? '' : (STYLE_PRESETS[styleKey] || '');
+
             characters.push({
                 roleName: name,
-                customPrompt: card.querySelector('.character-prompt').value.trim(),
+                customPrompt: customPrompt,
+                originalPrompt: originalPrompt,
                 aspectRatio: card.querySelector('.character-aspect-ratio').value,
                 quality: card.querySelector('.character-quality').value,
-                styleKeywords: styleKeywords
+                styleKeywords: styleKeywords,
+                detailedView: detailedView
             });
         }
     });
@@ -470,7 +585,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     }
                 }
             }
-            addCharacter(char.roleName || '', char.customPrompt || '', char.aspectRatio || '', char.quality || '', styleKey);
+            addCharacter(char.roleName || '', char.customPrompt || '', char.aspectRatio || '', char.quality || '', styleKey, char.detailedView || false);
         });
     } else {
         // 没有数据，添加一个空的角色卡片
@@ -501,6 +616,7 @@ document.addEventListener('DOMContentLoaded', function() {
             const aspectRatio = card.querySelector('.character-aspect-ratio').value;
             const quality = card.querySelector('.character-quality').value;
             const style = card.querySelector('.character-style').value;
+            const detailedView = card.querySelector('.detailed-view-checkbox').checked;
 
             if (name) {
                 if (!prompt) {
@@ -521,7 +637,8 @@ document.addEventListener('DOMContentLoaded', function() {
                     hasError = true;
                     return false;
                 }
-                if (!style) {
+                // 精细三视图模式下不需要选择风格
+                if (!detailedView && !style) {
                     e.preventDefault();
                     alert('请为角色 "' + name + '" 选择图片风格');
                     hasError = true;
@@ -558,7 +675,7 @@ function openStylePreview(event) {
     event.stopPropagation();
     currentStylePreviewCard = event.target.closest('.character-card');
     document.getElementById('stylePreviewModal').classList.add('active');
-    lucide.createIcons();
+    safeCreateIcons();
 }
 
 function closeStylePreview(event) {
@@ -625,7 +742,7 @@ function zoomStylePreview(styleKey, title, description) {
     document.getElementById('zoomLevel').textContent = '100%';
 
     document.getElementById('styleZoomModal').classList.add('active');
-    lucide.createIcons();
+    safeCreateIcons();
 }
 
 function closeZoomModal(event) {

@@ -64,6 +64,11 @@ public class AssetMetadata implements Serializable {
     private String aspectRatio;
 
     /**
+     * 是否使用精细三视图模式生成
+     */
+    private Boolean detailedView;
+
+    /**
      * 生成耗时(毫秒)
      */
     private Long generationTimeMs;

@@ -2,6 +2,7 @@ from django.shortcuts import render
 from django.http import JsonResponse, FileResponse
 from django.views.decorators.http import require_http_methods
 from django.views.decorators.csrf import csrf_exempt
+import json
 
 from api.backend_client import BackendClient, BackendAPIError
 
@@ -16,7 +17,7 @@ def asset_library_page(request):
         locked_series = []
 
     return render(request, 'asset/library.html', {
-        'locked_series': locked_series,
+        'locked_series': locked_series if locked_series else [],
     })
 
 
@@ -37,33 +38,34 @@ def get_series_assets(request, series_id):
         # 获取系列信息
         series = client.get(f'/v1/series/{series_id}')
         # 获取角色列表
-        roles = client.get(f'/v1/roles/series/{series_id}')
+        roles = client.get(f'/v1/roles/series/{series_id}') or []
 
         # 收集所有角色资产
         role_assets = []
         for role in roles:
-            assets = client.get(f'/v1/assets/role/{role["id"]}')
+            assets = client.get(f'/v1/assets/role/{role["id"]}') or []
             # 只取激活的资产
             active_assets = [a for a in assets if a.get('isActive') == 1 or a.get('isActive') == True]
-            if active_assets:
-                # 按clothingId分组
-                clothing_map = {}
-                for asset in active_assets:
-                    cid = asset.get('clothingId', 1)
-                    if cid not in clothing_map:
-                        clothing_map[cid] = {
-                            'clothingId': cid,
-                            'clothingName': asset.get('clothingName', f'服装{cid}'),
-                            'assets': []
-                        }
-                    clothing_map[cid]['assets'].append(asset)
 
-                role_assets.append({
-                    'roleId': role['id'],
-                    'roleName': role['roleName'],
-                    'roleCode': role.get('roleCode', ''),
-                    'clothings': list(clothing_map.values())
-                })
+            # 按clothingId分组
+            clothing_map = {}
+            for asset in active_assets:
+                cid = asset.get('clothingId', 1)
+                if cid not in clothing_map:
+                    clothing_map[cid] = {
+                        'clothingId': cid,
+                        'clothingName': asset.get('clothingName', f'服装{cid}'),
+                        'assets': []
+                    }
+                clothing_map[cid]['assets'].append(asset)
+
+            role_assets.append({
+                'roleId': role['id'],
+                'roleName': role['roleName'],
+                'roleCode': role.get('roleCode', ''),
+                'clothings': list(clothing_map.values()),
+                'hasAssets': len(active_assets) > 0  # 标记是否有资产
+            })
 
         return JsonResponse({
             'success': True,
@@ -74,6 +76,8 @@ def get_series_assets(request, series_id):
         })
     except BackendAPIError as e:
         return JsonResponse({'success': False, 'error': e.message}, status=400)
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)}, status=500)
 
 
 def asset_detail(request, asset_id):

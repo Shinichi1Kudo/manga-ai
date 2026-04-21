@@ -98,4 +98,40 @@ public class SeriesController {
         List<SeriesDetailVO> result = seriesService.getLockedSeries();
         return Result.success(result);
     }
+
+    /**
+     * 软删除系列（移入回收站）
+     */
+    @DeleteMapping("/{id}")
+    public Result<Void> deleteSeries(@PathVariable Long id) {
+        seriesService.deleteSeries(id);
+        return Result.success();
+    }
+
+    /**
+     * 获取回收站列表
+     */
+    @GetMapping("/trash")
+    public Result<List<SeriesDetailVO>> getTrashList() {
+        List<SeriesDetailVO> result = seriesService.getTrashList();
+        return Result.success(result);
+    }
+
+    /**
+     * 恢复已删除的系列
+     */
+    @PostMapping("/{id}/restore")
+    public Result<Void> restoreSeries(@PathVariable Long id) {
+        seriesService.restoreSeries(id);
+        return Result.success();
+    }
+
+    /**
+     * 彻底删除系列
+     */
+    @DeleteMapping("/{id}/permanent")
+    public Result<Void> permanentDeleteSeries(@PathVariable Long id) {
+        seriesService.permanentDeleteSeries(id);
+        return Result.success();
+    }
 }

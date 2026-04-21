@@ -105,4 +105,9 @@ public class Series implements Serializable {
      */
     @TableLogic
     private Integer isDeleted;
+
+    /**
+     * 删除时间（用于回收站过期判断）
+     */
+    private LocalDateTime deletedAt;
 }

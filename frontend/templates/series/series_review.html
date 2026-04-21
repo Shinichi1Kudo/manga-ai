@@ -92,7 +92,7 @@
 <!-- Role Cards Container -->
 <div class="space-y-6" id="roleContainer">
 {% for role in roles %}
-<div class="glass-card glass-card-hover p-6 role-card" id="role-{{ role.id }}" data-role-id="{{ role.id }}" data-role-status="{{ role.status }}" data-custom-prompt="{{ role.customPrompt|default:'' }}">
+<div class="glass-card glass-card-hover p-6 role-card" id="role-{{ role.id }}" data-role-id="{{ role.id }}" data-role-status="{{ role.status }}" data-custom-prompt="{{ role.customPrompt|default:'' }}" data-original-prompt="{{ role.originalPrompt|default:'' }}">
     <!-- Role Header -->
     <div class="flex items-start justify-between mb-4">
         <div class="flex items-center gap-4">
@@ -217,6 +217,7 @@
                  data-is-active="{{ asset.isActive }}"
                  data-status="{{ asset.status }}"
                  data-prompt="{{ role.customPrompt|default:'' }}"
+                 data-detailed-view="{{ asset.detailedView|yesno:'true,false' }}"
                  data-generating="{% if asset.status == 0 %}true{% else %}false{% endif %}"
                  onclick="selectClothing(this)">
                 <!-- 默认服装标识 - 只有clothingId=1才显示星星 -->
@@ -319,6 +320,7 @@
                  data-is-active="{{ asset.isActive }}"
                  data-status="{{ asset.status }}"
                  data-prompt="{{ role.customPrompt|default:'' }}"
+                 data-detailed-view="{{ asset.detailedView|yesno:'true,false' }}"
                  data-generating="{% if asset.status == 0 %}true{% else %}false{% endif %}"
                  onclick="selectClothing(this)">
                 {% if asset.clothingId == 1 %}
@@ -386,8 +388,8 @@
         <div class="text-xs text-violet-300 mb-1 flex items-center gap-1">
             <i data-lucide="sparkles" class="w-3 h-3"></i>提示词
         </div>
-        <div class="text-sm text-white/80 prompt-display truncate" title="{{ role.customPrompt|default:'暂无提示词' }}">
-            {{ role.customPrompt|default:'暂无提示词' }}
+        <div class="text-sm text-white/80 prompt-display truncate" title="{{ role.originalPrompt|default:role.customPrompt|default:'暂无提示词' }}">
+            {{ role.originalPrompt|default:role.customPrompt|default:'暂无提示词' }}
         </div>
     </div>
 </div>
@@ -415,6 +417,18 @@
                 <label class="block text-sm text-white/60 mb-2">角色名称 <span class="text-red-400">*</span></label>
                 <input type="text" id="newRoleName" class="input-modern" placeholder="输入角色名称">
             </div>
+
+            <!-- 人物精细三视图选项 -->
+            <div class="p-3 rounded-xl bg-violet-500/10 border border-violet-500/30">
+                <label class="flex items-center gap-3 cursor-pointer">
+                    <input type="checkbox" id="newRoleDetailedView" class="w-5 h-5 rounded accent-violet-500" onchange="toggleNewRoleDetailedView(this)">
+                    <span class="text-sm font-medium text-violet-300">
+                        <i data-lucide="layout-grid" class="w-4 h-4 inline mr-1"></i>人物精细三视图（含具体细节）
+                    </span>
+                </label>
+                <p class="text-xs text-white/40 mt-2 ml-8">勾选后自动使用16:9比例，禁用风格选择，生成包含三视图、头部角度、细节特写的完整角色设定板</p>
+            </div>
+
             <div>
                 <label class="block text-sm text-white/60 mb-2">
                     <i data-lucide="sparkles" class="w-4 h-4 inline mr-1"></i>提示词 <span class="text-red-400">*</span>
@@ -461,7 +475,7 @@
                             <option value="pixel_art">像素风格</option>
                             <option value="chibi">Q版卡通</option>
                         </select>
-                        <button type="button" class="px-3 py-2 rounded-lg bg-white/10 hover:bg-white/20 text-xs transition-colors" onclick="openStylePreview('newRoleStyle')">
+                        <button type="button" id="newRoleStylePreviewBtn" class="px-3 py-2 rounded-lg bg-white/10 hover:bg-white/20 text-xs transition-colors" onclick="openStylePreview('newRoleStyle')">
                             <i data-lucide="eye" class="w-4 h-4"></i>
                         </button>
                     </div>
@@ -562,6 +576,14 @@
                 </label>
                 <p class="text-xs text-white/40 mb-2">输入新的提示词用于生成</p>
                 <textarea id="regeneratePrompt" class="input-modern" rows="4" placeholder="输入新的提示词..."></textarea>
+            </div>
+            <!-- 人物精细三视图选项 -->
+            <div class="flex items-center gap-3 p-3 rounded-lg bg-violet-500/10 border border-violet-500/20">
+                <input type="checkbox" id="regenerateDetailedView" class="w-5 h-5 rounded accent-violet-500" onchange="toggleRegenerateDetailedView(this)">
+                <label for="regenerateDetailedView" class="text-sm cursor-pointer">
+                    <span class="text-white/80">人物精细三视图（含具体细节）</span>
+                    <span class="text-xs text-white/40 block">勾选后自动选择16:9比例，禁用其他比例和风格选择</span>
+                </label>
             </div>
             <!-- 图片设置 -->
             <div class="grid grid-cols-3 gap-4">
@@ -876,6 +898,39 @@ const STYLE_PRESETS = {
     'pixel_art': 'pixel art style, retro game aesthetic, 8-bit, nostalgic, blocky pixels',
     'chibi': 'chibi style, cute, deformed, big head small body, kawaii, adorable'
 };
+
+// 人物精细三视图默认提示词
+const DETAILED_THREE_VIEW_PROMPT = `一张高精度，干净极简的角色设定板/人物三视图参考页，纯白背景，整体像游戏角色建模设定图，时装人物设定sheet、角色turnaround board，排版整齐清晰，信息分区明确，写实高级质感，统一光线、统一人物一致性。
+
+画面左侧为人物全身三视图，占据主要视觉区域，分别展示:
+1.正面全身站姿
+2.左侧面全身站姿
+3.背面全身站姿
+
+三个人物必须是同一个角色，五官，发型、服装，体型，身高比例完全一致，站姿自然，双臂自然下垂，适合做角色建模参考，镜头为平视，中性棚拍光，无遮挡，无夸张透视，无复杂背景。
+
+画面右侧分为上下两个板块:
+右上区域放置六张人物头像/头部视角图，排列整齐，展示同一人物的不同头部角度，包括：
+1.正面头像
+2.低头俯视头顶角度
+3.后脑勺/后方头部视角
+4.左侧脸轮廓
+5.近距离正侧脸对照角度
+6.3/4侧脸头像
+要求头发走向清晰，发缝清晰，五官统一，适合作为人物头部设定参考、
+
+右下区域放置六张人物局部细节图，排列成整齐小方格，展示角色关键细节，包括:
+1.上衣面料质感特写
+2.下身正面局部特写
+3.臀部剪裁特写
+4.腿部或皮肤局部细节
+5.眼部或五官局部特写
+6.鞋子完整单品特写
+
+所有细节图都要与主角色服装和人物完全一致，材质真实，细节干净，适合作为角色服饰建模参考。整体风格要求:极简、专业，写实、统一，干净、高级、类似角色设定板、时装设计参考图，3D角色建模参考页，角色三视图展示板，人物边缘清晰，服装版型明确，发丝自然，皮肤细腻，材质表现准确。整体排版留白充足，像专业美术团队制作的人物设定页。
+
+人物设定
+Ai漫剧教学横版构图，白底，完整人物，不裁切，不出现多余道具，不出现文字说明，不出现LOGO，不出现水印，不出现社交媒体截图感`;
 
 // Save generating state to localStorage
 function saveGeneratingState(roleId, clothingId, version) {
@@ -1194,9 +1249,12 @@ function selectClothing(tab) {
     const clothingSection = roleCard.querySelector('.clothing-section');
     clothingSection.dataset.generating = isGenerating ? 'true' : 'false';
 
-    // 根据生成状态更新按钮
+    // 根据生成状态和角色状态更新按钮
     const regenerateBtn = roleCard.querySelector('.regenerate-btn');
-    if (isGenerating) {
+    const roleStatus = parseInt(roleCard.dataset.roleStatus);
+    const isConfirmedOrLocked = roleStatus >= 2;
+
+    if (isGenerating || isConfirmedOrLocked) {
         if (setDefaultBtn) {
             setDefaultBtn.disabled = true;
             setDefaultBtn.classList.add('opacity-50', 'cursor-not-allowed');
@@ -1261,6 +1319,7 @@ function generateNewClothing(roleId) {
         const tabRoleId = tab.closest('.clothing-section')?.dataset.roleId;
         const roleCard = tab.closest('.role-card');
         const roleName = roleCard?.querySelector('h3')?.textContent || `角色${tabRoleId}`;
+        const isDetailedView = tab.dataset.detailedView === 'true';
 
         // 只添加有图片的选项
         if (imageUrl && imageUrl.trim() !== '') {
@@ -1268,33 +1327,48 @@ function generateNewClothing(roleId) {
             const isCurrentRole = tabRoleId === String(roleId);
             const isFirstOfCurrentRole = isCurrentRole && currentRoleFirstImageUrl === null;
 
-            div.className = `relative rounded-lg overflow-hidden cursor-pointer border-2 transition-all ${isFirstOfCurrentRole ? 'border-violet-500' : 'border-transparent hover:border-white/30'}`;
-            div.dataset.imageUrl = imageUrl;
-            div.onclick = function() {
-                selector.querySelectorAll('div').forEach(d => d.classList.remove('border-violet-500', 'border-2'));
-                this.classList.add('border-violet-500', 'border-2');
-                document.getElementById('newClothingReferenceUrl').value = this.dataset.imageUrl;
-            };
-            div.innerHTML = `
-                <img src="${imageUrl}" class="w-full aspect-square object-cover">
-                <div class="absolute bottom-0 left-0 right-0 p-1 bg-black/60 text-xs text-center truncate">
-                    <span class="${isCurrentRole ? 'text-violet-300' : 'text-amber-300'}">${roleName}</span> - ${clothingName}
-                </div>
-            `;
-            selector.appendChild(div);
+            // 如果是精细三视图生成的图片，禁用选择
+            if (isDetailedView) {
+                div.className = 'relative rounded-lg overflow-hidden border-2 border-transparent opacity-50 cursor-not-allowed';
+                div.innerHTML = `
+                    <img src="${imageUrl}" class="w-full aspect-square object-cover grayscale">
+                    <div class="absolute inset-0 bg-black/40 flex items-center justify-center">
+                        <span class="text-xs text-white/70 bg-black/50 px-2 py-1 rounded">精细三视图<br>不可用作参考</span>
+                    </div>
+                    <div class="absolute bottom-0 left-0 right-0 p-1 bg-black/60 text-xs text-center truncate">
+                        <span class="text-white/50">${roleName}</span> - ${clothingName}
+                    </div>
+                `;
+                selector.appendChild(div);
+            } else {
+                div.className = `relative rounded-lg overflow-hidden cursor-pointer border-2 transition-all ${isFirstOfCurrentRole ? 'border-violet-500' : 'border-transparent hover:border-white/30'}`;
+                div.dataset.imageUrl = imageUrl;
+                div.onclick = function() {
+                    selector.querySelectorAll('div').forEach(d => d.classList.remove('border-violet-500', 'border-2'));
+                    this.classList.add('border-violet-500', 'border-2');
+                    document.getElementById('newClothingReferenceUrl').value = this.dataset.imageUrl;
+                };
+                div.innerHTML = `
+                    <img src="${imageUrl}" class="w-full aspect-square object-cover">
+                    <div class="absolute bottom-0 left-0 right-0 p-1 bg-black/60 text-xs text-center truncate">
+                        <span class="${isCurrentRole ? 'text-violet-300' : 'text-amber-300'}">${roleName}</span> - ${clothingName}
+                    </div>
+                `;
+                selector.appendChild(div);
 
-            // 记录第一个图片URL
-            if (firstImageUrl === null) {
-                firstImageUrl = imageUrl;
+                // 记录第一个可用图片URL（不包括精细三视图）
+                if (firstImageUrl === null) {
+                    firstImageUrl = imageUrl;
+                }
+
+                // 默认选中当前角色的第一个可用服装（不包括精细三视图）
+                if (isFirstOfCurrentRole) {
+                    currentRoleFirstImageUrl = imageUrl;
+                    document.getElementById('newClothingReferenceUrl').value = imageUrl;
+                }
+
+                index++;
             }
-
-            // 默认选中当前角色的第一个服装
-            if (isFirstOfCurrentRole) {
-                currentRoleFirstImageUrl = imageUrl;
-                document.getElementById('newClothingReferenceUrl').value = imageUrl;
-            }
-
-            index++;
         }
     });
 
@@ -1374,6 +1448,10 @@ function showRegenerateModal(roleId, currentPrompt) {
     document.getElementById('regeneratePrompt').value = currentPrompt || '';
     document.getElementById('regenerateReferenceUrl').value = '';
 
+    // 重置精细三视图复选框
+    document.getElementById('regenerateDetailedView').checked = false;
+    toggleRegenerateDetailedView(document.getElementById('regenerateDetailedView'));
+
     // 清空参考图选择器（因为没有资产）
     const selector = document.getElementById('regenerateImageSelector');
     selector.innerHTML = '<p class="text-white/40 text-sm col-span-4 text-center">无参考图片，将使用提示词生成</p>';
@@ -1433,7 +1511,7 @@ function closeNewClothingModal() {
 function submitNewClothing() {
     const roleId = document.getElementById('newClothingRoleId').value;
     const clothingName = document.getElementById('newClothingName').value.trim();
-    const prompt = document.getElementById('newClothingPrompt').value.trim();
+    let prompt = document.getElementById('newClothingPrompt').value.trim();
     const referenceUrl = document.getElementById('newClothingReferenceUrl').value;
     const submitBtn = document.getElementById('submitNewClothingBtn');
 
@@ -1807,8 +1885,17 @@ function closeRegenerateModal() {
 function submitRegenerate() {
     const roleId = document.getElementById('regenerateRoleId').value;
     const clothingId = document.getElementById('regenerateClothingId').value;
-    const prompt = document.getElementById('regeneratePrompt').value.trim();
+    let prompt = document.getElementById('regeneratePrompt').value.trim();
     const referenceUrl = document.getElementById('regenerateReferenceUrl').value;
+    const detailedView = document.getElementById('regenerateDetailedView').checked;
+
+    // 保存用户原始输入的提示词
+    let originalPrompt = prompt;
+
+    // 如果启用了精细三视图，追加默认提示词
+    if (detailedView && prompt) {
+        prompt = prompt + '\n\n' + DETAILED_THREE_VIEW_PROMPT;
+    }
 
     // 验证必填项
     if (!prompt) {
@@ -1830,12 +1917,13 @@ function submitRegenerate() {
         return;
     }
 
-    if (!styleKey) {
+    // 精细三视图模式下不需要选择风格
+    if (!detailedView && !styleKey) {
         showToast('请选择图片风格', 'error');
         return;
     }
 
-    const styleKeywords = STYLE_PRESETS[styleKey] || '';
+    const styleKeywords = detailedView ? '' : (STYLE_PRESETS[styleKey] || '');
 
     closeRegenerateModal();
 
@@ -1936,11 +2024,13 @@ function submitRegenerate() {
         body: JSON.stringify({
             clothingId: parseInt(clothingId),
             modifiedPrompt: prompt,
+            originalPrompt: originalPrompt,
             referenceImageUrl: referenceUrl || '',
             isNewClothing: false,  // 重新生成始终为false
             aspectRatio: aspectRatio,
             quality: quality,
-            styleKeywords: styleKeywords
+            styleKeywords: styleKeywords,
+            detailedView: detailedView
         })
     })
     .then(response => response.json())
@@ -2649,6 +2739,98 @@ function openAddRoleModal() {
 
 function closeAddRoleModal() {
     document.getElementById('addRoleModal').classList.remove('active');
+    // 重置表单
+    document.getElementById('newRoleName').value = '';
+    document.getElementById('newCustomPrompt').value = '';
+    document.getElementById('newRoleDetailedView').checked = false;
+    document.getElementById('newRoleAspectRatio').value = '';
+    document.getElementById('newRoleQuality').value = '';
+    document.getElementById('newRoleStyle').value = '';
+    // 恢复所有选项可用状态
+    toggleNewRoleDetailedView(document.getElementById('newRoleDetailedView'));
+}
+
+// 切换精细三视图模式
+function toggleNewRoleDetailedView(checkbox) {
+    const aspectSelect = document.getElementById('newRoleAspectRatio');
+    const styleSelect = document.getElementById('newRoleStyle');
+    const stylePreviewBtn = document.getElementById('newRoleStylePreviewBtn');
+
+    if (checkbox.checked) {
+        // 自动选择16:9
+        aspectSelect.value = '16:9';
+        // 禁用其他比例选项
+        aspectSelect.querySelectorAll('option').forEach(opt => {
+            if (opt.value !== '16:9') {
+                opt.disabled = true;
+                opt.style.color = '#666';
+            }
+        });
+        aspectSelect.style.opacity = '0.6';
+
+        // 禁用风格选择
+        styleSelect.disabled = true;
+        styleSelect.style.opacity = '0.6';
+        styleSelect.style.cursor = 'not-allowed';
+        stylePreviewBtn.disabled = true;
+        stylePreviewBtn.style.opacity = '0.5';
+        stylePreviewBtn.style.cursor = 'not-allowed';
+    } else {
+        // 恢复所有比例选项
+        aspectSelect.querySelectorAll('option').forEach(opt => {
+            opt.disabled = false;
+            opt.style.color = '';
+        });
+        aspectSelect.value = '';
+        aspectSelect.style.opacity = '1';
+
+        // 恢复风格选择
+        styleSelect.disabled = false;
+        styleSelect.value = '';
+        styleSelect.style.opacity = '1';
+        styleSelect.style.cursor = '';
+        stylePreviewBtn.disabled = false;
+        stylePreviewBtn.style.opacity = '1';
+        stylePreviewBtn.style.cursor = '';
+    }
+}
+
+// 切换重新生成精细三视图模式
+function toggleRegenerateDetailedView(checkbox) {
+    const aspectSelect = document.getElementById('regenerateAspectRatio');
+    const styleSelect = document.getElementById('regenerateStyle');
+
+    if (checkbox.checked) {
+        // 自动选择16:9
+        aspectSelect.value = '16:9';
+        // 禁用其他比例选项
+        aspectSelect.querySelectorAll('option').forEach(opt => {
+            if (opt.value !== '16:9') {
+                opt.disabled = true;
+                opt.style.color = '#666';
+            }
+        });
+        aspectSelect.style.opacity = '0.6';
+
+        // 禁用风格选择
+        styleSelect.disabled = true;
+        styleSelect.style.opacity = '0.6';
+        styleSelect.style.cursor = 'not-allowed';
+    } else {
+        // 恢复所有比例选项
+        aspectSelect.querySelectorAll('option').forEach(opt => {
+            opt.disabled = false;
+            opt.style.color = '';
+        });
+        aspectSelect.value = '';
+        aspectSelect.style.opacity = '1';
+
+        // 恢复风格选择
+        styleSelect.disabled = false;
+        styleSelect.value = '';
+        styleSelect.style.opacity = '1';
+        styleSelect.style.cursor = '';
+    }
 }
 
 function submitAddRole() {
@@ -2658,10 +2840,20 @@ function submitAddRole() {
         return;
     }
 
-    const customPrompt = document.getElementById('newCustomPrompt').value.trim();
+    let customPrompt = document.getElementById('newCustomPrompt').value.trim();
     if (!customPrompt) {
         showToast('请输入提示词', 'error');
         return;
+    }
+
+    const detailedView = document.getElementById('newRoleDetailedView').checked;
+
+    // 保存用户原始输入的提示词
+    let originalPrompt = customPrompt;
+
+    // 如果启用了精细三视图，追加默认提示词
+    if (detailedView && customPrompt) {
+        customPrompt = customPrompt + '\n\n' + DETAILED_THREE_VIEW_PROMPT;
     }
 
     const aspectRatio = document.getElementById('newRoleAspectRatio').value;
@@ -2678,12 +2870,13 @@ function submitAddRole() {
         return;
     }
 
-    if (!styleKey) {
+    // 精细三视图模式下不需要选择风格
+    if (!detailedView && !styleKey) {
         showToast('请选择图片风格', 'error');
         return;
     }
 
-    const styleKeywords = STYLE_PRESETS[styleKey] || '';
+    const styleKeywords = detailedView ? '' : (STYLE_PRESETS[styleKey] || '');
 
     fetch(`/roles/series/{{ series_id }}/create/`, {
         method: 'POST',
@@ -2694,9 +2887,11 @@ function submitAddRole() {
         body: JSON.stringify({
             roleName: roleName,
             customPrompt: customPrompt,
+            originalPrompt: originalPrompt,
             aspectRatio: aspectRatio,
             quality: quality,
-            styleKeywords: styleKeywords
+            styleKeywords: styleKeywords,
+            detailedView: detailedView
         })
     })
     .then(response => response.json())

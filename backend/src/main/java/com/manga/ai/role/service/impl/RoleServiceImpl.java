@@ -28,6 +28,8 @@ import org.springframework.beans.BeanUtils;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
 import java.time.LocalDateTime;
@@ -78,6 +80,7 @@ public class RoleServiceImpl implements RoleService {
         role.setClothing(request.getClothing());
         role.setSpecialMarks(request.getSpecialMarks());
         role.setCustomPrompt(request.getCustomPrompt());
+        role.setOriginalPrompt(request.getOriginalPrompt());
         role.setStyleKeywords(request.getStyleKeywords());
         role.setExtractConfidence(new java.math.BigDecimal("1.0"));
         role.setCreatedAt(LocalDateTime.now());
@@ -86,10 +89,23 @@ public class RoleServiceImpl implements RoleService {
         roleMapper.insert(role);
         log.info("创建角色: roleId={}, roleName={}", role.getId(), role.getRoleName());
 
-        // 异步生成图片 - 传递比例、清晰度和风格参数
+        // 保存必要参数，用于事务提交后启动异步任务
         Long roleId = role.getId();
-        imageGenerateService.generateCharacterAssets(roleId, null, null, null,
-                request.getAspectRatio(), request.getQuality(), request.getStyleKeywords());
+        String aspectRatio = request.getAspectRatio();
+        String quality = request.getQuality();
+        String styleKeywords = request.getStyleKeywords();
+        String originalPrompt = request.getOriginalPrompt();
+        Boolean detailedView = request.getDetailedView();
+
+        // 在事务提交后启动异步任务，避免异步任务在事务提交前执行导致找不到数据
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCommit() {
+                log.info("事务已提交，启动异步生成任务: roleId={}", roleId);
+                imageGenerateService.generateCharacterAssets(roleId, null, null, null,
+                        aspectRatio, quality, styleKeywords, originalPrompt, detailedView);
+            }
+        });
 
         return roleId;
     }
@@ -292,9 +308,13 @@ public class RoleServiceImpl implements RoleService {
                 Role roleToUpdate = roleMapper.selectById(roleId);
                 if (roleToUpdate != null) {
                     roleToUpdate.setCustomPrompt(modifiedPrompt);
+                    // 同时更新原始提示词
+                    if (request.getOriginalPrompt() != null && !request.getOriginalPrompt().trim().isEmpty()) {
+                        roleToUpdate.setOriginalPrompt(request.getOriginalPrompt());
+                    }
                     roleToUpdate.setUpdatedAt(LocalDateTime.now());
                     roleMapper.updateById(roleToUpdate);
-                    log.info("更新角色提示词: roleId={}, prompt={}", roleId, modifiedPrompt);
+                    log.info("更新角色提示词: roleId={}, prompt={}, originalPrompt={}", roleId, modifiedPrompt, request.getOriginalPrompt());
                 }
             }
 
@@ -344,12 +364,14 @@ public class RoleServiceImpl implements RoleService {
                     clothingName,
                     request.getAspectRatio(),
                     request.getQuality(),
-                    request.getStyleKeywords()
+                    request.getStyleKeywords(),
+                    request.getOriginalPrompt(),
+                    request.getDetailedView()
             );
         } else {
             log.info("使用文生图模式");
             imageGenerateService.generateCharacterAssets(roleId, clothingId, generatingAssetId, previousActiveAssetId,
-                    request.getAspectRatio(), request.getQuality(), request.getStyleKeywords());
+                    request.getAspectRatio(), request.getQuality(), request.getStyleKeywords(), request.getOriginalPrompt(), request.getDetailedView());
         }
 
         log.info("重新生成角色图片: roleId={}, clothingId={}, version={}, isNewClothing={}",

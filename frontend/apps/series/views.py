@@ -191,3 +191,54 @@ def api_progress(request, series_id):
         return JsonResponse(result)
     except BackendAPIError as e:
         return JsonResponse({'error': e.message}, status=500)
+
+
+@csrf_exempt
+@require_http_methods(["DELETE"])
+def series_delete(request, series_id):
+    """删除系列（移入回收站）"""
+    client = BackendClient()
+    try:
+        client.delete(f'/v1/series/{series_id}')
+        return JsonResponse({'success': True})
+    except BackendAPIError as e:
+        return JsonResponse({'success': False, 'error': e.message}, status=400)
+
+
+def trash_page(request):
+    """回收站页面"""
+    client = BackendClient()
+    try:
+        trash_list = client.get('/v1/series/trash')
+    except BackendAPIError as e:
+        messages.error(request, f'获取回收站列表失败: {e.message}')
+        trash_list = []
+
+    return render(request, 'series/trash.html', {
+        'trash_list': trash_list,
+        'trash_list_json': json.dumps(trash_list),
+    })
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def series_restore(request, series_id):
+    """恢复系列"""
+    client = BackendClient()
+    try:
+        client.post(f'/v1/series/{series_id}/restore')
+        return JsonResponse({'success': True})
+    except BackendAPIError as e:
+        return JsonResponse({'success': False, 'error': e.message}, status=400)
+
+
+@csrf_exempt
+@require_http_methods(["DELETE"])
+def series_permanent_delete(request, series_id):
+    """彻底删除系列"""
+    client = BackendClient()
+    try:
+        client.delete(f'/v1/series/{series_id}/permanent')
+        return JsonResponse({'success': True})
+    except BackendAPIError as e:
+        return JsonResponse({'success': False, 'error': e.message}, status=400)

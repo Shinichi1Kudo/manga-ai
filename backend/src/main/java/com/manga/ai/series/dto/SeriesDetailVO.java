@@ -51,6 +51,11 @@ public class SeriesDetailVO implements Serializable {
      */
     private Integer confirmedAssetCount;
 
+    /**
+     * 删除时间（回收站使用）
+     */
+    private LocalDateTime deletedAt;
+
     public String getStatusDesc() {
         SeriesStatus seriesStatus = SeriesStatus.getByCode(this.status);
         return seriesStatus != null ? seriesStatus.getDesc() : "";

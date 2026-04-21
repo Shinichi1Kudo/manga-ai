@@ -77,4 +77,14 @@ public class ImageGenerateRequest implements Serializable {
      * 服装名称
      */
     private String clothingName;
+
+    /**
+     * 用户原始提示词（不包含系统附加的模板）
+     */
+    private String originalPrompt;
+
+    /**
+     * 是否使用精细三视图模式生成
+     */
+    private Boolean detailedView;
 }

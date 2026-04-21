@@ -18,6 +18,9 @@
         <a href="/assets/library/" class="px-8 py-3 rounded-xl bg-white/10 border border-white/20 hover:bg-white/15 transition-all font-medium text-lg inline-flex items-center gap-2">
             <i data-lucide="folder-open" class="w-5 h-5"></i>我的资产库
         </a>
+        <a href="/trash/" class="px-8 py-3 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 transition-all font-medium text-lg inline-flex items-center gap-2">
+            <i data-lucide="trash-2" class="w-5 h-5"></i>回收站
+        </a>
     </div>
 </div>
 
@@ -40,7 +43,33 @@
 <!-- SockJS 和 STOMP.js for WebSocket -->
 <script src="https://cdn.jsdelivr.net/npm/sockjs-client@1/dist/sockjs.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/stompjs@2.3.3/lib/stomp.min.js"></script>
+
+<!-- 删除确认弹窗 -->
+<div id="deleteModal" class="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 hidden items-center justify-center">
+    <div class="glass-card p-6 max-w-md mx-4 text-center">
+        <i data-lucide="alert-triangle" class="w-12 h-12 text-yellow-400 mx-auto mb-4"></i>
+        <h3 class="text-xl font-bold mb-2">确认删除</h3>
+        <p class="text-white/60 mb-4">确定要删除系列 "<span id="deleteSeriesName" class="text-violet-300"></span>" 吗？</p>
+        <p class="text-white/40 text-sm mb-6">删除后可在回收站中恢复，3天后自动彻底删除</p>
+        <div class="flex justify-center gap-4">
+            <button onclick="closeDeleteModal()" class="px-6 py-2 rounded-lg bg-white/10 hover:bg-white/15 transition-colors">
+                取消
+            </button>
+            <button onclick="confirmDelete()" class="px-6 py-2 rounded-lg bg-red-500/20 text-red-400 hover:bg-red-500/30 transition-colors">
+                确认删除
+            </button>
+        </div>
+    </div>
+</div>
+
 <script>
+// 安全调用 lucide.createIcons
+function safeCreateIcons() {
+    if (typeof lucide !== 'undefined' && lucide.createIcons) {
+        lucide.createIcons();
+    }
+}
+
 let currentPage = 1;
 const pageSize = 9;
 let totalSeries = 0;
@@ -100,7 +129,7 @@ window.addEventListener('storage', function(e) {
                                         <p class="text-green-400 font-medium">处理完成！</p>
                                     </div>
                                 `;
-                                lucide.createIcons();
+                                safeCreateIcons();
                             }
                             // 停止模拟进度
                             stopFakeProgress(parseInt(seriesId));
@@ -123,7 +152,7 @@ window.addEventListener('storage', function(e) {
                                         <p class="text-red-400 font-medium">${newProg.message || '处理失败'}</p>
                                     </div>
                                 `;
-                                lucide.createIcons();
+                                safeCreateIcons();
                             }
                             stopFakeProgress(parseInt(seriesId));
                         }
@@ -148,7 +177,7 @@ function loadSeries(page) {
             if (result.data && result.data.list && result.data.list.length > 0) {
                 totalSeries = result.data.total;
                 container.innerHTML = result.data.list.map(series => renderSeriesCard(series)).join('');
-                lucide.createIcons();
+                safeCreateIcons();
                 renderPagination(result.data.total, page);
 
                 // 渲染完成后启动进度动画
@@ -205,18 +234,26 @@ function renderSeriesCard(series) {
         const statusText = isLocked ? '已锁定' : (series.statusDesc || '待审核');
 
         return `
-            <div class="glass-card glass-card-hover p-6 cursor-pointer" onclick="location.href='/${series.id}/review/'">
-                <div class="flex items-start justify-between mb-3">
-                    <h3 class="text-lg font-bold truncate flex-1 mr-2">${series.seriesName || '未命名'}</h3>
-                    <span class="status-badge ${statusClass} flex-shrink-0">
-                        ${statusText}
-                    </span>
+            <div class="glass-card glass-card-hover p-6 relative group">
+                <div class="cursor-pointer" onclick="location.href='/${series.id}/review/'">
+                    <div class="flex items-start justify-between mb-3">
+                        <h3 class="text-lg font-bold truncate flex-1 mr-2">${series.seriesName || '未命名'}</h3>
+                        <span class="status-badge ${statusClass} flex-shrink-0">
+                            ${statusText}
+                        </span>
+                    </div>
+                    <p class="text-sm text-white/60 mb-4 line-clamp-2 h-10">${series.background || '暂无背景设定'}</p>
+                    <div class="flex items-center justify-between text-sm text-white/40">
+                        <span><i data-lucide="users" class="w-4 h-4 inline mr-1"></i>${series.roleCount || 0} 个角色</span>
+                        <span>${series.createdAt ? series.createdAt.substring(0, 10) : ''}</span>
+                    </div>
                 </div>
-                <p class="text-sm text-white/60 mb-4 line-clamp-2 h-10">${series.background || '暂无背景设定'}</p>
-                <div class="flex items-center justify-between text-sm text-white/40">
-                    <span><i data-lucide="users" class="w-4 h-4 inline mr-1"></i>${series.roleCount || 0} 个角色</span>
-                    <span>${series.createdAt ? series.createdAt.substring(0, 10) : ''}</span>
-                </div>
+                <!-- 删除按钮 -->
+                <button onclick="event.stopPropagation(); showDeleteConfirm(${series.id}, '${series.seriesName || '未命名'}')"
+                    class="absolute top-4 right-4 p-2 rounded-lg bg-white/5 hover:bg-red-500/20 hover:text-red-400 transition-all opacity-0 group-hover:opacity-100"
+                    title="删除系列">
+                    <i data-lucide="trash-2" class="w-4 h-4"></i>
+                </button>
             </div>
         `;
     }
@@ -273,7 +310,7 @@ function renderPagination(total, currentPage) {
     html += `<span class="text-white/40 text-sm ml-4">共 ${total} 个系列</span>`;
 
     pagination.innerHTML = html;
-    lucide.createIcons();
+    safeCreateIcons();
 }
 
 // WebSocket 连接
@@ -353,7 +390,7 @@ function updateSeriesProgress(progress) {
                     <p class="text-green-400 font-medium">处理完成！</p>
                 </div>
             `;
-            lucide.createIcons();
+            safeCreateIcons();
         }
 
         // 2秒后刷新页面
@@ -385,7 +422,7 @@ function updateSeriesProgress(progress) {
                     <p class="text-red-400 font-medium">${progress.message}</p>
                 </div>
             `;
-            lucide.createIcons();
+            safeCreateIcons();
         }
     }
 }
@@ -521,7 +558,7 @@ function startPolling(seriesId) {
                                     <p class="text-green-400 font-medium">处理完成！</p>
                                 </div>
                             `;
-                            lucide.createIcons();
+                            safeCreateIcons();
                         }
                     }
 
@@ -555,6 +592,61 @@ document.addEventListener('DOMContentLoaded', function() {
         }, 500);
     }
 });
+
+// 删除相关函数
+let deletingSeriesId = null;
+
+function showDeleteConfirm(seriesId, seriesName) {
+    deletingSeriesId = seriesId;
+    document.getElementById('deleteSeriesName').textContent = seriesName;
+    document.getElementById('deleteModal').classList.remove('hidden');
+    document.getElementById('deleteModal').classList.add('flex');
+}
+
+function closeDeleteModal() {
+    deletingSeriesId = null;
+    document.getElementById('deleteModal').classList.add('hidden');
+    document.getElementById('deleteModal').classList.remove('flex');
+}
+
+function confirmDelete() {
+    if (!deletingSeriesId) return;
+
+    fetch(`/api/series/${deletingSeriesId}/delete/`, {
+        method: 'DELETE',
+        headers: {
+            'X-Requested-With': 'XMLHttpRequest',
+            'X-CSRFToken': getCookie('csrftoken'),
+        }
+    })
+    .then(response => response.json())
+    .then(result => {
+        if (result.success) {
+            closeDeleteModal();
+            loadSeries(currentPage);
+        } else {
+            alert('删除失败: ' + (result.error || '未知错误'));
+        }
+    })
+    .catch(err => {
+        alert('删除失败: ' + err.message);
+    });
+}
+
+function getCookie(name) {
+    let cookieValue = null;
+    if (document.cookie && document.cookie !== '') {
+        const cookies = document.cookie.split(';');
+        for (let i = 0; i < cookies.length; i++) {
+            const cookie = cookies[i].trim();
+            if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                break;
+            }
+        }
+    }
+    return cookieValue;
+}
 </script>
 <style>
 .line-clamp-2 {

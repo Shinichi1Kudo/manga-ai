@@ -70,4 +70,24 @@ public interface SeriesService {
      * 获取已锁定的系列列表
      */
     List<SeriesDetailVO> getLockedSeries();
+
+    /**
+     * 软删除系列（移入回收站）
+     */
+    void deleteSeries(Long seriesId);
+
+    /**
+     * 获取回收站列表
+     */
+    List<SeriesDetailVO> getTrashList();
+
+    /**
+     * 恢复已删除的系列
+     */
+    void restoreSeries(Long seriesId);
+
+    /**
+     * 彻底删除系列
+     */
+    void permanentDeleteSeries(Long seriesId);
 }

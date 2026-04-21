@@ -245,6 +245,18 @@ public class AssetServiceImpl implements AssetService {
         }
 
         log.info("getClothingsByRoleId: roleId={}, 返回{}个服装", roleId, result.size());
+
+        // 填充 detailedView 字段（来自元数据）
+        for (RoleAsset asset : result) {
+            LambdaQueryWrapper<AssetMetadata> metadataWrapper = new LambdaQueryWrapper<>();
+            metadataWrapper.eq(AssetMetadata::getAssetId, asset.getId())
+                    .select(AssetMetadata::getDetailedView);
+            AssetMetadata metadata = assetMetadataMapper.selectOne(metadataWrapper);
+            if (metadata != null) {
+                asset.setDetailedView(metadata.getDetailedView());
+            }
+        }
+
         return result;
     }
 

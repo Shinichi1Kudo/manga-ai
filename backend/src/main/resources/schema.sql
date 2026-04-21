@@ -14,10 +14,13 @@ CREATE TABLE IF NOT EXISTS series (
     project_path VARCHAR(500),
     global_seed BIGINT,
     global_style_prompt CLOB,
+    aspect_ratio VARCHAR(10),
+    quality VARCHAR(20),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     created_by VARCHAR(50),
-    is_deleted INT DEFAULT 0
+    is_deleted INT DEFAULT 0,
+    deleted_at TIMESTAMP
 );
 
 -- 角色表
@@ -33,6 +36,9 @@ CREATE TABLE IF NOT EXISTS role (
     personality CLOB,
     clothing CLOB,
     special_marks CLOB,
+    custom_prompt CLOB,
+    original_prompt CLOB,
+    style_keywords VARCHAR(500),
     original_text CLOB,
     extract_confidence DECIMAL(3,2),
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -77,12 +83,14 @@ CREATE TABLE IF NOT EXISTS asset_metadata (
     id BIGINT AUTO_INCREMENT PRIMARY KEY,
     asset_id BIGINT NOT NULL UNIQUE,
     prompt CLOB,
+    user_prompt CLOB,
     negative_prompt CLOB,
     seed BIGINT,
     model_version VARCHAR(50) DEFAULT 'seedream-5.0-lite',
     image_width INT,
     image_height INT,
     aspect_ratio VARCHAR(10),
+    detailed_view BOOLEAN DEFAULT FALSE,
     generation_time_ms BIGINT,
     api_response CLOB,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP

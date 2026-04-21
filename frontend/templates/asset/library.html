@@ -139,58 +139,116 @@
     border-color: rgba(255, 255, 255, 0.15);
 }
 
-.clothing-tab {
-    padding: 8px 16px;
-    border-radius: 8px;
-    background: rgba(255, 255, 255, 0.05);
-    border: 1px solid transparent;
-    cursor: pointer;
-    transition: all 0.2s ease;
-    font-size: 14px;
-}
-
-.clothing-tab:hover {
-    background: rgba(255, 255, 255, 0.1);
-}
-
-.clothing-tab.active {
-    background: rgba(124, 58, 237, 0.2);
-    border-color: rgba(124, 58, 237, 0.5);
-}
-
-.view-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+/* 角色头部 - 封面图 + 信息 */
+.role-header {
+    display: flex;
+    align-items: center;
     gap: 16px;
+    margin-bottom: 16px;
 }
 
+.role-cover {
+    width: 80px;
+    height: 100px;
+    border-radius: 10px;
+    object-fit: cover;
+    flex-shrink: 0;
+    border: 2px solid rgba(124, 58, 237, 0.3);
+}
+
+.role-cover-empty {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(255, 255, 255, 0.05);
+    color: rgba(255, 255, 255, 0.3);
+}
+
+.role-info {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+/* 图片网格 - 平铺展示 */
+.view-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 20px;
+    align-items: flex-start;
+}
+
+/* 图片项 - 真实大小展示 */
 .view-item {
-    aspect-ratio: 3/4;
+    display: flex;
+    flex-direction: column;
     border-radius: 12px;
     overflow: hidden;
     cursor: pointer;
-    position: relative;
     border: 2px solid transparent;
     transition: all 0.3s ease;
+    background: rgba(0, 0, 0, 0.2);
 }
 
 .view-item:hover {
     border-color: rgba(124, 58, 237, 0.5);
-    transform: scale(1.02);
+    transform: translateY(-4px);
+    box-shadow: 0 8px 24px rgba(124, 58, 237, 0.2);
 }
 
 .view-item img {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
+    display: block;
+    max-width: 300px;
+    max-height: 400px;
+    width: auto;
+    height: auto;
 }
 
-.view-item .view-label {
-    position: absolute;
-    bottom: 0;
-    left: 0;
-    right: 0;
-    padding: 8px;
+/* 图片信息栏 */
+.view-item .view-info {
+    padding: 10px 12px;
+    background: rgba(0, 0, 0, 0.5);
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    font-size: 12px;
+    min-width: 200px;
+}
+
+.view-item .view-info .info-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.view-item .view-info .view-type {
+    color: rgba(255, 255, 255, 0.6);
+    font-size: 11px;
+}
+
+.view-item .view-info .aspect {
+    color: #a78bfa;
+    font-weight: 600;
+    font-size: 13px;
+}
+
+.view-item .view-info .resolution {
+    font-weight: 500;
+    font-size: 11px;
+}
+
+/* 无资产提示 */
+.no-assets {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 20px;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px dashed rgba(255, 255, 255, 0.1);
+    border-radius: 12px;
+    color: rgba(255, 255, 255, 0.4);
+    font-size: 14px;
+}
     background: linear-gradient(transparent, rgba(0,0,0,0.8));
     text-align: center;
     font-size: 12px;
@@ -202,26 +260,34 @@
 {% block extra_js %}
 <script>
 let currentSeriesId = null;
-let currentZoom = 1;
-let imageTranslate = { x: 0, y: 0 };
-let isDragging = false;
-let dragStart = { x: 0, y: 0 };
+let assetZoom = 1;
+let assetImageTranslate = { x: 0, y: 0 };
+let assetIsDragging = false;
+let assetDragStart = { x: 0, y: 0 };
 
-const lockedSeries = {{ locked_series|safe }};
+// 安全调用 lucide.createIcons
+function initIcons() {
+    if (typeof lucide !== 'undefined' && lucide.createIcons) {
+        lucide.createIcons();
+    }
+}
 
 // 页面加载时加载第一个系列的资产
 document.addEventListener('DOMContentLoaded', function() {
-    if (lockedSeries && lockedSeries.length > 0) {
-        loadSeriesAssets(lockedSeries[0].id);
+    const selector = document.getElementById('seriesSelector');
+    if (selector && selector.value) {
+        loadSeriesAssets(selector.value);
     }
 
     // 系列选择器变化事件
-    document.getElementById('seriesSelector').addEventListener('change', function() {
-        const seriesId = this.value;
-        if (seriesId) {
-            loadSeriesAssets(seriesId);
-        }
-    });
+    if (selector) {
+        selector.addEventListener('change', function() {
+            const seriesId = this.value;
+            if (seriesId) {
+                loadSeriesAssets(seriesId);
+            }
+        });
+    }
 
     // 资产类型切换
     document.querySelectorAll('.asset-type-tab').forEach(tab => {
@@ -230,6 +296,52 @@ document.addEventListener('DOMContentLoaded', function() {
             document.querySelectorAll('.asset-type-tab').forEach(t => t.classList.remove('active'));
             this.classList.add('active');
         });
+    });
+
+    // 鼠标滚轮缩放
+    const previewModal = document.getElementById('imagePreviewModal');
+    const previewImg = document.getElementById('previewImage');
+
+    if (previewModal) {
+        previewModal.addEventListener('wheel', (e) => {
+            if (previewImg && (e.target === previewImg || previewImg.contains(e.target))) {
+                e.preventDefault();
+                if (e.deltaY < 0) {
+                    zoomIn();
+                } else {
+                    zoomOut();
+                }
+            }
+        });
+    }
+
+    // 图片拖拽
+    if (previewImg) {
+        previewImg.addEventListener('mousedown', (e) => {
+            if (assetZoom > 1) {
+                assetIsDragging = true;
+                assetDragStart = { x: e.clientX - assetImageTranslate.x, y: e.clientY - assetImageTranslate.y };
+                previewImg.style.cursor = 'grabbing';
+                e.preventDefault();
+            }
+        });
+    }
+
+    document.addEventListener('mousemove', (e) => {
+        if (assetIsDragging) {
+            assetImageTranslate = {
+                x: e.clientX - assetDragStart.x,
+                y: e.clientY - assetDragStart.y
+            };
+            updatePreviewZoom();
+        }
+    });
+
+    document.addEventListener('mouseup', () => {
+        if (assetIsDragging && previewImg) {
+            assetIsDragging = false;
+            previewImg.style.cursor = assetZoom > 1 ? 'grab' : 'move';
+        }
     });
 });
 
@@ -245,10 +357,26 @@ function loadSeriesAssets(seriesId) {
     `;
 
     fetch(`/assets/api/series/${seriesId}/assets/`)
-        .then(res => res.json())
+        .then(res => {
+            if (!res.ok) {
+                throw new Error('HTTP error ' + res.status);
+            }
+            return res.json();
+        })
         .then(result => {
             if (result.success) {
-                renderAssets(result.data);
+                try {
+                    renderAssets(result.data);
+                } catch (e) {
+                    console.error('renderAssets error:', e);
+                    content.innerHTML = `
+                        <div class="text-center py-12">
+                            <i data-lucide="alert-circle" class="w-12 h-12 text-red-400 mx-auto mb-4"></i>
+                            <p class="text-red-400">渲染错误: ${e.message}</p>
+                        </div>
+                    `;
+                    initIcons();
+                }
             } else {
                 content.innerHTML = `
                     <div class="text-center py-12">
@@ -256,17 +384,18 @@ function loadSeriesAssets(seriesId) {
                         <p class="text-red-400">${result.error || '加载失败'}</p>
                     </div>
                 `;
-                lucide.createIcons();
+                initIcons();
             }
         })
         .catch(err => {
+            console.error('fetch error:', err);
             content.innerHTML = `
                 <div class="text-center py-12">
                     <i data-lucide="alert-circle" class="w-12 h-12 text-red-400 mx-auto mb-4"></i>
-                    <p class="text-red-400">网络错误，请重试</p>
+                    <p class="text-red-400">网络错误: ${err.message}</p>
                 </div>
             `;
-            lucide.createIcons();
+            initIcons();
         });
 }
 
@@ -281,7 +410,7 @@ function renderAssets(data) {
                 <p class="text-white/50">该系列暂无角色资产</p>
             </div>
         `;
-        lucide.createIcons();
+        initIcons();
         return;
     }
 
@@ -294,74 +423,73 @@ function renderAssets(data) {
     `;
 
     roles.forEach(role => {
+        // 对服装排序：默认服装排第一位
+        if (role.clothings && role.clothings.length > 0) {
+            role.clothings.sort((a, b) => {
+                const aIsDefault = a.clothingName === '默认' || a.clothingId === 1;
+                const bIsDefault = b.clothingName === '默认' || b.clothingId === 1;
+                if (aIsDefault && !bIsDefault) return -1;
+                if (!aIsDefault && bIsDefault) return 1;
+                return a.clothingId - b.clothingId;
+            });
+        }
+
+        // 获取角色的封面图（第一张图片）
+        let coverImage = null;
+        if (role.clothings && role.clothings.length > 0) {
+            const firstClothing = role.clothings[0];
+            if (firstClothing.assets && firstClothing.assets.length > 0) {
+                coverImage = getAssetImagePath(firstClothing.assets[0]);
+            }
+        }
+
         html += `
             <div class="role-card">
-                <div class="flex items-center justify-between mb-4">
-                    <h3 class="text-lg font-semibold">${role.roleName}</h3>
-                    <span class="text-xs text-white/40">${role.roleCode}</span>
+                <div class="role-header">
+                    ${coverImage ? `<img src="${coverImage}" class="role-cover" alt="${role.roleName}">` : '<div class="role-cover role-cover-empty"><i data-lucide="user" class="w-8 h-8"></i></div>'}
+                    <div class="role-info">
+                        <h3 class="text-lg font-semibold">${role.roleName}</h3>
+                        <span class="text-xs text-white/40">${role.roleCode}</span>
+                    </div>
                 </div>
         `;
 
-        // 服装标签
+        // 所有服装的图片放在同一个网格中，左右平铺
         if (role.clothings && role.clothings.length > 0) {
-            html += `
-                <div class="flex flex-wrap gap-2 mb-4">
-            `;
-            role.clothings.forEach((clothing, idx) => {
-                const isActive = idx === 0;
-                html += `
-                    <div class="clothing-tab ${isActive ? 'active' : ''}"
-                         data-role-id="${role.roleId}"
-                         data-clothing-id="${clothing.clothingId}"
-                         onclick="selectClothing(this, '${role.roleId}', '${clothing.clothingId}')">
-                        ${clothing.clothingName}
-                    </div>
-                `;
-            });
-            html += `</div>`;
-
-            // 显示第一个服装的资产
-            const firstClothing = role.clothings[0];
-            html += `
-                <div class="clothing-content" data-role-id="${role.roleId}" data-clothing-id="${firstClothing.clothingId}">
-                    <div class="view-grid">
-            `;
-
-            firstClothing.assets.forEach(asset => {
-                const viewName = getViewName(asset.viewType);
-                html += `
-                    <div class="view-item" onclick="openPreview('${asset.filePath}', '${role.roleName} - ${viewName}')">
-                        <img src="${asset.filePath}" alt="${viewName}">
-                        <div class="view-label">${viewName}</div>
-                    </div>
-                `;
-            });
-
-            html += `
-                    </div>
-                </div>
-            `;
-
-            // 存储其他服装的资产数据
-            role.clothings.forEach(clothing => {
-                let assetsHtml = `<div class="view-grid">`;
+            html += `<div class="view-grid">`;
+            role.clothings.forEach((clothing) => {
                 clothing.assets.forEach(asset => {
-                    const viewName = getViewName(asset.viewType);
-                    assetsHtml += `
-                        <div class="view-item" onclick="openPreview('${asset.filePath}', '${role.roleName} - ${viewName}')">
-                            <img src="${asset.filePath}" alt="${viewName}">
-                            <div class="view-label">${viewName}</div>
+                    const viewName = getViewName(getAssetViewType(asset));
+                    const imgPath = getAssetImagePath(asset);
+                    // 如果有多个服装，显示服装名称
+                    const displayName = role.clothings.length > 1
+                        ? `${clothing.clothingName} - ${viewName}`
+                        : viewName;
+                    html += `
+                        <div class="view-item" onclick="openPreview('${imgPath}', '${role.roleName} - ${clothing.clothingName} - ${viewName}')">
+                            <img src="${imgPath}" alt="${displayName}" onload="updateImageInfo(this)">
+                            <div class="view-info">
+                                <div class="info-row">
+                                    <span class="view-type">${displayName}</span>
+                                    <span class="aspect">-</span>
+                                </div>
+                                <div class="info-row">
+                                    <span class="resolution">加载中...</span>
+                                </div>
+                            </div>
                         </div>
                     `;
                 });
-                assetsHtml += `</div>`;
-
-                html += `
-                    <template id="clothing-assets-${role.roleId}-${clothing.clothingId}">
-                        ${assetsHtml}
-                    </template>
-                `;
             });
+            html += `</div>`;
+        } else {
+            // 没有资产时显示提示
+            html += `
+                <div class="no-assets">
+                    <i data-lucide="image-off" class="w-8 h-8 text-white/30"></i>
+                    <span>暂无资产（可能生成失败或未生成）</span>
+                </div>
+            `;
         }
 
         html += `</div>`; // role-card
@@ -370,7 +498,87 @@ function renderAssets(data) {
     html += `</div>`;
 
     content.innerHTML = html;
-    lucide.createIcons();
+    initIcons();
+}
+
+// 图片加载后更新信息
+function updateImageInfo(img) {
+    const viewItem = img.closest('.view-item');
+    if (!viewItem) return;
+
+    const info = viewItem.querySelector('.view-info');
+    if (!info) return;
+
+    const width = img.naturalWidth;
+    const height = img.naturalHeight;
+    const maxDim = Math.max(width, height);
+
+    // 计算实际宽高比
+    const actualRatio = width / height;
+
+    // 标准比例列表及其目标值
+    const standardRatios = [
+        { name: '1:1', target: 1 },
+        { name: '4:3', target: 4 / 3 },
+        { name: '3:4', target: 3 / 4 },
+        { name: '16:9', target: 16 / 9 },
+        { name: '9:16', target: 9 / 16 },
+        { name: '3:2', target: 3 / 2 },
+        { name: '2:3', target: 2 / 3 },
+        { name: '21:9', target: 21 / 9 }
+    ];
+
+    // 找到最接近的标准比例
+    let bestMatch = standardRatios[0];
+    let minDiff = Math.abs(actualRatio - bestMatch.target);
+
+    for (const ratio of standardRatios) {
+        const diff = Math.abs(actualRatio - ratio.target);
+        if (diff < minDiff) {
+            minDiff = diff;
+            bestMatch = ratio;
+        }
+    }
+
+    // 如果误差太大（超过5%），显示自定义比例
+    let aspectText = bestMatch.name;
+    if (minDiff / bestMatch.target > 0.05) {
+        // 显示简化的自定义比例
+        const gcd = (a, b) => b === 0 ? a : gcd(b, a % b);
+        const divisor = gcd(width, height);
+        const ratioW = Math.round(width / divisor);
+        const ratioH = Math.round(height / divisor);
+        aspectText = `${ratioW}:${ratioH}`;
+    }
+
+    // 清晰度评估 - 按长边判断
+    let qualityText = '';
+    let qualityColor = '';
+
+    if (maxDim >= 3072) {
+        qualityText = '3K超清';
+        qualityColor = '#818cf8'; // 紫色 - 3K超清
+    } else if (maxDim >= 2048) {
+        qualityText = '2K高清';
+        qualityColor = '#34d399'; // 绿色 - 2K高清
+    } else if (maxDim >= 1024) {
+        qualityText = '高清';
+        qualityColor = '#22d3ee'; // 青色 - 高清
+    } else if (maxDim >= 512) {
+        qualityText = '标清';
+        qualityColor = '#fbbf24'; // 黄色 - 标清
+    } else {
+        qualityText = '低清';
+        qualityColor = '#f87171'; // 红色 - 低清
+    }
+
+    const aspectEl = info.querySelector('.aspect');
+    const resEl = info.querySelector('.resolution');
+    if (aspectEl) aspectEl.textContent = aspectText;
+    if (resEl) {
+        resEl.textContent = `${qualityText} ${width}×${height}`;
+        resEl.style.color = qualityColor;
+    }
 }
 
 function getViewName(viewType) {
@@ -380,25 +588,20 @@ function getViewName(viewType) {
         'BACK': '背面',
         'THREE_QUARTER': '3/4侧',
         'FULL_BODY': '全身',
-        'PORTRAIT': '头像'
+        'PORTRAIT': '头像',
+        'ALL': '三视图'
     };
     return viewNames[viewType] || viewType;
 }
 
-function selectClothing(tab, roleId, clothingId) {
-    // 更新标签状态
-    const tabs = tab.parentElement.querySelectorAll('.clothing-tab');
-    tabs.forEach(t => t.classList.remove('active'));
-    tab.classList.add('active');
+function getAssetImagePath(asset) {
+    // 优先使用透明背景图片，兼容 camelCase 和 snake_case
+    return asset.transparentPath || asset.transparent_path || asset.filePath || asset.file_path || '';
+}
 
-    // 更新内容
-    const container = tab.closest('.role-card');
-    const oldContent = container.querySelector('.clothing-content');
-    const template = document.getElementById(`clothing-assets-${roleId}-${clothingId}`);
-
-    if (template && oldContent) {
-        oldContent.innerHTML = template.innerHTML;
-    }
+function getAssetViewType(asset) {
+    // 兼容 camelCase 和 snake_case
+    return asset.viewType || asset.view_type || 'UNKNOWN';
 }
 
 // 图片预览
@@ -408,10 +611,10 @@ function openPreview(imgSrc, title) {
     document.getElementById('downloadBtn').href = imgSrc;
     document.getElementById('imagePreviewModal').classList.add('active');
 
-    currentZoom = 1;
-    imageTranslate = { x: 0, y: 0 };
+    assetZoom = 1;
+    assetImageTranslate = { x: 0, y: 0 };
     updatePreviewZoom();
-    lucide.createIcons();
+    initIcons();
 }
 
 function closePreviewModal(event) {
@@ -420,68 +623,34 @@ function closePreviewModal(event) {
 }
 
 function zoomIn() {
-    if (currentZoom < 3) {
-        currentZoom += 0.25;
+    if (assetZoom < 3) {
+        assetZoom += 0.25;
         updatePreviewZoom();
     }
 }
 
 function zoomOut() {
-    if (currentZoom > 0.5) {
-        currentZoom -= 0.25;
+    if (assetZoom > 0.5) {
+        assetZoom -= 0.25;
         updatePreviewZoom();
     }
 }
 
 function resetZoom() {
-    currentZoom = 1;
-    imageTranslate = { x: 0, y: 0 };
+    assetZoom = 1;
+    assetImageTranslate = { x: 0, y: 0 };
     updatePreviewZoom();
 }
 
 function updatePreviewZoom() {
     const img = document.getElementById('previewImage');
-    img.style.transform = `scale(${currentZoom}) translate(${imageTranslate.x / currentZoom}px, ${imageTranslate.y / currentZoom}px)`;
-    document.getElementById('zoomLevel').textContent = Math.round(currentZoom * 100) + '%';
+    if (img) {
+        img.style.transform = `scale(${assetZoom}) translate(${assetImageTranslate.x / assetZoom}px, ${assetImageTranslate.y / assetZoom}px)`;
+    }
+    const zoomLevel = document.getElementById('zoomLevel');
+    if (zoomLevel) {
+        zoomLevel.textContent = Math.round(assetZoom * 100) + '%';
+    }
 }
-
-// 鼠标滚轮缩放
-document.getElementById('imagePreviewModal').addEventListener('wheel', (e) => {
-    const img = document.getElementById('previewImage');
-    if (e.target === img || img.contains(e.target)) {
-        e.preventDefault();
-        if (e.deltaY < 0) {
-            zoomIn();
-        } else {
-            zoomOut();
-        }
-    }
-});
-
-// 图片拖拽
-const previewImg = document.getElementById('previewImage');
-previewImg.addEventListener('mousedown', (e) => {
-    if (currentZoom > 1) {
-        isDragging = true;
-        dragStart = { x: e.clientX - imageTranslate.x, y: e.clientY - imageTranslate.y };
-        previewImg.style.cursor = 'grabbing';
-        e.preventDefault();
-    }
-});
-
-document.addEventListener('mousemove', (e) => {
-    if (isDragging) {
-        imageTranslate = {
-            x: e.clientX - dragStart.x,
-            y: e.clientY - dragStart.y
-        };
-        updatePreviewZoom();
-    }
-});
-
-document.addEventListener('mouseup', () => {
-    isDragging = false;
-    previewImg.style.cursor = currentZoom > 1 ? 'grab' : 'move';
-});
 </script>
 {% endblock %}

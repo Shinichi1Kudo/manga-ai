@@ -99,4 +99,10 @@ public class RoleAsset implements Serializable {
      */
     @TableField(fill = FieldFill.INSERT_UPDATE)
     private LocalDateTime updatedAt;
+
+    /**
+     * 是否使用精细三视图模式生成（来自元数据，非数据库字段）
+     */
+    @TableField(exist = false)
+    private Boolean detailedView;
 }
