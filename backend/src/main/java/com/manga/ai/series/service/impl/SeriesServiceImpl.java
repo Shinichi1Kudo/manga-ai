@@ -298,7 +298,7 @@ public class SeriesServiceImpl implements SeriesService {
 
     @Override
     @Transactional(rollbackFor = Exception.class)
-    public void updateSeries(Long seriesId, String seriesName, String outline, String background) {
+    public void updateSeries(Long seriesId, String seriesName, String outline, String background, String styleKeywords) {
         Series series = seriesMapper.selectById(seriesId);
         if (series == null) {
             throw new BusinessException("系列不存在");
@@ -314,10 +314,13 @@ public class SeriesServiceImpl implements SeriesService {
         if (background != null) {
             series.setBackground(background);
         }
+        if (styleKeywords != null) {
+            series.setStyleKeywords(styleKeywords);
+        }
         series.setUpdatedAt(LocalDateTime.now());
         seriesMapper.updateById(series);
 
-        log.info("更新系列信息: seriesId={}", seriesId);
+        log.info("更新系列信息: seriesId={}, styleKeywords={}", seriesId, styleKeywords);
     }
 
     /**
@@ -464,6 +467,7 @@ public class SeriesServiceImpl implements SeriesService {
             role.setRoleCode(String.format("ROLE_%03d", currentIndex));
             role.setStatus(RoleStatus.EXTRACTING.getCode());
             role.setCustomPrompt(charData.getString("customPrompt"));
+            role.setOriginalPrompt(charData.getString("originalPrompt"));
             role.setStyleKeywords(charData.getString("styleKeywords"));
             role.setExtractConfidence(new BigDecimal("1.0"));
             role.setCreatedAt(LocalDateTime.now());
@@ -570,6 +574,9 @@ public class SeriesServiceImpl implements SeriesService {
             metadata.setImageHeight(response.getHeight());
             metadata.setAspectRatio(request.getAspectRatio());
             metadata.setGenerationTimeMs(0L);
+            // 保存提示词
+            metadata.setUserPrompt(request.getOriginalPrompt());
+            metadata.setPrompt(request.getCustomPrompt());
             metadata.setCreatedAt(LocalDateTime.now());
             assetMetadataMapper.insert(metadata);
 

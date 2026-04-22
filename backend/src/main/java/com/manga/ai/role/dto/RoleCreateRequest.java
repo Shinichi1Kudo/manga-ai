@@ -85,4 +85,9 @@ public class RoleCreateRequest implements Serializable {
      * 是否使用精细三视图模式生成
      */
     private Boolean detailedView;
+
+    /**
+     * 是否使用大头特写+三视图布局
+     */
+    private Boolean faceCloseupView;
 }

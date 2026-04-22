@@ -4,6 +4,7 @@ import com.manga.ai.common.result.Result;
 import com.manga.ai.episode.dto.EpisodeCreateRequest;
 import com.manga.ai.episode.dto.EpisodeDetailVO;
 import com.manga.ai.episode.dto.EpisodeProgressVO;
+import com.manga.ai.episode.dto.EpisodeScriptUpdateRequest;
 import com.manga.ai.episode.service.EpisodeService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -76,6 +77,16 @@ public class EpisodeController {
     public Result<Void> deleteEpisode(@PathVariable Long episodeId) {
         log.info("删除剧集: episodeId={}", episodeId);
         episodeService.deleteEpisode(episodeId);
+        return Result.success();
+    }
+
+    /**
+     * 更新剧本内容
+     */
+    @PutMapping("/{episodeId}/script")
+    public Result<Void> updateScript(@PathVariable Long episodeId, @RequestBody EpisodeScriptUpdateRequest request) {
+        log.info("更新剧本: episodeId={}", episodeId);
+        episodeService.updateScript(episodeId, request.getScriptText());
         return Result.success();
     }
 }

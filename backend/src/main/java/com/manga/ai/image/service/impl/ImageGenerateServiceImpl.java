@@ -156,12 +156,22 @@ public class ImageGenerateServiceImpl implements ImageGenerateService {
             requestBody.put("stream", false);
             requestBody.put("watermark", false);
 
+            // 添加负向提示词，避免噪点、水波纹、摩尔纹等问题，强调保持肤质
+            String negativePrompt = "worst quality, low quality, normal quality, " +
+                    "noise, grain, artifacts, distortion, blur, " +
+                    "water ripples, moire pattern, weird patterns, strange textures, " +
+                    "dots, speckles, spots, halftone, dithering, " +
+                    "jpeg artifacts, compression artifacts, pixelated, " +
+                    "bad skin texture, rough skin, skin blemishes, uneven skin tone, " +
+                    "text, watermark, signature, logo";
+            requestBody.put("negative_prompt", negativePrompt);
+
             // 如果有参考图，添加image参数（图生图）
             if (request.getReferenceImageUrl() != null && !request.getReferenceImageUrl().isEmpty()) {
                 requestBody.put("image", request.getReferenceImageUrl());
                 // 图生图的强度参数，控制保留原特征的程度
-                // 值越高，保留原图特征越多；0.85 能较好地保持角色特征
-                requestBody.put("strength", 0.85);
+                // 0.35 是换装场景的最佳值，能保留肤质和人物特征，同时改变服装
+                requestBody.put("strength", 0.35);
             }
 
             HttpHeaders headers = new HttpHeaders();
@@ -207,7 +217,8 @@ public class ImageGenerateServiceImpl implements ImageGenerateService {
      * @param quality 清晰度 (hd/uhd)
      */
     private String convertAspectRatioToSize(String aspectRatio, String quality) {
-        boolean isUHD = "uhd".equalsIgnoreCase(quality);
+        // 支持 3k, 3K, uhd 表示超清
+        boolean isUHD = "3k".equalsIgnoreCase(quality) || "uhd".equalsIgnoreCase(quality);
 
         if (isUHD) {
             // 超清 (3K)
@@ -220,7 +231,7 @@ public class ImageGenerateServiceImpl implements ImageGenerateService {
                 case "2:3": return "2496x3744";
                 case "3:2": return "3744x2496";
                 case "21:9": return "4704x2016";
-                default: return "2592x3456"; // 默认3:4
+                default: return "3072x3072"; // 默认1:1
             }
         } else {
             // 高清 (2K)
@@ -233,7 +244,7 @@ public class ImageGenerateServiceImpl implements ImageGenerateService {
                 case "2:3": return "1664x2496";
                 case "3:2": return "2496x1664";
                 case "21:9": return "3136x1344";
-                default: return "1728x2304"; // 默认3:4
+                default: return "2048x2048"; // 默认1:1
             }
         }
     }
@@ -270,6 +281,30 @@ public class ImageGenerateServiceImpl implements ImageGenerateService {
     private String buildCharacterSheetPrompt(ImageGenerateRequest request) {
         StringBuilder prompt = new StringBuilder();
 
+        // 检查是否指定了外国人/西方人特征
+        String customPromptLower = request.getCustomPrompt() != null ? request.getCustomPrompt().toLowerCase() : "";
+        boolean hasForeignerHint = customPromptLower.contains("western") ||
+                customPromptLower.contains("european") ||
+                customPromptLower.contains("american") ||
+                customPromptLower.contains("caucasian") ||
+                customPromptLower.contains("white person") ||
+                customPromptLower.contains("african") ||
+                customPromptLower.contains("black person") ||
+                customPromptLower.contains("latin") ||
+                customPromptLower.contains("middle eastern") ||
+                customPromptLower.contains("外国人") ||
+                customPromptLower.contains("西方人") ||
+                customPromptLower.contains("欧美");
+
+        // 默认添加中国人面孔要求（除非用户指定了外国人）
+        String chineseFaceHint = "";
+        if (!hasForeignerHint) {
+            chineseFaceHint = "MUST be Chinese/Asian appearance, Chinese facial features, East Asian face. DO NOT generate Western or non-Asian faces. ";
+        }
+
+        // 判断是否使用大头特写+三视图布局
+        boolean useFaceCloseupLayout = Boolean.TRUE.equals(request.getFaceCloseupView());
+
         // 如果有自定义提示词，优先使用
         if (request.getCustomPrompt() != null && !request.getCustomPrompt().trim().isEmpty()) {
             prompt.append(request.getCustomPrompt());
@@ -279,26 +314,43 @@ public class ImageGenerateServiceImpl implements ImageGenerateService {
                 prompt.append(". Style: ").append(request.getStyleKeywords()).append(". ");
             }
 
-            // 确保包含三视图要求
-            if (!request.getCustomPrompt().toLowerCase().contains("three view") &&
-                !request.getCustomPrompt().toLowerCase().contains("character sheet") &&
-                !request.getCustomPrompt().toLowerCase().contains("front") &&
-                !request.getCustomPrompt().toLowerCase().contains("side") &&
-                !request.getCustomPrompt().toLowerCase().contains("back")) {
-                prompt.append("Character design sheet with three views in ONE image: ");
-                prompt.append("front view (center), side view (left), back view (right). ");
+            // 根据布局选项添加布局要求
+            if (useFaceCloseupLayout) {
+                // 大头特写+三视图布局
+                if (!request.getCustomPrompt().toLowerCase().contains("layout") &&
+                    !request.getCustomPrompt().toLowerCase().contains("face close") &&
+                    !request.getCustomPrompt().toLowerCase().contains("face closeup")) {
+                    prompt.append("STRICT LAYOUT in ONE image: ");
+                    prompt.append("LEFT 1/3: HUGE face close-up portrait showing detailed facial features, expressions, and makeup. ");
+                    prompt.append("RIGHT 2/3: Full body three-view showing front view, side view, and back view. ");
+                }
+                // 中国人面孔要求（如果用户没有指定外国人）
+                prompt.append(chineseFaceHint);
+                // 关键：强调一致性
+                prompt.append("CRITICAL CONSISTENCY: The face close-up and all three body views MUST show the SAME EXACT character. ");
+                prompt.append("SAME facial features in close-up and body views, SAME clothing color, SAME hair color, SAME skin tone. ");
+                prompt.append("The face in the close-up MUST match the face on the body views exactly. ");
+            } else {
+                // 普通三视图布局
+                if (!request.getCustomPrompt().toLowerCase().contains("three view") &&
+                    !request.getCustomPrompt().toLowerCase().contains("character sheet") &&
+                    !request.getCustomPrompt().toLowerCase().contains("front") &&
+                    !request.getCustomPrompt().toLowerCase().contains("side") &&
+                    !request.getCustomPrompt().toLowerCase().contains("back")) {
+                    prompt.append("Character design sheet with three views in ONE image: ");
+                    prompt.append("front view (center), side view (left), back view (right). ");
+                }
+                // 中国人面孔要求（如果用户没有指定外国人）
+                prompt.append(chineseFaceHint);
+                // 关键：强调颜色一致性
+                prompt.append("CRITICAL CONSISTENCY: The SAME EXACT character in all three views. ");
+                prompt.append("SAME clothing color, SAME hair color, SAME skin tone, SAME accessories in EVERY view. ");
+                prompt.append("The front, side, and back views MUST show the IDENTICAL outfit with IDENTICAL colors. ");
             }
 
-            // 关键：强调颜色一致性
-            prompt.append("CRITICAL CONSISTENCY: The SAME EXACT character in all three views. ");
-            prompt.append("SAME clothing color, SAME hair color, SAME skin tone, SAME accessories in EVERY view. ");
-            prompt.append("The front, side, and back views MUST show the IDENTICAL outfit with IDENTICAL colors. ");
-            prompt.append("If wearing pink dress in front view, MUST wear the EXACT SAME pink dress in side and back views. ");
-
             // 强调完整全身照 - 必须显示脚
-            prompt.append("CRITICAL: MUST show COMPLETE FULL BODY from top of head to bottom of feet. ");
-            prompt.append("FEET MUST BE VISIBLE. Do NOT crop feet, ankles, or any body part. ");
-            prompt.append("Character standing with feet clearly visible on the ground. ");
+            prompt.append("CRITICAL: Full body views MUST show COMPLETE body from head to FEET. ");
+            prompt.append("FEET MUST BE VISIBLE in all body views. ");
             // 强制白色背景
             prompt.append("MUST have PURE WHITE BACKGROUND (#FFFFFF). NO colored background, NO gradient background. ");
             // 禁止文字
@@ -306,18 +358,36 @@ public class ImageGenerateServiceImpl implements ImageGenerateService {
             return prompt.toString();
         }
 
-        // 默认提示词构建
-        prompt.append("Character design sheet with three views in ONE image: ");
-        prompt.append("front view (center), side view (left), back view (right). ");
+        // 默认提示词构建 - 根据布局选项
+        if (useFaceCloseupLayout) {
+            // 大头特写+三视图布局
+            prompt.append("Character design sheet in ONE image with STRICT LAYOUT: ");
+            prompt.append("LEFT 1/3 of image: HUGE face close-up portrait showing detailed facial features, beautiful eyes, nose, mouth, and expression. ");
+            prompt.append("RIGHT 2/3 of image: Full body three-view showing front view, side view, and back view arranged horizontally. ");
 
-        // 关键：强调颜色一致性
-        prompt.append("CRITICAL CONSISTENCY: The SAME EXACT character in all three views. ");
-        prompt.append("SAME clothing color, SAME hair color, SAME skin tone, SAME accessories in EVERY view. ");
-        prompt.append("The front, side, and back views MUST show the IDENTICAL outfit with IDENTICAL colors. ");
-        prompt.append("If wearing pink dress in front view, MUST wear the EXACT SAME pink dress in side and back views. ");
+            // 中国人面孔要求（如果用户没有指定外国人）
+            prompt.append(chineseFaceHint);
 
-        prompt.append("CRITICAL: COMPLETE FULL BODY from top of head to bottom of FEET. ");
-        prompt.append("FEET MUST BE FULLY VISIBLE. Do NOT crop or cut off feet, ankles, or legs. ");
+            // 关键：强调一致性
+            prompt.append("CRITICAL CONSISTENCY: The face close-up and all three body views MUST show the SAME EXACT character. ");
+            prompt.append("The face in close-up MUST be IDENTICAL to the face on body views. ");
+            prompt.append("SAME facial features, SAME hair, SAME makeup, SAME clothing color across all views. ");
+        } else {
+            // 普通三视图布局
+            prompt.append("Character design sheet with three views in ONE image: ");
+            prompt.append("front view (center), side view (left), back view (right). ");
+
+            // 中国人面孔要求（如果用户没有指定外国人）
+            prompt.append(chineseFaceHint);
+
+            // 关键：强调颜色一致性
+            prompt.append("CRITICAL CONSISTENCY: The SAME EXACT character in all three views. ");
+            prompt.append("SAME clothing color, SAME hair color, SAME skin tone, SAME accessories in EVERY view. ");
+            prompt.append("The front, side, and back views MUST show the IDENTICAL outfit with IDENTICAL colors. ");
+        }
+
+        prompt.append("CRITICAL: Full body views show COMPLETE body from head to FEET. ");
+        prompt.append("FEET MUST BE FULLY VISIBLE. ");
         prompt.append("MUST have PURE WHITE BACKGROUND (#FFFFFF). NO colored background, NO gradient background. ");
 
         // 角色描述
@@ -335,8 +405,7 @@ public class ImageGenerateServiceImpl implements ImageGenerateService {
         prompt.append("CRITICAL: PURE WHITE BACKGROUND (#FFFFFF) - NO exceptions. ");
         prompt.append("Professional character sheet layout, ");
         prompt.append("consistent style across all views, ");
-        prompt.append("A-pose or T-pose standing pose with FEET CLEARLY VISIBLE, ");
-        prompt.append("showing entire body including feet and shoes. ");
+        prompt.append("A-pose or T-pose standing with FEET CLEARLY VISIBLE. ");
 
         // 禁止文字
         prompt.append("NO text, NO words, NO letters, NO numbers, NO captions, NO labels, NO watermarks, NO Chinese characters, NO English text.");
@@ -356,15 +425,24 @@ public class ImageGenerateServiceImpl implements ImageGenerateService {
         prompt.append("Do NOT change the person's appearance, age, or art style. ");
         prompt.append("Maintain the exact same visual style as the reference image. ");
 
-        // 关键：强调颜色一致性
-        prompt.append("CRITICAL CONSISTENCY: The SAME EXACT character in all three views. ");
-        prompt.append("SAME clothing color, SAME hair color, SAME skin tone, SAME accessories in EVERY view. ");
-        prompt.append("The front, side, and back views MUST show the IDENTICAL outfit with IDENTICAL colors. ");
+        // 新布局要求
+        prompt.append("STRICT LAYOUT in ONE image: ");
+        prompt.append("LEFT 1/3: HUGE face close-up portrait showing detailed facial features. ");
+        prompt.append("RIGHT 2/3: Full body three-view showing front, side, and back views. ");
+
+        // 关键：强调一致性
+        prompt.append("CRITICAL CONSISTENCY: The face close-up and all body views MUST show the SAME EXACT character. ");
+        prompt.append("SAME facial features, SAME clothing color, SAME hair color, SAME skin tone. ");
+        prompt.append("The face in close-up MUST be IDENTICAL to the face on body views. ");
+
+        // 强调保持肤质
+        prompt.append("IMPORTANT: Maintain perfect smooth skin texture from the reference image. ");
+        prompt.append("Keep the same skin quality, no degradation, no roughness, no blemishes. ");
+        prompt.append("Smooth, clear, flawless skin complexion throughout. ");
 
         // 强调完整全身照 - 必须显示脚
-        prompt.append("CRITICAL: MUST show COMPLETE FULL BODY from top of head to bottom of FEET. ");
-        prompt.append("FEET MUST BE FULLY VISIBLE. Do NOT crop feet, ankles, or any body part. ");
-        prompt.append("Character standing with feet clearly visible on the ground. ");
+        prompt.append("CRITICAL: Full body views MUST show COMPLETE body from head to FEET. ");
+        prompt.append("FEET MUST BE FULLY VISIBLE. ");
 
         // 强制白色背景
         prompt.append("MUST have PURE WHITE BACKGROUND (#FFFFFF). NO colored background, NO gradient background. ");
@@ -379,9 +457,14 @@ public class ImageGenerateServiceImpl implements ImageGenerateService {
             prompt.append("Style: ").append(request.getStyleKeywords()).append(". ");
         }
 
-        // 三视图要求
-        prompt.append("Generate a character sheet with three views: front, side, and back. ");
-        prompt.append("All views MUST show COMPLETE FULL BODY with FEET VISIBLE. ");
+        // 强调画面纯净度
+        prompt.append("CRITICAL QUALITY: Ultra clean, smooth, pristine image with perfect clarity. ");
+        prompt.append("NO noise, NO grain, NO artifacts, NO distortion, NO blur. ");
+        prompt.append("NO water ripples, NO moire patterns, NO weird patterns, NO strange textures. ");
+        prompt.append("NO dots, NO speckles, NO spots, NO halftone, NO dithering effects. ");
+        prompt.append("NO grid patterns, NO repeating patterns, NO texture overlays. ");
+        prompt.append("Perfectly smooth gradients, even solid colors, professional studio quality. ");
+
         prompt.append("CRITICAL: PURE WHITE BACKGROUND (#FFFFFF) - NO exceptions. High quality, detailed. ");
 
         // 禁止文字
@@ -427,13 +510,19 @@ public class ImageGenerateServiceImpl implements ImageGenerateService {
     @Override
     @Async("taskExecutor")
     public void generateCharacterAssets(Long roleId, Integer clothingId, Long generatingAssetId, Long previousActiveAssetId, String aspectRatio, String quality, String styleKeywords, String originalPrompt) {
-        generateCharacterAssets(roleId, clothingId, generatingAssetId, previousActiveAssetId, aspectRatio, quality, styleKeywords, originalPrompt, null);
+        generateCharacterAssets(roleId, clothingId, generatingAssetId, previousActiveAssetId, aspectRatio, quality, styleKeywords, originalPrompt, null, null);
     }
 
     @Override
     @Async("taskExecutor")
     public void generateCharacterAssets(Long roleId, Integer clothingId, Long generatingAssetId, Long previousActiveAssetId, String aspectRatio, String quality, String styleKeywords, String originalPrompt, Boolean detailedView) {
-        log.info("异步生成角色资产: roleId={}, clothingId={}, previousActiveAssetId={}, aspectRatio={}, quality={}, styleKeywords={}, originalPrompt={}, detailedView={}", roleId, clothingId, previousActiveAssetId, aspectRatio, quality, styleKeywords, originalPrompt, detailedView);
+        generateCharacterAssets(roleId, clothingId, generatingAssetId, previousActiveAssetId, aspectRatio, quality, styleKeywords, originalPrompt, detailedView, null);
+    }
+
+    @Override
+    @Async("taskExecutor")
+    public void generateCharacterAssets(Long roleId, Integer clothingId, Long generatingAssetId, Long previousActiveAssetId, String aspectRatio, String quality, String styleKeywords, String originalPrompt, Boolean detailedView, Boolean faceCloseupView) {
+        log.info("异步生成角色资产: roleId={}, clothingId={}, previousActiveAssetId={}, aspectRatio={}, quality={}, styleKeywords={}, originalPrompt={}, detailedView={}, faceCloseupView={}", roleId, clothingId, previousActiveAssetId, aspectRatio, quality, styleKeywords, originalPrompt, detailedView, faceCloseupView);
 
         Role role = roleMapper.selectById(roleId);
         if (role == null) {
@@ -499,6 +588,7 @@ public class ImageGenerateServiceImpl implements ImageGenerateService {
                 .customPrompt(role.getCustomPrompt())
                 .originalPrompt(originalPrompt)
                 .detailedView(detailedView)
+                .faceCloseupView(faceCloseupView)
                 .clothingId(finalClothingId)
                 .clothingName(clothingName)
                 .build();
@@ -1167,10 +1257,9 @@ public class ImageGenerateServiceImpl implements ImageGenerateService {
                 assetMetadataMapper.insert(metadata);
             }
 
-            // 如果是新服装，更新其他服装为非默认
-            if (isNewClothing) {
-                assetService.setDefaultClothing(role.getId(), clothingId);
-            }
+            // 新服装生成完成，不做任何默认设置
+            // 只有用户主动点击"设为默认"按钮时才调用 setDefaultClothing
+            log.info("新服装生成完成: roleId={}, clothingId={}, 不自动设为默认", role.getId(), clothingId);
 
             log.info("资产保存成功: assetId={}, clothingId={}, version={}", asset.getId(), clothingId, asset.getVersion());
             return asset.getId();
@@ -1195,5 +1284,97 @@ public class ImageGenerateServiceImpl implements ImageGenerateService {
                 .last("LIMIT 1");
         RoleAsset asset = roleAssetMapper.selectOne(wrapper);
         return asset != null ? asset.getVersion() + 1 : 1;
+    }
+
+    @Override
+    public ImageGenerateResponse generateSceneImage(ImageGenerateRequest request) {
+        log.info("生成场景图片: prompt={}", request.getCustomPrompt());
+
+        try {
+            String prompt = request.getCustomPrompt();
+            String size = convertAspectRatioToSize(request.getAspectRatio(), request.getQuality());
+
+            JSONObject requestBody = new JSONObject();
+            requestBody.put("model", model);
+            requestBody.put("prompt", prompt);
+            requestBody.put("size", size);
+            requestBody.put("response_format", "url");
+            requestBody.put("n", 1);
+            requestBody.put("stream", false);
+            requestBody.put("watermark", false);
+
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.APPLICATION_JSON);
+            headers.set("Authorization", "Bearer " + apiKey);
+
+            HttpEntity<String> entity = new HttpEntity<>(requestBody.toJSONString(), headers);
+            String url = baseUrl + "/images/generations";
+
+            log.info("调用火山API生成场景: {}", url);
+            ResponseEntity<String> response = restTemplate.exchange(url, HttpMethod.POST, entity, String.class);
+
+            log.info("火山API响应状态: {}", response.getStatusCode());
+
+            if (response.getStatusCode() == HttpStatus.OK && response.getBody() != null) {
+                return parseResponse(response.getBody());
+            } else {
+                ImageGenerateResponse errorResponse = new ImageGenerateResponse();
+                errorResponse.setStatus("failed");
+                errorResponse.setErrorMessage("API调用失败: " + response.getStatusCode());
+                return errorResponse;
+            }
+        } catch (Exception e) {
+            log.error("生成场景图片失败", e);
+            ImageGenerateResponse errorResponse = new ImageGenerateResponse();
+            errorResponse.setStatus("failed");
+            errorResponse.setErrorMessage("生成失败: " + e.getMessage());
+            return errorResponse;
+        }
+    }
+
+    @Override
+    public ImageGenerateResponse generatePropImage(ImageGenerateRequest request) {
+        log.info("生成道具图片: prompt={}", request.getCustomPrompt());
+
+        try {
+            String prompt = request.getCustomPrompt();
+            String size = convertAspectRatioToSize(request.getAspectRatio(), request.getQuality());
+
+            JSONObject requestBody = new JSONObject();
+            requestBody.put("model", model);
+            requestBody.put("prompt", prompt);
+            requestBody.put("size", size);
+            requestBody.put("response_format", "url");
+            requestBody.put("n", 1);
+            requestBody.put("stream", false);
+            requestBody.put("watermark", false);
+
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.APPLICATION_JSON);
+            headers.set("Authorization", "Bearer " + apiKey);
+
+            HttpEntity<String> entity = new HttpEntity<>(requestBody.toJSONString(), headers);
+            String url = baseUrl + "/images/generations";
+
+            log.info("调用火山API生成道具: {}", url);
+            ResponseEntity<String> response = restTemplate.exchange(url, HttpMethod.POST, entity, String.class);
+
+            log.info("火山API响应状态: {}", response.getStatusCode());
+
+            if (response.getStatusCode() == HttpStatus.OK && response.getBody() != null) {
+                return parseResponse(response.getBody());
+            } else {
+                ImageGenerateResponse errorResponse = new ImageGenerateResponse();
+                errorResponse.setStatus("failed");
+                errorResponse.setErrorMessage("API调用失败: " + response.getStatusCode());
+                return errorResponse;
+            }
+        } catch (Exception e) {
+            log.error("生成道具图片失败", e);
+            ImageGenerateResponse errorResponse = new ImageGenerateResponse();
+            errorResponse.setStatus("failed");
+            errorResponse.setErrorMessage("生成失败: " + e.getMessage());
+            return errorResponse;
+        }
     }
 }

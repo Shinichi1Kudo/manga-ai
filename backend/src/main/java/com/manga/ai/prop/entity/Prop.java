@@ -64,6 +64,16 @@ public class Prop implements Serializable {
     private String styleKeywords;
 
     /**
+     * 图片比例
+     */
+    private String aspectRatio;
+
+    /**
+     * 清晰度
+     */
+    private String quality;
+
+    /**
      * 状态: 0-生成中 1-待审核 2-已确认 3-已锁定
      */
     private Integer status;

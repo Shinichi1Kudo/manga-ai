@@ -380,14 +380,69 @@ def episode_detail(request, series_id, episode_id):
         series = client.get(f'/v1/series/{series_id}')
         episode = client.get(f'/v1/episodes/{episode_id}')
         shots = client.get(f'/v1/shots/episode/{episode_id}')
+        # 获取场景和道具资产
+        all_scenes = client.get(f'/v1/scenes/series/{series_id}') or []
+        all_props = client.get(f'/v1/props/series/{series_id}') or []
     except BackendAPIError as e:
         messages.error(request, f'获取剧集信息失败: {e.message}')
         return redirect('series:episode_list', series_id=series_id)
+
+    # 获取本集分镜关联的场景ID和道具信息
+    episode_scene_ids = set()
+    episode_prop_ids = set()
+    episode_prop_names = set()
+    if shots:
+        for shot in shots:
+            if shot.get('sceneId'):
+                episode_scene_ids.add(shot.get('sceneId'))
+            # 从propsJson中提取道具信息
+            props_json = shot.get('propsJson')
+            if props_json:
+                try:
+                    props_data = json.loads(props_json) if isinstance(props_json, str) else props_json
+                    if isinstance(props_data, list):
+                        for prop_info in props_data:
+                            if isinstance(prop_info, dict):
+                                # 尝试获取ID
+                                prop_id = prop_info.get('propId') or prop_info.get('id')
+                                if prop_id:
+                                    episode_prop_ids.add(prop_id)
+                                # 也尝试获取名称用于匹配
+                                prop_name = prop_info.get('propName') or prop_info.get('name')
+                                if prop_name:
+                                    episode_prop_names.add(prop_name)
+                except:
+                    pass
+
+    # 状态码: 0=生成中, 1=待审核, 2=已确认, 3=已锁定
+    # 过滤场景：已锁定的全部显示 + 生成中的全部显示 + 本集关联的未锁定场景
+    scenes = []
+    for scene in all_scenes:
+        if scene.get('status') == 3:  # 已锁定
+            scenes.append(scene)
+        elif scene.get('status') == 0:  # 生成中
+            scenes.append(scene)
+        elif scene.get('id') in episode_scene_ids:  # 本集关联的未锁定场景
+            scenes.append(scene)
+
+    # 过滤道具：已锁定的全部显示 + 生成中的全部显示 + 本集关联的未锁定道具
+    props = []
+    for prop in all_props:
+        if prop.get('status') == 3:  # 已锁定
+            props.append(prop)
+        elif prop.get('status') == 0:  # 生成中
+            props.append(prop)
+        elif prop.get('id') in episode_prop_ids:  # 本集关联的未锁定道具(通过ID)
+            props.append(prop)
+        elif prop.get('propName') in episode_prop_names:  # 本集关联的未锁定道具(通过名称)
+            props.append(prop)
 
     return render(request, 'episode/episode_detail.html', {
         'series': series,
         'episode': episode,
         'shots': shots,
+        'scenes': scenes,
+        'props': props,
         'series_id': series_id,
         'episode_id': episode_id,
     })
@@ -441,4 +496,246 @@ def episode_progress(request, episode_id):
         return JsonResponse(result)
     except BackendAPIError as e:
         return JsonResponse({'error': e.message}, status=500)
+
+
+@csrf_exempt
+@require_http_methods(["PUT"])
+def episode_update_script(request, episode_id):
+    """更新剧本内容"""
+    client = BackendClient()
+    try:
+        data = json.loads(request.body)
+        client.put(f'/v1/episodes/{episode_id}/script', {
+            'scriptText': data.get('scriptText', ''),
+        })
+        return JsonResponse({'code': 200, 'success': True})
+    except BackendAPIError as e:
+        return JsonResponse({'code': 400, 'success': False, 'message': e.message}, status=400)
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def episode_parse_script(request, episode_id):
+    """重新解析剧本"""
+    client = BackendClient()
+    try:
+        # 先删除已有的分镜数据
+        # 然后重新解析
+        client.post(f'/v1/episodes/{episode_id}/parse')
+        return JsonResponse({'code': 200, 'success': True})
+    except BackendAPIError as e:
+        return JsonResponse({'code': 400, 'success': False, 'message': e.message}, status=400)
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def scene_create(request):
+    """创建场景"""
+    client = BackendClient()
+    try:
+        data = json.loads(request.body)
+        result = client.post('/v1/scenes', {
+            'seriesId': data.get('seriesId'),
+            'episodeId': data.get('episodeId'),
+            'sceneName': data.get('sceneName'),
+            'aspectRatio': data.get('aspectRatio', '16:9'),
+            'quality': data.get('quality', '2k'),
+        })
+        # 如果有自定义提示词，更新场景
+        scene_id = result.get('data') if isinstance(result, dict) else result
+        if scene_id and data.get('customPrompt'):
+            client.post(f'/v1/scenes/{scene_id}/regenerate', {
+                'customPrompt': data.get('customPrompt'),
+                'aspectRatio': data.get('aspectRatio', '16:9'),
+                'quality': data.get('quality', '2k'),
+            })
+        return JsonResponse({'code': 200, 'data': scene_id})
+    except BackendAPIError as e:
+        return JsonResponse({'code': 400, 'message': e.message}, status=400)
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def prop_create(request):
+    """创建道具"""
+    client = BackendClient()
+    try:
+        data = json.loads(request.body)
+        result = client.post('/v1/props', {
+            'seriesId': data.get('seriesId'),
+            'episodeId': data.get('episodeId'),
+            'propName': data.get('propName'),
+            'quality': data.get('quality', '2k'),
+        })
+        # 如果有自定义提示词，更新道具
+        prop_id = result.get('data') if isinstance(result, dict) else result
+        if prop_id and data.get('customPrompt'):
+            client.post(f'/v1/props/{prop_id}/regenerate', {
+                'customPrompt': data.get('customPrompt'),
+                'quality': data.get('quality', '2k'),
+            })
+        return JsonResponse({'code': 200, 'data': prop_id})
+    except BackendAPIError as e:
+        return JsonResponse({'code': 400, 'message': e.message}, status=400)
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def scene_regenerate(request, scene_id):
+    """重新生成场景"""
+    client = BackendClient()
+    try:
+        data = json.loads(request.body) if request.body else {}
+        client.post(f'/v1/scenes/{scene_id}/regenerate', {
+            'customPrompt': data.get('customPrompt'),
+            'aspectRatio': data.get('aspectRatio', '16:9'),
+            'quality': data.get('quality', '2k'),
+        })
+        return JsonResponse({'code': 200, 'success': True})
+    except BackendAPIError as e:
+        return JsonResponse({'code': 400, 'message': e.message}, status=400)
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def prop_regenerate(request, prop_id):
+    """重新生成道具"""
+    client = BackendClient()
+    try:
+        data = json.loads(request.body) if request.body else {}
+        client.post(f'/v1/props/{prop_id}/regenerate', {
+            'customPrompt': data.get('customPrompt'),
+            'quality': data.get('quality', '2k'),
+        })
+        return JsonResponse({'code': 200, 'success': True})
+    except BackendAPIError as e:
+        return JsonResponse({'code': 400, 'message': e.message}, status=400)
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def scene_rollback(request, scene_id):
+    """场景回滚"""
+    client = BackendClient()
+    try:
+        data = json.loads(request.body)
+        asset_id = data.get('assetId')
+        client.post(f'/v1/scenes/{scene_id}/rollback', {'assetId': asset_id})
+        return JsonResponse({'code': 200, 'success': True})
+    except BackendAPIError as e:
+        return JsonResponse({'code': 400, 'message': e.message}, status=400)
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def prop_rollback(request, prop_id):
+    """道具回滚"""
+    client = BackendClient()
+    try:
+        data = json.loads(request.body)
+        asset_id = data.get('assetId')
+        client.post(f'/v1/props/{prop_id}/rollback', {'assetId': asset_id})
+        return JsonResponse({'code': 200, 'success': True})
+    except BackendAPIError as e:
+        return JsonResponse({'code': 400, 'message': e.message}, status=400)
+
+
+# ==================== 场景和道具管理 ====================
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def scene_lock(request, scene_id):
+    """锁定场景"""
+    client = BackendClient()
+    try:
+        client.post(f'/v1/scenes/{scene_id}/lock')
+        return JsonResponse({'code': 200, 'success': True})
+    except BackendAPIError as e:
+        return JsonResponse({'code': 400, 'message': e.message}, status=400)
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def scene_unlock(request, scene_id):
+    """解锁场景"""
+    client = BackendClient()
+    try:
+        client.post(f'/v1/scenes/{scene_id}/unlock')
+        return JsonResponse({'code': 200, 'success': True})
+    except BackendAPIError as e:
+        return JsonResponse({'code': 400, 'message': e.message}, status=400)
+
+
+@csrf_exempt
+@require_http_methods(["PUT"])
+def scene_update_name(request, scene_id):
+    """更新场景名称"""
+    client = BackendClient()
+    try:
+        data = json.loads(request.body)
+        client.put(f'/v1/scenes/{scene_id}/name', {'sceneName': data.get('sceneName')})
+        return JsonResponse({'code': 200, 'success': True})
+    except BackendAPIError as e:
+        return JsonResponse({'code': 400, 'message': e.message}, status=400)
+
+
+@csrf_exempt
+@require_http_methods(["DELETE"])
+def scene_delete(request, scene_id):
+    """删除场景"""
+    client = BackendClient()
+    try:
+        client.delete(f'/v1/scenes/{scene_id}')
+        return JsonResponse({'code': 200, 'success': True})
+    except BackendAPIError as e:
+        return JsonResponse({'code': 400, 'message': e.message}, status=400)
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def prop_lock(request, prop_id):
+    """锁定道具"""
+    client = BackendClient()
+    try:
+        client.post(f'/v1/props/{prop_id}/lock')
+        return JsonResponse({'code': 200, 'success': True})
+    except BackendAPIError as e:
+        return JsonResponse({'code': 400, 'message': e.message}, status=400)
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def prop_unlock(request, prop_id):
+    """解锁道具"""
+    client = BackendClient()
+    try:
+        client.post(f'/v1/props/{prop_id}/unlock')
+        return JsonResponse({'code': 200, 'success': True})
+    except BackendAPIError as e:
+        return JsonResponse({'code': 400, 'message': e.message}, status=400)
+
+
+@csrf_exempt
+@require_http_methods(["PUT"])
+def prop_update_name(request, prop_id):
+    """更新道具名称"""
+    client = BackendClient()
+    try:
+        data = json.loads(request.body)
+        client.put(f'/v1/props/{prop_id}/name', {'propName': data.get('propName')})
+        return JsonResponse({'code': 200, 'success': True})
+    except BackendAPIError as e:
+        return JsonResponse({'code': 400, 'message': e.message}, status=400)
+
+
+@csrf_exempt
+@require_http_methods(["DELETE"])
+def prop_delete(request, prop_id):
+    """删除道具"""
+    client = BackendClient()
+    try:
+        client.delete(f'/v1/props/{prop_id}')
+        return JsonResponse({'code': 200, 'success': True})
+    except BackendAPIError as e:
+        return JsonResponse({'code': 400, 'message': e.message}, status=400)
 

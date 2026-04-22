@@ -10,7 +10,6 @@ public enum SceneStatus {
 
     GENERATING(0, "生成中"),
     PENDING_REVIEW(1, "待审核"),
-    CONFIRMED(2, "已确认"),
     LOCKED(3, "已锁定");
 
     private final Integer code;

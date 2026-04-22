@@ -17,4 +17,7 @@ urlpatterns = [
     path('library/', views.asset_library_page, name='library_page'),
     path('api/locked-series/', views.get_locked_series, name='api_locked_series'),
     path('api/series/<int:series_id>/assets/', views.get_series_assets, name='api_series_assets'),
+    # 场景和道具资产API（全部锁定资产，不按系列区分）
+    path('api/locked-scenes/', views.get_all_locked_scenes, name='api_locked_scenes'),
+    path('api/locked-props/', views.get_all_locked_props, name='api_locked_props'),
 ]

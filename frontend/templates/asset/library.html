@@ -37,13 +37,11 @@
     <button class="asset-type-tab active px-6 py-3 rounded-xl font-medium transition-all" data-type="role">
         <i data-lucide="user" class="w-4 h-4 inline mr-2"></i>角色资产
     </button>
-    <button class="asset-type-tab px-6 py-3 rounded-xl font-medium transition-all" data-type="scene" disabled>
+    <button class="asset-type-tab px-6 py-3 rounded-xl font-medium transition-all" data-type="scene">
         <i data-lucide="image" class="w-4 h-4 inline mr-2"></i>场景资产
-        <span class="text-xs text-white/40 ml-1">(敬请期待)</span>
     </button>
-    <button class="asset-type-tab px-6 py-3 rounded-xl font-medium transition-all" data-type="prop" disabled>
+    <button class="asset-type-tab px-6 py-3 rounded-xl font-medium transition-all" data-type="prop">
         <i data-lucide="package" class="w-4 h-4 inline mr-2"></i>道具资产
-        <span class="text-xs text-white/40 ml-1">(敬请期待)</span>
     </button>
 </div>
 
@@ -276,15 +274,17 @@ function initIcons() {
 document.addEventListener('DOMContentLoaded', function() {
     const selector = document.getElementById('seriesSelector');
     if (selector && selector.value) {
-        loadSeriesAssets(selector.value);
+        loadSeriesAssets(selector.value, 'role');
     }
 
     // 系列选择器变化事件
     if (selector) {
         selector.addEventListener('change', function() {
             const seriesId = this.value;
+            const activeTab = document.querySelector('.asset-type-tab.active');
+            const assetType = activeTab ? activeTab.dataset.type : 'role';
             if (seriesId) {
-                loadSeriesAssets(seriesId);
+                loadSeriesAssets(seriesId, assetType);
             }
         });
     }
@@ -295,6 +295,12 @@ document.addEventListener('DOMContentLoaded', function() {
             if (this.disabled) return;
             document.querySelectorAll('.asset-type-tab').forEach(t => t.classList.remove('active'));
             this.classList.add('active');
+
+            // 根据类型切换显示
+            const assetType = this.dataset.type;
+            if (currentSeriesId) {
+                loadSeriesAssets(currentSeriesId, assetType);
+            }
         });
     });
 
@@ -345,7 +351,7 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 });
 
-function loadSeriesAssets(seriesId) {
+function loadSeriesAssets(seriesId, assetType = 'role') {
     currentSeriesId = seriesId;
     const content = document.getElementById('assetContent');
 
@@ -356,7 +362,17 @@ function loadSeriesAssets(seriesId) {
         </div>
     `;
 
-    fetch(`/assets/api/series/${seriesId}/assets/`)
+    // 根据资产类型选择不同的API
+    let apiUrl;
+    if (assetType === 'role') {
+        apiUrl = `/assets/api/series/${seriesId}/assets/`;
+    } else if (assetType === 'scene') {
+        apiUrl = `/assets/api/locked-scenes/`;
+    } else if (assetType === 'prop') {
+        apiUrl = `/assets/api/locked-props/`;
+    }
+
+    fetch(apiUrl)
         .then(res => {
             if (!res.ok) {
                 throw new Error('HTTP error ' + res.status);
@@ -366,7 +382,13 @@ function loadSeriesAssets(seriesId) {
         .then(result => {
             if (result.success) {
                 try {
-                    renderAssets(result.data);
+                    if (assetType === 'role') {
+                        renderAssets(result.data);
+                    } else if (assetType === 'scene') {
+                        renderSceneAssets(result.data);
+                    } else if (assetType === 'prop') {
+                        renderPropAssets(result.data);
+                    }
                 } catch (e) {
                     console.error('renderAssets error:', e);
                     content.innerHTML = `
@@ -497,6 +519,116 @@ function renderAssets(data) {
 
     html += `</div>`;
 
+    content.innerHTML = html;
+    initIcons();
+}
+
+// 渲染场景资产
+function renderSceneAssets(scenes) {
+    const content = document.getElementById('assetContent');
+
+    if (!scenes || scenes.length === 0) {
+        content.innerHTML = `
+            <div class="text-center py-12">
+                <i data-lucide="image-off" class="w-16 h-16 text-white/20 mx-auto mb-4"></i>
+                <p class="text-white/50">暂无已锁定的场景资产</p>
+                <p class="text-white/30 text-sm mt-2">场景资产需要在剧集中锁定后才会显示在这里</p>
+            </div>
+        `;
+        initIcons();
+        return;
+    }
+
+    let html = `
+        <div class="mb-6">
+            <h2 class="text-xl font-bold">场景资产库</h2>
+            <p class="text-white/50 text-sm mt-1">共 ${scenes.length} 个已锁定场景</p>
+        </div>
+        <div class="view-grid">
+    `;
+
+    scenes.forEach(scene => {
+        const imgPath = scene.activeAssetUrl || scene.transparentUrl ||
+                        (scene.assets && scene.assets.length > 0 ?
+                         (scene.assets[0].transparentPath || scene.assets[0].filePath) : '');
+        const seriesName = scene.seriesName || '';
+        const displayName = seriesName ? `${seriesName} - ${scene.sceneName}` : scene.sceneName;
+
+        if (imgPath) {
+            html += `
+                <div class="view-item" onclick="openPreview('${imgPath}', '${displayName}')">
+                    <img src="${imgPath}" alt="${scene.sceneName}" onload="updateImageInfo(this)">
+                    <div class="view-info">
+                        <div class="info-row">
+                            <span class="view-type">${scene.sceneName}</span>
+                            <span class="aspect">-</span>
+                        </div>
+                        <div class="info-row">
+                            <span class="text-white/40 text-xs">${seriesName}</span>
+                            <span class="resolution">加载中...</span>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+    });
+
+    html += `</div>`;
+    content.innerHTML = html;
+    initIcons();
+}
+
+// 渲染道具资产
+function renderPropAssets(props) {
+    const content = document.getElementById('assetContent');
+
+    if (!props || props.length === 0) {
+        content.innerHTML = `
+            <div class="text-center py-12">
+                <i data-lucide="package-x" class="w-16 h-16 text-white/20 mx-auto mb-4"></i>
+                <p class="text-white/50">暂无已锁定的道具资产</p>
+                <p class="text-white/30 text-sm mt-2">道具资产需要在剧集中锁定后才会显示在这里</p>
+            </div>
+        `;
+        initIcons();
+        return;
+    }
+
+    let html = `
+        <div class="mb-6">
+            <h2 class="text-xl font-bold">道具资产库</h2>
+            <p class="text-white/50 text-sm mt-1">共 ${props.length} 个已锁定道具</p>
+        </div>
+        <div class="view-grid">
+    `;
+
+    props.forEach(prop => {
+        const imgPath = prop.activeAssetUrl || prop.transparentUrl ||
+                        (prop.assets && prop.assets.length > 0 ?
+                         (prop.assets[0].transparentPath || prop.assets[0].filePath) : '');
+        const seriesName = prop.seriesName || '';
+        const displayName = seriesName ? `${seriesName} - ${prop.propName}` : prop.propName;
+
+        if (imgPath) {
+            html += `
+                <div class="view-item" onclick="openPreview('${imgPath}', '${displayName}')">
+                    <img src="${imgPath}" alt="${prop.propName}" onload="updateImageInfo(this)">
+                    <div class="view-info">
+                        <div class="info-row">
+                            <span class="view-type">${prop.propName}</span>
+                            <span class="aspect">-</span>
+                        </div>
+                        <div class="info-row">
+                            <span class="text-white/40 text-xs">${seriesName}</span>
+                            <span class="resolution">加载中...</span>
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+    });
+
+    html += `</div>`;
     content.innerHTML = html;
     initIcons();
 }

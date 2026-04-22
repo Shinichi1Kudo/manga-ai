@@ -52,4 +52,11 @@ public interface EpisodeService {
      * @param episodeId 剧集ID
      */
     void deleteEpisode(Long episodeId);
+
+    /**
+     * 更新剧本内容
+     * @param episodeId 剧集ID
+     * @param scriptText 剧本文本
+     */
+    void updateScript(Long episodeId, String scriptText);
 }

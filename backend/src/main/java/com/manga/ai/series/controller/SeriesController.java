@@ -86,7 +86,8 @@ public class SeriesController {
         String seriesName = request.get("seriesName");
         String outline = request.get("outline");
         String background = request.get("background");
-        seriesService.updateSeries(id, seriesName, outline, background);
+        String styleKeywords = request.get("styleKeywords");
+        seriesService.updateSeries(id, seriesName, outline, background, styleKeywords);
         return Result.success();
     }
 

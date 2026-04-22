@@ -32,7 +32,7 @@ def get_locked_series(request):
 
 
 def get_series_assets(request, series_id):
-    """API: 获取系列的所有资产"""
+    """API: 获取系列的所有资产（角色资产按系列，场景/道具资产展示全部）"""
     client = BackendClient()
     try:
         # 获取系列信息
@@ -73,6 +73,62 @@ def get_series_assets(request, series_id):
                 'series': series,
                 'roles': role_assets
             }
+        })
+    except BackendAPIError as e:
+        return JsonResponse({'success': False, 'error': e.message}, status=400)
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)}, status=500)
+
+
+def get_all_locked_scenes(request):
+    """API: 获取所有已锁定系列的场景资产"""
+    client = BackendClient()
+    try:
+        # 获取所有已锁定的系列
+        locked_series = client.get('/v1/series/locked') or []
+
+        all_scenes = []
+        for series in locked_series:
+            series_id = series.get('id')
+            series_name = series.get('seriesName', '')
+            scenes = client.get(f'/v1/scenes/series/{series_id}') or []
+            # 只取已锁定的场景，并添加系列名称
+            for scene in scenes:
+                if scene.get('status') == 3:
+                    scene['seriesName'] = series_name
+                    all_scenes.append(scene)
+
+        return JsonResponse({
+            'success': True,
+            'data': all_scenes
+        })
+    except BackendAPIError as e:
+        return JsonResponse({'success': False, 'error': e.message}, status=400)
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)}, status=500)
+
+
+def get_all_locked_props(request):
+    """API: 获取所有已锁定系列的道具资产"""
+    client = BackendClient()
+    try:
+        # 获取所有已锁定的系列
+        locked_series = client.get('/v1/series/locked') or []
+
+        all_props = []
+        for series in locked_series:
+            series_id = series.get('id')
+            series_name = series.get('seriesName', '')
+            props = client.get(f'/v1/props/series/{series_id}') or []
+            # 只取已锁定的道具，并添加系列名称
+            for prop in props:
+                if prop.get('status') == 3:
+                    prop['seriesName'] = series_name
+                    all_props.append(prop)
+
+        return JsonResponse({
+            'success': True,
+            'data': all_props
         })
     except BackendAPIError as e:
         return JsonResponse({'success': False, 'error': e.message}, status=400)

@@ -102,6 +102,21 @@ public interface ImageGenerateService {
     void generateCharacterAssets(Long roleId, Integer clothingId, Long generatingAssetId, Long previousActiveAssetId, String aspectRatio, String quality, String styleKeywords, String originalPrompt, Boolean detailedView);
 
     /**
+     * 为角色生成指定服装的三视图资产（异步，指定图片比例、清晰度、风格、原始提示词、精细三视图模式和大头特写布局）
+     * @param roleId 角色ID
+     * @param clothingId 服装ID
+     * @param generatingAssetId 已创建的生成中资产ID
+     * @param previousActiveAssetId 之前激活的资产ID（用于失败时恢复）
+     * @param aspectRatio 图片比例
+     * @param quality 清晰度
+     * @param styleKeywords 风格关键词
+     * @param originalPrompt 用户原始提示词（不包含系统附加的模板）
+     * @param detailedView 是否使用精细三视图模式生成
+     * @param faceCloseupView 是否使用大头特写+三视图布局
+     */
+    void generateCharacterAssets(Long roleId, Integer clothingId, Long generatingAssetId, Long previousActiveAssetId, String aspectRatio, String quality, String styleKeywords, String originalPrompt, Boolean detailedView, Boolean faceCloseupView);
+
+    /**
      * 为角色生成新服装资产（基于参考图，异步）
      * @param roleId 角色ID
      * @param clothingId 服装ID
@@ -191,4 +206,18 @@ public interface ImageGenerateService {
      * @return 下一个版本号
      */
     Integer getNextVersion(Long roleId, Integer clothingId);
+
+    /**
+     * 生成场景背景图（文生图）
+     * @param request 生成请求（customPrompt为场景描述）
+     * @return 生成结果
+     */
+    ImageGenerateResponse generateSceneImage(ImageGenerateRequest request);
+
+    /**
+     * 生成道具产品图（文生图）
+     * @param request 生成请求（customPrompt为道具描述）
+     * @return 生成结果
+     */
+    ImageGenerateResponse generatePropImage(ImageGenerateRequest request);
 }

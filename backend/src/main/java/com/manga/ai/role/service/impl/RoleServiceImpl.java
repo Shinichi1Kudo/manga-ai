@@ -96,6 +96,7 @@ public class RoleServiceImpl implements RoleService {
         String styleKeywords = request.getStyleKeywords();
         String originalPrompt = request.getOriginalPrompt();
         Boolean detailedView = request.getDetailedView();
+        Boolean faceCloseupView = request.getFaceCloseupView();
 
         // 在事务提交后启动异步任务，避免异步任务在事务提交前执行导致找不到数据
         TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
@@ -103,7 +104,7 @@ public class RoleServiceImpl implements RoleService {
             public void afterCommit() {
                 log.info("事务已提交，启动异步生成任务: roleId={}", roleId);
                 imageGenerateService.generateCharacterAssets(roleId, null, null, null,
-                        aspectRatio, quality, styleKeywords, originalPrompt, detailedView);
+                        aspectRatio, quality, styleKeywords, originalPrompt, detailedView, faceCloseupView);
             }
         });
 

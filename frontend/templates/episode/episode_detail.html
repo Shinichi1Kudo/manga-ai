@@ -1,6 +1,7 @@
 {% extends "base.html" %}
+{% load json_filters %}
 
-{% block title %}{{ episode.episodeName|default:"剧集详情" }} - {{ series.seriesName }}{% endblock %}
+{% block title %}第{{ episode.episodeNumber }}集 {{ episode.episodeName|default:"" }} - {{ series.seriesName }}{% endblock %}
 
 {% block content %}
 <!-- Header -->
@@ -10,7 +11,7 @@
             <a href="{% url 'series:episode_list' series_id=series_id %}" class="text-white/50 hover:text-white transition-colors">
                 <i data-lucide="arrow-left" class="w-5 h-5"></i>
             </a>
-            <h1 class="text-3xl font-bold gradient-text">{{ episode.episodeName|default:"第"|add:episode.episodeNumber|add:"集" }}</h1>
+            <h1 class="text-3xl font-bold gradient-text">第{{ episode.episodeNumber }}集 {% if episode.episodeName %}{{ episode.episodeName }}{% endif %}</h1>
             <span class="px-3 py-1 rounded-full text-xs font-medium
                 {% if episode.status == 4 %}bg-emerald-500/20 text-emerald-300
                 {% elif episode.status == 3 %}bg-blue-500/20 text-blue-300
@@ -51,6 +52,489 @@
     <div class="glass-card p-5 text-center">
         <div class="text-3xl font-bold text-blue-400 mb-1" id="progressPercent">0%</div>
         <div class="text-sm text-white/50">完成进度</div>
+    </div>
+</div>
+
+<!-- Script Content -->
+<div class="glass-card p-6 mb-8">
+    <div class="flex items-center justify-between mb-4">
+        <h2 class="text-lg font-semibold text-white flex items-center gap-2">
+            <i data-lucide="file-text" class="w-5 h-5"></i>剧本内容
+        </h2>
+        <div class="flex gap-2">
+            {% if episode.status == 0 or episode.status == 2 %}
+            <button id="editScriptBtn" class="px-4 py-2 rounded-lg bg-white/5 hover:bg-white/10 transition-colors text-sm flex items-center gap-2">
+                <i data-lucide="edit" class="w-4 h-4"></i>编辑剧本
+            </button>
+            <button id="reparseBtn" class="px-4 py-2 rounded-lg bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 transition-all text-sm flex items-center gap-2">
+                <i data-lucide="refresh-cw" class="w-4 h-4"></i>重新解析
+            </button>
+            {% endif %}
+        </div>
+    </div>
+    <div id="scriptContent" class="bg-white/5 rounded-xl p-4 text-white/80 whitespace-pre-wrap max-h-96 overflow-y-auto">{{ episode.scriptText|default:"暂无剧本内容" }}</div>
+</div>
+
+<!-- Edit Script Modal -->
+<div id="editScriptModal" class="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 hidden overflow-y-auto">
+    <div class="flex items-center justify-center min-h-full p-4">
+        <div class="glass-card p-6 w-full max-w-3xl max-h-[90vh] overflow-y-auto relative">
+        <div class="flex items-center justify-between mb-4">
+            <h3 class="text-xl font-semibold text-white">编辑剧本</h3>
+            <button id="closeEditModal" class="text-white/50 hover:text-white transition-colors">
+                <i data-lucide="x" class="w-6 h-6"></i>
+            </button>
+        </div>
+        <div class="mb-4">
+            <textarea id="scriptTextarea" class="w-full h-80 bg-white/5 border border-white/10 rounded-xl p-4 text-white/90 resize-none focus:outline-none focus:border-blue-500/50" placeholder="请输入剧本内容...">{{ episode.scriptText|default:"" }}</textarea>
+        </div>
+        <div class="flex justify-end gap-3">
+            <button id="cancelEditBtn" class="px-5 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 transition-all">取消</button>
+            <button id="saveScriptBtn" class="px-5 py-2.5 rounded-xl bg-gradient-to-r from-blue-500 to-cyan-500 hover:from-blue-600 hover:to-cyan-600 transition-all font-medium">保存剧本</button>
+        </div>
+        </div>
+    </div>
+</div>
+
+<!-- Scene Assets -->
+<div class="glass-card p-6 mb-8">
+    <div class="flex items-center justify-between mb-4">
+        <h2 class="text-lg font-semibold text-white flex items-center gap-2">
+            <i data-lucide="image" class="w-5 h-5"></i>场景资产 ({{ scenes|length }})
+        </h2>
+        <button type="button" id="addSceneBtn" data-modal-id="addSceneModal" class="px-4 py-2 rounded-lg bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 transition-all text-sm flex items-center gap-2">
+            <i data-lucide="plus" class="w-4 h-4"></i>添加场景
+        </button>
+    </div>
+    {% if scenes %}
+    <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
+        {% for scene in scenes %}
+        <div class="glass-card glass-card-hover p-3 text-center group relative">
+            <div class="w-full aspect-video rounded-lg bg-white/5 mb-2 overflow-hidden flex items-center justify-center cursor-pointer scene-history-btn"
+                 data-scene-id="{{ scene.id }}" data-scene-name="{{ scene.sceneName }}" data-scene-assets='{{ scene.assets|to_json }}'>
+                {% if scene.activeAssetUrl %}
+                <img src="{{ scene.activeAssetUrl }}" class="w-full h-full object-cover" alt="{{ scene.sceneName }}">
+                {% elif scene.status == 0 %}
+                <div class="text-center">
+                    <i data-lucide="loader-2" class="w-6 h-6 text-blue-400 animate-spin mx-auto"></i>
+                    <p class="text-xs text-white/50 mt-1">生成中</p>
+                </div>
+                {% else %}
+                <i data-lucide="image" class="w-8 h-8 text-white/20"></i>
+                {% endif %}
+                <!-- 锁定标识 -->
+                {% if scene.isLocked %}
+                <div class="absolute top-1 left-1">
+                    <i data-lucide="lock" class="w-4 h-4 text-amber-400"></i>
+                </div>
+                {% endif %}
+                <!-- 操作按钮 -->
+                <div class="absolute top-1 right-1 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <button class="scene-history-icon-btn w-7 h-7 rounded-lg bg-black/50 hover:bg-black/70 transition-colors flex items-center justify-center"
+                            data-scene-id="{{ scene.id }}" data-scene-name="{{ scene.sceneName }}" data-scene-assets='{{ scene.assets|to_json }}' title="历史版本">
+                        <i data-lucide="history" class="w-4 h-4 text-white"></i>
+                    </button>
+                    <button class="scene-regenerate-btn w-7 h-7 rounded-lg bg-black/50 hover:bg-black/70 transition-colors flex items-center justify-center"
+                            data-scene-id="{{ scene.id }}" data-scene-name="{{ scene.sceneName }}" data-scene-prompt="{{ scene.customPrompt|default:'' }}" title="重新生成">
+                        <i data-lucide="refresh-cw" class="w-4 h-4 text-white"></i>
+                    </button>
+                </div>
+            </div>
+            <p class="text-sm text-white/80 truncate mb-1" title="{{ scene.sceneName }}">{{ scene.sceneName }}</p>
+            <div class="flex items-center justify-between">
+                <div class="flex items-center gap-1">
+                    <span class="text-xs
+                        {% if scene.status == 3 %}text-amber-400
+                        {% elif scene.status == 0 %}text-blue-400
+                        {% elif scene.status == 1 %}text-amber-400
+                        {% else %}text-white/50{% endif %}">
+                        {{ scene.statusDesc }}
+                    </span>
+                    {% if scene.assets and scene.assets|length > 1 %}
+                    <span class="text-xs text-white/30">· {{ scene.assets|length }}版本</span>
+                    {% endif %}
+                </div>
+                <!-- 下拉菜单 -->
+                <div class="relative">
+                    <button class="scene-menu-btn w-6 h-6 rounded hover:bg-white/10 transition-colors flex items-center justify-center" data-scene-id="{{ scene.id }}" data-scene-name="{{ scene.sceneName }}" data-scene-locked="{% if scene.status == 3 %}true{% else %}false{% endif %}">
+                        <i data-lucide="more-vertical" class="w-4 h-4 text-white/50"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div class="text-center py-8 text-white/40">
+        <i data-lucide="image" class="w-12 h-12 mx-auto mb-2 opacity-30"></i>
+        <p>暂无场景资产</p>
+    </div>
+    {% endif %}
+</div>
+
+<!-- Scene Context Menu -->
+<div id="sceneContextMenu" class="fixed bg-gray-900/95 border border-white/10 rounded-lg shadow-xl z-[100] hidden py-1 min-w-[120px]">
+    <button class="scene-edit-name-btn w-full px-4 py-2 text-left text-sm text-white/80 hover:bg-white/10 flex items-center gap-2">
+        <i data-lucide="edit-2" class="w-4 h-4"></i>修改名称
+    </button>
+    <button class="scene-toggle-lock-btn w-full px-4 py-2 text-left text-sm text-white/80 hover:bg-white/10 flex items-center gap-2">
+        <i data-lucide="lock" class="w-4 h-4 lock-icon"></i><span class="lock-text">锁定</span>
+    </button>
+    <button class="scene-regenerate-menu-btn w-full px-4 py-2 text-left text-sm text-white/80 hover:bg-white/10 flex items-center gap-2">
+        <i data-lucide="refresh-cw" class="w-4 h-4"></i>重新生成
+    </button>
+    <div class="border-t border-white/10 my-1"></div>
+    <button class="scene-delete-btn w-full px-4 py-2 text-left text-sm text-red-400 hover:bg-red-500/20 flex items-center gap-2">
+        <i data-lucide="trash-2" class="w-4 h-4"></i>删除
+    </button>
+</div>
+
+<!-- Prop Assets -->
+<div class="glass-card p-6 mb-8">
+    <div class="flex items-center justify-between mb-4">
+        <h2 class="text-lg font-semibold text-white flex items-center gap-2">
+            <i data-lucide="box" class="w-5 h-5"></i>道具资产 ({{ props|length }})
+        </h2>
+        <button type="button" id="addPropBtn" data-modal-id="addPropModal" class="px-4 py-2 rounded-lg bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 transition-all text-sm flex items-center gap-2">
+            <i data-lucide="plus" class="w-4 h-4"></i>添加道具
+        </button>
+    </div>
+    {% if props %}
+    <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
+        {% for prop in props %}
+        <div class="glass-card glass-card-hover p-3 text-center group relative">
+            <div class="w-full aspect-square rounded-lg bg-white/5 mb-2 overflow-hidden flex items-center justify-center cursor-pointer prop-history-btn"
+                 data-prop-id="{{ prop.id }}" data-prop-name="{{ prop.propName }}" data-prop-assets='{{ prop.assets|to_json }}'>
+                {% if prop.activeAssetUrl %}
+                <img src="{{ prop.activeAssetUrl }}" class="w-full h-full object-cover" alt="{{ prop.propName }}">
+                {% elif prop.transparentUrl %}
+                <img src="{{ prop.transparentUrl }}" class="w-full h-full object-contain" alt="{{ prop.propName }}">
+                {% elif prop.status == 0 %}
+                <div class="text-center">
+                    <i data-lucide="loader-2" class="w-6 h-6 text-blue-400 animate-spin mx-auto"></i>
+                    <p class="text-xs text-white/50 mt-1">生成中</p>
+                </div>
+                {% else %}
+                <i data-lucide="box" class="w-8 h-8 text-white/20"></i>
+                {% endif %}
+                <!-- 锁定标识 -->
+                {% if prop.isLocked %}
+                <div class="absolute top-1 left-1">
+                    <i data-lucide="lock" class="w-4 h-4 text-amber-400"></i>
+                </div>
+                {% endif %}
+                <!-- 操作按钮 -->
+                <div class="absolute top-1 right-1 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <button class="prop-history-icon-btn w-7 h-7 rounded-lg bg-black/50 hover:bg-black/70 transition-colors flex items-center justify-center"
+                            data-prop-id="{{ prop.id }}" data-prop-name="{{ prop.propName }}" data-prop-assets='{{ prop.assets|to_json }}' title="历史版本">
+                        <i data-lucide="history" class="w-4 h-4 text-white"></i>
+                    </button>
+                    <button class="prop-regenerate-btn w-7 h-7 rounded-lg bg-black/50 hover:bg-black/70 transition-colors flex items-center justify-center"
+                            data-prop-id="{{ prop.id }}" data-prop-name="{{ prop.propName }}" data-prop-prompt="{{ prop.customPrompt|default:'' }}" title="重新生成">
+                        <i data-lucide="refresh-cw" class="w-4 h-4 text-white"></i>
+                    </button>
+                </div>
+            </div>
+            <p class="text-sm text-white/80 truncate mb-1" title="{{ prop.propName }}">{{ prop.propName }}</p>
+            <div class="flex items-center justify-between">
+                <div class="flex items-center gap-1">
+                    <span class="text-xs
+                        {% if prop.status == 3 %}text-amber-400
+                        {% elif prop.status == 0 %}text-blue-400
+                        {% elif prop.status == 1 %}text-amber-400
+                        {% else %}text-white/50{% endif %}">
+                        {{ prop.statusDesc }}
+                    </span>
+                    {% if prop.assets and prop.assets|length > 1 %}
+                    <span class="text-xs text-white/30">· {{ prop.assets|length }}版本</span>
+                    {% endif %}
+                </div>
+                <!-- 下拉菜单 -->
+                <div class="relative">
+                    <button class="prop-menu-btn w-6 h-6 rounded hover:bg-white/10 transition-colors flex items-center justify-center" data-prop-id="{{ prop.id }}" data-prop-name="{{ prop.propName }}" data-prop-locked="{% if prop.status == 3 %}true{% else %}false{% endif %}">
+                        <i data-lucide="more-vertical" class="w-4 h-4 text-white/50"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div class="text-center py-8 text-white/40">
+        <i data-lucide="box" class="w-12 h-12 mx-auto mb-2 opacity-30"></i>
+        <p>暂无道具资产</p>
+    </div>
+    {% endif %}
+</div>
+
+<!-- Prop Context Menu -->
+<div id="propContextMenu" class="fixed bg-gray-900/95 border border-white/10 rounded-lg shadow-xl z-[100] hidden py-1 min-w-[120px]">
+    <button class="prop-edit-name-btn w-full px-4 py-2 text-left text-sm text-white/80 hover:bg-white/10 flex items-center gap-2">
+        <i data-lucide="edit-2" class="w-4 h-4"></i>修改名称
+    </button>
+    <button class="prop-toggle-lock-btn w-full px-4 py-2 text-left text-sm text-white/80 hover:bg-white/10 flex items-center gap-2">
+        <i data-lucide="lock" class="w-4 h-4 lock-icon"></i><span class="lock-text">锁定</span>
+    </button>
+    <button class="prop-regenerate-menu-btn w-full px-4 py-2 text-left text-sm text-white/80 hover:bg-white/10 flex items-center gap-2">
+        <i data-lucide="refresh-cw" class="w-4 h-4"></i>重新生成
+    </button>
+    <div class="border-t border-white/10 my-1"></div>
+    <button class="prop-delete-btn w-full px-4 py-2 text-left text-sm text-red-400 hover:bg-red-500/20 flex items-center gap-2">
+        <i data-lucide="trash-2" class="w-4 h-4"></i>删除
+    </button>
+</div>
+
+<!-- Add Scene Modal -->
+<div id="addSceneModal" class="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 hidden overflow-y-auto">
+    <div class="flex items-center justify-center min-h-full p-4">
+        <div class="glass-card p-6 w-full max-w-md relative">
+            <div class="flex items-center justify-between mb-4">
+                <h3 class="text-xl font-semibold text-white">添加场景</h3>
+                <button class="close-modal-btn text-white/50 hover:text-white transition-colors" data-modal="addSceneModal">
+                    <i data-lucide="x" class="w-6 h-6"></i>
+                </button>
+            </div>
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-sm text-white/70 mb-1">场景名称 *</label>
+                    <input type="text" id="sceneName" class="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-blue-500/50" placeholder="输入场景名称">
+                </div>
+                <div>
+                    <label class="block text-sm text-white/70 mb-1">提示词（可选）</label>
+                    <textarea id="scenePrompt" class="w-full h-20 bg-white/5 border border-white/10 rounded-lg px-4 py-2.5 text-white resize-none focus:outline-none focus:border-blue-500/50" placeholder="自定义生成提示词"></textarea>
+                </div>
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-sm text-white/70 mb-1">清晰度</label>
+                        <select id="sceneQuality" class="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-2.5 text-white focus:outline-none">
+                            <option value="2k">高清 (2K)</option>
+                            <option value="3k">超清 (3K)</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-sm text-white/70 mb-1">图片比例</label>
+                        <select id="sceneAspectRatio" class="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-2.5 text-white focus:outline-none">
+                            <option value="16:9">16:9 横屏</option>
+                            <option value="9:16">9:16 竖屏</option>
+                            <option value="4:3">4:3</option>
+                            <option value="3:4">3:4</option>
+                            <option value="3:2">3:2</option>
+                            <option value="2:3">2:3</option>
+                            <option value="21:9">21:9 超宽</option>
+                            <option value="1:1">1:1 方形</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+            <div class="flex justify-end gap-3 mt-6">
+                <button class="close-modal-btn px-5 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 transition-all" data-modal="addSceneModal">取消</button>
+                <button id="saveSceneBtn" class="px-5 py-2.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 transition-all font-medium">添加并生成</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Add Prop Modal -->
+<div id="addPropModal" class="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 hidden overflow-y-auto">
+    <div class="flex items-center justify-center min-h-full p-4">
+        <div class="glass-card p-6 w-full max-w-md relative">
+            <div class="flex items-center justify-between mb-4">
+                <h3 class="text-xl font-semibold text-white">添加道具</h3>
+                <button class="close-modal-btn text-white/50 hover:text-white transition-colors" data-modal="addPropModal">
+                    <i data-lucide="x" class="w-6 h-6"></i>
+                </button>
+            </div>
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-sm text-white/70 mb-1">道具名称 *</label>
+                    <input type="text" id="propName" class="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-blue-500/50" placeholder="输入道具名称">
+                </div>
+                <div>
+                    <label class="block text-sm text-white/70 mb-1">提示词（可选）</label>
+                    <textarea id="propPrompt" class="w-full h-20 bg-white/5 border border-white/10 rounded-lg px-4 py-2.5 text-white resize-none focus:outline-none focus:border-blue-500/50" placeholder="自定义生成提示词"></textarea>
+                </div>
+                <div>
+                    <label class="block text-sm text-white/70 mb-1">清晰度</label>
+                    <select id="propQuality" class="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-2.5 text-white focus:outline-none">
+                        <option value="2k">高清 (2K)</option>
+                        <option value="3k">超清 (3K)</option>
+                    </select>
+                </div>
+                <p class="text-xs text-white/40">道具图片比例固定为 1:1</p>
+            </div>
+            <div class="flex justify-end gap-3 mt-6">
+                <button class="close-modal-btn px-5 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 transition-all" data-modal="addPropModal">取消</button>
+                <button id="savePropBtn" class="px-5 py-2.5 rounded-xl bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 transition-all font-medium">添加并生成</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Regenerate Scene Modal -->
+<div id="regenerateSceneModal" class="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 hidden overflow-y-auto">
+    <div class="flex items-center justify-center min-h-full p-4">
+        <div class="glass-card p-6 w-full max-w-md relative">
+        <div class="flex items-center justify-between mb-4">
+            <h3 class="text-xl font-semibold text-white">重新生成场景</h3>
+            <button class="close-modal-btn text-white/50 hover:text-white transition-colors" data-modal="regenerateSceneModal">
+                <i data-lucide="x" class="w-6 h-6"></i>
+            </button>
+        </div>
+        <div class="space-y-4">
+            <div>
+                <label class="block text-sm text-white/70 mb-1">场景名称</label>
+                <p id="regenSceneName" class="text-white font-medium"></p>
+            </div>
+            <div>
+                <label class="block text-sm text-white/70 mb-1">提示词（可选）</label>
+                <textarea id="regenScenePrompt" class="w-full h-20 bg-white/5 border border-white/10 rounded-lg px-4 py-2.5 text-white resize-none focus:outline-none focus:border-blue-500/50" placeholder="自定义生成提示词"></textarea>
+            </div>
+            <div class="grid grid-cols-2 gap-4">
+                <div>
+                    <label class="block text-sm text-white/70 mb-1">清晰度</label>
+                    <select id="regenSceneQuality" class="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-2.5 text-white focus:outline-none">
+                        <option value="2k">高清 (2K)</option>
+                        <option value="3k">超清 (3K)</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-sm text-white/70 mb-1">图片比例</label>
+                    <select id="regenSceneRatio" class="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-2.5 text-white focus:outline-none">
+                        <option value="16:9">16:9 横屏</option>
+                        <option value="9:16">9:16 竖屏</option>
+                        <option value="4:3">4:3</option>
+                        <option value="3:4">3:4</option>
+                        <option value="3:2">3:2</option>
+                        <option value="2:3">2:3</option>
+                        <option value="21:9">21:9 超宽</option>
+                        <option value="1:1">1:1 方形</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+        <div class="flex justify-end gap-3 mt-6">
+            <button class="close-modal-btn px-5 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 transition-all" data-modal="regenerateSceneModal">取消</button>
+            <button id="confirmRegenSceneBtn" class="px-5 py-2.5 rounded-xl bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 transition-all font-medium">重新生成</button>
+        </div>
+        </div>
+    </div>
+</div>
+
+<!-- Regenerate Prop Modal -->
+<div id="regeneratePropModal" class="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 hidden overflow-y-auto">
+    <div class="flex items-center justify-center min-h-full p-4">
+        <div class="glass-card p-6 w-full max-w-md relative">
+        <div class="flex items-center justify-between mb-4">
+            <h3 class="text-xl font-semibold text-white">重新生成道具</h3>
+            <button class="close-modal-btn text-white/50 hover:text-white transition-colors" data-modal="regeneratePropModal">
+                <i data-lucide="x" class="w-6 h-6"></i>
+            </button>
+        </div>
+        <div class="space-y-4">
+            <div>
+                <label class="block text-sm text-white/70 mb-1">道具名称</label>
+                <p id="regenPropName" class="text-white font-medium"></p>
+            </div>
+            <div>
+                <label class="block text-sm text-white/70 mb-1">提示词（可选）</label>
+                <textarea id="regenPropPrompt" class="w-full h-20 bg-white/5 border border-white/10 rounded-lg px-4 py-2.5 text-white resize-none focus:outline-none focus:border-blue-500/50" placeholder="自定义生成提示词"></textarea>
+            </div>
+            <div>
+                <label class="block text-sm text-white/70 mb-1">清晰度</label>
+                <select id="regenPropQuality" class="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-2.5 text-white focus:outline-none">
+                    <option value="2k">高清 (2K)</option>
+                    <option value="3k">超清 (3K)</option>
+                </select>
+            </div>
+            <p class="text-xs text-white/40">道具图片比例固定为 1:1</p>
+        </div>
+        <div class="flex justify-end gap-3 mt-6">
+            <button class="close-modal-btn px-5 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 transition-all" data-modal="regeneratePropModal">取消</button>
+            <button id="confirmRegenPropBtn" class="px-5 py-2.5 rounded-xl bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 transition-all font-medium">重新生成</button>
+        </div>
+        </div>
+    </div>
+</div>
+
+<!-- Scene History Modal -->
+<div id="sceneHistoryModal" class="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 hidden overflow-y-auto">
+    <div class="flex items-center justify-center min-h-full p-4">
+        <div class="glass-card p-6 w-full max-w-3xl max-h-[90vh] overflow-y-auto relative">
+        <div class="flex items-center justify-between mb-4">
+            <h3 class="text-xl font-semibold text-white">历史版本 - <span id="sceneHistoryName"></span></h3>
+            <button class="close-modal-btn text-white/50 hover:text-white transition-colors" data-modal="sceneHistoryModal">
+                <i data-lucide="x" class="w-6 h-6"></i>
+            </button>
+        </div>
+        <div id="sceneHistoryList" class="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <!-- 动态填充 -->
+        </div>
+        </div>
+    </div>
+</div>
+
+<!-- Prop History Modal -->
+<div id="propHistoryModal" class="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 hidden overflow-y-auto">
+    <div class="flex items-center justify-center min-h-full p-4">
+        <div class="glass-card p-6 w-full max-w-3xl max-h-[90vh] overflow-y-auto relative">
+        <div class="flex items-center justify-between mb-4">
+            <h3 class="text-xl font-semibold text-white">历史版本 - <span id="propHistoryName"></span></h3>
+            <button class="close-modal-btn text-white/50 hover:text-white transition-colors" data-modal="propHistoryModal">
+                <i data-lucide="x" class="w-6 h-6"></i>
+            </button>
+        </div>
+        <div id="propHistoryList" class="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <!-- 动态填充 -->
+        </div>
+        </div>
+    </div>
+</div>
+
+<!-- Edit Scene Name Modal -->
+<div id="editSceneNameModal" class="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 hidden overflow-y-auto">
+    <div class="flex items-center justify-center min-h-full p-4">
+        <div class="glass-card p-6 w-full max-w-md relative">
+            <div class="flex items-center justify-between mb-4">
+                <h3 class="text-xl font-semibold text-white">修改场景名称</h3>
+                <button class="close-modal-btn text-white/50 hover:text-white transition-colors" data-modal="editSceneNameModal">
+                    <i data-lucide="x" class="w-6 h-6"></i>
+                </button>
+            </div>
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-sm text-white/70 mb-1">场景名称</label>
+                    <input type="text" id="editSceneNameInput" class="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-blue-500/50">
+                </div>
+            </div>
+            <div class="flex justify-end gap-3 mt-6">
+                <button class="close-modal-btn px-5 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 transition-all" data-modal="editSceneNameModal">取消</button>
+                <button id="saveSceneNameBtn" class="px-5 py-2.5 rounded-xl bg-gradient-to-r from-blue-500 to-cyan-500 hover:from-blue-600 hover:to-cyan-600 transition-all font-medium">保存</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Edit Prop Name Modal -->
+<div id="editPropNameModal" class="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 hidden overflow-y-auto">
+    <div class="flex items-center justify-center min-h-full p-4">
+        <div class="glass-card p-6 w-full max-w-md relative">
+            <div class="flex items-center justify-between mb-4">
+                <h3 class="text-xl font-semibold text-white">修改道具名称</h3>
+                <button class="close-modal-btn text-white/50 hover:text-white transition-colors" data-modal="editPropNameModal">
+                    <i data-lucide="x" class="w-6 h-6"></i>
+                </button>
+            </div>
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-sm text-white/70 mb-1">道具名称</label>
+                    <input type="text" id="editPropNameInput" class="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-blue-500/50">
+                </div>
+            </div>
+            <div class="flex justify-end gap-3 mt-6">
+                <button class="close-modal-btn px-5 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 transition-all" data-modal="editPropNameModal">取消</button>
+                <button id="savePropNameBtn" class="px-5 py-2.5 rounded-xl bg-gradient-to-r from-blue-500 to-cyan-500 hover:from-blue-600 hover:to-cyan-600 transition-all font-medium">保存</button>
+            </div>
+        </div>
     </div>
 </div>
 
@@ -132,6 +616,7 @@
 <script>
 const episodeId = {{ episode_id }};
 const seriesId = {{ series_id }};
+const episodeStatus = {{ episode.status }};
 
 // 统计数据
 const shots = {{ shots|safe|default:'[]' }};
@@ -144,6 +629,468 @@ document.getElementById('completedShots').textContent = completed;
 document.getElementById('pendingShots').textContent = pending;
 const progress = shots.length > 0 ? Math.round(completed / shots.length * 100) : 0;
 document.getElementById('progressPercent').textContent = progress + '%';
+
+// Helper functions for form modals (not image preview)
+function openFormModal(modalId) {
+    const modal = document.getElementById(modalId);
+    if (!modal) return;
+    modal.classList.remove('hidden');
+    document.body.style.overflow = 'hidden';
+    lucide.createIcons();
+}
+
+function closeFormModal(modalId) {
+    const modal = document.getElementById(modalId);
+    modal.classList.add('hidden');
+    document.body.style.overflow = '';
+}
+
+// Close modal buttons
+document.querySelectorAll('.close-modal-btn').forEach(btn => {
+    btn.addEventListener('click', function() {
+        closeFormModal(this.dataset.modal);
+    });
+});
+
+// Click outside to close modal
+document.querySelectorAll('[id$="Modal"]').forEach(modal => {
+    modal.addEventListener('click', function(e) {
+        // 只有点击最外层遮罩层才关闭
+        if (e.target === this) {
+            closeFormModal(this.id);
+        }
+    });
+});
+
+// Add Scene
+document.getElementById('addSceneBtn')?.addEventListener('click', function(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    openFormModal('addSceneModal');
+});
+
+document.getElementById('saveSceneBtn')?.addEventListener('click', async function() {
+    const name = document.getElementById('sceneName').value.trim();
+    if (!name) {
+        alert('请输入场景名称');
+        return;
+    }
+
+    this.disabled = true;
+    this.textContent = '提交中...';
+
+    try {
+        const response = await fetch('/api/v1/scenes', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': getCookie('csrftoken')
+            },
+            body: JSON.stringify({
+                seriesId: seriesId,
+                episodeId: episodeId,
+                sceneName: name,
+                aspectRatio: document.getElementById('sceneAspectRatio').value,
+                quality: document.getElementById('sceneQuality').value,
+                customPrompt: document.getElementById('scenePrompt').value.trim()
+            })
+        });
+        const data = await response.json();
+        if (data.code === 200) {
+            alert('场景添加成功，正在生成图片');
+            closeFormModal('addSceneModal');
+            setTimeout(() => location.reload(), 1000);
+        } else {
+            alert('添加失败: ' + (data.message || '未知错误'));
+        }
+    } catch (e) {
+        alert('请求失败: ' + e.message);
+    }
+    this.disabled = false;
+    this.textContent = '添加并生成';
+});
+
+// Add Prop
+document.getElementById('addPropBtn')?.addEventListener('click', function(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    openFormModal('addPropModal');
+});
+
+document.getElementById('savePropBtn')?.addEventListener('click', async function() {
+    const name = document.getElementById('propName').value.trim();
+    if (!name) {
+        alert('请输入道具名称');
+        return;
+    }
+
+    this.disabled = true;
+    this.textContent = '提交中...';
+
+    try {
+        const response = await fetch('/api/v1/props', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': getCookie('csrftoken')
+            },
+            body: JSON.stringify({
+                seriesId: seriesId,
+                episodeId: episodeId,
+                propName: name,
+                quality: document.getElementById('propQuality').value,
+                customPrompt: document.getElementById('propPrompt').value.trim()
+            })
+        });
+        const data = await response.json();
+        if (data.code === 200) {
+            alert('道具添加成功，正在生成图片');
+            closeFormModal('addPropModal');
+            setTimeout(() => location.reload(), 1000);
+        } else {
+            alert('添加失败: ' + (data.message || '未知错误'));
+        }
+    } catch (e) {
+        alert('请求失败: ' + e.message);
+    }
+    this.disabled = false;
+    this.textContent = '添加并生成';
+});
+
+// Regenerate Scene
+let currentRegenSceneId = null;
+document.querySelectorAll('.scene-regenerate-btn').forEach(btn => {
+    btn.addEventListener('click', function(e) {
+        e.stopPropagation();
+        currentRegenSceneId = this.dataset.sceneId;
+        document.getElementById('regenSceneName').textContent = this.dataset.sceneName;
+        document.getElementById('regenScenePrompt').value = this.dataset.scenePrompt || '';
+        openFormModal('regenerateSceneModal');
+    });
+});
+
+document.getElementById('confirmRegenSceneBtn')?.addEventListener('click', async function() {
+    if (!currentRegenSceneId) return;
+
+    this.disabled = true;
+    this.textContent = '提交中...';
+
+    try {
+        const response = await fetch(`/api/v1/scenes/${currentRegenSceneId}/regenerate`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': getCookie('csrftoken')
+            },
+            body: JSON.stringify({
+                customPrompt: document.getElementById('regenScenePrompt').value.trim(),
+                aspectRatio: document.getElementById('regenSceneRatio').value,
+                quality: document.getElementById('regenSceneQuality').value
+            })
+        });
+        const data = await response.json();
+        if (data.code === 200) {
+            alert('场景重新生成已提交');
+            closeFormModal('regenerateSceneModal');
+            setTimeout(() => location.reload(), 1000);
+        } else {
+            alert('提交失败: ' + (data.message || '未知错误'));
+        }
+    } catch (e) {
+        alert('请求失败: ' + e.message);
+    }
+    this.disabled = false;
+    this.textContent = '重新生成';
+});
+
+// Regenerate Prop
+let currentRegenPropId = null;
+document.querySelectorAll('.prop-regenerate-btn').forEach(btn => {
+    btn.addEventListener('click', function(e) {
+        e.stopPropagation();
+        currentRegenPropId = this.dataset.propId;
+        document.getElementById('regenPropName').textContent = this.dataset.propName;
+        document.getElementById('regenPropPrompt').value = this.dataset.propPrompt || '';
+        openFormModal('regeneratePropModal');
+    });
+});
+
+document.getElementById('confirmRegenPropBtn')?.addEventListener('click', async function() {
+    if (!currentRegenPropId) return;
+
+    this.disabled = true;
+    this.textContent = '提交中...';
+
+    try {
+        const response = await fetch(`/api/v1/props/${currentRegenPropId}/regenerate`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': getCookie('csrftoken')
+            },
+            body: JSON.stringify({
+                customPrompt: document.getElementById('regenPropPrompt').value.trim(),
+                quality: document.getElementById('regenPropQuality').value
+            })
+        });
+        const data = await response.json();
+        if (data.code === 200) {
+            alert('道具重新生成已提交');
+            closeFormModal('regeneratePropModal');
+            setTimeout(() => location.reload(), 1000);
+        } else {
+            alert('提交失败: ' + (data.message || '未知错误'));
+        }
+    } catch (e) {
+        alert('请求失败: ' + e.message);
+    }
+    this.disabled = false;
+    this.textContent = '重新生成';
+});
+
+// Scene History
+let currentSceneHistoryId = null;
+document.querySelectorAll('.scene-history-btn, .scene-history-icon-btn').forEach(btn => {
+    btn.addEventListener('click', function(e) {
+        e.stopPropagation();
+        currentSceneHistoryId = this.dataset.sceneId;
+        const name = this.dataset.sceneName;
+        let assets = [];
+        try {
+            assets = JSON.parse(this.dataset.sceneAssets || '[]');
+        } catch (e) {}
+        showSceneHistory(name, assets);
+    });
+});
+
+function showSceneHistory(name, assets) {
+    document.getElementById('sceneHistoryName').textContent = name;
+    const container = document.getElementById('sceneHistoryList');
+
+    if (!assets || assets.length === 0) {
+        container.innerHTML = '<div class="col-span-4 text-center py-8 text-white/40">暂无历史版本</div>';
+    } else {
+        container.innerHTML = assets.map(asset => `
+            <div class="glass-card p-3 text-center ${asset.isActive ? 'ring-2 ring-emerald-500/50' : ''}">
+                <div class="w-full aspect-video rounded-lg bg-white/5 mb-2 overflow-hidden">
+                    ${asset.filePath ? `<img src="${asset.filePath}" class="w-full h-full object-cover">` : '<i data-lucide="image" class="w-8 h-8 text-white/20 mx-auto mt-4"></i>'}
+                </div>
+                <p class="text-sm text-white/70 mb-1">版本 ${asset.version || '-'}</p>
+                <p class="text-xs text-white/40 mb-2">${asset.createdAt ? new Date(asset.createdAt).toLocaleString('zh-CN') : '-'}</p>
+                ${asset.isActive ? '<span class="text-xs text-emerald-400">当前版本</span>' : `
+                    <button class="scene-rollback-btn w-full px-3 py-1.5 rounded-lg bg-blue-500/20 text-blue-300 hover:bg-blue-500/30 transition-colors text-xs"
+                            data-scene-id="${currentSceneHistoryId}" data-asset-id="${asset.id}">
+                        回滚到此版本
+                    </button>
+                `}
+            </div>
+        `).join('');
+        lucide.createIcons();
+        bindSceneRollback();
+    }
+    openFormModal('sceneHistoryModal');
+}
+
+function bindSceneRollback() {
+    document.querySelectorAll('.scene-rollback-btn').forEach(btn => {
+        btn.addEventListener('click', async function() {
+            if (!confirm('确定要回滚到此版本吗？')) return;
+
+            const sceneId = this.dataset.sceneId;
+            const assetId = this.dataset.assetId;
+
+            this.disabled = true;
+            this.textContent = '回滚中...';
+
+            try {
+                const response = await fetch(`/api/v1/scenes/${sceneId}/rollback`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': getCookie('csrftoken')
+                    },
+                    body: JSON.stringify({ assetId: parseInt(assetId) })
+                });
+                const data = await response.json();
+                if (data.code === 200) {
+                    alert('回滚成功');
+                    closeFormModal('sceneHistoryModal');
+                    location.reload();
+                } else {
+                    alert('回滚失败: ' + (data.message || '未知错误'));
+                }
+            } catch (e) {
+                alert('请求失败: ' + e.message);
+            }
+            this.disabled = false;
+            this.textContent = '回滚到此版本';
+        });
+    });
+}
+
+// Prop History
+let currentPropHistoryId = null;
+document.querySelectorAll('.prop-history-btn, .prop-history-icon-btn').forEach(btn => {
+    btn.addEventListener('click', function(e) {
+        e.stopPropagation();
+        currentPropHistoryId = this.dataset.propId;
+        const name = this.dataset.propName;
+        let assets = [];
+        try {
+            assets = JSON.parse(this.dataset.propAssets || '[]');
+        } catch (e) {}
+        showPropHistory(name, assets);
+    });
+});
+
+function showPropHistory(name, assets) {
+    document.getElementById('propHistoryName').textContent = name;
+    const container = document.getElementById('propHistoryList');
+
+    if (!assets || assets.length === 0) {
+        container.innerHTML = '<div class="col-span-4 text-center py-8 text-white/40">暂无历史版本</div>';
+    } else {
+        container.innerHTML = assets.map(asset => `
+            <div class="glass-card p-3 text-center ${asset.isActive ? 'ring-2 ring-emerald-500/50' : ''}">
+                <div class="w-full aspect-square rounded-lg bg-white/5 mb-2 overflow-hidden">
+                    ${asset.filePath ? `<img src="${asset.filePath}" class="w-full h-full object-cover">` :
+                      asset.transparentPath ? `<img src="${asset.transparentPath}" class="w-full h-full object-contain">` :
+                      '<i data-lucide="box" class="w-8 h-8 text-white/20 mx-auto mt-4"></i>'}
+                </div>
+                <p class="text-sm text-white/70 mb-1">版本 ${asset.version || '-'}</p>
+                <p class="text-xs text-white/40 mb-2">${asset.createdAt ? new Date(asset.createdAt).toLocaleString('zh-CN') : '-'}</p>
+                ${asset.isActive ? '<span class="text-xs text-emerald-400">当前版本</span>' : `
+                    <button class="prop-rollback-btn w-full px-3 py-1.5 rounded-lg bg-blue-500/20 text-blue-300 hover:bg-blue-500/30 transition-colors text-xs"
+                            data-prop-id="${currentPropHistoryId}" data-asset-id="${asset.id}">
+                        回滚到此版本
+                    </button>
+                `}
+            </div>
+        `).join('');
+        lucide.createIcons();
+        bindPropRollback();
+    }
+    openFormModal('propHistoryModal');
+}
+
+function bindPropRollback() {
+    document.querySelectorAll('.prop-rollback-btn').forEach(btn => {
+        btn.addEventListener('click', async function() {
+            if (!confirm('确定要回滚到此版本吗？')) return;
+
+            const propId = this.dataset.propId;
+            const assetId = this.dataset.assetId;
+
+            this.disabled = true;
+            this.textContent = '回滚中...';
+
+            try {
+                const response = await fetch(`/api/v1/props/${propId}/rollback`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': getCookie('csrftoken')
+                    },
+                    body: JSON.stringify({ assetId: parseInt(assetId) })
+                });
+                const data = await response.json();
+                if (data.code === 200) {
+                    alert('回滚成功');
+                    closeFormModal('propHistoryModal');
+                    location.reload();
+                } else {
+                    alert('回滚失败: ' + (data.message || '未知错误'));
+                }
+            } catch (e) {
+                alert('请求失败: ' + e.message);
+            }
+            this.disabled = false;
+            this.textContent = '回滚到此版本';
+        });
+    });
+}
+
+// Edit Script Modal
+const editModal = document.getElementById('editScriptModal');
+const editBtn = document.getElementById('editScriptBtn');
+const closeEditBtn = document.getElementById('closeEditModal');
+const cancelEditBtn = document.getElementById('cancelEditBtn');
+const saveScriptBtn = document.getElementById('saveScriptBtn');
+const scriptTextarea = document.getElementById('scriptTextarea');
+
+editBtn?.addEventListener('click', () => {
+    openFormModal('editScriptModal');
+});
+
+closeEditBtn?.addEventListener('click', () => {
+    closeFormModal('editScriptModal');
+});
+
+cancelEditBtn?.addEventListener('click', () => {
+    closeFormModal('editScriptModal');
+});
+
+saveScriptBtn?.addEventListener('click', async () => {
+    const scriptText = scriptTextarea.value.trim();
+    if (!scriptText) {
+        alert('剧本内容不能为空');
+        return;
+    }
+
+    saveScriptBtn.disabled = true;
+    saveScriptBtn.textContent = '保存中...';
+
+    try {
+        const response = await fetch(`/api/v1/episodes/${episodeId}/script`, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': getCookie('csrftoken')
+            },
+            body: JSON.stringify({ scriptText })
+        });
+        const data = await response.json();
+        if (data.code === 200) {
+            document.getElementById('scriptContent').textContent = scriptText;
+            closeFormModal('editScriptModal');
+            alert('剧本保存成功');
+        } else {
+            alert('保存失败: ' + (data.message || '未知错误'));
+        }
+    } catch (e) {
+        alert('请求失败: ' + e.message);
+    }
+    saveScriptBtn.disabled = false;
+    saveScriptBtn.textContent = '保存剧本';
+});
+
+// Re-parse Script
+document.getElementById('reparseBtn')?.addEventListener('click', async function() {
+    if (!confirm('确定要重新解析剧本吗？这将清除现有的分镜数据。')) return;
+
+    this.disabled = true;
+    this.innerHTML = '<i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i>解析中...';
+    lucide.createIcons();
+
+    try {
+        const response = await fetch(`/api/v1/episodes/${episodeId}/parse`, {
+            method: 'POST',
+            headers: { 'X-CSRFToken': getCookie('csrftoken') }
+        });
+        const data = await response.json();
+        if (data.code === 200) {
+            alert('剧本解析已开始，请稍后刷新查看结果');
+            setTimeout(() => location.reload(), 2000);
+        } else {
+            alert('解析失败: ' + (data.message || '未知错误'));
+        }
+    } catch (e) {
+        alert('请求失败: ' + e.message);
+    }
+    this.disabled = false;
+    this.innerHTML = '<i data-lucide="refresh-cw" class="w-4 h-4"></i>重新解析';
+    lucide.createIcons();
+});
 
 // 批量生成视频
 document.getElementById('generateAllBtn')?.addEventListener('click', async function() {
@@ -226,6 +1173,299 @@ document.querySelectorAll('.approve-btn').forEach(btn => {
             alert('请求失败: ' + e.message);
         }
     });
+});
+
+// ==================== 场景和道具右键菜单 ====================
+let currentContextSceneId = null;
+let currentContextPropId = null;
+const sceneContextMenu = document.getElementById('sceneContextMenu');
+const propContextMenu = document.getElementById('propContextMenu');
+
+// 隐藏所有菜单
+function hideContextMenus() {
+    sceneContextMenu.classList.add('hidden');
+    propContextMenu.classList.add('hidden');
+}
+
+// 点击其他地方隐藏菜单
+document.addEventListener('click', hideContextMenus);
+
+// 场景菜单按钮
+document.querySelectorAll('.scene-menu-btn').forEach(btn => {
+    btn.addEventListener('click', function(e) {
+        e.stopPropagation();
+        hideContextMenus();
+        currentContextSceneId = this.dataset.sceneId;
+        const isLocked = this.dataset.sceneLocked === 'true';
+
+        // 更新菜单文字
+        const lockText = sceneContextMenu.querySelector('.lock-text');
+        const lockIcon = sceneContextMenu.querySelector('.lock-icon');
+        if (isLocked) {
+            lockText.textContent = '解锁';
+            lockIcon.setAttribute('data-lucide', 'unlock');
+        } else {
+            lockText.textContent = '锁定';
+            lockIcon.setAttribute('data-lucide', 'lock');
+        }
+        lucide.createIcons();
+
+        // 定位菜单
+        const rect = this.getBoundingClientRect();
+        sceneContextMenu.style.left = rect.right + 'px';
+        sceneContextMenu.style.top = rect.top + 'px';
+        sceneContextMenu.classList.remove('hidden');
+    });
+});
+
+// 道具菜单按钮
+document.querySelectorAll('.prop-menu-btn').forEach(btn => {
+    btn.addEventListener('click', function(e) {
+        e.stopPropagation();
+        hideContextMenus();
+        currentContextPropId = this.dataset.propId;
+        const isLocked = this.dataset.propLocked === 'true';
+
+        // 更新菜单文字
+        const lockText = propContextMenu.querySelector('.lock-text');
+        const lockIcon = propContextMenu.querySelector('.lock-icon');
+        if (isLocked) {
+            lockText.textContent = '解锁';
+            lockIcon.setAttribute('data-lucide', 'unlock');
+        } else {
+            lockText.textContent = '锁定';
+            lockIcon.setAttribute('data-lucide', 'lock');
+        }
+        lucide.createIcons();
+
+        // 定位菜单
+        const rect = this.getBoundingClientRect();
+        propContextMenu.style.left = rect.right + 'px';
+        propContextMenu.style.top = rect.top + 'px';
+        propContextMenu.classList.remove('hidden');
+    });
+});
+
+// 场景修改名称
+sceneContextMenu.querySelector('.scene-edit-name-btn')?.addEventListener('click', async function(e) {
+    e.stopPropagation();
+    if (!currentContextSceneId) return;
+    hideContextMenus();
+
+    // 获取当前名称
+    try {
+        const response = await fetch(`/api/v1/scenes/${currentContextSceneId}`, {
+            headers: { 'X-Requested-With': 'XMLHttpRequest' }
+        });
+        // 由于没有单独获取场景详情的API，我们从页面数据获取
+        const sceneCard = document.querySelector(`.scene-menu-btn[data-scene-id="${currentContextSceneId}"]`);
+        document.getElementById('editSceneNameInput').value = sceneCard?.dataset.sceneName || '';
+        openFormModal('editSceneNameModal');
+    } catch (e) {
+        alert('获取场景信息失败');
+    }
+});
+
+// 保存场景名称
+document.getElementById('saveSceneNameBtn')?.addEventListener('click', async function() {
+    if (!currentContextSceneId) return;
+    const newName = document.getElementById('editSceneNameInput').value.trim();
+    if (!newName) {
+        alert('请输入场景名称');
+        return;
+    }
+
+    this.disabled = true;
+    this.textContent = '保存中...';
+
+    try {
+        const response = await fetch(`/api/v1/scenes/${currentContextSceneId}/name`, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': getCookie('csrftoken')
+            },
+            body: JSON.stringify({ sceneName: newName })
+        });
+        const data = await response.json();
+        if (data.code === 200) {
+            closeFormModal('editSceneNameModal');
+            location.reload();
+        } else {
+            alert('保存失败: ' + (data.message || '未知错误'));
+        }
+    } catch (e) {
+        alert('请求失败: ' + e.message);
+    }
+    this.disabled = false;
+    this.textContent = '保存';
+});
+
+// 场景锁定/解锁
+sceneContextMenu.querySelector('.scene-toggle-lock-btn')?.addEventListener('click', async function(e) {
+    e.stopPropagation();
+    if (!currentContextSceneId) return;
+    hideContextMenus();
+
+    const sceneCard = document.querySelector(`.scene-menu-btn[data-scene-id="${currentContextSceneId}"]`);
+    const isLocked = sceneCard?.dataset.sceneLocked === 'true';
+    const action = isLocked ? 'unlock' : 'lock';
+
+    try {
+        const response = await fetch(`/api/v1/scenes/${currentContextSceneId}/${action}`, {
+            method: 'POST',
+            headers: { 'X-CSRFToken': getCookie('csrftoken') }
+        });
+        const data = await response.json();
+        if (data.code === 200) {
+            location.reload();
+        } else {
+            alert('操作失败: ' + (data.message || '未知错误'));
+        }
+    } catch (e) {
+        alert('请求失败: ' + e.message);
+    }
+});
+
+// 场景重新生成（菜单）
+sceneContextMenu.querySelector('.scene-regenerate-menu-btn')?.addEventListener('click', function(e) {
+    e.stopPropagation();
+    if (!currentContextSceneId) return;
+    hideContextMenus();
+
+    // 触发原有的重新生成按钮
+    const regenBtn = document.querySelector(`.scene-regenerate-btn[data-scene-id="${currentContextSceneId}"]`);
+    if (regenBtn) regenBtn.click();
+});
+
+// 场景删除
+sceneContextMenu.querySelector('.scene-delete-btn')?.addEventListener('click', async function(e) {
+    e.stopPropagation();
+    if (!currentContextSceneId) return;
+    hideContextMenus();
+
+    if (!confirm('确定要删除这个场景吗？')) return;
+
+    try {
+        const response = await fetch(`/api/v1/scenes/${currentContextSceneId}`, {
+            method: 'DELETE',
+            headers: { 'X-CSRFToken': getCookie('csrftoken') }
+        });
+        const data = await response.json();
+        if (data.code === 200) {
+            location.reload();
+        } else {
+            alert('删除失败: ' + (data.message || '未知错误'));
+        }
+    } catch (e) {
+        alert('请求失败: ' + e.message);
+    }
+});
+
+// 道具修改名称
+propContextMenu.querySelector('.prop-edit-name-btn')?.addEventListener('click', async function(e) {
+    e.stopPropagation();
+    if (!currentContextPropId) return;
+    hideContextMenus();
+
+    const propCard = document.querySelector(`.prop-menu-btn[data-prop-id="${currentContextPropId}"]`);
+    document.getElementById('editPropNameInput').value = propCard?.dataset.propName || '';
+    openFormModal('editPropNameModal');
+});
+
+// 保存道具名称
+document.getElementById('savePropNameBtn')?.addEventListener('click', async function() {
+    if (!currentContextPropId) return;
+    const newName = document.getElementById('editPropNameInput').value.trim();
+    if (!newName) {
+        alert('请输入道具名称');
+        return;
+    }
+
+    this.disabled = true;
+    this.textContent = '保存中...';
+
+    try {
+        const response = await fetch(`/api/v1/props/${currentContextPropId}/name`, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': getCookie('csrftoken')
+            },
+            body: JSON.stringify({ propName: newName })
+        });
+        const data = await response.json();
+        if (data.code === 200) {
+            closeFormModal('editPropNameModal');
+            location.reload();
+        } else {
+            alert('保存失败: ' + (data.message || '未知错误'));
+        }
+    } catch (e) {
+        alert('请求失败: ' + e.message);
+    }
+    this.disabled = false;
+    this.textContent = '保存';
+});
+
+// 道具锁定/解锁
+propContextMenu.querySelector('.prop-toggle-lock-btn')?.addEventListener('click', async function(e) {
+    e.stopPropagation();
+    if (!currentContextPropId) return;
+    hideContextMenus();
+
+    const propCard = document.querySelector(`.prop-menu-btn[data-prop-id="${currentContextPropId}"]`);
+    const isLocked = propCard?.dataset.propLocked === 'true';
+    const action = isLocked ? 'unlock' : 'lock';
+
+    try {
+        const response = await fetch(`/api/v1/props/${currentContextPropId}/${action}`, {
+            method: 'POST',
+            headers: { 'X-CSRFToken': getCookie('csrftoken') }
+        });
+        const data = await response.json();
+        if (data.code === 200) {
+            location.reload();
+        } else {
+            alert('操作失败: ' + (data.message || '未知错误'));
+        }
+    } catch (e) {
+        alert('请求失败: ' + e.message);
+    }
+});
+
+// 道具重新生成（菜单）
+propContextMenu.querySelector('.prop-regenerate-menu-btn')?.addEventListener('click', function(e) {
+    e.stopPropagation();
+    if (!currentContextPropId) return;
+    hideContextMenus();
+
+    const regenBtn = document.querySelector(`.prop-regenerate-btn[data-prop-id="${currentContextPropId}"]`);
+    if (regenBtn) regenBtn.click();
+});
+
+// 道具删除
+propContextMenu.querySelector('.prop-delete-btn')?.addEventListener('click', async function(e) {
+    e.stopPropagation();
+    if (!currentContextPropId) return;
+    hideContextMenus();
+
+    if (!confirm('确定要删除这个道具吗？')) return;
+
+    try {
+        const response = await fetch(`/api/v1/props/${currentContextPropId}`, {
+            method: 'DELETE',
+            headers: { 'X-CSRFToken': getCookie('csrftoken') }
+        });
+        const data = await response.json();
+        if (data.code === 200) {
+            location.reload();
+        } else {
+            alert('删除失败: ' + (data.message || '未知错误'));
+        }
+    } catch (e) {
+        alert('请求失败: ' + e.message);
+    }
 });
 
 function getCookie(name) {

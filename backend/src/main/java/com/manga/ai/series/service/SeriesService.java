@@ -54,7 +54,7 @@ public interface SeriesService {
     /**
      * 更新系列信息
      */
-    void updateSeries(Long seriesId, String seriesName, String outline, String background);
+    void updateSeries(Long seriesId, String seriesName, String outline, String background, String styleKeywords);
 
     /**
      * 异步处理角色数据（并行生成图片）

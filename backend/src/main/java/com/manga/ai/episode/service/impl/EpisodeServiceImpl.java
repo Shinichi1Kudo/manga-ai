@@ -19,8 +19,10 @@ import com.manga.ai.llm.dto.ScriptParseResult;
 import com.manga.ai.llm.service.ScriptParseService;
 import com.manga.ai.prop.entity.Prop;
 import com.manga.ai.prop.mapper.PropMapper;
+import com.manga.ai.prop.service.PropService;
 import com.manga.ai.scene.entity.Scene;
 import com.manga.ai.scene.mapper.SceneMapper;
+import com.manga.ai.scene.service.SceneService;
 import com.manga.ai.series.entity.Series;
 import com.manga.ai.series.mapper.SeriesMapper;
 import com.manga.ai.common.enums.SeriesStatus;
@@ -62,6 +64,8 @@ public class EpisodeServiceImpl implements EpisodeService {
     private final ShotPropMapper shotPropMapper;
     private final RoleMapper roleMapper;
     private final ScriptParseService scriptParseService;
+    private final SceneService sceneService;
+    private final PropService propService;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -120,6 +124,9 @@ public class EpisodeServiceImpl implements EpisodeService {
             episode.setUpdatedAt(LocalDateTime.now());
             episodeMapper.updateById(episode);
 
+            // 删除已有的分镜数据（重新解析）
+            deleteExistingShots(episodeId);
+
             // 调用剧本解析服务
             ScriptParseResult result = scriptParseService.parseScript(episode.getScriptText(), episode.getSeriesId());
 
@@ -160,13 +167,14 @@ public class EpisodeServiceImpl implements EpisodeService {
         Map<String, Long> sceneCodeToIdMap = new HashMap<>();
         if (result.getScenes() != null) {
             for (ScriptParseResult.SceneInfo sceneInfo : result.getScenes()) {
-                // 检查场景是否已存在
+                // 检查场景是否已存在（按场景名称匹配）
                 LambdaQueryWrapper<Scene> sceneWrapper = new LambdaQueryWrapper<>();
                 sceneWrapper.eq(Scene::getSeriesId, seriesId)
-                        .eq(Scene::getSceneCode, sceneInfo.getSceneCode());
+                        .eq(Scene::getSceneName, sceneInfo.getSceneName());
                 Scene existingScene = sceneMapper.selectOne(sceneWrapper);
 
                 if (existingScene == null) {
+                    // 新场景：创建并生成
                     Scene scene = new Scene();
                     scene.setSeriesId(seriesId);
                     scene.setSceneName(sceneInfo.getSceneName());
@@ -180,9 +188,29 @@ public class EpisodeServiceImpl implements EpisodeService {
                     scene.setUpdatedAt(LocalDateTime.now());
                     sceneMapper.insert(scene);
                     sceneCodeToIdMap.put(sceneInfo.getSceneCode(), scene.getId());
-                    log.info("创建场景: sceneId={}, sceneName={}", scene.getId(), scene.getSceneName());
+                    log.info("创建新场景: sceneId={}, sceneName={}", scene.getId(), scene.getSceneName());
+                    // 异步生成场景资产图片
+                    sceneService.generateSceneAssets(scene.getId());
                 } else {
+                    // 场景已存在
                     sceneCodeToIdMap.put(sceneInfo.getSceneCode(), existingScene.getId());
+
+                    // 检查是否已锁定
+                    if (!SceneStatus.LOCKED.getCode().equals(existingScene.getStatus())) {
+                        // 未锁定：重新生成图片（版本号+1）
+                        log.info("场景已存在且未锁定，重新生成: sceneId={}, sceneName={}", existingScene.getId(), existingScene.getSceneName());
+                        // 更新场景信息
+                        existingScene.setDescription(sceneInfo.getDescription());
+                        existingScene.setLocationType(sceneInfo.getLocationType());
+                        existingScene.setTimeOfDay(sceneInfo.getTimeOfDay());
+                        existingScene.setWeather(sceneInfo.getWeather());
+                        existingScene.setUpdatedAt(LocalDateTime.now());
+                        sceneMapper.updateById(existingScene);
+                        // 异步重新生成（会创建新版本）
+                        sceneService.regenerateSceneAsset(existingScene.getId(), null, null, null);
+                    } else {
+                        log.info("场景已锁定，跳过重新生成: sceneId={}, sceneName={}", existingScene.getId(), existingScene.getSceneName());
+                    }
                 }
             }
         }
@@ -191,13 +219,14 @@ public class EpisodeServiceImpl implements EpisodeService {
         Map<String, Long> propCodeToIdMap = new HashMap<>();
         if (result.getProps() != null) {
             for (ScriptParseResult.PropInfo propInfo : result.getProps()) {
-                // 检查道具是否已存在
+                // 检查道具是否已存在（按道具名称匹配）
                 LambdaQueryWrapper<Prop> propWrapper = new LambdaQueryWrapper<>();
                 propWrapper.eq(Prop::getSeriesId, seriesId)
-                        .eq(Prop::getPropCode, propInfo.getPropCode());
+                        .eq(Prop::getPropName, propInfo.getPropName());
                 Prop existingProp = propMapper.selectOne(propWrapper);
 
                 if (existingProp == null) {
+                    // 新道具：创建并生成
                     Prop prop = new Prop();
                     prop.setSeriesId(seriesId);
                     prop.setPropName(propInfo.getPropName());
@@ -209,10 +238,30 @@ public class EpisodeServiceImpl implements EpisodeService {
                     prop.setCreatedAt(LocalDateTime.now());
                     prop.setUpdatedAt(LocalDateTime.now());
                     propMapper.insert(prop);
-                    propCodeToIdMap.put(propInfo.getPropCode(), prop.getId());
-                    log.info("创建道具: propId={}, propName={}", prop.getId(), prop.getPropName());
+                    // 使用 propName 作为键，方便后续分镜关联查找
+                    propCodeToIdMap.put(propInfo.getPropName(), prop.getId());
+                    log.info("创建新道具: propId={}, propName={}", prop.getId(), prop.getPropName());
+                    // 异步生成道具资产图片
+                    propService.generatePropAssets(prop.getId());
                 } else {
-                    propCodeToIdMap.put(propInfo.getPropCode(), existingProp.getId());
+                    // 道具已存在，使用 propName 作为键
+                    propCodeToIdMap.put(propInfo.getPropName(), existingProp.getId());
+
+                    // 检查是否已锁定
+                    if (!PropStatus.LOCKED.getCode().equals(existingProp.getStatus())) {
+                        // 未锁定：重新生成图片（版本号+1）
+                        log.info("道具已存在且未锁定，重新生成: propId={}, propName={}", existingProp.getId(), existingProp.getPropName());
+                        // 更新道具信息
+                        existingProp.setDescription(propInfo.getDescription());
+                        existingProp.setPropType(propInfo.getPropType());
+                        existingProp.setColor(propInfo.getColor());
+                        existingProp.setUpdatedAt(LocalDateTime.now());
+                        propMapper.updateById(existingProp);
+                        // 异步重新生成（会创建新版本）
+                        propService.regeneratePropAsset(existingProp.getId(), null, null);
+                    } else {
+                        log.info("道具已锁定，跳过重新生成: propId={}, propName={}", existingProp.getId(), existingProp.getPropName());
+                    }
                 }
             }
         }
@@ -416,6 +465,54 @@ public class EpisodeServiceImpl implements EpisodeService {
         // 删除剧集
         episodeMapper.deleteById(episodeId);
         log.info("删除剧集: episodeId={}", episodeId);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void updateScript(Long episodeId, String scriptText) {
+        Episode episode = episodeMapper.selectById(episodeId);
+        if (episode == null) {
+            throw new BusinessException("剧集不存在");
+        }
+
+        // 检查剧集状态，只有待解析状态才能修改剧本
+        if (!EpisodeStatus.PENDING_PARSE.getCode().equals(episode.getStatus())
+                && !EpisodeStatus.PENDING_REVIEW.getCode().equals(episode.getStatus())) {
+            throw new BusinessException("当前剧集状态不支持修改剧本");
+        }
+
+        episode.setScriptText(scriptText);
+        episode.setUpdatedAt(LocalDateTime.now());
+        episodeMapper.updateById(episode);
+        log.info("更新剧本内容: episodeId={}", episodeId);
+    }
+
+    /**
+     * 删除剧集已有的分镜数据
+     */
+    private void deleteExistingShots(Long episodeId) {
+        log.info("删除已有分镜数据: episodeId={}", episodeId);
+
+        LambdaQueryWrapper<Shot> shotWrapper = new LambdaQueryWrapper<>();
+        shotWrapper.eq(Shot::getEpisodeId, episodeId);
+        List<Shot> shots = shotMapper.selectList(shotWrapper);
+
+        for (Shot shot : shots) {
+            // 删除分镜-角色关联
+            LambdaQueryWrapper<ShotCharacter> scWrapper = new LambdaQueryWrapper<>();
+            scWrapper.eq(ShotCharacter::getShotId, shot.getId());
+            shotCharacterMapper.delete(scWrapper);
+
+            // 删除分镜-道具关联
+            LambdaQueryWrapper<ShotProp> spWrapper = new LambdaQueryWrapper<>();
+            spWrapper.eq(ShotProp::getShotId, shot.getId());
+            shotPropMapper.delete(spWrapper);
+
+            // 删除分镜
+            shotMapper.deleteById(shot.getId());
+        }
+
+        log.info("已删除 {} 个分镜", shots.size());
     }
 
     private EpisodeDetailVO convertToVO(Episode episode) {

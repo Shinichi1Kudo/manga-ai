@@ -17,22 +17,22 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * 豆包大模型服务实现
+ * LLM服务实现 (支持智谱GLM)
  */
 @Slf4j
 @Service
 public class DoubaoLLMServiceImpl implements DoubaoLLMService {
 
-    @Value("${volcengine.llm.api-key}")
+    @Value("${volcengine.llm.api-key:}")
     private String apiKey;
 
-    @Value("${volcengine.llm.model:doubao-pro-32k}")
+    @Value("${volcengine.llm.model:glm-4-flash}")
     private String model;
 
-    @Value("${volcengine.llm.base-url:https://ark.cn-beijing.volces.com/api/v3}")
+    @Value("${volcengine.llm.base-url:https://open.bigmodel.cn/api/paas/v4}")
     private String baseUrl;
 
-    @Value("${volcengine.llm.timeout:60000}")
+    @Value("${volcengine.llm.timeout:120000}")
     private int timeout;
 
     private final RestTemplate restTemplate;
@@ -40,7 +40,7 @@ public class DoubaoLLMServiceImpl implements DoubaoLLMService {
     public DoubaoLLMServiceImpl() {
         SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
         factory.setConnectTimeout(30000);
-        factory.setReadTimeout(120000);
+        factory.setReadTimeout(180000); // 3分钟超时，剧本解析可能较慢
         this.restTemplate = new RestTemplate(factory);
     }
 

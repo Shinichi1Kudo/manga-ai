@@ -40,7 +40,11 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
@@ -74,13 +78,90 @@ public class ShotServiceImpl implements ShotService {
 
     @Override
     public List<ShotDetailVO> getShotsByEpisodeId(Long episodeId) {
+        // 查询所有分镜
         LambdaQueryWrapper<Shot> wrapper = new LambdaQueryWrapper<>();
         wrapper.eq(Shot::getEpisodeId, episodeId)
                 .orderByAsc(Shot::getShotNumber);
         List<Shot> shots = shotMapper.selectList(wrapper);
 
+        if (shots.isEmpty()) {
+            return List.of();
+        }
+
+        List<Long> shotIds = shots.stream().map(Shot::getId).collect(Collectors.toList());
+        Set<Long> sceneIds = shots.stream().map(Shot::getSceneId).filter(id -> id != null).collect(Collectors.toSet());
+
+        // 批量查询场景
+        Map<Long, Scene> sceneMap = Map.of();
+        if (!sceneIds.isEmpty()) {
+            List<Scene> scenes = sceneMapper.selectBatchIds(sceneIds);
+            sceneMap = scenes.stream().collect(Collectors.toMap(Scene::getId, s -> s));
+        }
+
+        // 批量查询分镜角色
+        LambdaQueryWrapper<ShotCharacter> scWrapper = new LambdaQueryWrapper<>();
+        scWrapper.in(ShotCharacter::getShotId, shotIds);
+        List<ShotCharacter> allShotCharacters = shotCharacterMapper.selectList(scWrapper);
+
+        // 收集所有角色ID
+        Set<Long> roleIds = allShotCharacters.stream().map(ShotCharacter::getRoleId).collect(Collectors.toSet());
+
+        // 批量查询角色
+        Map<Long, Role> roleMap = Map.of();
+        if (!roleIds.isEmpty()) {
+            List<Role> roles = roleMapper.selectBatchIds(roleIds);
+            roleMap = roles.stream().collect(Collectors.toMap(Role::getId, r -> r));
+        }
+
+        // 批量查询角色资产 - 一次性查询所有需要的角色资产
+        Map<String, RoleAsset> assetMap = new HashMap<>();
+        if (!roleIds.isEmpty()) {
+            LambdaQueryWrapper<RoleAsset> assetWrapper = new LambdaQueryWrapper<>();
+            assetWrapper.in(RoleAsset::getRoleId, roleIds)
+                    .eq(RoleAsset::getIsActive, 1);
+            List<RoleAsset> assets = roleAssetMapper.selectList(assetWrapper);
+            for (RoleAsset asset : assets) {
+                String key = asset.getRoleId() + "_" + asset.getClothingId();
+                assetMap.put(key, asset);
+            }
+        }
+
+        // 按shotId分组角色
+        Map<Long, List<ShotCharacter>> charactersByShotId = allShotCharacters.stream()
+                .collect(Collectors.groupingBy(ShotCharacter::getShotId));
+
+        // 批量查询分镜道具
+        LambdaQueryWrapper<ShotProp> spWrapper = new LambdaQueryWrapper<>();
+        spWrapper.in(ShotProp::getShotId, shotIds);
+        List<ShotProp> allShotProps = shotPropMapper.selectList(spWrapper);
+
+        // 收集道具ID
+        Set<Long> propIds = allShotProps.stream().map(ShotProp::getPropId).collect(Collectors.toSet());
+
+        // 批量查询道具资产
+        Map<Long, PropAsset> propAssetMap = new HashMap<>();
+        if (!propIds.isEmpty()) {
+            LambdaQueryWrapper<PropAsset> paWrapper = new LambdaQueryWrapper<>();
+            paWrapper.in(PropAsset::getPropId, propIds)
+                    .eq(PropAsset::getIsActive, 1);
+            List<PropAsset> propAssets = propAssetMapper.selectList(paWrapper);
+            propAssetMap = propAssets.stream().collect(Collectors.toMap(PropAsset::getPropId, a -> a, (a, b) -> a));
+        }
+
+        // 按shotId分组道具
+        Map<Long, List<ShotProp>> propsByShotId = allShotProps.stream()
+                .collect(Collectors.groupingBy(ShotProp::getShotId));
+
+        // 最终的Map
+        final Map<Long, Scene> finalSceneMap = sceneMap;
+        final Map<Long, Role> finalRoleMap = roleMap;
+        final Map<String, RoleAsset> finalAssetMap = assetMap;
+        final Map<Long, PropAsset> finalPropAssetMap = propAssetMap;
+        final Map<Long, List<ShotProp>> finalPropsByShotId = propsByShotId;
+
+        // 组装VO
         return shots.stream()
-                .map(this::convertToDetailVO)
+                .map(shot -> convertToDetailVOOptimized(shot, finalSceneMap, charactersByShotId.getOrDefault(shot.getId(), List.of()), finalRoleMap, finalAssetMap, finalPropsByShotId.getOrDefault(shot.getId(), List.of()), finalPropAssetMap))
                 .collect(Collectors.toList());
     }
 
@@ -262,7 +343,80 @@ public class ShotServiceImpl implements ShotService {
     }
 
     /**
-     * 转换为详情VO
+     * 转换为详情VO（优化版，使用预查询的数据）
+     */
+    private ShotDetailVO convertToDetailVOOptimized(Shot shot, Map<Long, Scene> sceneMap,
+            List<ShotCharacter> shotCharacters, Map<Long, Role> roleMap, Map<String, RoleAsset> assetMap,
+            List<ShotProp> shotProps, Map<Long, PropAsset> propAssetMap) {
+        ShotDetailVO vo = new ShotDetailVO();
+        BeanUtils.copyProperties(shot, vo);
+
+        // 获取场景名称
+        if (shot.getSceneId() != null) {
+            Scene scene = sceneMap.get(shot.getSceneId());
+            if (scene != null) {
+                vo.setSceneName(scene.getSceneName());
+            }
+        }
+
+        // 处理角色信息
+        List<ShotDetailVO.CharacterInfo> characters = new ArrayList<>();
+        for (ShotCharacter sc : shotCharacters) {
+            ShotDetailVO.CharacterInfo charInfo = new ShotDetailVO.CharacterInfo();
+            charInfo.setRoleId(sc.getRoleId());
+            charInfo.setAction(sc.getCharacterAction());
+            charInfo.setExpression(sc.getCharacterExpression());
+            charInfo.setClothingId(sc.getClothingId());
+            charInfo.setPositionX(sc.getPositionX());
+            charInfo.setPositionY(sc.getPositionY());
+            charInfo.setScale(sc.getScale());
+
+            // 获取角色名称
+            Role role = roleMap.get(sc.getRoleId());
+            if (role != null) {
+                charInfo.setRoleName(role.getRoleName());
+            }
+
+            // 获取角色资产图片
+            if (sc.getClothingId() != null) {
+                String key = sc.getRoleId() + "_" + sc.getClothingId();
+                RoleAsset asset = assetMap.get(key);
+                if (asset != null) {
+                    charInfo.setAssetUrl(asset.getFilePath());
+                    charInfo.setClothingName(asset.getClothingName());
+                }
+            }
+
+            characters.add(charInfo);
+        }
+        vo.setCharacters(characters);
+
+        // 处理道具信息（使用预查询的数据）
+        List<ShotDetailVO.PropInfo> props = new ArrayList<>();
+        for (ShotProp sp : shotProps) {
+            ShotDetailVO.PropInfo propInfo = new ShotDetailVO.PropInfo();
+            propInfo.setPropId(sp.getPropId());
+            propInfo.setPositionX(sp.getPositionX());
+            propInfo.setPositionY(sp.getPositionY());
+            propInfo.setScale(sp.getScale());
+            propInfo.setRotation(sp.getRotation());
+
+            // 获取道具资产图片
+            PropAsset asset = propAssetMap.get(sp.getPropId());
+            if (asset != null) {
+                propInfo.setPropName(asset.getFileName());
+                propInfo.setAssetUrl(asset.getFilePath());
+            }
+
+            props.add(propInfo);
+        }
+        vo.setProps(props);
+
+        return vo;
+    }
+
+    /**
+     * 转换为详情VO（单个查询，用于详情页）
      */
     private ShotDetailVO convertToDetailVO(Shot shot) {
         ShotDetailVO vo = new ShotDetailVO();

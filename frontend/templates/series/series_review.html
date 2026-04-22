@@ -432,6 +432,25 @@
                 <p class="text-xs text-white/40 mt-2 ml-8">勾选后自动使用16:9比例，禁用风格选择，生成包含三视图、头部角度、细节特写的完整角色设定板</p>
             </div>
 
+            <!-- 大头特写+三视图选项 -->
+            <div class="p-3 rounded-xl bg-cyan-500/10 border border-cyan-500/30">
+                <label class="flex items-center gap-3 cursor-pointer">
+                    <input type="checkbox" id="newRoleFaceCloseupView" class="w-5 h-5 rounded accent-cyan-500" onchange="toggleNewRoleFaceCloseupView(this)">
+                    <span class="text-sm font-medium text-cyan-300">
+                        <i data-lucide="user-circle" class="w-4 h-4 inline mr-1"></i>人物三视图（含大头特写）
+                    </span>
+                </label>
+                <p class="text-xs text-white/40 mt-2 ml-8">勾选后生成左边大头特写+右边三视图布局，更好展示面部细节</p>
+            </div>
+
+            <!-- 布局选项警告提示 -->
+            <div id="layoutOptionWarning" class="hidden p-3 rounded-xl bg-amber-500/10 border border-amber-500/30">
+                <div class="flex items-start gap-2">
+                    <i data-lucide="alert-triangle" class="w-4 h-4 text-amber-400 mt-0.5 flex-shrink-0"></i>
+                    <p class="text-xs text-amber-300">选择以上布局选项后，后续的<span class="font-medium">角色换装效果可能不完美</span>。如需最佳换装体验，建议不勾选这些选项。</p>
+                </div>
+            </div>
+
             <div>
                 <label class="block text-sm text-white/60 mb-2">
                     <i data-lucide="sparkles" class="w-4 h-4 inline mr-1"></i>提示词 <span class="text-red-400">*</span>
@@ -2746,9 +2765,12 @@ function closeAddRoleModal() {
     document.getElementById('newRoleName').value = '';
     document.getElementById('newCustomPrompt').value = '';
     document.getElementById('newRoleDetailedView').checked = false;
+    document.getElementById('newRoleFaceCloseupView').checked = false;
     document.getElementById('newRoleAspectRatio').value = '';
     document.getElementById('newRoleQuality').value = '';
     document.getElementById('newRoleStyle').value = '';
+    // 隐藏警告提示
+    document.getElementById('layoutOptionWarning').classList.add('hidden');
     // 恢复所有选项可用状态
     toggleNewRoleDetailedView(document.getElementById('newRoleDetailedView'));
 }
@@ -2758,8 +2780,16 @@ function toggleNewRoleDetailedView(checkbox) {
     const aspectSelect = document.getElementById('newRoleAspectRatio');
     const styleSelect = document.getElementById('newRoleStyle');
     const stylePreviewBtn = document.getElementById('newRoleStylePreviewBtn');
+    const faceCloseupCheckbox = document.getElementById('newRoleFaceCloseupView');
+    const warningDiv = document.getElementById('layoutOptionWarning');
 
     if (checkbox.checked) {
+        // 互斥：取消大头特写选项
+        faceCloseupCheckbox.checked = false;
+
+        // 显示警告提示
+        warningDiv.classList.remove('hidden');
+
         // 自动选择16:9
         aspectSelect.value = '16:9';
         // 禁用其他比例选项
@@ -2779,6 +2809,11 @@ function toggleNewRoleDetailedView(checkbox) {
         stylePreviewBtn.style.opacity = '0.5';
         stylePreviewBtn.style.cursor = 'not-allowed';
     } else {
+        // 隐藏警告提示（如果另一个选项也没选中）
+        if (!faceCloseupCheckbox.checked) {
+            warningDiv.classList.add('hidden');
+        }
+
         // 恢复所有比例选项
         aspectSelect.querySelectorAll('option').forEach(opt => {
             opt.disabled = false;
@@ -2795,6 +2830,25 @@ function toggleNewRoleDetailedView(checkbox) {
         stylePreviewBtn.disabled = false;
         stylePreviewBtn.style.opacity = '1';
         stylePreviewBtn.style.cursor = '';
+    }
+}
+
+// 切换大头特写+三视图模式
+function toggleNewRoleFaceCloseupView(checkbox) {
+    const detailedViewCheckbox = document.getElementById('newRoleDetailedView');
+    const warningDiv = document.getElementById('layoutOptionWarning');
+
+    if (checkbox.checked) {
+        // 互斥：取消精细三视图选项
+        detailedViewCheckbox.checked = false;
+        // 触发精细三视图的取消逻辑，恢复比例和风格选项
+        toggleNewRoleDetailedView(detailedViewCheckbox);
+
+        // 显示警告提示
+        warningDiv.classList.remove('hidden');
+    } else {
+        // 隐藏警告提示
+        warningDiv.classList.add('hidden');
     }
 }
 
@@ -2850,6 +2904,7 @@ function submitAddRole() {
     }
 
     const detailedView = document.getElementById('newRoleDetailedView').checked;
+    const faceCloseupView = document.getElementById('newRoleFaceCloseupView').checked;
 
     // 保存用户原始输入的提示词
     let originalPrompt = customPrompt;
@@ -2894,7 +2949,8 @@ function submitAddRole() {
             aspectRatio: aspectRatio,
             quality: quality,
             styleKeywords: styleKeywords,
-            detailedView: detailedView
+            detailedView: detailedView,
+            faceCloseupView: faceCloseupView
         })
     })
     .then(response => response.json())
