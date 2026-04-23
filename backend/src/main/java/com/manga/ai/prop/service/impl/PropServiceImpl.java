@@ -507,6 +507,16 @@ public class PropServiceImpl implements PropService {
                 .collect(Collectors.toList());
         vo.setAssets(assetVOs);
 
+        // 检查最新版本是否正在生成中（版本最高且 status=0）
+        if (!assetVOs.isEmpty()) {
+            PropDetailVO.PropAssetVO latestAsset = assetVOs.stream()
+                    .max((a, b) -> Integer.compare(a.getVersion(), b.getVersion()))
+                    .orElse(null);
+            if (latestAsset != null && latestAsset.getStatus() != null && latestAsset.getStatus() == 0) {
+                vo.setStatus(0);
+            }
+        }
+
         // 设置激活资产URL
         for (PropDetailVO.PropAssetVO assetVO : assetVOs) {
             if (assetVO.getIsActive() != null && assetVO.getIsActive() == 1) {

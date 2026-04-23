@@ -165,7 +165,7 @@
                         {{ scene.statusDesc }}
                     </span>
                     {% if scene.assets and scene.assets|length > 1 %}
-                    <span class="text-xs text-white/30 version-count">· {{ scene.assets|length }}版本</span>
+                    <span class="text-xs text-white/30 version-count">· v{{ scene.activeVersion }}</span>
                     {% endif %}
                 </div>
                 <!-- 下拉菜单 -->
@@ -260,7 +260,7 @@
                         {{ prop.statusDesc }}
                     </span>
                     {% if prop.assets and prop.assets|length > 1 %}
-                    <span class="text-xs text-white/30 version-count">· {{ prop.assets|length }}版本</span>
+                    <span class="text-xs text-white/30 version-count">· v{{ prop.activeVersion }}</span>
                     {% endif %}
                 </div>
                 <!-- 下拉菜单 -->
@@ -1062,9 +1062,11 @@ document.getElementById('savePropBtn')?.addEventListener('click', function() {
 
 // Regenerate Scene
 let currentRegenSceneId = null;
+console.log('[DEBUG] 绑定场景重新生成按钮, 数量:', document.querySelectorAll('.scene-regenerate-btn').length);
 document.querySelectorAll('.scene-regenerate-btn').forEach(btn => {
     btn.addEventListener('click', function(e) {
         e.stopPropagation();
+        console.log('[DEBUG] 场景重新生成按钮被点击, sceneId:', this.dataset.sceneId);
         currentRegenSceneId = this.dataset.sceneId;
         document.getElementById('regenSceneName').textContent = this.dataset.sceneName;
         document.getElementById('regenScenePrompt').value = this.dataset.scenePrompt || '';
@@ -1097,24 +1099,13 @@ document.getElementById('confirmRegenSceneBtn')?.addEventListener('click', async
             // 更新卡片为生成中状态
             const card = document.querySelector(`[data-scene-id="${currentRegenSceneId}"]`);
             if (card) {
-                const imgContainer = card.querySelector('.scene-history-btn');
-                if (imgContainer) {
-                    imgContainer.innerHTML = `
-                        <div class="text-center">
-                            <i data-lucide="loader-2" class="w-6 h-6 text-blue-400 animate-spin mx-auto"></i>
-                            <p class="text-xs text-white/50 mt-1">生成中</p>
-                        </div>
-                    `;
-                    lucide.createIcons();
-                }
-                const statusSpan = card.querySelector('.text-xs');
-                if (statusSpan) {
-                    statusSpan.textContent = '生成中';
-                    statusSpan.className = 'text-xs text-blue-400';
-                }
+                // 更新状态属性，以便刷新页面后能正确显示遮罩
+                card.dataset.status = '0';
+                // 添加遮罩
+                addOverlay(card, 'scene');
+                // 开始轮询
+                startPolling('scene', currentRegenSceneId);
             }
-            // 开始轮询
-            startPolling('scene', currentRegenSceneId);
         } else {
             alert('提交失败: ' + (data.message || '未知错误'));
         }
@@ -1127,9 +1118,11 @@ document.getElementById('confirmRegenSceneBtn')?.addEventListener('click', async
 
 // Regenerate Prop
 let currentRegenPropId = null;
+console.log('[DEBUG] 绑定道具重新生成按钮, 数量:', document.querySelectorAll('.prop-regenerate-btn').length);
 document.querySelectorAll('.prop-regenerate-btn').forEach(btn => {
     btn.addEventListener('click', function(e) {
         e.stopPropagation();
+        console.log('[DEBUG] 道具重新生成按钮被点击, propId:', this.dataset.propId);
         currentRegenPropId = this.dataset.propId;
         document.getElementById('regenPropName').textContent = this.dataset.propName;
         document.getElementById('regenPropPrompt').value = this.dataset.propPrompt || '';
@@ -1161,24 +1154,13 @@ document.getElementById('confirmRegenPropBtn')?.addEventListener('click', async 
             // 更新卡片为生成中状态
             const card = document.querySelector(`[data-prop-id="${currentRegenPropId}"]`);
             if (card) {
-                const imgContainer = card.querySelector('.prop-history-btn');
-                if (imgContainer) {
-                    imgContainer.innerHTML = `
-                        <div class="text-center">
-                            <i data-lucide="loader-2" class="w-6 h-6 text-blue-400 animate-spin mx-auto"></i>
-                            <p class="text-xs text-white/50 mt-1">生成中</p>
-                        </div>
-                    `;
-                    lucide.createIcons();
-                }
-                const statusSpan = card.querySelector('.text-xs');
-                if (statusSpan) {
-                    statusSpan.textContent = '生成中';
-                    statusSpan.className = 'text-xs text-blue-400';
-                }
+                // 更新状态属性，以便刷新页面后能正确显示遮罩
+                card.dataset.status = '0';
+                // 添加遮罩
+                addOverlay(card, 'prop');
+                // 开始轮询
+                startPolling('prop', currentRegenPropId);
             }
-            // 开始轮询
-            startPolling('prop', currentRegenPropId);
         } else {
             alert('提交失败: ' + (data.message || '未知错误'));
         }
@@ -1279,12 +1261,20 @@ function bindSceneRollback() {
                     // 关闭弹窗
                     closeFormModal('sceneHistoryModal');
 
-                    // 获取最新的场景数据并更新历史按钮的 data
+                    // 获取最新的场景数据并更新卡片
                     const sceneData = await checkItemStatus('scene', sceneId);
-                    if (sceneData && sceneData.assets) {
+                    if (sceneData) {
+                        // 更新历史按钮的 data
                         const historyBtn = card?.querySelector('.scene-history-btn');
-                        if (historyBtn) {
+                        if (historyBtn && sceneData.assets) {
                             historyBtn.dataset.sceneAssets = JSON.stringify(sceneData.assets);
+                        }
+                        // 更新版本号显示
+                        const versionSpan = card?.querySelector('.version-count');
+                        if (versionSpan && sceneData.assets) {
+                            const activeAsset = sceneData.assets.find(a => a.isActive);
+                            const activeVersion = activeAsset ? activeAsset.version : sceneData.assets.length;
+                            versionSpan.textContent = `· v${activeVersion}`;
                         }
                     }
 
@@ -1363,7 +1353,6 @@ function bindPropRollback() {
 
             const propId = this.dataset.propId;
             const assetId = this.dataset.assetId;
-            const versionText = this.closest('.glass-card')?.querySelector('p.text-sm')?.textContent || '';
 
             this.disabled = true;
             this.textContent = '回滚中...';
@@ -1391,15 +1380,24 @@ function bindPropRollback() {
                         }
                     }
 
-                    // 关闭弹窗并重新打开更新后的历史记录
+                    // 关闭弹窗
                     closeFormModal('propHistoryModal');
 
-                    // 获取最新的道具数据并更新历史按钮的 data
+                    // 获取最新的道具数据并更新卡片
                     const propData = await checkItemStatus('prop', propId);
-                    if (propData && propData.assets) {
+                    if (propData) {
+                        // 更新历史按钮的 data
                         const historyBtn = card?.querySelector('.prop-history-btn');
-                        if (historyBtn) {
+                        if (historyBtn && propData.assets) {
                             historyBtn.dataset.propAssets = JSON.stringify(propData.assets);
+                        }
+                        // 更新版本数量显示
+                        const versionSpan = card?.querySelector('.version-count');
+                        if (versionSpan && propData.assets) {
+                            // 找到当前激活的版本
+                            const activeAsset = propData.assets.find(a => a.isActive);
+                            const activeVersion = activeAsset ? activeAsset.version : propData.assets.length;
+                            versionSpan.textContent = `· v${activeVersion}`;
                         }
                     }
 
