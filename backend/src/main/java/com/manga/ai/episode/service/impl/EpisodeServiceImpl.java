@@ -1,6 +1,8 @@
 package com.manga.ai.episode.service.impl;
 
 import com.alibaba.fastjson2.JSON;
+import com.alibaba.fastjson2.JSONArray;
+import com.alibaba.fastjson2.JSONObject;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.manga.ai.common.enums.EpisodeStatus;
 import com.manga.ai.common.enums.SceneStatus;
@@ -12,16 +14,22 @@ import com.manga.ai.common.utils.NamingUtil;
 import com.manga.ai.episode.dto.EpisodeCreateRequest;
 import com.manga.ai.episode.dto.EpisodeDetailVO;
 import com.manga.ai.episode.dto.EpisodeProgressVO;
+import com.manga.ai.episode.dto.GenerateAssetsRequest;
+import com.manga.ai.episode.dto.ParsedAssetsVO;
 import com.manga.ai.episode.entity.Episode;
 import com.manga.ai.episode.mapper.EpisodeMapper;
 import com.manga.ai.episode.service.EpisodeService;
 import com.manga.ai.llm.dto.ScriptParseResult;
 import com.manga.ai.llm.service.ScriptParseService;
 import com.manga.ai.prop.entity.Prop;
+import com.manga.ai.prop.entity.PropAsset;
 import com.manga.ai.prop.mapper.PropMapper;
+import com.manga.ai.prop.mapper.PropAssetMapper;
 import com.manga.ai.prop.service.PropService;
 import com.manga.ai.scene.entity.Scene;
+import com.manga.ai.scene.entity.SceneAsset;
 import com.manga.ai.scene.mapper.SceneMapper;
+import com.manga.ai.scene.mapper.SceneAssetMapper;
 import com.manga.ai.scene.service.SceneService;
 import com.manga.ai.series.entity.Series;
 import com.manga.ai.series.mapper.SeriesMapper;
@@ -42,9 +50,13 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
 
 /**
@@ -58,7 +70,9 @@ public class EpisodeServiceImpl implements EpisodeService {
     private final EpisodeMapper episodeMapper;
     private final SeriesMapper seriesMapper;
     private final SceneMapper sceneMapper;
+    private final SceneAssetMapper sceneAssetMapper;
     private final PropMapper propMapper;
+    private final PropAssetMapper propAssetMapper;
     private final ShotMapper shotMapper;
     private final ShotCharacterMapper shotCharacterMapper;
     private final ShotPropMapper shotPropMapper;
@@ -110,7 +124,7 @@ public class EpisodeServiceImpl implements EpisodeService {
     @Override
     @Async("llmExecutor")
     public void parseScript(Long episodeId) {
-        log.info("开始解析剧本: episodeId={}", episodeId);
+        log.info("开始解析剧本资产（仅场景和道具）: episodeId={}", episodeId);
 
         Episode episode = episodeMapper.selectById(episodeId);
         if (episode == null) {
@@ -124,35 +138,283 @@ public class EpisodeServiceImpl implements EpisodeService {
             episode.setUpdatedAt(LocalDateTime.now());
             episodeMapper.updateById(episode);
 
-            // 删除已有的分镜数据（重新解析）
+            // 删除已有的分镜数据（重新解析时清除旧分镜）
             deleteExistingShots(episodeId);
 
-            // 调用剧本解析服务
-            ScriptParseResult result = scriptParseService.parseScript(episode.getScriptText(), episode.getSeriesId());
+            // 只解析资产（场景和道具），不解析分镜
+            ScriptParseResult result = scriptParseService.parseAssetsOnly(episode.getScriptText(), episode.getSeriesId());
 
-            if ("success".equals(result.getStatus())) {
-                // 保存解析结果
-                saveParseResult(episode, result);
-
-                // 更新状态为待审核
-                episode.setStatus(EpisodeStatus.PENDING_REVIEW.getCode());
+            if ("success".equals(result.getStatus()) && result.getScenes() != null && result.getProps() != null) {
+                // 不自动保存资产，等待用户选择后再创建
+                // 只保存解析结果到 parsedScript
                 episode.setParsedScript(JSON.toJSONString(result));
                 episode.setUpdatedAt(LocalDateTime.now());
                 episodeMapper.updateById(episode);
 
-                log.info("剧本解析完成: episodeId={}, shots={}", episodeId, result.getShots().size());
+                log.info("资产解析完成: episodeId={}, scenes={}, props={}, 等待用户选择资产",
+                        episodeId, result.getScenes().size(), result.getProps().size());
             } else {
                 // 解析失败
-                log.error("剧本解析失败: episodeId={}, error={}", episodeId, result.getErrorMessage());
+                log.error("资产解析失败: episodeId={}, error={}", episodeId, result.getErrorMessage());
                 episode.setStatus(EpisodeStatus.PENDING_PARSE.getCode());
+                JSONObject errorJson = new JSONObject();
+                errorJson.put("error", true);
+                errorJson.put("errorMessage", result.getErrorMessage() != null ? result.getErrorMessage() : "资产解析失败");
+                errorJson.put("timestamp", System.currentTimeMillis());
+                episode.setParsedScript(errorJson.toJSONString());
                 episode.setUpdatedAt(LocalDateTime.now());
                 episodeMapper.updateById(episode);
             }
         } catch (Exception e) {
-            log.error("剧本解析异常: episodeId={}", episodeId, e);
+            log.error("资产解析异常: episodeId={}", episodeId, e);
             episode.setStatus(EpisodeStatus.PENDING_PARSE.getCode());
+            JSONObject errorJson = new JSONObject();
+            errorJson.put("error", true);
+            errorJson.put("errorMessage", "资产解析异常: " + e.getMessage());
+            errorJson.put("timestamp", System.currentTimeMillis());
+            episode.setParsedScript(errorJson.toJSONString());
             episode.setUpdatedAt(LocalDateTime.now());
             episodeMapper.updateById(episode);
+        }
+    }
+
+    @Override
+    @Async("llmExecutor")
+    public void parseShots(Long episodeId) {
+        log.info("开始解析分镜: episodeId={}", episodeId);
+
+        Episode episode = episodeMapper.selectById(episodeId);
+        if (episode == null) {
+            log.error("剧集不存在: episodeId={}", episodeId);
+            return;
+        }
+
+        try {
+            // 删除已有的分镜数据
+            deleteExistingShots(episodeId);
+
+            // 获取场景编码到ID的映射
+            Map<String, Long> sceneCodeToIdMap = new HashMap<>();
+            LambdaQueryWrapper<Scene> sceneWrapper = new LambdaQueryWrapper<>();
+            sceneWrapper.eq(Scene::getSeriesId, episode.getSeriesId())
+                    .select(Scene::getId, Scene::getSceneCode);
+            List<Scene> scenes = sceneMapper.selectList(sceneWrapper);
+            for (Scene scene : scenes) {
+                sceneCodeToIdMap.put(scene.getSceneCode(), scene.getId());
+            }
+
+            // 解析分镜
+            ScriptParseResult result = scriptParseService.parseShots(episode.getScriptText(), episode.getSeriesId(), sceneCodeToIdMap);
+
+            if ("success".equals(result.getStatus()) && result.getShots() != null && !result.getShots().isEmpty()) {
+                // 保存分镜结果
+                saveShotsResult(episode, result);
+
+                // 更新剧集统计
+                int totalDuration = 0;
+                for (ScriptParseResult.ShotInfo shot : result.getShots()) {
+                    totalDuration += shot.getDuration() != null ? shot.getDuration() : 5;
+                }
+                episode.setTotalShots(result.getShots().size());
+                episode.setTotalDuration(totalDuration);
+
+                // 分镜解析完成，更新状态为待审核
+                episode.setStatus(EpisodeStatus.PENDING_REVIEW.getCode());
+                episode.setUpdatedAt(LocalDateTime.now());
+                episodeMapper.updateById(episode);
+
+                log.info("分镜解析完成: episodeId={}, shots={}, 状态更新为待审核", episodeId, result.getShots().size());
+            } else {
+                log.error("分镜解析失败: episodeId={}, error={}", episodeId, result.getErrorMessage());
+                // 分镜解析失败，状态也更新为待审核（让用户可以手动操作）
+                episode.setStatus(EpisodeStatus.PENDING_REVIEW.getCode());
+                episode.setUpdatedAt(LocalDateTime.now());
+                episodeMapper.updateById(episode);
+            }
+        } catch (Exception e) {
+            log.error("分镜解析异常: episodeId={}", episodeId, e);
+            // 分镜解析异常，状态更新为待审核
+            episode.setStatus(EpisodeStatus.PENDING_REVIEW.getCode());
+            episode.setUpdatedAt(LocalDateTime.now());
+            episodeMapper.updateById(episode);
+        }
+    }
+
+    /**
+     * 保存资产结果（场景和道具）
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public void saveAssetsResult(Episode episode, ScriptParseResult result) {
+        Long seriesId = episode.getSeriesId();
+
+        // 保存场景
+        if (result.getScenes() != null) {
+            for (ScriptParseResult.SceneInfo sceneInfo : result.getScenes()) {
+                LambdaQueryWrapper<Scene> sceneWrapper = new LambdaQueryWrapper<>();
+                sceneWrapper.eq(Scene::getSeriesId, seriesId)
+                        .eq(Scene::getSceneName, sceneInfo.getSceneName());
+                Scene existingScene = sceneMapper.selectOne(sceneWrapper);
+
+                if (existingScene == null) {
+                    Scene scene = new Scene();
+                    scene.setSeriesId(seriesId);
+                    scene.setSceneName(sceneInfo.getSceneName());
+                    scene.setSceneCode(sceneInfo.getSceneCode());
+                    scene.setDescription(sceneInfo.getDescription());
+                    scene.setLocationType(sceneInfo.getLocationType());
+                    scene.setTimeOfDay(sceneInfo.getTimeOfDay());
+                    scene.setWeather(sceneInfo.getWeather());
+                    scene.setStatus(SceneStatus.PENDING_REVIEW.getCode());
+                    scene.setCreatedAt(LocalDateTime.now());
+                    scene.setUpdatedAt(LocalDateTime.now());
+                    sceneMapper.insert(scene);
+                    log.info("创建新场景: sceneId={}, sceneName={}", scene.getId(), scene.getSceneName());
+                } else {
+                    if (!SceneStatus.LOCKED.getCode().equals(existingScene.getStatus())) {
+                        existingScene.setDescription(sceneInfo.getDescription());
+                        existingScene.setLocationType(sceneInfo.getLocationType());
+                        existingScene.setTimeOfDay(sceneInfo.getTimeOfDay());
+                        existingScene.setWeather(sceneInfo.getWeather());
+                        existingScene.setUpdatedAt(LocalDateTime.now());
+                        sceneMapper.updateById(existingScene);
+                    }
+                }
+            }
+        }
+
+        // 保存道具
+        if (result.getProps() != null) {
+            for (ScriptParseResult.PropInfo propInfo : result.getProps()) {
+                LambdaQueryWrapper<Prop> propWrapper = new LambdaQueryWrapper<>();
+                propWrapper.eq(Prop::getSeriesId, seriesId)
+                        .eq(Prop::getPropName, propInfo.getPropName());
+                Prop existingProp = propMapper.selectOne(propWrapper);
+
+                if (existingProp == null) {
+                    Prop prop = new Prop();
+                    prop.setSeriesId(seriesId);
+                    prop.setPropName(propInfo.getPropName());
+                    prop.setPropCode(propInfo.getPropCode());
+                    prop.setDescription(propInfo.getDescription());
+                    prop.setPropType(propInfo.getPropType());
+                    prop.setColor(propInfo.getColor());
+                    prop.setStatus(PropStatus.PENDING_REVIEW.getCode());
+                    prop.setCreatedAt(LocalDateTime.now());
+                    prop.setUpdatedAt(LocalDateTime.now());
+                    propMapper.insert(prop);
+                    log.info("创建新道具: propId={}, propName={}", prop.getId(), prop.getPropName());
+                } else {
+                    if (!PropStatus.LOCKED.getCode().equals(existingProp.getStatus())) {
+                        existingProp.setDescription(propInfo.getDescription());
+                        existingProp.setPropType(propInfo.getPropType());
+                        existingProp.setColor(propInfo.getColor());
+                        existingProp.setUpdatedAt(LocalDateTime.now());
+                        propMapper.updateById(existingProp);
+                    }
+                }
+            }
+        }
+    }
+
+    /**
+     * 保存分镜结果
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public void saveShotsResult(Episode episode, ScriptParseResult result) {
+        Long seriesId = episode.getSeriesId();
+
+        // 获取场景映射
+        Map<String, Long> sceneCodeToIdMap = new HashMap<>();
+        LambdaQueryWrapper<Scene> sceneWrapper = new LambdaQueryWrapper<>();
+        sceneWrapper.eq(Scene::getSeriesId, seriesId)
+                .select(Scene::getId, Scene::getSceneCode);
+        List<Scene> scenes = sceneMapper.selectList(sceneWrapper);
+        for (Scene scene : scenes) {
+            sceneCodeToIdMap.put(scene.getSceneCode(), scene.getId());
+        }
+
+        // 获取道具映射
+        Map<String, Long> propNameToIdMap = new HashMap<>();
+        LambdaQueryWrapper<Prop> propWrapper = new LambdaQueryWrapper<>();
+        propWrapper.eq(Prop::getSeriesId, seriesId)
+                .select(Prop::getId, Prop::getPropName);
+        List<Prop> props = propMapper.selectList(propWrapper);
+        for (Prop prop : props) {
+            propNameToIdMap.put(prop.getPropName(), prop.getId());
+        }
+
+        // 获取角色映射
+        Map<String, Long> roleNameToIdMap = new HashMap<>();
+        LambdaQueryWrapper<Role> roleWrapper = new LambdaQueryWrapper<>();
+        roleWrapper.eq(Role::getSeriesId, seriesId)
+                .select(Role::getId, Role::getRoleName);
+        List<Role> roles = roleMapper.selectList(roleWrapper);
+        for (Role role : roles) {
+            roleNameToIdMap.put(role.getRoleName(), role.getId());
+        }
+
+        // 保存分镜
+        if (result.getShots() != null) {
+            for (ScriptParseResult.ShotInfo shotInfo : result.getShots()) {
+                Shot shot = new Shot();
+                shot.setEpisodeId(episode.getId());
+                shot.setShotNumber(shotInfo.getShotNumber());
+                shot.setDescription(shotInfo.getDescription());
+                shot.setDuration(shotInfo.getDuration() != null ? shotInfo.getDuration() : 5);
+                shot.setCameraAngle(shotInfo.getCameraAngle());
+                shot.setCameraMovement(shotInfo.getCameraMovement());
+                shot.setGenerationStatus(ShotGenerationStatus.PENDING.getCode());
+                shot.setStatus(ShotStatus.PENDING_REVIEW.getCode());
+                shot.setCreatedAt(LocalDateTime.now());
+                shot.setUpdatedAt(LocalDateTime.now());
+
+                if (shotInfo.getSceneCode() != null && sceneCodeToIdMap.containsKey(shotInfo.getSceneCode())) {
+                    shot.setSceneId(sceneCodeToIdMap.get(shotInfo.getSceneCode()));
+                }
+
+                if (shotInfo.getCharacters() != null) {
+                    shot.setCharactersJson(JSON.toJSONString(shotInfo.getCharacters()));
+                }
+
+                if (shotInfo.getProps() != null) {
+                    shot.setPropsJson(JSON.toJSONString(shotInfo.getProps()));
+                }
+
+                shotMapper.insert(shot);
+
+                // 保存分镜-角色关联
+                if (shotInfo.getCharacters() != null) {
+                    for (ScriptParseResult.CharacterInShot charInfo : shotInfo.getCharacters()) {
+                        Long roleId = roleNameToIdMap.get(charInfo.getRoleName());
+                        if (roleId != null) {
+                            ShotCharacter shotCharacter = new ShotCharacter();
+                            shotCharacter.setShotId(shot.getId());
+                            shotCharacter.setRoleId(roleId);
+                            shotCharacter.setCharacterAction(charInfo.getAction());
+                            shotCharacter.setCharacterExpression(charInfo.getExpression());
+                            shotCharacter.setClothingId(charInfo.getClothingId() != null ? charInfo.getClothingId() : 1);
+                            shotCharacter.setCreatedAt(LocalDateTime.now());
+                            shotCharacterMapper.insert(shotCharacter);
+                        }
+                    }
+                }
+
+                // 保存分镜-道具关联
+                if (shotInfo.getProps() != null) {
+                    for (ScriptParseResult.PropInShot propInfo : shotInfo.getProps()) {
+                        Long propId = propNameToIdMap.get(propInfo.getPropName());
+                        if (propId != null) {
+                            ShotProp shotProp = new ShotProp();
+                            shotProp.setShotId(shot.getId());
+                            shotProp.setPropId(propId);
+                            shotProp.setCreatedAt(LocalDateTime.now());
+                            shotPropMapper.insert(shotProp);
+                        }
+                    }
+                }
+
+                log.info("创建分镜: shotId={}, shotNumber={}", shot.getId(), shot.getShotNumber());
+            }
         }
     }
 
@@ -174,7 +436,7 @@ public class EpisodeServiceImpl implements EpisodeService {
                 Scene existingScene = sceneMapper.selectOne(sceneWrapper);
 
                 if (existingScene == null) {
-                    // 新场景：创建并生成
+                    // 新场景：创建记录，不自动生成图片（等待用户选择）
                     Scene scene = new Scene();
                     scene.setSeriesId(seriesId);
                     scene.setSceneName(sceneInfo.getSceneName());
@@ -183,33 +445,28 @@ public class EpisodeServiceImpl implements EpisodeService {
                     scene.setLocationType(sceneInfo.getLocationType());
                     scene.setTimeOfDay(sceneInfo.getTimeOfDay());
                     scene.setWeather(sceneInfo.getWeather());
-                    scene.setStatus(SceneStatus.GENERATING.getCode());
+                    scene.setStatus(SceneStatus.PENDING_REVIEW.getCode()); // 待审核状态，不自动生成
                     scene.setCreatedAt(LocalDateTime.now());
                     scene.setUpdatedAt(LocalDateTime.now());
                     sceneMapper.insert(scene);
                     sceneCodeToIdMap.put(sceneInfo.getSceneCode(), scene.getId());
                     log.info("创建新场景: sceneId={}, sceneName={}", scene.getId(), scene.getSceneName());
-                    // 异步生成场景资产图片
-                    sceneService.generateSceneAssets(scene.getId());
+                    // 不自动生成图片，等待用户选择
                 } else {
                     // 场景已存在
                     sceneCodeToIdMap.put(sceneInfo.getSceneCode(), existingScene.getId());
 
-                    // 检查是否已锁定
+                    // 更新场景信息（不自动重新生成图片）
                     if (!SceneStatus.LOCKED.getCode().equals(existingScene.getStatus())) {
-                        // 未锁定：重新生成图片（版本号+1）
-                        log.info("场景已存在且未锁定，重新生成: sceneId={}, sceneName={}", existingScene.getId(), existingScene.getSceneName());
-                        // 更新场景信息
                         existingScene.setDescription(sceneInfo.getDescription());
                         existingScene.setLocationType(sceneInfo.getLocationType());
                         existingScene.setTimeOfDay(sceneInfo.getTimeOfDay());
                         existingScene.setWeather(sceneInfo.getWeather());
                         existingScene.setUpdatedAt(LocalDateTime.now());
                         sceneMapper.updateById(existingScene);
-                        // 异步重新生成（会创建新版本）
-                        sceneService.regenerateSceneAsset(existingScene.getId(), null, null, null);
+                        log.info("场景已存在，更新信息: sceneId={}, sceneName={}", existingScene.getId(), existingScene.getSceneName());
                     } else {
-                        log.info("场景已锁定，跳过重新生成: sceneId={}, sceneName={}", existingScene.getId(), existingScene.getSceneName());
+                        log.info("场景已锁定，跳过更新: sceneId={}, sceneName={}", existingScene.getId(), existingScene.getSceneName());
                     }
                 }
             }
@@ -226,7 +483,7 @@ public class EpisodeServiceImpl implements EpisodeService {
                 Prop existingProp = propMapper.selectOne(propWrapper);
 
                 if (existingProp == null) {
-                    // 新道具：创建并生成
+                    // 新道具：创建记录，不自动生成图片（等待用户选择）
                     Prop prop = new Prop();
                     prop.setSeriesId(seriesId);
                     prop.setPropName(propInfo.getPropName());
@@ -234,33 +491,28 @@ public class EpisodeServiceImpl implements EpisodeService {
                     prop.setDescription(propInfo.getDescription());
                     prop.setPropType(propInfo.getPropType());
                     prop.setColor(propInfo.getColor());
-                    prop.setStatus(PropStatus.GENERATING.getCode());
+                    prop.setStatus(PropStatus.PENDING_REVIEW.getCode()); // 待审核状态，不自动生成
                     prop.setCreatedAt(LocalDateTime.now());
                     prop.setUpdatedAt(LocalDateTime.now());
                     propMapper.insert(prop);
                     // 使用 propName 作为键，方便后续分镜关联查找
                     propCodeToIdMap.put(propInfo.getPropName(), prop.getId());
                     log.info("创建新道具: propId={}, propName={}", prop.getId(), prop.getPropName());
-                    // 异步生成道具资产图片
-                    propService.generatePropAssets(prop.getId());
+                    // 不自动生成图片，等待用户选择
                 } else {
                     // 道具已存在，使用 propName 作为键
                     propCodeToIdMap.put(propInfo.getPropName(), existingProp.getId());
 
-                    // 检查是否已锁定
+                    // 更新道具信息（不自动重新生成图片）
                     if (!PropStatus.LOCKED.getCode().equals(existingProp.getStatus())) {
-                        // 未锁定：重新生成图片（版本号+1）
-                        log.info("道具已存在且未锁定，重新生成: propId={}, propName={}", existingProp.getId(), existingProp.getPropName());
-                        // 更新道具信息
                         existingProp.setDescription(propInfo.getDescription());
                         existingProp.setPropType(propInfo.getPropType());
                         existingProp.setColor(propInfo.getColor());
                         existingProp.setUpdatedAt(LocalDateTime.now());
                         propMapper.updateById(existingProp);
-                        // 异步重新生成（会创建新版本）
-                        propService.regeneratePropAsset(existingProp.getId(), null, null);
+                        log.info("道具已存在，更新信息: propId={}, propName={}", existingProp.getId(), existingProp.getPropName());
                     } else {
-                        log.info("道具已锁定，跳过重新生成: propId={}, propName={}", existingProp.getId(), existingProp.getPropName());
+                        log.info("道具已锁定，跳过更新: propId={}, propName={}", existingProp.getId(), existingProp.getPropName());
                     }
                 }
             }
@@ -397,6 +649,24 @@ public class EpisodeServiceImpl implements EpisodeService {
         vo.setStatus(episode.getStatus());
         vo.setTotalShots(episode.getTotalShots());
 
+        // 检查资产是否解析完成（等待用户选择）
+        boolean assetsReady = false;
+        if (EpisodeStatus.PARSING.getCode().equals(episode.getStatus())) {
+            String parsedScript = episode.getParsedScript();
+            if (parsedScript != null && !parsedScript.isEmpty()) {
+                try {
+                    JSONObject json = JSON.parseObject(parsedScript);
+                    // 如果有 scenes 和 props 且没有 error，说明资产解析完成
+                    if (json.containsKey("scenes") && json.containsKey("props") && !json.getBooleanValue("error")) {
+                        assetsReady = true;
+                    }
+                } catch (Exception e) {
+                    // 解析失败，不设置
+                }
+            }
+        }
+        vo.setAssetsReady(assetsReady);
+
         // 统计已完成和失败的分镜数
         LambdaQueryWrapper<Shot> wrapper = new LambdaQueryWrapper<>();
         wrapper.eq(Shot::getEpisodeId, episodeId);
@@ -525,6 +795,18 @@ public class EpisodeServiceImpl implements EpisodeService {
             vo.setSeriesName(series.getSeriesName());
         }
 
+        // 检查是否有错误信息（解析失败）
+        if (episode.getParsedScript() != null && !episode.getParsedScript().isEmpty()) {
+            try {
+                JSONObject parsedJson = JSON.parseObject(episode.getParsedScript());
+                if (parsedJson.containsKey("error") && parsedJson.getBoolean("error")) {
+                    vo.setErrorMessage(parsedJson.getString("errorMessage"));
+                }
+            } catch (Exception e) {
+                // 忽略解析错误，说明是正常的解析结果
+            }
+        }
+
         return vo;
     }
 
@@ -550,5 +832,339 @@ public class EpisodeServiceImpl implements EpisodeService {
         }
 
         return summary;
+    }
+
+    @Override
+    public ParsedAssetsVO getParsedAssets(Long episodeId) {
+        Episode episode = episodeMapper.selectById(episodeId);
+        if (episode == null) {
+            throw new BusinessException("剧集不存在");
+        }
+
+        Long seriesId = episode.getSeriesId();
+        ParsedAssetsVO vo = new ParsedAssetsVO();
+        vo.setEpisodeId(episodeId);
+
+        // 直接从 parsedScript 获取 LLM 解析的场景和道具数据
+        if (episode.getParsedScript() == null || episode.getParsedScript().isEmpty()) {
+            vo.setScenes(new ArrayList<>());
+            vo.setProps(new ArrayList<>());
+            return vo;
+        }
+
+        JSONObject parsedJson = JSON.parseObject(episode.getParsedScript());
+
+        // 构建场景名称到数据库记录的映射（获取状态信息）
+        Map<String, Scene> sceneMap = new HashMap<>();
+        LambdaQueryWrapper<Scene> sceneWrapper = new LambdaQueryWrapper<>();
+        sceneWrapper.eq(Scene::getSeriesId, seriesId);
+        List<Scene> dbScenes = sceneMapper.selectList(sceneWrapper);
+        for (Scene scene : dbScenes) {
+            sceneMap.put(scene.getSceneName(), scene);
+        }
+
+        // 构建道具名称到数据库记录的映射
+        Map<String, Prop> propMap = new HashMap<>();
+        LambdaQueryWrapper<Prop> propWrapper = new LambdaQueryWrapper<>();
+        propWrapper.eq(Prop::getSeriesId, seriesId);
+        List<Prop> dbProps = propMapper.selectList(propWrapper);
+        for (Prop prop : dbProps) {
+            propMap.put(prop.getPropName(), prop);
+        }
+
+        // 从 LLM 解析结果构建场景列表
+        List<ParsedAssetsVO.SceneAssetInfo> sceneInfos = new ArrayList<>();
+        JSONArray scenesArray = parsedJson.getJSONArray("scenes");
+        if (scenesArray != null) {
+            for (int i = 0; i < scenesArray.size(); i++) {
+                JSONObject sceneObj = scenesArray.getJSONObject(i);
+                String sceneName = sceneObj.getString("sceneName");
+
+                ParsedAssetsVO.SceneAssetInfo info = new ParsedAssetsVO.SceneAssetInfo();
+                info.setSceneName(sceneName);
+                info.setSceneCode(sceneObj.getString("sceneCode"));
+                // 使用 LLM 解析的描述
+                info.setDescription(sceneObj.getString("description"));
+
+                // 检查数据库中是否已存在
+                Scene dbScene = sceneMap.get(sceneName);
+                if (dbScene != null) {
+                    info.setId(dbScene.getId());
+                    boolean isLocked = SceneStatus.LOCKED.getCode().equals(dbScene.getStatus());
+                    info.setIsLocked(isLocked);
+
+                    // 检查是否有资产
+                    LambdaQueryWrapper<SceneAsset> assetWrapper = new LambdaQueryWrapper<>();
+                    assetWrapper.eq(SceneAsset::getSceneId, dbScene.getId())
+                            .eq(SceneAsset::getIsActive, 1);
+                    SceneAsset activeAsset = sceneAssetMapper.selectOne(assetWrapper);
+                    boolean hasAssets = activeAsset != null && activeAsset.getFilePath() != null;
+                    info.setHasAssets(hasAssets);
+                    if (hasAssets) {
+                        info.setPreviewUrl(activeAsset.getFilePath());
+                    }
+                    info.setIsNew(false);
+                    info.setSelected(!isLocked);
+                } else {
+                    info.setIsLocked(false);
+                    info.setHasAssets(false);
+                    info.setIsNew(true);
+                    info.setSelected(true);
+                }
+
+                sceneInfos.add(info);
+            }
+        }
+        vo.setScenes(sceneInfos);
+
+        // 从 LLM 解析结果构建道具列表
+        List<ParsedAssetsVO.PropAssetInfo> propInfos = new ArrayList<>();
+        JSONArray propsArray = parsedJson.getJSONArray("props");
+        if (propsArray != null) {
+            for (int i = 0; i < propsArray.size(); i++) {
+                JSONObject propObj = propsArray.getJSONObject(i);
+                String propName = propObj.getString("propName");
+
+                ParsedAssetsVO.PropAssetInfo info = new ParsedAssetsVO.PropAssetInfo();
+                info.setPropName(propName);
+                info.setPropCode(propObj.getString("propCode"));
+                // 使用 LLM 解析的描述
+                info.setDescription(propObj.getString("description"));
+
+                // 检查数据库中是否已存在
+                Prop dbProp = propMap.get(propName);
+                if (dbProp != null) {
+                    info.setId(dbProp.getId());
+                    boolean isLocked = PropStatus.LOCKED.getCode().equals(dbProp.getStatus());
+                    info.setIsLocked(isLocked);
+
+                    // 检查是否有资产
+                    LambdaQueryWrapper<PropAsset> propAssetWrapper = new LambdaQueryWrapper<>();
+                    propAssetWrapper.eq(PropAsset::getPropId, dbProp.getId())
+                            .eq(PropAsset::getIsActive, 1);
+                    PropAsset activePropAsset = propAssetMapper.selectOne(propAssetWrapper);
+                    boolean hasAssets = activePropAsset != null && activePropAsset.getFilePath() != null;
+                    info.setHasAssets(hasAssets);
+                    if (hasAssets) {
+                        info.setPreviewUrl(activePropAsset.getFilePath());
+                    }
+                    info.setIsNew(false);
+                    info.setSelected(!isLocked);
+                } else {
+                    info.setIsLocked(false);
+                    info.setHasAssets(false);
+                    info.setIsNew(true);
+                    info.setSelected(true);
+                }
+
+                propInfos.add(info);
+            }
+        }
+        vo.setProps(propInfos);
+
+        log.info("getParsedAssets 返回: episodeId={}, scenes={}, props={}",
+                episodeId, sceneInfos.size(), propInfos.size());
+
+        return vo;
+    }
+
+    @Override
+    @Async("llmExecutor")
+    public void generateSelectedAssets(Long episodeId, GenerateAssetsRequest request) {
+        log.info("开始批量生成资产: episodeId={}, sceneIds={}, propIds={}, newSceneNames={}, newPropNames={}",
+                episodeId, request.getSceneIds(), request.getPropIds(),
+                request.getNewSceneNames(), request.getNewPropNames());
+
+        Episode episode = episodeMapper.selectById(episodeId);
+        if (episode == null) {
+            log.error("剧集不存在: episodeId={}", episodeId);
+            return;
+        }
+
+        Long seriesId = episode.getSeriesId();
+
+        // 从 parsedScript 获取 LLM 解析的详细信息
+        Map<String, JSONObject> sceneInfoMap = new HashMap<>();
+        Map<String, JSONObject> propInfoMap = new HashMap<>();
+        if (episode.getParsedScript() != null && !episode.getParsedScript().isEmpty()) {
+            try {
+                JSONObject parsedJson = JSON.parseObject(episode.getParsedScript());
+                JSONArray scenesArray = parsedJson.getJSONArray("scenes");
+                if (scenesArray != null) {
+                    for (int i = 0; i < scenesArray.size(); i++) {
+                        JSONObject sceneObj = scenesArray.getJSONObject(i);
+                        sceneInfoMap.put(sceneObj.getString("sceneName"), sceneObj);
+                    }
+                }
+                JSONArray propsArray = parsedJson.getJSONArray("props");
+                if (propsArray != null) {
+                    for (int i = 0; i < propsArray.size(); i++) {
+                        JSONObject propObj = propsArray.getJSONObject(i);
+                        propInfoMap.put(propObj.getString("propName"), propObj);
+                    }
+                }
+            } catch (Exception e) {
+                log.error("解析 parsedScript 失败: episodeId={}", episodeId, e);
+            }
+        }
+
+        // 删除未选中的已存在道具
+        if (request.getUnselectedPropIds() != null && !request.getUnselectedPropIds().isEmpty()) {
+            for (Long propId : request.getUnselectedPropIds()) {
+                try {
+                    Prop prop = propMapper.selectById(propId);
+                    if (prop != null && !PropStatus.LOCKED.getCode().equals(prop.getStatus())) {
+                        propService.deleteProp(propId);
+                        log.info("删除未选中的道具: propId={}, propName={}", propId, prop.getPropName());
+                    }
+                } catch (Exception e) {
+                    log.error("删除道具失败: propId={}", propId, e);
+                }
+            }
+        }
+
+        // 删除未选中的已存在场景
+        if (request.getUnselectedSceneIds() != null && !request.getUnselectedSceneIds().isEmpty()) {
+            for (Long sceneId : request.getUnselectedSceneIds()) {
+                try {
+                    Scene scene = sceneMapper.selectById(sceneId);
+                    if (scene != null && !SceneStatus.LOCKED.getCode().equals(scene.getStatus())) {
+                        sceneService.deleteScene(sceneId);
+                        log.info("删除未选中的场景: sceneId={}, sceneName={}", sceneId, scene.getSceneName());
+                    }
+                } catch (Exception e) {
+                    log.error("删除场景失败: sceneId={}", sceneId, e);
+                }
+            }
+        }
+
+        // 创建新道具并生成图片
+        List<Long> allPropIds = new ArrayList<>(request.getPropIds() != null ? request.getPropIds() : new ArrayList<>());
+        if (request.getNewPropNames() != null && !request.getNewPropNames().isEmpty()) {
+            for (String propName : request.getNewPropNames()) {
+                JSONObject propInfo = propInfoMap.get(propName);
+                if (propInfo == null) continue;
+
+                // 创建新道具
+                Prop prop = new Prop();
+                prop.setSeriesId(seriesId);
+                prop.setPropName(propName);
+                prop.setPropCode(propInfo.getString("propCode"));
+                prop.setDescription(propInfo.getString("description"));
+                prop.setPropType(propInfo.getString("propType"));
+                prop.setColor(propInfo.getString("color"));
+                prop.setStatus(PropStatus.GENERATING.getCode());
+                prop.setCreatedAt(LocalDateTime.now());
+                prop.setUpdatedAt(LocalDateTime.now());
+                propMapper.insert(prop);
+
+                allPropIds.add(prop.getId());
+                log.info("创建新道具: propId={}, propName={}", prop.getId(), propName);
+            }
+        }
+
+        // 创建新场景并生成图片
+        List<Long> allSceneIds = new ArrayList<>(request.getSceneIds() != null ? request.getSceneIds() : new ArrayList<>());
+        if (request.getNewSceneNames() != null && !request.getNewSceneNames().isEmpty()) {
+            for (String sceneName : request.getNewSceneNames()) {
+                JSONObject sceneInfo = sceneInfoMap.get(sceneName);
+                if (sceneInfo == null) continue;
+
+                // 创建新场景
+                Scene scene = new Scene();
+                scene.setSeriesId(seriesId);
+                scene.setSceneName(sceneName);
+                scene.setSceneCode(sceneInfo.getString("sceneCode"));
+                scene.setDescription(sceneInfo.getString("description"));
+                scene.setLocationType(sceneInfo.getString("locationType"));
+                scene.setTimeOfDay(sceneInfo.getString("timeOfDay"));
+                scene.setWeather(sceneInfo.getString("weather"));
+                scene.setStatus(SceneStatus.GENERATING.getCode());
+                scene.setCreatedAt(LocalDateTime.now());
+                scene.setUpdatedAt(LocalDateTime.now());
+                sceneMapper.insert(scene);
+
+                allSceneIds.add(scene.getId());
+                log.info("创建新场景: sceneId={}, sceneName={}", scene.getId(), sceneName);
+            }
+        }
+
+        // 更新已存在的场景状态为生成中
+        if (request.getSceneIds() != null && !request.getSceneIds().isEmpty()) {
+            for (Long sceneId : request.getSceneIds()) {
+                Scene scene = sceneMapper.selectById(sceneId);
+                if (scene == null || SceneStatus.LOCKED.getCode().equals(scene.getStatus())) {
+                    continue;
+                }
+                scene.setStatus(SceneStatus.GENERATING.getCode());
+                scene.setUpdatedAt(LocalDateTime.now());
+                sceneMapper.updateById(scene);
+            }
+        }
+
+        // 更新已存在的道具状态为生成中
+        if (request.getPropIds() != null && !request.getPropIds().isEmpty()) {
+            for (Long propId : request.getPropIds()) {
+                Prop prop = propMapper.selectById(propId);
+                if (prop == null || PropStatus.LOCKED.getCode().equals(prop.getStatus())) {
+                    continue;
+                }
+                prop.setStatus(PropStatus.GENERATING.getCode());
+                prop.setUpdatedAt(LocalDateTime.now());
+                propMapper.updateById(prop);
+            }
+        }
+
+        // 触发场景生成任务
+        for (Long sceneId : allSceneIds) {
+            Scene scene = sceneMapper.selectById(sceneId);
+            if (scene == null || SceneStatus.LOCKED.getCode().equals(scene.getStatus())) {
+                continue;
+            }
+
+            // 检查是否已有资产
+            LambdaQueryWrapper<SceneAsset> assetWrapper = new LambdaQueryWrapper<>();
+            assetWrapper.eq(SceneAsset::getSceneId, sceneId)
+                    .eq(SceneAsset::getIsActive, 1);
+            SceneAsset existingAsset = sceneAssetMapper.selectOne(assetWrapper);
+
+                if (existingAsset != null) {
+                    // 已有资产，重新生成（版本+1）
+                    log.info("提交场景重新生成任务: sceneId={}", sceneId);
+                    sceneService.regenerateSceneAsset(sceneId, null, null, request.getQuality());
+                } else {
+                    // 无资产，首次生成
+                    log.info("提交场景首次生成任务: sceneId={}", sceneId);
+                    sceneService.generateSceneAssets(sceneId);
+                }
+        }
+
+        // 触发道具生成任务
+        for (Long propId : allPropIds) {
+            Prop prop = propMapper.selectById(propId);
+            if (prop == null || PropStatus.LOCKED.getCode().equals(prop.getStatus())) {
+                continue;
+            }
+
+            // 检查是否已有资产
+            LambdaQueryWrapper<PropAsset> propAssetWrapper = new LambdaQueryWrapper<>();
+            propAssetWrapper.eq(PropAsset::getPropId, propId)
+                    .eq(PropAsset::getIsActive, 1);
+            PropAsset existingPropAsset = propAssetMapper.selectOne(propAssetWrapper);
+
+            if (existingPropAsset != null) {
+                log.info("提交道具重新生成任务: propId={}", propId);
+                propService.regeneratePropAsset(propId, null, request.getQuality());
+            } else {
+                log.info("提交道具首次生成任务: propId={}", propId);
+                propService.generatePropAssets(propId);
+            }
+        }
+
+        // 异步触发分镜解析
+        log.info("触发分镜解析: episodeId={}", episodeId);
+        parseShots(episodeId);
+
+        log.info("批量生成资产任务已全部提交: episodeId={}", episodeId);
     }
 }

@@ -3,6 +3,8 @@ package com.manga.ai.episode.service;
 import com.manga.ai.episode.dto.EpisodeCreateRequest;
 import com.manga.ai.episode.dto.EpisodeDetailVO;
 import com.manga.ai.episode.dto.EpisodeProgressVO;
+import com.manga.ai.episode.dto.GenerateAssetsRequest;
+import com.manga.ai.episode.dto.ParsedAssetsVO;
 import com.manga.ai.episode.entity.Episode;
 
 import java.util.List;
@@ -21,10 +23,16 @@ public interface EpisodeService {
     Long createEpisode(Long seriesId, EpisodeCreateRequest request);
 
     /**
-     * 异步解析剧本
+     * 异步解析剧本（只解析场景和道具）
      * @param episodeId 剧集ID
      */
     void parseScript(Long episodeId);
+
+    /**
+     * 异步解析分镜
+     * @param episodeId 剧集ID
+     */
+    void parseShots(Long episodeId);
 
     /**
      * 获取剧集详情
@@ -59,4 +67,18 @@ public interface EpisodeService {
      * @param scriptText 剧本文本
      */
     void updateScript(Long episodeId, String scriptText);
+
+    /**
+     * 获取解析后的资产清单
+     * @param episodeId 剧集ID
+     * @return 资产清单（包含场景和道具）
+     */
+    ParsedAssetsVO getParsedAssets(Long episodeId);
+
+    /**
+     * 批量生成选中资产的图片
+     * @param episodeId 剧集ID
+     * @param request 生成请求（包含选中的场景和道具ID）
+     */
+    void generateSelectedAssets(Long episodeId, GenerateAssetsRequest request);
 }

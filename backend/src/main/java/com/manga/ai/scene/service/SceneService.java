@@ -76,9 +76,10 @@ public interface SceneService {
      * @param sceneName 场景名称
      * @param aspectRatio 图片比例
      * @param quality 清晰度
+     * @param customPrompt 自定义提示词（可选）
      * @return 创建的场景ID
      */
-    Long createScene(Long seriesId, Long episodeId, String sceneName, String aspectRatio, String quality);
+    Long createScene(Long seriesId, Long episodeId, String sceneName, String aspectRatio, String quality, String customPrompt);
 
     /**
      * 回滚到指定版本

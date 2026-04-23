@@ -21,6 +21,7 @@ import com.manga.ai.series.mapper.SeriesMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.BeanUtils;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -28,6 +29,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.Executor;
 import java.util.stream.Collectors;
 
 /**
@@ -45,6 +47,9 @@ public class SceneServiceImpl implements SceneService {
     private final ImageGenerateService imageGenerateService;
     private final OssService ossService;
     private final ImagePromptGenerateService imagePromptGenerateService;
+
+    @Qualifier("imageGenerateExecutor")
+    private final Executor imageGenerateExecutor;
 
     @Override
     public List<SceneDetailVO> getScenesBySeriesId(Long seriesId) {
@@ -226,17 +231,35 @@ public class SceneServiceImpl implements SceneService {
             String finalAspectRatio = scene.getAspectRatio() != null ? scene.getAspectRatio() : "16:9";
             String finalQuality = scene.getQuality() != null ? scene.getQuality() : "2k";
 
-            // 创建新资产记录
-            asset = new SceneAsset();
-            asset.setSceneId(sceneId);
-            asset.setAssetType("background");
-            asset.setViewType("main");
-            asset.setVersion(nextVersion);
-            asset.setStatus(0);
-            asset.setIsActive(0); // 先不激活，生成成功后再激活
-            asset.setCreatedAt(LocalDateTime.now());
-            asset.setUpdatedAt(LocalDateTime.now());
-            sceneAssetMapper.insert(asset);
+            // 检查是否已存在占位资产（从createScene同步创建的）
+            LambdaQueryWrapper<SceneAsset> placeholderWrapper = new LambdaQueryWrapper<>();
+            placeholderWrapper.eq(SceneAsset::getSceneId, sceneId)
+                    .eq(SceneAsset::getStatus, 0)
+                    .eq(SceneAsset::getIsActive, 0)
+                    .orderByDesc(SceneAsset::getVersion)
+                    .last("LIMIT 1");
+            asset = sceneAssetMapper.selectOne(placeholderWrapper);
+
+            int actualVersion;
+            if (asset != null) {
+                // 已存在占位资产，使用它
+                actualVersion = asset.getVersion();
+                log.info("使用已存在的占位资产: sceneId={}, version={}, assetId={}", sceneId, actualVersion, asset.getId());
+            } else {
+                // 没有占位资产，创建新资产记录
+                actualVersion = nextVersion;
+                asset = new SceneAsset();
+                asset.setSceneId(sceneId);
+                asset.setAssetType("background");
+                asset.setViewType("main");
+                asset.setVersion(actualVersion);
+                asset.setStatus(0);
+                asset.setIsActive(0);
+                asset.setCreatedAt(LocalDateTime.now());
+                asset.setUpdatedAt(LocalDateTime.now());
+                sceneAssetMapper.insert(asset);
+                log.info("创建新资产记录: sceneId={}, version={}, assetId={}", sceneId, actualVersion, asset.getId());
+            }
 
             // 调用图片生成服务
             ImageGenerateRequest request = new ImageGenerateRequest();
@@ -263,7 +286,7 @@ public class SceneServiceImpl implements SceneService {
                 // 激活新资产
                 asset.setFilePath(ossUrl);
                 asset.setThumbnailPath(ossUrl);
-                asset.setFileName(scene.getSceneName() + "_v" + nextVersion + ".png");
+                asset.setFileName(scene.getSceneName() + "_v" + actualVersion + ".png");
                 asset.setStatus(1);
                 asset.setIsActive(1);
                 asset.setUpdatedAt(LocalDateTime.now());
@@ -286,7 +309,7 @@ public class SceneServiceImpl implements SceneService {
                 scene.setUpdatedAt(LocalDateTime.now());
                 sceneMapper.updateById(scene);
 
-                log.info("场景资产重新生成完成: sceneId={}, assetId={}, version={}", sceneId, asset.getId(), nextVersion);
+                log.info("场景资产重新生成完成: sceneId={}, assetId={}, version={}", sceneId, asset.getId(), actualVersion);
             } else {
                 throw new RuntimeException("图片生成失败: 响应为空");
             }
@@ -381,19 +404,26 @@ public class SceneServiceImpl implements SceneService {
             throw new BusinessException("场景不存在");
         }
 
-        // 删除关联的资产元数据
+        // 查询关联的资产ID列表
         LambdaQueryWrapper<SceneAsset> assetWrapper = new LambdaQueryWrapper<>();
-        assetWrapper.eq(SceneAsset::getSceneId, sceneId);
+        assetWrapper.eq(SceneAsset::getSceneId, sceneId)
+                .select(SceneAsset::getId);
         List<SceneAsset> assets = sceneAssetMapper.selectList(assetWrapper);
 
-        for (SceneAsset asset : assets) {
+        if (!assets.isEmpty()) {
+            // 批量删除资产元数据
+            List<Long> assetIds = assets.stream()
+                    .map(SceneAsset::getId)
+                    .collect(Collectors.toList());
             LambdaQueryWrapper<SceneAssetMetadata> metadataWrapper = new LambdaQueryWrapper<>();
-            metadataWrapper.eq(SceneAssetMetadata::getAssetId, asset.getId());
+            metadataWrapper.in(SceneAssetMetadata::getAssetId, assetIds);
             sceneAssetMetadataMapper.delete(metadataWrapper);
-        }
 
-        // 删除关联的资产
-        sceneAssetMapper.delete(assetWrapper);
+            // 批量删除关联的资产
+            LambdaQueryWrapper<SceneAsset> deleteAssetWrapper = new LambdaQueryWrapper<>();
+            deleteAssetWrapper.eq(SceneAsset::getSceneId, sceneId);
+            sceneAssetMapper.delete(deleteAssetWrapper);
+        }
 
         // 删除场景
         sceneMapper.deleteById(sceneId);
@@ -509,6 +539,16 @@ public class SceneServiceImpl implements SceneService {
                 .collect(Collectors.toList());
         vo.setAssets(assetVOs);
 
+        // 检查最新版本是否正在生成中（版本最高且 status=0）
+        if (!assetVOs.isEmpty()) {
+            SceneDetailVO.SceneAssetVO latestAsset = assetVOs.stream()
+                    .max((a, b) -> Integer.compare(a.getVersion(), b.getVersion()))
+                    .orElse(null);
+            if (latestAsset != null && latestAsset.getStatus() != null && latestAsset.getStatus() == 0) {
+                vo.setStatus(0);
+            }
+        }
+
         // 设置激活资产URL
         for (SceneDetailVO.SceneAssetVO assetVO : assetVOs) {
             if (assetVO.getIsActive() != null && assetVO.getIsActive() == 1) {
@@ -531,9 +571,9 @@ public class SceneServiceImpl implements SceneService {
 
     @Override
     @Transactional(rollbackFor = Exception.class)
-    public Long createScene(Long seriesId, Long episodeId, String sceneName, String aspectRatio, String quality) {
-        log.info("手动创建场景: seriesId={}, episodeId={}, sceneName={}, aspectRatio={}, quality={}",
-                seriesId, episodeId, sceneName, aspectRatio, quality);
+    public Long createScene(Long seriesId, Long episodeId, String sceneName, String aspectRatio, String quality, String customPrompt) {
+        log.info("手动创建场景: seriesId={}, episodeId={}, sceneName={}, aspectRatio={}, quality={}, customPrompt={}",
+                seriesId, episodeId, sceneName, aspectRatio, quality, customPrompt);
 
         // 获取系列信息
         Series series = seriesMapper.selectById(seriesId);
@@ -541,17 +581,59 @@ public class SceneServiceImpl implements SceneService {
             throw new BusinessException("系列不存在");
         }
 
-        // 使用 LLM 生成提示词
-        String prompt = imagePromptGenerateService.generateScenePrompt(seriesId, sceneName, episodeId);
-        log.info("LLM 生成的场景提示词: {}", prompt);
+        // 检查同一系列下是否已存在同名场景
+        LambdaQueryWrapper<Scene> wrapper = new LambdaQueryWrapper<>();
+        wrapper.eq(Scene::getSeriesId, seriesId)
+                .eq(Scene::getSceneName, sceneName);
+        Scene existingScene = sceneMapper.selectOne(wrapper);
 
-        // 创建场景记录
+        if (existingScene != null) {
+            // 已存在同名场景，先同步创建占位资产记录，然后异步生成
+            Long sceneId = existingScene.getId();
+            log.info("场景名称已存在，触发重新生成: sceneId={}, sceneName={}", sceneId, sceneName);
+
+            // 更新场景状态为生成中
+            existingScene.setStatus(SceneStatus.GENERATING.getCode());
+            if (aspectRatio != null && !aspectRatio.isEmpty()) {
+                existingScene.setAspectRatio(aspectRatio);
+            }
+            if (quality != null && !quality.isEmpty()) {
+                existingScene.setQuality(quality);
+            }
+            existingScene.setUpdatedAt(LocalDateTime.now());
+            sceneMapper.updateById(existingScene);
+
+            // 获取下一个版本号并创建占位资产记录
+            int nextVersion = getNextVersion(sceneId);
+            SceneAsset placeholderAsset = new SceneAsset();
+            placeholderAsset.setSceneId(sceneId);
+            placeholderAsset.setAssetType("background");
+            placeholderAsset.setViewType("main");
+            placeholderAsset.setVersion(nextVersion);
+            placeholderAsset.setStatus(0); // 生成中
+            placeholderAsset.setIsActive(0); // 先不激活
+            placeholderAsset.setFileName(sceneName + "_v" + nextVersion + "_generating.png");
+            placeholderAsset.setCreatedAt(LocalDateTime.now());
+            placeholderAsset.setUpdatedAt(LocalDateTime.now());
+            sceneAssetMapper.insert(placeholderAsset);
+
+            log.info("已创建占位资产记录: sceneId={}, version={}, assetId={}", sceneId, nextVersion, placeholderAsset.getId());
+
+            // 异步生成图片（使用配置的线程池确保立即执行）
+            final Long finalSceneId = sceneId;
+            final Long finalEpisodeId = episodeId;
+            final String finalAspectRatio = aspectRatio;
+            final String finalQuality = quality;
+            final String finalCustomPrompt = customPrompt;
+            imageGenerateExecutor.execute(() -> regenerateSceneWithLLMPrompt(finalSceneId, finalEpisodeId, finalAspectRatio, finalQuality, finalCustomPrompt));
+            return sceneId;
+        }
+
+        // 创建场景记录（先创建，后续异步生成）
         Scene scene = new Scene();
         scene.setSeriesId(seriesId);
         scene.setSceneName(sceneName);
         scene.setSceneCode("MANUAL_" + System.currentTimeMillis());
-        scene.setDescription(prompt);
-        scene.setCustomPrompt(prompt);
         scene.setStyleKeywords(series.getStyleKeywords());
         scene.setAspectRatio(aspectRatio != null ? aspectRatio : "16:9");
         scene.setQuality(quality != null ? quality : "2k");
@@ -562,10 +644,112 @@ public class SceneServiceImpl implements SceneService {
 
         log.info("场景创建成功: sceneId={}", scene.getId());
 
-        // 异步生成图片
-        generateSceneAssetsWithPrompt(scene.getId(), prompt, aspectRatio, quality);
+        // 异步生成提示词和图片（使用配置的线程池确保立即执行）
+        final Long sceneId = scene.getId();
+        final Long finalEpisodeId = episodeId;
+        final String finalAspectRatio = aspectRatio;
+        final String finalQuality = quality;
+        final String finalCustomPrompt = customPrompt;
+        imageGenerateExecutor.execute(() -> generateSceneWithLLMPrompt(sceneId, finalEpisodeId, finalAspectRatio, finalQuality, finalCustomPrompt));
 
         return scene.getId();
+    }
+
+    /**
+     * 异步生成场景（LLM提示词 + 图片生成）
+     */
+    @Async("imageGenerateExecutor")
+    public void generateSceneWithLLMPrompt(Long sceneId, Long episodeId, String aspectRatio, String quality, String customPrompt) {
+        log.info("开始异步生成场景: sceneId={}, customPrompt={}", sceneId, customPrompt != null);
+
+        Scene scene = sceneMapper.selectById(sceneId);
+        if (scene == null) {
+            log.error("场景不存在: sceneId={}", sceneId);
+            return;
+        }
+
+        try {
+            String prompt;
+            String userPrompt = null;  // 用户输入的自定义提示词
+            if (customPrompt != null && !customPrompt.trim().isEmpty()) {
+                // 使用用户提供的自定义提示词
+                prompt = customPrompt;
+                userPrompt = customPrompt;
+                log.info("使用自定义提示词: {}", prompt);
+            } else {
+                // 使用 LLM 生成提示词
+                prompt = imagePromptGenerateService.generateScenePrompt(scene.getSeriesId(), scene.getSceneName(), episodeId);
+                log.info("LLM 生成的场景提示词: {}", prompt);
+            }
+
+            // 更新场景：description存实际使用的提示词，customPrompt只存用户输入的
+            scene.setDescription(prompt);
+            scene.setCustomPrompt(userPrompt);  // 只存用户输入的，没输入则为null
+            scene.setUpdatedAt(LocalDateTime.now());
+            sceneMapper.updateById(scene);
+
+            // 生成图片
+            generateSceneAssetsWithPrompt(sceneId, prompt, aspectRatio, quality);
+        } catch (Exception e) {
+            log.error("场景生成失败: sceneId={}", sceneId, e);
+            scene.setStatus(SceneStatus.PENDING_REVIEW.getCode());
+            scene.setUpdatedAt(LocalDateTime.now());
+            sceneMapper.updateById(scene);
+        }
+    }
+
+    /**
+     * 异步重新生成场景（LLM提示词 + 图片生成，版本+1）
+     */
+    @Async("imageGenerateExecutor")
+    public void regenerateSceneWithLLMPrompt(Long sceneId, Long episodeId, String aspectRatio, String quality, String customPrompt) {
+        log.info("开始异步重新生成场景: sceneId={}, customPrompt={}", sceneId, customPrompt != null);
+
+        Scene scene = sceneMapper.selectById(sceneId);
+        if (scene == null) {
+            log.error("场景不存在: sceneId={}", sceneId);
+            return;
+        }
+
+        try {
+            // 更新比例和清晰度
+            if (aspectRatio != null && !aspectRatio.isEmpty()) {
+                scene.setAspectRatio(aspectRatio);
+            }
+            if (quality != null && !quality.isEmpty()) {
+                scene.setQuality(quality);
+            }
+            scene.setStatus(SceneStatus.GENERATING.getCode());
+            scene.setUpdatedAt(LocalDateTime.now());
+            sceneMapper.updateById(scene);
+
+            String prompt;
+            String userPrompt = null;  // 用户输入的自定义提示词
+            if (customPrompt != null && !customPrompt.trim().isEmpty()) {
+                // 使用用户提供的自定义提示词
+                prompt = customPrompt;
+                userPrompt = customPrompt;
+                log.info("使用自定义提示词: {}", prompt);
+            } else {
+                // 使用 LLM 生成提示词
+                prompt = imagePromptGenerateService.generateScenePrompt(scene.getSeriesId(), scene.getSceneName(), episodeId);
+                log.info("LLM 生成的场景提示词: {}", prompt);
+            }
+
+            // 更新场景：description存实际使用的提示词，customPrompt只存用户输入的
+            scene.setDescription(prompt);
+            scene.setCustomPrompt(userPrompt);  // 只存用户输入的，没输入则为null
+            scene.setUpdatedAt(LocalDateTime.now());
+            sceneMapper.updateById(scene);
+
+            // 调用重新生成逻辑（版本+1）
+            regenerateSceneAsset(sceneId, prompt, aspectRatio, quality);
+        } catch (Exception e) {
+            log.error("场景重新生成失败: sceneId={}", sceneId, e);
+            scene.setStatus(SceneStatus.PENDING_REVIEW.getCode());
+            scene.setUpdatedAt(LocalDateTime.now());
+            sceneMapper.updateById(scene);
+        }
     }
 
     /**

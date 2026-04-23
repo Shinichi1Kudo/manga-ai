@@ -74,9 +74,10 @@ public interface PropService {
      * @param episodeId 剧集ID
      * @param propName 道具名称
      * @param quality 清晰度
+     * @param customPrompt 自定义提示词（可选）
      * @return 创建的道具ID
      */
-    Long createProp(Long seriesId, Long episodeId, String propName, String quality);
+    Long createProp(Long seriesId, Long episodeId, String propName, String quality, String customPrompt);
 
     /**
      * 回滚到指定版本

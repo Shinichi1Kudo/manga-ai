@@ -48,11 +48,12 @@ public class PropController {
         Long episodeId = body.get("episodeId") != null ? Long.valueOf(body.get("episodeId").toString()) : null;
         String propName = (String) body.get("propName");
         String quality = (String) body.get("quality");
+        String customPrompt = (String) body.get("customPrompt");
 
-        log.info("手动创建道具: seriesId={}, episodeId={}, propName={}, quality={}",
-                seriesId, episodeId, propName, quality);
+        log.info("手动创建道具: seriesId={}, episodeId={}, propName={}, quality={}, customPrompt={}",
+                seriesId, episodeId, propName, quality, customPrompt);
 
-        Long propId = propService.createProp(seriesId, episodeId, propName, quality);
+        Long propId = propService.createProp(seriesId, episodeId, propName, quality, customPrompt);
         return Result.success(propId);
     }
 

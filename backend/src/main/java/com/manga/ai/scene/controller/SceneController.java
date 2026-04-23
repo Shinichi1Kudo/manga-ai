@@ -49,11 +49,12 @@ public class SceneController {
         String sceneName = (String) body.get("sceneName");
         String aspectRatio = (String) body.get("aspectRatio");
         String quality = (String) body.get("quality");
+        String customPrompt = (String) body.get("customPrompt");
 
-        log.info("手动创建场景: seriesId={}, episodeId={}, sceneName={}, aspectRatio={}, quality={}",
-                seriesId, episodeId, sceneName, aspectRatio, quality);
+        log.info("手动创建场景: seriesId={}, episodeId={}, sceneName={}, aspectRatio={}, quality={}, customPrompt={}",
+                seriesId, episodeId, sceneName, aspectRatio, quality, customPrompt != null);
 
-        Long sceneId = sceneService.createScene(seriesId, episodeId, sceneName, aspectRatio, quality);
+        Long sceneId = sceneService.createScene(seriesId, episodeId, sceneName, aspectRatio, quality, customPrompt);
         return Result.success(sceneId);
     }
 

@@ -25,6 +25,7 @@ public class EpisodeDetailVO implements Serializable {
     private Integer totalDuration;
     private Integer status;
     private String statusDesc;
+    private String errorMessage;  // 错误信息
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 

@@ -73,6 +73,20 @@
         </div>
     </div>
     <div id="scriptContent" class="bg-white/5 rounded-xl p-4 text-white/80 whitespace-pre-wrap max-h-96 overflow-y-auto">{{ episode.scriptText|default:"暂无剧本内容" }}</div>
+
+    <!-- 解析错误提示 -->
+    {% if episode.errorMessage %}
+    <div id="parseErrorAlert" class="mt-4 p-4 bg-red-500/20 border border-red-500/50 rounded-xl flex items-center gap-3">
+        <i data-lucide="alert-circle" class="w-5 h-5 text-red-400 flex-shrink-0"></i>
+        <div class="flex-1">
+            <p class="text-red-300 font-medium">剧本解析失败</p>
+            <p class="text-red-400/80 text-sm mt-1">{{ episode.errorMessage }}</p>
+        </div>
+        <button onclick="document.getElementById('reparseBtn').click()" class="px-3 py-1.5 rounded-lg bg-red-500/30 hover:bg-red-500/50 text-red-300 text-sm transition-colors">
+            重新解析
+        </button>
+    </div>
+    {% endif %}
 </div>
 
 <!-- Edit Script Modal -->
@@ -107,9 +121,9 @@
         </button>
     </div>
     {% if scenes %}
-    <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
+    <div id="scenesGrid" class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
         {% for scene in scenes %}
-        <div class="glass-card glass-card-hover p-3 text-center group relative">
+        <div class="glass-card glass-card-hover p-3 text-center group relative" data-scene-name="{{ scene.sceneName }}" data-scene-id="{{ scene.id }}" data-status="{{ scene.status }}">
             <div class="w-full aspect-video rounded-lg bg-white/5 mb-2 overflow-hidden flex items-center justify-center cursor-pointer scene-history-btn"
                  data-scene-id="{{ scene.id }}" data-scene-name="{{ scene.sceneName }}" data-scene-assets='{{ scene.assets|to_json }}'>
                 {% if scene.activeAssetUrl %}
@@ -151,7 +165,7 @@
                         {{ scene.statusDesc }}
                     </span>
                     {% if scene.assets and scene.assets|length > 1 %}
-                    <span class="text-xs text-white/30">· {{ scene.assets|length }}版本</span>
+                    <span class="text-xs text-white/30 version-count">· {{ scene.assets|length }}版本</span>
                     {% endif %}
                 </div>
                 <!-- 下拉菜单 -->
@@ -200,9 +214,9 @@
         </button>
     </div>
     {% if props %}
-    <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
+    <div id="propsGrid" class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
         {% for prop in props %}
-        <div class="glass-card glass-card-hover p-3 text-center group relative">
+        <div class="glass-card glass-card-hover p-3 text-center group relative" data-prop-name="{{ prop.propName }}" data-prop-id="{{ prop.id }}" data-status="{{ prop.status }}">
             <div class="w-full aspect-square rounded-lg bg-white/5 mb-2 overflow-hidden flex items-center justify-center cursor-pointer prop-history-btn"
                  data-prop-id="{{ prop.id }}" data-prop-name="{{ prop.propName }}" data-prop-assets='{{ prop.assets|to_json }}'>
                 {% if prop.activeAssetUrl %}
@@ -246,7 +260,7 @@
                         {{ prop.statusDesc }}
                     </span>
                     {% if prop.assets and prop.assets|length > 1 %}
-                    <span class="text-xs text-white/30">· {{ prop.assets|length }}版本</span>
+                    <span class="text-xs text-white/30 version-count">· {{ prop.assets|length }}版本</span>
                     {% endif %}
                 </div>
                 <!-- 下拉菜单 -->
@@ -490,6 +504,79 @@
     </div>
 </div>
 
+<!-- Asset Selection Modal -->
+<div id="assetSelectionModal" class="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 hidden overflow-y-auto">
+    <div class="flex items-center justify-center min-h-full p-4">
+        <div class="glass-card p-6 w-full max-w-4xl max-h-[90vh] overflow-y-auto relative">
+            <div class="flex items-center justify-between mb-6">
+                <h3 class="text-xl font-semibold text-white">
+                    <i data-lucide="check-square" class="w-5 h-5 inline mr-2"></i>
+                    选择需要生成图片的资产
+                </h3>
+                <button id="closeAssetModal" class="text-white/50 hover:text-white transition-colors">
+                    <i data-lucide="x" class="w-6 h-6"></i>
+                </button>
+            </div>
+
+            <!-- 说明 -->
+            <div class="bg-blue-500/10 border border-blue-500/30 rounded-xl p-4 mb-6">
+                <p class="text-blue-300 text-sm">
+                    <i data-lucide="info" class="w-4 h-4 inline mr-1"></i>
+                    剧本解析完成！以下是识别到的场景和道具，请勾选需要生成图片的资产。已锁定的资产将不会重新生成。
+                </p>
+            </div>
+
+            <!-- 场景列表 -->
+            <div class="mb-6">
+                <div class="flex items-center justify-between mb-3">
+                    <h4 class="text-lg font-medium text-white flex items-center gap-2">
+                        <i data-lucide="image" class="w-5 h-5"></i>场景资产 (<span id="sceneCount">0</span>)
+                    </h4>
+                    <label class="flex items-center gap-2 text-sm text-white/70 cursor-pointer">
+                        <input type="checkbox" id="selectAllScenes" class="w-4 h-4 rounded border-white/20 bg-white/5 text-blue-500 focus:ring-blue-500/50">
+                        全选场景
+                    </label>
+                </div>
+                <div id="sceneAssetList" class="space-y-2 max-h-[200px] overflow-y-auto">
+                    <!-- 动态填充 -->
+                </div>
+            </div>
+
+            <!-- 道具列表 -->
+            <div class="mb-6">
+                <div class="flex items-center justify-between mb-3">
+                    <h4 class="text-lg font-medium text-white flex items-center gap-2">
+                        <i data-lucide="box" class="w-5 h-5"></i>道具资产 (<span id="propCount">0</span>)
+                    </h4>
+                    <label class="flex items-center gap-2 text-sm text-white/70 cursor-pointer">
+                        <input type="checkbox" id="selectAllProps" class="w-4 h-4 rounded border-white/20 bg-white/5 text-blue-500 focus:ring-blue-500/50">
+                        全选道具
+                    </label>
+                </div>
+                <div id="propAssetList" class="space-y-2 max-h-[200px] overflow-y-auto">
+                    <!-- 动态填充 -->
+                </div>
+            </div>
+
+            <!-- 操作按钮 -->
+            <div class="flex justify-between items-center pt-4 border-t border-white/10">
+                <p class="text-white/50 text-sm">
+                    已选择 <span id="selectedCount" class="text-blue-400 font-medium">0</span> 个资产
+                </p>
+                <div class="flex gap-3">
+                    <button id="skipGenerationBtn" class="px-5 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 transition-all">
+                        稍后生成
+                    </button>
+                    <button id="generateSelectedBtn" class="px-5 py-2.5 rounded-xl bg-gradient-to-r from-blue-500 to-cyan-500 hover:from-blue-600 hover:to-cyan-600 transition-all font-medium flex items-center gap-2">
+                        <i data-lucide="sparkles" class="w-4 h-4"></i>
+                        生成选中资产
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- Edit Scene Name Modal -->
 <div id="editSceneNameModal" class="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 hidden overflow-y-auto">
     <div class="flex items-center justify-center min-h-full p-4">
@@ -618,6 +705,14 @@ const episodeId = {{ episode_id }};
 const seriesId = {{ series_id }};
 const episodeStatus = {{ episode.status }};
 
+// 打印道具数据到控制台
+const propsData = {{ props|to_json|default:"[]" }};
+console.log('[DEBUG] 详情页道具数据:', propsData);
+console.log('[DEBUG] 道具数量:', propsData.length);
+propsData.forEach((p, i) => {
+    console.log(`  [${i}] id=${p.id}, name=${p.propName}, status=${p.status}`);
+});
+
 // 统计数据
 const shots = {{ shots|safe|default:'[]' }};
 let completed = 0, pending = 0;
@@ -645,6 +740,118 @@ function closeFormModal(modalId) {
     document.body.style.overflow = '';
 }
 
+// 遮罩层和轮询相关函数
+const pollingItems = new Map();
+
+function startPolling(type, id) {
+    const key = `${type}_${id}`;
+    if (!pollingItems.has(key)) {
+        pollingItems.set(key, { type, id });
+        console.log(`开始轮询: ${key}`);
+    }
+}
+
+function stopPolling(type, id) {
+    const key = `${type}_${id}`;
+    pollingItems.delete(key);
+    console.log(`停止轮询: ${key}`);
+}
+
+// 添加遮罩层
+function addOverlay(card, type) {
+    if (!card) return;
+    const oldOverlay = card.querySelector(`.${type}-overlay`);
+    if (oldOverlay) oldOverlay.remove();
+
+    const overlay = document.createElement('div');
+    overlay.className = `absolute inset-0 bg-black/70 backdrop-blur-sm rounded-xl flex flex-col items-center justify-center z-10 ${type}-overlay`;
+    overlay.style.pointerEvents = 'auto';
+    overlay.innerHTML = `
+        <i data-lucide="loader-2" class="w-8 h-8 text-blue-400 animate-spin mb-2"></i>
+        <p class="text-sm text-blue-400">生成中...</p>
+    `;
+    card.style.position = 'relative';
+    card.appendChild(overlay);
+    lucide.createIcons();
+}
+
+// 移除遮罩层并更新卡片
+function removeOverlayAndUpdateCard(card, type, data) {
+    if (!card) return;
+
+    const overlay = card.querySelector(`.${type}-overlay`);
+    if (overlay) overlay.remove();
+
+    // 更新卡片的状态属性
+    card.dataset.status = data.status;
+
+    const imgContainer = card.querySelector(`.${type}-history-btn`);
+    const statusSpan = card.querySelector('.text-xs');
+
+    if (imgContainer) {
+        if (data.activeAssetUrl) {
+            imgContainer.innerHTML = `<img src="${data.activeAssetUrl}" class="w-full h-full object-${type === 'scene' ? 'cover' : 'contain'}" alt="${data[type + 'Name']}">`;
+        } else if (data.transparentUrl) {
+            imgContainer.innerHTML = `<img src="${data.transparentUrl}" class="w-full h-full object-contain" alt="${data[type + 'Name']}">`;
+        }
+
+        if (data.assets) {
+            imgContainer.dataset[type + 'Assets'] = JSON.stringify(data.assets);
+        }
+    }
+
+    if (statusSpan) {
+        statusSpan.textContent = data.statusDesc || (data.status === 1 ? '待审核' : '已锁定');
+        statusSpan.className = 'text-xs text-amber-400';
+    }
+
+    lucide.createIcons();
+    stopPolling(type, data.id);
+}
+
+// 检查状态
+async function checkItemStatus(type, id) {
+    const endpoint = `/api/v1/${type}s/${id}/`;
+    try {
+        const response = await fetch(endpoint);
+        const result = await response.json();
+        if (result.code === 200 && result.data) {
+            return result.data;
+        }
+    } catch (e) {
+        console.error(`检查${type}状态失败:`, e);
+    }
+    return null;
+}
+
+// 轮询循环
+setInterval(async () => {
+    for (const [key, item] of pollingItems) {
+        const data = await checkItemStatus(item.type, item.id);
+        if (data && data.status !== 0) {
+            // 状态不再是生成中
+            const card = document.querySelector(`[data-${item.type}-id="${item.id}"]`);
+            removeOverlayAndUpdateCard(card, item.type, data);
+        }
+    }
+}, 5000);
+
+// 页面加载时，为所有生成中的场景和道具添加遮罩并启动轮询
+document.querySelectorAll('[data-scene-id]').forEach(card => {
+    const status = parseInt(card.dataset.status);
+    if (status === 0) {
+        addOverlay(card, 'scene');
+        startPolling('scene', card.dataset.sceneId);
+    }
+});
+document.querySelectorAll('[data-prop-id]').forEach(card => {
+    const status = parseInt(card.dataset.status);
+    if (status === 0) {
+        addOverlay(card, 'prop');
+        startPolling('prop', card.dataset.propId);
+    }
+});
+
 // Close modal buttons
 document.querySelectorAll('.close-modal-btn').forEach(btn => {
     btn.addEventListener('click', function() {
@@ -666,21 +873,37 @@ document.querySelectorAll('[id$="Modal"]').forEach(modal => {
 document.getElementById('addSceneBtn')?.addEventListener('click', function(e) {
     e.preventDefault();
     e.stopPropagation();
+    // 清空输入框
+    document.getElementById('sceneName').value = '';
+    document.getElementById('scenePrompt').value = '';
+    document.getElementById('sceneQuality').value = '2k';
+    document.getElementById('sceneAspectRatio').value = '16:9';
     openFormModal('addSceneModal');
 });
 
-document.getElementById('saveSceneBtn')?.addEventListener('click', async function() {
+document.getElementById('saveSceneBtn')?.addEventListener('click', function() {
     const name = document.getElementById('sceneName').value.trim();
     if (!name) {
         alert('请输入场景名称');
         return;
     }
 
-    this.disabled = true;
-    this.textContent = '提交中...';
+    // 立即关闭弹窗
+    closeFormModal('addSceneModal');
 
-    try {
-        const response = await fetch('/api/v1/scenes', {
+    // 检查是否存在同名场景
+    const scenesGrid = document.getElementById('scenesGrid');
+    const existingCard = scenesGrid ? scenesGrid.querySelector(`[data-scene-name="${name}"]`) : null;
+
+    if (existingCard) {
+        const existingId = existingCard.dataset.sceneId;
+        addOverlay(existingCard, 'scene');
+
+        if (existingId) {
+            startPolling('scene', existingId);
+        }
+
+        fetch('/api/v1/scenes/', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -694,41 +917,89 @@ document.getElementById('saveSceneBtn')?.addEventListener('click', async functio
                 quality: document.getElementById('sceneQuality').value,
                 customPrompt: document.getElementById('scenePrompt').value.trim()
             })
-        });
-        const data = await response.json();
-        if (data.code === 200) {
-            alert('场景添加成功，正在生成图片');
-            closeFormModal('addSceneModal');
-            setTimeout(() => location.reload(), 1000);
-        } else {
-            alert('添加失败: ' + (data.message || '未知错误'));
+        }).catch(e => console.error('场景创建失败:', e));
+    } else {
+        // 添加占位卡片
+        if (scenesGrid) {
+            const placeholder = document.createElement('div');
+            placeholder.className = 'glass-card glass-card-hover p-3 text-center group relative';
+            placeholder.dataset.sceneName = name;
+            placeholder.innerHTML = `
+                <div class="w-full aspect-video rounded-lg bg-white/5 mb-2 overflow-hidden flex items-center justify-center">
+                    <div class="text-center">
+                        <i data-lucide="loader-2" class="w-6 h-6 text-blue-400 animate-spin mx-auto"></i>
+                        <p class="text-xs text-white/50 mt-1">生成中</p>
+                    </div>
+                </div>
+                <p class="text-sm text-white/80 truncate mb-1">${name}</p>
+                <span class="text-xs text-blue-400">生成中</span>
+            `;
+            scenesGrid.appendChild(placeholder);
+            lucide.createIcons();
         }
-    } catch (e) {
-        alert('请求失败: ' + e.message);
+
+        // 异步提交
+        fetch('/api/v1/scenes/', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': getCookie('csrftoken')
+            },
+            body: JSON.stringify({
+                seriesId: seriesId,
+                episodeId: episodeId,
+                sceneName: name,
+                aspectRatio: document.getElementById('sceneAspectRatio').value,
+                quality: document.getElementById('sceneQuality').value,
+                customPrompt: document.getElementById('scenePrompt').value.trim()
+            })
+        }).then(response => response.json())
+          .then(data => {
+              if (data.code === 200) {
+                  const card = scenesGrid ? scenesGrid.querySelector(`[data-scene-name="${name}"]`) : null;
+                  if (card && data.data) {
+                      card.dataset.sceneId = data.data;
+                      startPolling('scene', data.data);
+                  }
+              }
+          }).catch(e => console.error('场景创建失败:', e));
     }
-    this.disabled = false;
-    this.textContent = '添加并生成';
 });
 
 // Add Prop
 document.getElementById('addPropBtn')?.addEventListener('click', function(e) {
     e.preventDefault();
     e.stopPropagation();
+    // 清空输入框
+    document.getElementById('propName').value = '';
+    document.getElementById('propPrompt').value = '';
+    document.getElementById('propQuality').value = '2k';
     openFormModal('addPropModal');
 });
 
-document.getElementById('savePropBtn')?.addEventListener('click', async function() {
+document.getElementById('savePropBtn')?.addEventListener('click', function() {
     const name = document.getElementById('propName').value.trim();
     if (!name) {
         alert('请输入道具名称');
         return;
     }
 
-    this.disabled = true;
-    this.textContent = '提交中...';
+    // 立即关闭弹窗
+    closeFormModal('addPropModal');
 
-    try {
-        const response = await fetch('/api/v1/props', {
+    // 检查是否存在同名道具
+    const propsGrid = document.getElementById('propsGrid');
+    const existingCard = propsGrid ? propsGrid.querySelector(`[data-prop-name="${name}"]`) : null;
+
+    if (existingCard) {
+        const existingId = existingCard.dataset.propId;
+        addOverlay(existingCard, 'prop');
+
+        if (existingId) {
+            startPolling('prop', existingId);
+        }
+
+        fetch('/api/v1/props/', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -741,20 +1012,52 @@ document.getElementById('savePropBtn')?.addEventListener('click', async function
                 quality: document.getElementById('propQuality').value,
                 customPrompt: document.getElementById('propPrompt').value.trim()
             })
-        });
-        const data = await response.json();
-        if (data.code === 200) {
-            alert('道具添加成功，正在生成图片');
-            closeFormModal('addPropModal');
-            setTimeout(() => location.reload(), 1000);
-        } else {
-            alert('添加失败: ' + (data.message || '未知错误'));
+        }).catch(e => console.error('道具创建失败:', e));
+    } else {
+        // 添加占位卡片
+        if (propsGrid) {
+            const placeholder = document.createElement('div');
+            placeholder.className = 'glass-card glass-card-hover p-3 text-center group relative';
+            placeholder.dataset.propName = name;
+            placeholder.innerHTML = `
+                <div class="w-full aspect-square rounded-lg bg-white/5 mb-2 overflow-hidden flex items-center justify-center">
+                    <div class="text-center">
+                        <i data-lucide="loader-2" class="w-6 h-6 text-blue-400 animate-spin mx-auto"></i>
+                        <p class="text-xs text-white/50 mt-1">生成中</p>
+                    </div>
+                </div>
+                <p class="text-sm text-white/80 truncate mb-1">${name}</p>
+                <span class="text-xs text-blue-400">生成中</span>
+            `;
+            propsGrid.appendChild(placeholder);
+            lucide.createIcons();
         }
-    } catch (e) {
-        alert('请求失败: ' + e.message);
+
+        // 异步提交
+        fetch('/api/v1/props/', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': getCookie('csrftoken')
+            },
+            body: JSON.stringify({
+                seriesId: seriesId,
+                episodeId: episodeId,
+                propName: name,
+                quality: document.getElementById('propQuality').value,
+                customPrompt: document.getElementById('propPrompt').value.trim()
+            })
+        }).then(response => response.json())
+          .then(data => {
+              if (data.code === 200) {
+                  const card = propsGrid ? propsGrid.querySelector(`[data-prop-name="${name}"]`) : null;
+                  if (card && data.data) {
+                      card.dataset.propId = data.data;
+                      startPolling('prop', data.data);
+                  }
+              }
+          }).catch(e => console.error('道具创建失败:', e));
     }
-    this.disabled = false;
-    this.textContent = '添加并生成';
 });
 
 // Regenerate Scene
@@ -776,7 +1079,7 @@ document.getElementById('confirmRegenSceneBtn')?.addEventListener('click', async
     this.textContent = '提交中...';
 
     try {
-        const response = await fetch(`/api/v1/scenes/${currentRegenSceneId}/regenerate`, {
+        const response = await fetch(`/api/v1/scenes/${currentRegenSceneId}/regenerate/`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -790,9 +1093,28 @@ document.getElementById('confirmRegenSceneBtn')?.addEventListener('click', async
         });
         const data = await response.json();
         if (data.code === 200) {
-            alert('场景重新生成已提交');
             closeFormModal('regenerateSceneModal');
-            setTimeout(() => location.reload(), 1000);
+            // 更新卡片为生成中状态
+            const card = document.querySelector(`[data-scene-id="${currentRegenSceneId}"]`);
+            if (card) {
+                const imgContainer = card.querySelector('.scene-history-btn');
+                if (imgContainer) {
+                    imgContainer.innerHTML = `
+                        <div class="text-center">
+                            <i data-lucide="loader-2" class="w-6 h-6 text-blue-400 animate-spin mx-auto"></i>
+                            <p class="text-xs text-white/50 mt-1">生成中</p>
+                        </div>
+                    `;
+                    lucide.createIcons();
+                }
+                const statusSpan = card.querySelector('.text-xs');
+                if (statusSpan) {
+                    statusSpan.textContent = '生成中';
+                    statusSpan.className = 'text-xs text-blue-400';
+                }
+            }
+            // 开始轮询
+            startPolling('scene', currentRegenSceneId);
         } else {
             alert('提交失败: ' + (data.message || '未知错误'));
         }
@@ -822,7 +1144,7 @@ document.getElementById('confirmRegenPropBtn')?.addEventListener('click', async 
     this.textContent = '提交中...';
 
     try {
-        const response = await fetch(`/api/v1/props/${currentRegenPropId}/regenerate`, {
+        const response = await fetch(`/api/v1/props/${currentRegenPropId}/regenerate/`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -835,9 +1157,28 @@ document.getElementById('confirmRegenPropBtn')?.addEventListener('click', async 
         });
         const data = await response.json();
         if (data.code === 200) {
-            alert('道具重新生成已提交');
             closeFormModal('regeneratePropModal');
-            setTimeout(() => location.reload(), 1000);
+            // 更新卡片为生成中状态
+            const card = document.querySelector(`[data-prop-id="${currentRegenPropId}"]`);
+            if (card) {
+                const imgContainer = card.querySelector('.prop-history-btn');
+                if (imgContainer) {
+                    imgContainer.innerHTML = `
+                        <div class="text-center">
+                            <i data-lucide="loader-2" class="w-6 h-6 text-blue-400 animate-spin mx-auto"></i>
+                            <p class="text-xs text-white/50 mt-1">生成中</p>
+                        </div>
+                    `;
+                    lucide.createIcons();
+                }
+                const statusSpan = card.querySelector('.text-xs');
+                if (statusSpan) {
+                    statusSpan.textContent = '生成中';
+                    statusSpan.className = 'text-xs text-blue-400';
+                }
+            }
+            // 开始轮询
+            startPolling('prop', currentRegenPropId);
         } else {
             alert('提交失败: ' + (data.message || '未知错误'));
         }
@@ -872,12 +1213,22 @@ function showSceneHistory(name, assets) {
     } else {
         container.innerHTML = assets.map(asset => `
             <div class="glass-card p-3 text-center ${asset.isActive ? 'ring-2 ring-emerald-500/50' : ''}">
-                <div class="w-full aspect-video rounded-lg bg-white/5 mb-2 overflow-hidden">
-                    ${asset.filePath ? `<img src="${asset.filePath}" class="w-full h-full object-cover">` : '<i data-lucide="image" class="w-8 h-8 text-white/20 mx-auto mt-4"></i>'}
+                <div class="w-full aspect-video rounded-lg bg-white/5 mb-2 overflow-hidden flex items-center justify-center">
+                    ${asset.status === 0 ? `
+                        <div class="text-center">
+                            <i data-lucide="loader-2" class="w-8 h-8 text-blue-400 animate-spin mx-auto"></i>
+                            <p class="text-xs text-blue-400 mt-2">生成中</p>
+                        </div>
+                    ` : asset.filePath ? `
+                        <img src="${asset.filePath}" class="w-full h-full object-cover">
+                    ` : `
+                        <i data-lucide="image" class="w-8 h-8 text-white/20"></i>
+                    `}
                 </div>
                 <p class="text-sm text-white/70 mb-1">版本 ${asset.version || '-'}</p>
                 <p class="text-xs text-white/40 mb-2">${asset.createdAt ? new Date(asset.createdAt).toLocaleString('zh-CN') : '-'}</p>
-                ${asset.isActive ? '<span class="text-xs text-emerald-400">当前版本</span>' : `
+                ${asset.status === 0 ? '<span class="text-xs text-blue-400">生成中...</span>' :
+                  asset.isActive ? '<span class="text-xs text-emerald-400">当前版本</span>' : `
                     <button class="scene-rollback-btn w-full px-3 py-1.5 rounded-lg bg-blue-500/20 text-blue-300 hover:bg-blue-500/30 transition-colors text-xs"
                             data-scene-id="${currentSceneHistoryId}" data-asset-id="${asset.id}">
                         回滚到此版本
@@ -903,7 +1254,7 @@ function bindSceneRollback() {
             this.textContent = '回滚中...';
 
             try {
-                const response = await fetch(`/api/v1/scenes/${sceneId}/rollback`, {
+                const response = await fetch(`/api/v1/scenes/${sceneId}/rollback/`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -913,9 +1264,31 @@ function bindSceneRollback() {
                 });
                 const data = await response.json();
                 if (data.code === 200) {
-                    alert('回滚成功');
+                    // 更新卡片图片
+                    const card = document.querySelector(`[data-scene-id="${sceneId}"]`);
+                    if (card) {
+                        const imgContainer = card.querySelector('.scene-history-btn');
+                        const rollbackBtn = btn.closest('.glass-card');
+                        const rollbackImg = rollbackBtn?.querySelector('img');
+
+                        if (imgContainer && rollbackImg) {
+                            imgContainer.innerHTML = `<img src="${rollbackImg.src}" class="w-full h-full object-cover" alt="">`;
+                        }
+                    }
+
+                    // 关闭弹窗
                     closeFormModal('sceneHistoryModal');
-                    location.reload();
+
+                    // 获取最新的场景数据并更新历史按钮的 data
+                    const sceneData = await checkItemStatus('scene', sceneId);
+                    if (sceneData && sceneData.assets) {
+                        const historyBtn = card?.querySelector('.scene-history-btn');
+                        if (historyBtn) {
+                            historyBtn.dataset.sceneAssets = JSON.stringify(sceneData.assets);
+                        }
+                    }
+
+                    alert('回滚成功');
                 } else {
                     alert('回滚失败: ' + (data.message || '未知错误'));
                 }
@@ -952,14 +1325,24 @@ function showPropHistory(name, assets) {
     } else {
         container.innerHTML = assets.map(asset => `
             <div class="glass-card p-3 text-center ${asset.isActive ? 'ring-2 ring-emerald-500/50' : ''}">
-                <div class="w-full aspect-square rounded-lg bg-white/5 mb-2 overflow-hidden">
-                    ${asset.filePath ? `<img src="${asset.filePath}" class="w-full h-full object-cover">` :
-                      asset.transparentPath ? `<img src="${asset.transparentPath}" class="w-full h-full object-contain">` :
-                      '<i data-lucide="box" class="w-8 h-8 text-white/20 mx-auto mt-4"></i>'}
+                <div class="w-full aspect-square rounded-lg bg-white/5 mb-2 overflow-hidden flex items-center justify-center">
+                    ${asset.status === 0 ? `
+                        <div class="text-center">
+                            <i data-lucide="loader-2" class="w-8 h-8 text-blue-400 animate-spin mx-auto"></i>
+                            <p class="text-xs text-blue-400 mt-2">生成中</p>
+                        </div>
+                    ` : asset.filePath ? `
+                        <img src="${asset.filePath}" class="w-full h-full object-cover">
+                    ` : asset.transparentPath ? `
+                        <img src="${asset.transparentPath}" class="w-full h-full object-contain">
+                    ` : `
+                        <i data-lucide="box" class="w-8 h-8 text-white/20"></i>
+                    `}
                 </div>
                 <p class="text-sm text-white/70 mb-1">版本 ${asset.version || '-'}</p>
                 <p class="text-xs text-white/40 mb-2">${asset.createdAt ? new Date(asset.createdAt).toLocaleString('zh-CN') : '-'}</p>
-                ${asset.isActive ? '<span class="text-xs text-emerald-400">当前版本</span>' : `
+                ${asset.status === 0 ? '<span class="text-xs text-blue-400">生成中...</span>' :
+                  asset.isActive ? '<span class="text-xs text-emerald-400">当前版本</span>' : `
                     <button class="prop-rollback-btn w-full px-3 py-1.5 rounded-lg bg-blue-500/20 text-blue-300 hover:bg-blue-500/30 transition-colors text-xs"
                             data-prop-id="${currentPropHistoryId}" data-asset-id="${asset.id}">
                         回滚到此版本
@@ -980,12 +1363,13 @@ function bindPropRollback() {
 
             const propId = this.dataset.propId;
             const assetId = this.dataset.assetId;
+            const versionText = this.closest('.glass-card')?.querySelector('p.text-sm')?.textContent || '';
 
             this.disabled = true;
             this.textContent = '回滚中...';
 
             try {
-                const response = await fetch(`/api/v1/props/${propId}/rollback`, {
+                const response = await fetch(`/api/v1/props/${propId}/rollback/`, {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
@@ -995,9 +1379,31 @@ function bindPropRollback() {
                 });
                 const data = await response.json();
                 if (data.code === 200) {
-                    alert('回滚成功');
+                    // 更新卡片图片
+                    const card = document.querySelector(`[data-prop-id="${propId}"]`);
+                    if (card) {
+                        const imgContainer = card.querySelector('.prop-history-btn');
+                        const rollbackBtn = btn.closest('.glass-card');
+                        const rollbackImg = rollbackBtn?.querySelector('img');
+
+                        if (imgContainer && rollbackImg) {
+                            imgContainer.innerHTML = `<img src="${rollbackImg.src}" class="w-full h-full object-contain" alt="">`;
+                        }
+                    }
+
+                    // 关闭弹窗并重新打开更新后的历史记录
                     closeFormModal('propHistoryModal');
-                    location.reload();
+
+                    // 获取最新的道具数据并更新历史按钮的 data
+                    const propData = await checkItemStatus('prop', propId);
+                    if (propData && propData.assets) {
+                        const historyBtn = card?.querySelector('.prop-history-btn');
+                        if (historyBtn) {
+                            historyBtn.dataset.propAssets = JSON.stringify(propData.assets);
+                        }
+                    }
+
+                    alert('回滚成功');
                 } else {
                     alert('回滚失败: ' + (data.message || '未知错误'));
                 }
@@ -1041,7 +1447,7 @@ saveScriptBtn?.addEventListener('click', async () => {
     saveScriptBtn.textContent = '保存中...';
 
     try {
-        const response = await fetch(`/api/v1/episodes/${episodeId}/script`, {
+        const response = await fetch(`/api/v1/episodes/${episodeId}/script/`, {
             method: 'PUT',
             headers: {
                 'Content-Type': 'application/json',
@@ -1072,25 +1478,78 @@ document.getElementById('reparseBtn')?.addEventListener('click', async function(
     this.innerHTML = '<i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i>解析中...';
     lucide.createIcons();
 
+    // 隐藏之前的错误提示
+    const errorAlert = document.getElementById('parseErrorAlert');
+    if (errorAlert) errorAlert.classList.add('hidden');
+
     try {
-        const response = await fetch(`/api/v1/episodes/${episodeId}/parse`, {
+        console.log('发送解析请求...');
+        const response = await fetch(`/api/v1/episodes/${episodeId}/parse/`, {
             method: 'POST',
             headers: { 'X-CSRFToken': getCookie('csrftoken') }
         });
         const data = await response.json();
+        console.log('解析请求响应:', data);
         if (data.code === 200) {
-            alert('剧本解析已开始，请稍后刷新查看结果');
-            setTimeout(() => location.reload(), 2000);
+            // 解析请求已提交，轮询检查结果
+            await pollParseResult();
         } else {
             alert('解析失败: ' + (data.message || '未知错误'));
         }
     } catch (e) {
+        console.error('解析请求失败:', e);
         alert('请求失败: ' + e.message);
     }
     this.disabled = false;
     this.innerHTML = '<i data-lucide="refresh-cw" class="w-4 h-4"></i>重新解析';
     lucide.createIcons();
 });
+
+// 轮询检查解析结果
+async function pollParseResult() {
+    console.log('开始轮询解析结果...');
+    const maxAttempts = 60; // 最多等待60秒
+    const interval = 2000; // 每2秒检查一次
+
+    for (let i = 0; i < maxAttempts; i++) {
+        await new Promise(resolve => setTimeout(resolve, interval));
+        console.log(`轮询第 ${i+1} 次`);
+
+        try {
+            const response = await fetch(`/api/episodes/${episodeId}/progress/`);
+            const data = await response.json();
+            console.log('进度数据:', data);
+
+            if (data.status !== undefined) {
+                const status = data.status;
+                console.log('当前状态:', status, '资产准备就绪:', data.assetsReady);
+                // status: 0-待解析, 1-解析中, 2-待审核
+                // 如果资产解析完成（assetsReady=true），显示资产选择弹窗
+                if (status === 1 && data.assetsReady) {
+                    console.log('资产解析完成，显示资产选择弹窗');
+                    await showAssetSelectionModal();
+                    return;
+                } else if (status === 2) {
+                    // 分镜解析完成，刷新页面
+                    console.log('分镜解析完成');
+                    location.reload();
+                    return;
+                } else if (status === 0) {
+                    // 解析失败（回到待解析状态）
+                    alert('剧本解析失败，请检查剧本格式后重新解析。');
+                    location.reload();
+                    return;
+                }
+                // 继续等待（status === 1 且 assetsReady=false 表示正在解析资产）
+            }
+        } catch (e) {
+            console.error('轮询解析结果失败:', e);
+        }
+    }
+
+    // 超时
+    alert('解析超时，请稍后刷新页面查看结果');
+}
 
 // 批量生成视频
 document.getElementById('generateAllBtn')?.addEventListener('click', async function() {
@@ -1254,7 +1713,7 @@ sceneContextMenu.querySelector('.scene-edit-name-btn')?.addEventListener('click'
 
     // 获取当前名称
     try {
-        const response = await fetch(`/api/v1/scenes/${currentContextSceneId}`, {
+        const response = await fetch(`/api/v1/scenes/${currentContextSceneId}/`, {
             headers: { 'X-Requested-With': 'XMLHttpRequest' }
         });
         // 由于没有单独获取场景详情的API，我们从页面数据获取
@@ -1279,7 +1738,7 @@ document.getElementById('saveSceneNameBtn')?.addEventListener('click', async fun
     this.textContent = '保存中...';
 
     try {
-        const response = await fetch(`/api/v1/scenes/${currentContextSceneId}/name`, {
+        const response = await fetch(`/api/v1/scenes/${currentContextSceneId}/name/`, {
             method: 'PUT',
             headers: {
                 'Content-Type': 'application/json',
@@ -1312,7 +1771,7 @@ sceneContextMenu.querySelector('.scene-toggle-lock-btn')?.addEventListener('clic
     const action = isLocked ? 'unlock' : 'lock';
 
     try {
-        const response = await fetch(`/api/v1/scenes/${currentContextSceneId}/${action}`, {
+        const response = await fetch(`/api/v1/scenes/${currentContextSceneId}/${action}/`, {
             method: 'POST',
             headers: { 'X-CSRFToken': getCookie('csrftoken') }
         });
@@ -1347,7 +1806,7 @@ sceneContextMenu.querySelector('.scene-delete-btn')?.addEventListener('click', a
     if (!confirm('确定要删除这个场景吗？')) return;
 
     try {
-        const response = await fetch(`/api/v1/scenes/${currentContextSceneId}`, {
+        const response = await fetch(`/api/v1/scenes/${currentContextSceneId}/`, {
             method: 'DELETE',
             headers: { 'X-CSRFToken': getCookie('csrftoken') }
         });
@@ -1386,7 +1845,7 @@ document.getElementById('savePropNameBtn')?.addEventListener('click', async func
     this.textContent = '保存中...';
 
     try {
-        const response = await fetch(`/api/v1/props/${currentContextPropId}/name`, {
+        const response = await fetch(`/api/v1/props/${currentContextPropId}/name/`, {
             method: 'PUT',
             headers: {
                 'Content-Type': 'application/json',
@@ -1419,7 +1878,7 @@ propContextMenu.querySelector('.prop-toggle-lock-btn')?.addEventListener('click'
     const action = isLocked ? 'unlock' : 'lock';
 
     try {
-        const response = await fetch(`/api/v1/props/${currentContextPropId}/${action}`, {
+        const response = await fetch(`/api/v1/props/${currentContextPropId}/${action}/`, {
             method: 'POST',
             headers: { 'X-CSRFToken': getCookie('csrftoken') }
         });
@@ -1453,7 +1912,7 @@ propContextMenu.querySelector('.prop-delete-btn')?.addEventListener('click', asy
     if (!confirm('确定要删除这个道具吗？')) return;
 
     try {
-        const response = await fetch(`/api/v1/props/${currentContextPropId}`, {
+        const response = await fetch(`/api/v1/props/${currentContextPropId}/`, {
             method: 'DELETE',
             headers: { 'X-CSRFToken': getCookie('csrftoken') }
         });
@@ -1465,6 +1924,272 @@ propContextMenu.querySelector('.prop-delete-btn')?.addEventListener('click', asy
         }
     } catch (e) {
         alert('请求失败: ' + e.message);
+    }
+});
+
+// ==================== 资产选择弹窗相关逻辑 ====================
+
+// 显示资产选择弹窗
+async function showAssetSelectionModal() {
+    try {
+        const response = await fetch(`/api/v1/episodes/${episodeId}/parsed-assets/`);
+        const result = await response.json();
+
+        if (result.code === 200 && result.data) {
+            renderAssetList(result.data);
+            openFormModal('assetSelectionModal');
+        } else {
+            alert('获取资产清单失败');
+        }
+    } catch (e) {
+        console.error('获取资产清单失败:', e);
+        alert('请求失败: ' + e.message);
+    }
+}
+
+// 渲染资产列表
+function renderAssetList(data) {
+    console.log('[DEBUG] renderAssetList 接收到的数据:', data);
+    const sceneList = document.getElementById('sceneAssetList');
+    const propList = document.getElementById('propAssetList');
+
+    // 渲染场景
+    if (data.scenes && data.scenes.length > 0) {
+        document.getElementById('sceneCount').textContent = data.scenes.length;
+        sceneList.innerHTML = data.scenes.map(scene => `
+            <div class="flex items-center gap-4 p-3 rounded-xl bg-white/5 ${scene.isLocked ? 'opacity-50' : 'hover:bg-white/10'} transition-colors">
+                <input type="checkbox"
+                       class="asset-checkbox scene-checkbox w-5 h-5 rounded border-white/20 bg-white/5 text-blue-500 focus:ring-blue-500/50"
+                       data-type="scene"
+                       data-id="${scene.id}"
+                       data-name="${scene.sceneName}"
+                       ${scene.isLocked ? 'disabled' : ''}
+                       ${scene.selected ? 'checked' : ''}>
+                <div class="w-16 h-10 rounded-lg bg-white/5 overflow-hidden flex-shrink-0">
+                    ${scene.previewUrl
+                        ? `<img src="${scene.previewUrl}" class="w-full h-full object-cover">`
+                        : `<div class="w-full h-full flex items-center justify-center"><i data-lucide="image" class="w-4 h-4 text-white/30"></i></div>`
+                    }
+                </div>
+                <div class="flex-1 min-w-0">
+                    <p class="text-white/90 font-medium truncate">${scene.sceneName}</p>
+                    <p class="text-white/50 text-xs truncate">${scene.description || ''}</p>
+                </div>
+                <div class="flex items-center gap-2 flex-shrink-0">
+                    ${scene.isLocked
+                        ? '<span class="px-2 py-0.5 rounded text-xs bg-amber-500/20 text-amber-300"><i data-lucide="lock" class="w-3 h-3 inline"></i> 已锁定</span>'
+                        : scene.hasAssets
+                            ? '<span class="px-2 py-0.5 rounded text-xs bg-emerald-500/20 text-emerald-300">已存在</span>'
+                            : '<span class="px-2 py-0.5 rounded text-xs bg-white/10 text-white/50">待生成</span>'
+                    }
+                </div>
+            </div>
+        `).join('');
+    } else {
+        document.getElementById('sceneCount').textContent = '0';
+        sceneList.innerHTML = '<p class="text-white/40 text-sm py-4 text-center">未识别到场景</p>';
+    }
+
+    // 渲染道具
+    if (data.props && data.props.length > 0) {
+        document.getElementById('propCount').textContent = data.props.length;
+        data.props.forEach(prop => {
+            console.log(`[DEBUG] 渲染道具: id=${prop.id}, name=${prop.propName}, isNew=${prop.isNew}`);
+        });
+        propList.innerHTML = data.props.map(prop => `
+            <div class="flex items-center gap-4 p-3 rounded-xl bg-white/5 ${prop.isLocked ? 'opacity-50' : 'hover:bg-white/10'} transition-colors">
+                <input type="checkbox"
+                       class="asset-checkbox prop-checkbox w-5 h-5 rounded border-white/20 bg-white/5 text-blue-500 focus:ring-blue-500/50"
+                       data-type="prop"
+                       data-id="${prop.id}"
+                       data-name="${prop.propName}"
+                       ${prop.isLocked ? 'disabled' : ''}
+                       ${prop.selected ? 'checked' : ''}>
+                <div class="w-10 h-10 rounded-lg bg-white/5 overflow-hidden flex-shrink-0">
+                    ${prop.previewUrl
+                        ? `<img src="${prop.previewUrl}" class="w-full h-full object-contain">`
+                        : `<div class="w-full h-full flex items-center justify-center"><i data-lucide="box" class="w-4 h-4 text-white/30"></i></div>`
+                    }
+                </div>
+                <div class="flex-1 min-w-0">
+                    <p class="text-white/90 font-medium truncate">${prop.propName}</p>
+                    <p class="text-white/50 text-xs truncate">${prop.description || ''}</p>
+                </div>
+                <div class="flex items-center gap-2 flex-shrink-0">
+                    ${prop.isLocked
+                        ? '<span class="px-2 py-0.5 rounded text-xs bg-amber-500/20 text-amber-300"><i data-lucide="lock" class="w-3 h-3 inline"></i> 已锁定</span>'
+                        : prop.hasAssets
+                            ? '<span class="px-2 py-0.5 rounded text-xs bg-emerald-500/20 text-emerald-300">已存在</span>'
+                            : '<span class="px-2 py-0.5 rounded text-xs bg-white/10 text-white/50">待生成</span>'
+                    }
+                </div>
+            </div>
+        `).join('');
+    } else {
+        document.getElementById('propCount').textContent = '0';
+        propList.innerHTML = '<p class="text-white/40 text-sm py-4 text-center">未识别到道具</p>';
+    }
+
+    lucide.createIcons();
+    bindAssetSelectionEvents();
+    updateSelectedCount();
+}
+
+// 绑定资产选择事件
+function bindAssetSelectionEvents() {
+    // 关闭弹窗
+    document.getElementById('closeAssetModal')?.addEventListener('click', function() {
+        closeFormModal('assetSelectionModal');
+    });
+
+    // 稍后生成（只解析分镜，不生成资产图片）
+    document.getElementById('skipGenerationBtn')?.addEventListener('click', async function() {
+        this.disabled = true;
+        this.textContent = '解析中...';
+
+        try {
+            const response = await fetch(`/api/v1/episodes/${episodeId}/parse-shots/`, {
+                method: 'POST',
+                headers: { 'X-CSRFToken': getCookie('csrftoken') }
+            });
+            const data = await response.json();
+            if (data.code === 200) {
+                closeFormModal('assetSelectionModal');
+                alert('分镜解析已提交，请稍后刷新页面查看结果');
+                location.reload();
+            } else {
+                alert('解析失败: ' + (data.message || '未知错误'));
+            }
+        } catch (e) {
+            alert('请求失败: ' + e.message);
+        }
+
+        this.disabled = false;
+        this.textContent = '稍后生成';
+    });
+
+    // 全选场景
+    document.getElementById('selectAllScenes')?.addEventListener('change', function() {
+        document.querySelectorAll('.scene-checkbox:not(:disabled)').forEach(cb => {
+            cb.checked = this.checked;
+        });
+        updateSelectedCount();
+    });
+
+    // 全选道具
+    document.getElementById('selectAllProps')?.addEventListener('change', function() {
+        document.querySelectorAll('.prop-checkbox:not(:disabled)').forEach(cb => {
+            cb.checked = this.checked;
+        });
+        updateSelectedCount();
+    });
+
+    // 单个勾选
+    document.querySelectorAll('.asset-checkbox').forEach(cb => {
+        cb.addEventListener('change', updateSelectedCount);
+    });
+
+    // 生成选中资产
+    document.getElementById('generateSelectedBtn')?.addEventListener('click', async function() {
+        // 收集选中的资产：区分已有ID和新资产
+        const selectedScenes = [...document.querySelectorAll('.scene-checkbox:checked:not(:disabled)')];
+        const selectedProps = [...document.querySelectorAll('.prop-checkbox:checked:not(:disabled)')];
+
+        // 辅助函数：检查是否有有效的ID
+        const hasValidId = (cb) => {
+            const id = cb.dataset.id;
+            return id && id !== 'null' && id !== 'undefined' && !isNaN(parseInt(id));
+        };
+
+        // 已存在的资产ID
+        const sceneIds = selectedScenes.filter(hasValidId).map(cb => parseInt(cb.dataset.id));
+        const propIds = selectedProps.filter(hasValidId).map(cb => parseInt(cb.dataset.id));
+
+        // 新资产名称（没有有效ID的）
+        const newSceneNames = selectedScenes.filter(cb => !hasValidId(cb)).map(cb => cb.dataset.name);
+        const newPropNames = selectedProps.filter(cb => !hasValidId(cb)).map(cb => cb.dataset.name);
+
+        // 未选中的资产：只收集已存在的ID（用于删除）
+        const unselectedSceneIds = [...document.querySelectorAll('.scene-checkbox:not(:checked):not(:disabled)')]
+            .filter(hasValidId).map(cb => parseInt(cb.dataset.id));
+        const unselectedPropIds = [...document.querySelectorAll('.prop-checkbox:not(:checked):not(:disabled)')]
+            .filter(hasValidId).map(cb => parseInt(cb.dataset.id));
+
+        // 未选中的新资产名称（不需要创建）
+        const unselectedSceneNames = [...document.querySelectorAll('.scene-checkbox:not(:checked):not(:disabled)')]
+            .filter(cb => !hasValidId(cb)).map(cb => cb.dataset.name);
+        const unselectedPropNames = [...document.querySelectorAll('.prop-checkbox:not(:checked):not(:disabled)')]
+            .filter(cb => !hasValidId(cb)).map(cb => cb.dataset.name);
+
+        // 调试日志
+        console.log('选中的已存在场景IDs:', sceneIds);
+        console.log('选中的新场景名称:', newSceneNames);
+        console.log('选中的已存在道具IDs:', propIds);
+        console.log('选中的新道具名称:', newPropNames);
+        console.log('未选中的已存在场景IDs:', unselectedSceneIds);
+        console.log('未选中的已存在道具IDs:', unselectedPropIds);
+        console.log('未选中的新场景名称:', unselectedSceneNames);
+        console.log('未选中的新道具名称:', unselectedPropNames);
+
+        if (sceneIds.length === 0 && propIds.length === 0 && newSceneNames.length === 0 && newPropNames.length === 0) {
+            alert('请至少选择一个资产');
+            return;
+        }
+
+        this.disabled = true;
+        this.innerHTML = '<i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i> 提交中...';
+        lucide.createIcons();
+
+        try {
+            const response = await fetch(`/api/v1/episodes/${episodeId}/generate-assets/`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': getCookie('csrftoken')
+                },
+                body: JSON.stringify({
+                    sceneIds: sceneIds,
+                    propIds: propIds,
+                    newSceneNames: newSceneNames,
+                    newPropNames: newPropNames,
+                    unselectedSceneIds: unselectedSceneIds,
+                    unselectedPropIds: unselectedPropIds,
+                    unselectedSceneNames: unselectedSceneNames,
+                    unselectedPropNames: unselectedPropNames
+                })
+            });
+
+            const result = await response.json();
+            if (result.code === 200) {
+                closeFormModal('assetSelectionModal');
+                location.reload();
+            } else {
+                alert('提交失败: ' + (result.message || '未知错误'));
+            }
+        } catch (e) {
+            alert('请求失败: ' + e.message);
+        }
+
+        this.disabled = false;
+        this.innerHTML = '<i data-lucide="sparkles" class="w-4 h-4"></i> 生成选中资产';
+        lucide.createIcons();
+    });
+}
+
+// 更新选中计数
+function updateSelectedCount() {
+    const count = document.querySelectorAll('.asset-checkbox:checked:not(:disabled)').length;
+    document.getElementById('selectedCount').textContent = count;
+}
+
+// 页面加载时检查是否需要显示资产选择弹窗
+document.addEventListener('DOMContentLoaded', async function() {
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.get('show_asset_picker') === '1') {
+        // 等待一小段时间让页面完全加载
+        setTimeout(async () => {
+            await showAssetSelectionModal();
+        }, 500);
     }
 });
 

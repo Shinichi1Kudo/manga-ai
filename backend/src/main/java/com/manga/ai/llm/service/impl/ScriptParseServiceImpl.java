@@ -16,6 +16,7 @@ import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 /**
@@ -80,6 +81,289 @@ public class ScriptParseServiceImpl implements ScriptParseService {
         return roles.stream()
                 .map(Role::getRoleName)
                 .collect(Collectors.toList());
+    }
+
+    @Override
+    public ScriptParseResult parseAssetsOnly(String scriptText, Long seriesId) {
+        log.info("开始解析资产（仅场景和道具）: seriesId={}, scriptLength={}", seriesId, scriptText.length());
+
+        ScriptParseResult result = new ScriptParseResult();
+
+        try {
+            List<String> knownCharacters = getKnownCharacters(seriesId);
+            String systemPrompt = buildAssetsOnlyPrompt(knownCharacters);
+            String userPrompt = buildUserPrompt(scriptText);
+
+            LLMResponse response = llmService.chat(systemPrompt, userPrompt);
+
+            if ("success".equals(response.getStatus())) {
+                result = parseLLMResponseAssetsOnly(response.getContent());
+                result.setStatus("success");
+                log.info("资产解析完成: scenes={}, props={}",
+                        result.getScenes() != null ? result.getScenes().size() : 0,
+                        result.getProps() != null ? result.getProps().size() : 0);
+            } else {
+                result.setStatus("failed");
+                result.setErrorMessage(response.getErrorMessage());
+                log.error("LLM调用失败: {}", response.getErrorMessage());
+            }
+        } catch (Exception e) {
+            log.error("资产解析异常", e);
+            result.setStatus("failed");
+            result.setErrorMessage(e.getMessage());
+        }
+
+        return result;
+    }
+
+    @Override
+    public ScriptParseResult parseShots(String scriptText, Long seriesId, Map<String, Long> sceneCodeToIdMap) {
+        log.info("开始解析分镜: seriesId={}, scriptLength={}", seriesId, scriptText.length());
+
+        ScriptParseResult result = new ScriptParseResult();
+
+        try {
+            List<String> knownCharacters = getKnownCharacters(seriesId);
+            String systemPrompt = buildShotsOnlyPrompt(knownCharacters, sceneCodeToIdMap);
+            String userPrompt = buildUserPrompt(scriptText);
+
+            LLMResponse response = llmService.chat(systemPrompt, userPrompt);
+
+            if ("success".equals(response.getStatus())) {
+                result = parseLLMResponseShotsOnly(response.getContent());
+                result.setStatus("success");
+                log.info("分镜解析完成: shots={}",
+                        result.getShots() != null ? result.getShots().size() : 0);
+            } else {
+                result.setStatus("failed");
+                result.setErrorMessage(response.getErrorMessage());
+                log.error("LLM调用失败: {}", response.getErrorMessage());
+            }
+        } catch (Exception e) {
+            log.error("分镜解析异常", e);
+            result.setStatus("failed");
+            result.setErrorMessage(e.getMessage());
+        }
+
+        return result;
+    }
+
+    /**
+     * 构建只解析资产的系统提示词
+     */
+    private String buildAssetsOnlyPrompt(List<String> knownCharacters) {
+        StringBuilder prompt = new StringBuilder();
+        prompt.append("你是一个专业的剧本分析助手。\n\n");
+        prompt.append("## 任务说明\n");
+        prompt.append("分析用户提供的剧本内容，提取场景和道具信息。\n");
+        prompt.append("注意：只需要输出场景和道具，不需要生成分镜。\n\n");
+
+        if (!knownCharacters.isEmpty()) {
+            prompt.append("## 已知角色列表\n");
+            prompt.append("以下角色已存在于本系列中：\n");
+            for (String name : knownCharacters) {
+                prompt.append("- ").append(name).append("\n");
+            }
+            prompt.append("\n");
+        }
+
+        prompt.append("## 输出格式\n");
+        prompt.append("请严格按照以下JSON格式输出，不要添加任何其他文字说明：\n");
+        prompt.append("```json\n");
+        prompt.append("{\n");
+        prompt.append("  \"scenes\": [\n");
+        prompt.append("    {\n");
+        prompt.append("      \"sceneName\": \"场景名称\",\n");
+        prompt.append("      \"sceneCode\": \"SC01\",\n");
+        prompt.append("      \"description\": \"场景描述\",\n");
+        prompt.append("      \"locationType\": \"室内/室外\",\n");
+        prompt.append("      \"timeOfDay\": \"白天/夜晚/黄昏\",\n");
+        prompt.append("      \"weather\": \"晴天/雨天/阴天\"\n");
+        prompt.append("    }\n");
+        prompt.append("  ],\n");
+        prompt.append("  \"props\": [\n");
+        prompt.append("    {\n");
+        prompt.append("      \"propName\": \"道具名称\",\n");
+        prompt.append("      \"propCode\": \"PROP01\",\n");
+        prompt.append("      \"description\": \"道具描述\",\n");
+        prompt.append("      \"propType\": \"道具类型\",\n");
+        prompt.append("      \"color\": \"颜色\"\n");
+        prompt.append("    }\n");
+        prompt.append("  ]\n");
+        prompt.append("}\n");
+        prompt.append("```\n");
+
+        return prompt.toString();
+    }
+
+    /**
+     * 构建只解析分镜的系统提示词
+     */
+    private String buildShotsOnlyPrompt(List<String> knownCharacters, Map<String, Long> sceneCodeToIdMap) {
+        StringBuilder prompt = new StringBuilder();
+        prompt.append("你是一个专业的剧本分析助手，擅长将剧本拆分为分镜脚本。\n\n");
+        prompt.append("## 任务说明\n");
+        prompt.append("1. 将剧本拆分为多个分镜（每个分镜时长不超过15秒）\n");
+        prompt.append("2. 指定镜头角度和运动方式\n");
+        prompt.append("3. 分配角色动作和表情\n\n");
+
+        if (!knownCharacters.isEmpty()) {
+            prompt.append("## 已知角色列表\n");
+            prompt.append("以下角色已存在于本系列中，请使用这些角色名称：\n");
+            for (String name : knownCharacters) {
+                prompt.append("- ").append(name).append("\n");
+            }
+            prompt.append("\n**重要**: 分镜中的角色必须从上述列表中选择。\n\n");
+        }
+
+        // 列出可用的场景
+        if (!sceneCodeToIdMap.isEmpty()) {
+            prompt.append("## 可用场景\n");
+            prompt.append("请使用以下场景编码：\n");
+            for (String sceneCode : sceneCodeToIdMap.keySet()) {
+                prompt.append("- ").append(sceneCode).append("\n");
+            }
+            prompt.append("\n");
+        }
+
+        prompt.append("## 输出格式\n");
+        prompt.append("请严格按照以下JSON格式输出，不要添加任何其他文字说明：\n");
+        prompt.append("```json\n");
+        prompt.append("{\n");
+        prompt.append("  \"shots\": [\n");
+        prompt.append("    {\n");
+        prompt.append("      \"shotNumber\": 1,\n");
+        prompt.append("      \"sceneCode\": \"SC01\",\n");
+        prompt.append("      \"description\": \"分镜描述\",\n");
+        prompt.append("      \"duration\": 5,\n");
+        prompt.append("      \"cameraAngle\": \"平视/仰视/俯视\",\n");
+        prompt.append("      \"cameraMovement\": \"固定/推/拉/摇/移\",\n");
+        prompt.append("      \"characters\": [\n");
+        prompt.append("        {\n");
+        prompt.append("          \"roleName\": \"角色名\",\n");
+        prompt.append("          \"action\": \"动作描述\",\n");
+        prompt.append("          \"expression\": \"表情\",\n");
+        prompt.append("          \"clothingId\": 1\n");
+        prompt.append("        }\n");
+        prompt.append("      ],\n");
+        prompt.append("      \"props\": [\n");
+        prompt.append("        {\n");
+        prompt.append("          \"propName\": \"道具名\",\n");
+        prompt.append("          \"position\": \"位置描述\"\n");
+        prompt.append("        }\n");
+        prompt.append("      ]\n");
+        prompt.append("    }\n");
+        prompt.append("  ]\n");
+        prompt.append("}\n");
+        prompt.append("```\n");
+
+        return prompt.toString();
+    }
+
+    /**
+     * 只解析资产（场景和道具）的LLM响应
+     */
+    private ScriptParseResult parseLLMResponseAssetsOnly(String content) {
+        ScriptParseResult result = new ScriptParseResult();
+
+        try {
+            String jsonStr = extractJson(content);
+            JSONObject json = JSON.parseObject(jsonStr);
+
+            // 解析场景
+            JSONArray scenesArray = json.getJSONArray("scenes");
+            if (scenesArray != null) {
+                List<ScriptParseResult.SceneInfo> scenes = new ArrayList<>();
+                for (int i = 0; i < scenesArray.size(); i++) {
+                    JSONObject sceneObj = scenesArray.getJSONObject(i);
+                    ScriptParseResult.SceneInfo scene = new ScriptParseResult.SceneInfo();
+                    scene.setSceneName(sceneObj.getString("sceneName"));
+                    scene.setSceneCode(sceneObj.getString("sceneCode"));
+                    scene.setDescription(sceneObj.getString("description"));
+                    scene.setLocationType(sceneObj.getString("locationType"));
+                    scene.setTimeOfDay(sceneObj.getString("timeOfDay"));
+                    scene.setWeather(sceneObj.getString("weather"));
+                    scenes.add(scene);
+                }
+                result.setScenes(scenes);
+            }
+
+            // 解析道具
+            JSONArray propsArray = json.getJSONArray("props");
+            if (propsArray != null) {
+                List<ScriptParseResult.PropInfo> props = new ArrayList<>();
+                for (int i = 0; i < propsArray.size(); i++) {
+                    JSONObject propObj = propsArray.getJSONObject(i);
+                    ScriptParseResult.PropInfo prop = new ScriptParseResult.PropInfo();
+                    prop.setPropName(propObj.getString("propName"));
+                    prop.setPropCode(propObj.getString("propCode"));
+                    prop.setDescription(propObj.getString("description"));
+                    prop.setPropType(propObj.getString("propType"));
+                    prop.setColor(propObj.getString("color"));
+                    props.add(prop);
+                }
+                result.setProps(props);
+            }
+
+        } catch (Exception e) {
+            log.error("解析资产响应失败", e);
+        }
+
+        return result;
+    }
+
+    /**
+     * 只解析分镜的LLM响应
+     */
+    private ScriptParseResult parseLLMResponseShotsOnly(String content) {
+        ScriptParseResult result = new ScriptParseResult();
+
+        try {
+            String jsonStr = extractJson(content);
+            JSONObject json = JSON.parseObject(jsonStr);
+
+            // 解析分镜
+            JSONArray shotsArray = json.getJSONArray("shots");
+            if (shotsArray != null) {
+                List<ScriptParseResult.ShotInfo> shots = new ArrayList<>();
+                for (int i = 0; i < shotsArray.size(); i++) {
+                    JSONObject shotObj = shotsArray.getJSONObject(i);
+                    ScriptParseResult.ShotInfo shot = parseShotInfo(shotObj);
+                    shots.add(shot);
+                }
+                result.setShots(shots);
+            }
+
+        } catch (Exception e) {
+            log.error("解析分镜响应失败", e);
+        }
+
+        return result;
+    }
+
+    /**
+     * 提取JSON字符串
+     */
+    private String extractJson(String content) {
+        String jsonStr = content;
+
+        if (content.contains("```json")) {
+            int startIdx = content.indexOf("```json") + 7;
+            jsonStr = content.substring(startIdx);
+            int endIdx = jsonStr.indexOf("```");
+            if (endIdx > 0) {
+                jsonStr = jsonStr.substring(0, endIdx);
+            }
+        } else if (content.contains("```")) {
+            int startIdx = content.indexOf("```") + 3;
+            jsonStr = content.substring(startIdx);
+            int endIdx = jsonStr.indexOf("```");
+            if (endIdx > 0) {
+                jsonStr = jsonStr.substring(0, endIdx);
+            }
+        }
+
+        return jsonStr.trim();
     }
 
     /**
@@ -178,14 +462,30 @@ public class ScriptParseServiceImpl implements ScriptParseService {
         try {
             // 提取JSON部分（去除可能的markdown代码块标记）
             String jsonStr = content;
+
             if (content.contains("```json")) {
-                jsonStr = content.substring(content.indexOf("```json") + 7);
-                jsonStr = jsonStr.substring(0, jsonStr.indexOf("```"));
+                int startIdx = content.indexOf("```json") + 7;
+                jsonStr = content.substring(startIdx);
+                // 查找结束标记
+                int endIdx = jsonStr.indexOf("```");
+                if (endIdx > 0) {
+                    jsonStr = jsonStr.substring(0, endIdx);
+                } else {
+                    // 没有结束标记，尝试找到JSON对象的结束
+                    log.warn("LLM响应没有找到JSON结束标记，尝试直接解析");
+                }
             } else if (content.contains("```")) {
-                jsonStr = content.substring(content.indexOf("```") + 3);
-                jsonStr = jsonStr.substring(0, jsonStr.indexOf("```"));
+                int startIdx = content.indexOf("```") + 3;
+                jsonStr = content.substring(startIdx);
+                int endIdx = jsonStr.indexOf("```");
+                if (endIdx > 0) {
+                    jsonStr = jsonStr.substring(0, endIdx);
+                }
             }
             jsonStr = jsonStr.trim();
+
+            log.debug("准备解析的JSON内容长度: {}, 前200字符: {}", jsonStr.length(),
+                    jsonStr.length() > 200 ? jsonStr.substring(0, 200) : jsonStr);
 
             JSONObject json = JSON.parseObject(jsonStr);
 
@@ -237,11 +537,13 @@ public class ScriptParseServiceImpl implements ScriptParseService {
             }
 
         } catch (Exception e) {
-            log.error("解析LLM响应失败", e);
-            // 尝试直接解析
+            log.error("解析LLM响应失败: content长度={}, 前500字符={}", content.length(),
+                    content.length() > 500 ? content.substring(0, 500) : content, e);
+            // 尝试直接解析原始内容
             try {
-                JSONObject json = JSON.parseObject(content);
+                JSONObject json = JSON.parseObject(content.trim());
                 // 再次尝试解析...
+                log.info("直接解析原始内容成功");
             } catch (Exception ex) {
                 log.error("JSON解析完全失败", ex);
             }
