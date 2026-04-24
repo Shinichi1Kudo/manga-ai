@@ -50,9 +50,29 @@ public class Shot implements Serializable {
     private String cameraMovement;
 
     /**
+     * 镜头类型（中景/特写/全景 + 推镜头等）
+     */
+    private String shotType;
+
+    /**
+     * 开始时间（秒）
+     */
+    private Integer startTime;
+
+    /**
+     * 结束时间（秒）
+     */
+    private Integer endTime;
+
+    /**
      * 时长(秒), 最大15秒
      */
     private Integer duration;
+
+    /**
+     * 音效描述
+     */
+    private String soundEffect;
 
     /**
      * 角色信息JSON

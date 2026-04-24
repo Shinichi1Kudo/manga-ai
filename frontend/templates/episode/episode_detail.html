@@ -3,6 +3,74 @@
 
 {% block title %}第{{ episode.episodeNumber }}集 {{ episode.episodeName|default:"" }} - {{ series.seriesName }}{% endblock %}
 
+{% block extra_css %}
+<style>
+/* 内联编辑样式 */
+.inline-time-input,
+.inline-text-input {
+    transition: border-color 0.2s;
+}
+.inline-time-input:focus,
+.inline-text-input:focus {
+    background: rgba(255,255,255,0.05);
+}
+
+.inline-select {
+    appearance: none;
+    padding-right: 20px;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='white' opacity='0.5'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 4px center;
+    background-size: 16px;
+}
+
+/* 剧情编辑器 */
+.description-editor:focus {
+    box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.3);
+}
+
+.description-editor:empty:before {
+    content: attr(placeholder);
+    color: rgba(255,255,255,0.3);
+}
+
+/* 内联资产缩略图 */
+.inline-asset-thumb {
+    cursor: pointer;
+    transition: transform 0.2s, box-shadow 0.2s;
+}
+.inline-asset-thumb:hover {
+    transform: scale(1.2);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+}
+
+/* @提及下拉列表 */
+.mention-dropdown {
+    backdrop-filter: blur(12px);
+    min-width: 280px;
+}
+.mention-dropdown.hidden {
+    display: none !important;
+}
+.mention-item {
+    border-bottom: 1px solid rgba(255,255,255,0.05);
+}
+.mention-item:last-child {
+    border-bottom: none;
+}
+.mention-item:hover,
+.mention-item.bg-white\/20 {
+    background: rgba(255,255,255,0.1);
+}
+
+/* 保存状态指示器 */
+.save-indicator {
+    transition: opacity 0.3s;
+    z-index: 10;
+}
+</style>
+{% endblock %}
+
 {% block content %}
 <!-- Header -->
 <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8">
@@ -281,6 +349,65 @@
     {% endif %}
 </div>
 
+<!-- Role Assets -->
+<div class="glass-card p-6 mb-8">
+    <div class="flex items-center justify-between mb-4">
+        <h2 class="text-lg font-semibold text-white flex items-center gap-2">
+            <i data-lucide="users" class="w-5 h-5"></i>角色资产 ({{ roles|length }})
+        </h2>
+    </div>
+    {% if roles %}
+    <div id="rolesGrid" class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
+        {% for role in roles %}
+        <div class="glass-card glass-card-hover p-3 text-center group relative" data-role-name="{{ role.roleName }}" data-role-id="{{ role.id }}" data-status="{{ role.status }}">
+            <div class="w-full rounded-lg bg-white/5 mb-2 overflow-hidden flex items-center justify-center cursor-pointer role-preview-btn" style="max-height: 200px;" data-role-name="{{ role.roleName }}" data-role-url="{{ role.assetUrl }}">
+                {% if role.assetUrl %}
+                <img src="{{ role.assetUrl }}" class="w-full h-auto object-contain" style="max-height: 200px;" alt="{{ role.roleName }}">
+                {% elif role.status == 0 %}
+                <div class="text-center py-8">
+                    <i data-lucide="loader-2" class="w-6 h-6 text-blue-400 animate-spin mx-auto"></i>
+                    <p class="text-xs text-white/50 mt-1">生成中</p>
+                </div>
+                {% else %}
+                <div class="py-8">
+                    <i data-lucide="user" class="w-8 h-8 text-white/20 mx-auto"></i>
+                </div>
+                {% endif %}
+            </div>
+            <p class="text-sm text-white/80 truncate mb-1" title="{{ role.roleName }}">{{ role.roleName }}</p>
+            <div class="flex items-center justify-center">
+                <span class="text-xs
+                    {% if role.status == 3 %}text-amber-400
+                    {% elif role.status == 0 %}text-blue-400
+                    {% elif role.status == 1 %}text-amber-400
+                    {% else %}text-white/50{% endif %}">
+                    {{ role.statusDesc }}
+                </span>
+            </div>
+            {% if role.clothings and role.clothings|length > 0 %}
+            <div class="mt-2 flex flex-wrap gap-1 justify-center">
+                {% for clothing in role.clothings %}
+                <div class="w-6 h-6 rounded bg-white/10 overflow-hidden" title="{{ clothing.clothingName }}">
+                    {% if clothing.assetUrl %}
+                    <img src="{{ clothing.assetUrl }}" class="w-full h-full object-cover" alt="{{ clothing.clothingName }}">
+                    {% else %}
+                    <i data-lucide="shirt" class="w-full h-full text-white/30 p-1"></i>
+                    {% endif %}
+                </div>
+                {% endfor %}
+            </div>
+            {% endif %}
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div class="text-center py-8 text-white/40">
+        <i data-lucide="users" class="w-12 h-12 mx-auto mb-2 opacity-30"></i>
+        <p>暂无角色资产</p>
+    </div>
+    {% endif %}
+</div>
+
 <!-- Prop Context Menu -->
 <div id="propContextMenu" class="fixed bg-gray-900/95 border border-white/10 rounded-lg shadow-xl z-[100] hidden py-1 min-w-[120px]">
     <button class="prop-edit-name-btn w-full px-4 py-2 text-left text-sm text-white/80 hover:bg-white/10 flex items-center gap-2">
@@ -504,6 +631,19 @@
     </div>
 </div>
 
+<!-- Role Image Preview Modal -->
+<div id="rolePreviewModal" class="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
+    <div class="relative max-w-4xl max-h-[90vh] w-full">
+        <button id="closeRolePreview" class="absolute -top-10 right-0 text-white/70 hover:text-white transition-colors z-10">
+            <i data-lucide="x" class="w-8 h-8"></i>
+        </button>
+        <h3 id="rolePreviewName" class="text-white text-lg mb-3 text-center"></h3>
+        <div class="flex items-center justify-center overflow-auto max-h-[80vh]">
+            <img id="rolePreviewImage" src="" class="max-w-full h-auto object-contain rounded-lg" alt="">
+        </div>
+    </div>
+</div>
+
 <!-- Asset Selection Modal -->
 <div id="assetSelectionModal" class="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 hidden overflow-y-auto">
     <div class="flex items-center justify-center min-h-full p-4">
@@ -645,7 +785,7 @@
                 {% endif %}
             </div>
 
-            <!-- 信息 -->
+            <!-- 信息 - 内联可编辑 -->
             <div class="flex-1">
                 <div class="flex items-center gap-3 mb-2">
                     <span class="text-lg font-semibold text-white">镜头 {{ shot.shotNumber }}</span>
@@ -657,15 +797,25 @@
                         {{ shot.generationStatusDesc }}
                     </span>
                 </div>
-                <p class="text-white/70 text-sm mb-2">{{ shot.description|default:"暂无描述"|truncatewords:30 }}</p>
-                <div class="flex items-center gap-4 text-xs text-white/40">
-                    <span><i data-lucide="clock" class="w-3 h-3 inline mr-1"></i>{{ shot.duration|default:5 }}秒</span>
-                    {% if shot.cameraAngle %}
-                    <span><i data-lucide="camera" class="w-3 h-3 inline mr-1"></i>{{ shot.cameraAngle }}</span>
-                    {% endif %}
-                    {% if shot.cameraMovement %}
-                    <span><i data-lucide="move" class="w-3 h-3 inline mr-1"></i>{{ shot.cameraMovement }}</span>
-                    {% endif %}
+
+                <!-- 内联编辑字段 -->
+                <div class="space-y-2 text-sm">
+                    <!-- 剧情 - 包含时间、镜头、剧情、音效 -->
+                    <div class="shot-field flex items-start gap-2">
+                        <div class="flex-1 relative">
+                            <!-- 可编辑区域 -->
+                            <div class="description-editor min-h-[80px] bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-white focus:border-blue-400 focus:outline-none text-sm leading-relaxed"
+                                 contenteditable="true"
+                                 data-field="description"
+                                 data-shot-id="{{ shot.id }}"
+                                 data-raw=""
+                                 placeholder="输入分镜内容...">时间【00:{{ shot.startTime|default:0|stringformat:'02d' }}-00:{{ shot.endTime|default:shot.duration|default:5|stringformat:'02d' }}】
+镜头【{{ shot.shotType|default:'中景' }}】
+剧情【{{ shot.description|default:'' }}】{% if shot.soundEffect %}音效【{{ shot.soundEffect }}】{% endif %}</div>
+                            <!-- 保存状态指示 -->
+                            <div class="save-indicator hidden absolute top-2 right-2 text-xs px-2 py-0.5 rounded"></div>
+                        </div>
+                    </div>
                 </div>
             </div>
 
@@ -714,7 +864,7 @@ propsData.forEach((p, i) => {
 });
 
 // 统计数据
-const shots = {{ shots|safe|default:'[]' }};
+const shots = {{ shots|to_json }};
 let completed = 0, pending = 0;
 shots.forEach(s => {
     if (s.generationStatus === 2) completed++;
@@ -1019,11 +1169,11 @@ document.getElementById('savePropBtn')?.addEventListener('click', function() {
             const placeholder = document.createElement('div');
             placeholder.className = 'glass-card glass-card-hover p-3 text-center group relative';
             placeholder.dataset.propName = name;
+            placeholder.dataset.status = '0'; // 生成中状态
             placeholder.innerHTML = `
-                <div class="w-full aspect-square rounded-lg bg-white/5 mb-2 overflow-hidden flex items-center justify-center">
+                <div class="w-full aspect-square rounded-lg bg-white/5 mb-2 overflow-hidden flex items-center justify-center prop-history-btn">
                     <div class="text-center">
-                        <i data-lucide="loader-2" class="w-6 h-6 text-blue-400 animate-spin mx-auto"></i>
-                        <p class="text-xs text-white/50 mt-1">生成中</p>
+                        <i data-lucide="image" class="w-6 h-6 text-white/30 mx-auto"></i>
                     </div>
                 </div>
                 <p class="text-sm text-white/80 truncate mb-1">${name}</p>
@@ -1031,6 +1181,8 @@ document.getElementById('savePropBtn')?.addEventListener('click', function() {
             `;
             propsGrid.appendChild(placeholder);
             lucide.createIcons();
+            // 添加遮罩层
+            addOverlay(placeholder, 'prop');
         }
 
         // 异步提交
@@ -1290,6 +1442,35 @@ function bindSceneRollback() {
         });
     });
 }
+
+// Role Image Preview
+document.querySelectorAll('.role-preview-btn').forEach(btn => {
+    btn.addEventListener('click', function(e) {
+        e.stopPropagation();
+        const name = this.dataset.roleName;
+        const url = this.dataset.roleUrl;
+        if (url) {
+            showRolePreview(name, url);
+        }
+    });
+});
+
+function showRolePreview(name, url) {
+    document.getElementById('rolePreviewName').textContent = name;
+    document.getElementById('rolePreviewImage').src = url;
+    document.getElementById('rolePreviewModal').classList.remove('hidden');
+    lucide.createIcons();
+}
+
+document.getElementById('closeRolePreview').addEventListener('click', function() {
+    document.getElementById('rolePreviewModal').classList.add('hidden');
+});
+
+document.getElementById('rolePreviewModal').addEventListener('click', function(e) {
+    if (e.target === this) {
+        this.classList.add('hidden');
+    }
+});
 
 // Prop History
 let currentPropHistoryId = null;
@@ -1585,15 +1766,24 @@ document.querySelectorAll('.generate-btn').forEach(btn => {
         lucide.createIcons();
 
         try {
-            const response = await fetch(`/api/shots/${shotId}/generate/`, {
+            // 检查剧情中是否有@提及的资产
+            const card = document.querySelector(`.shot-card[data-shot-id="${shotId}"]`);
+            const descEditor = card?.querySelector('.description-editor');
+            const hasReferences = descEditor && descEditor.querySelectorAll('.inline-asset-thumb').length > 0;
+
+            const endpoint = hasReferences
+                ? `/api/v1/shots/${shotId}/generate-with-references/`
+                : `/api/shots/${shotId}/generate/`;
+
+            const response = await fetch(endpoint, {
                 method: 'POST',
                 headers: { 'X-CSRFToken': getCookie('csrftoken') }
             });
             const data = await response.json();
-            if (data.success) {
+            if (data.success || data.code === 200) {
                 setTimeout(() => location.reload(), 2000);
             } else {
-                alert('生成失败: ' + data.error);
+                alert('生成失败: ' + (data.error || data.message));
                 this.disabled = false;
                 this.innerHTML = '<i data-lucide="play" class="w-4 h-4"></i>生成';
                 lucide.createIcons();
@@ -2189,6 +2379,633 @@ document.addEventListener('DOMContentLoaded', async function() {
             await showAssetSelectionModal();
         }, 500);
     }
+});
+
+// ========== 内联编辑 + @提及功能 ==========
+// 可用资产数据
+let availableAssets = { scene: [], role: [], prop: [] };
+let assetNameMap = {}; // 名称到资产的映射
+
+// 资产数据（从模板传递）
+const seriesScenes = {{ scenes|to_json }};
+const seriesRoles = {{ roles|to_json }};
+const seriesProps = {{ props|to_json }};
+
+// 资产类型配置
+const assetTypeConfig = {
+    scene: { label: '场景', borderColor: 'border-emerald-500', bgColor: 'bg-emerald-500/20' },
+    role: { label: '角色', borderColor: 'border-purple-500', bgColor: 'bg-purple-500/20' },
+    prop: { label: '道具', borderColor: 'border-blue-500', bgColor: 'bg-blue-500/20' }
+};
+
+// 初始化可用资产
+function initAvailableAssets() {
+    console.log('initAvailableAssets called');
+    console.log('seriesScenes:', seriesScenes);
+    console.log('seriesRoles:', seriesRoles);
+    console.log('seriesProps:', seriesProps);
+
+    // 场景资产
+    availableAssets.scene = seriesScenes.filter(s => s.activeAssetUrl).map(s => ({
+        id: s.id,
+        name: s.sceneName,
+        imageUrl: s.activeAssetUrl,
+        type: 'scene'
+    }));
+
+    // 角色资产
+    availableAssets.role = seriesRoles.filter(r => r.assetUrl).map(r => ({
+        id: r.id,
+        name: r.roleName,
+        imageUrl: r.assetUrl,
+        type: 'role'
+    }));
+
+    // 道具资产
+    availableAssets.prop = seriesProps.filter(p => p.activeAssetUrl || p.transparentUrl).map(p => ({
+        id: p.id,
+        name: p.propName,
+        imageUrl: p.activeAssetUrl || p.transparentUrl,
+        type: 'prop'
+    }));
+
+    console.log('availableAssets:', availableAssets);
+
+    // 构建名称映射
+    [...availableAssets.scene, ...availableAssets.role, ...availableAssets.prop].forEach(a => {
+        assetNameMap[a.name] = a;
+    });
+}
+
+// 初始化资产
+initAvailableAssets();
+
+// 防抖保存器
+const saveDebouncers = {};
+
+function debouncedSave(shotId, delay = 800) {
+    if (saveDebouncers[shotId]) {
+        clearTimeout(saveDebouncers[shotId]);
+    }
+    saveDebouncers[shotId] = setTimeout(() => {
+        saveShotInline(shotId);
+    }, delay);
+}
+
+// 显示保存状态
+function showSaveIndicator(shotId, status) {
+    const card = document.querySelector(`.shot-card[data-shot-id="${shotId}"]`);
+    if (!card) return;
+
+    let indicator = card.querySelector('.save-indicator');
+    if (!indicator) return;
+
+    const config = {
+        saving: { text: '保存中...', cls: 'bg-blue-500/20 text-blue-300' },
+        saved: { text: '已保存', cls: 'bg-emerald-500/20 text-emerald-300' },
+        error: { text: '保存失败', cls: 'bg-red-500/20 text-red-300' }
+    };
+
+    indicator.textContent = config[status].text;
+    indicator.className = `save-indicator absolute top-2 right-2 text-xs px-2 py-0.5 rounded ${config[status].cls}`;
+    indicator.classList.remove('hidden');
+
+    if (status === 'saved' || status === 'error') {
+        setTimeout(() => indicator.classList.add('hidden'), 2000);
+    }
+}
+
+// 解析合并的分镜文本格式
+function parseShotText(text) {
+    const result = {
+        startTime: null,
+        endTime: null,
+        shotType: null,
+        description: null,
+        soundEffect: null
+    };
+
+    if (!text) return result;
+
+    // 解析时间【00:XX-00:YY】
+    const timeMatch = text.match(/时间【(\d+):(\d+)-(\d+):(\d+)】/);
+    if (timeMatch) {
+        result.startTime = parseInt(timeMatch[2]);  // 秒数
+        result.endTime = parseInt(timeMatch[4]);    // 秒数
+    }
+
+    // 解析镜头【XXX】
+    const shotTypeMatch = text.match(/镜头【(.+?)】/);
+    if (shotTypeMatch) {
+        result.shotType = shotTypeMatch[1];
+    }
+
+    // 解析剧情【XXX】（可能跨多行，贪婪匹配到最后一个】）
+    const descMatch = text.match(/剧情【([\s\S]+?)】(?=\n音效|$)/);
+    if (descMatch) {
+        result.description = descMatch[1].trim();
+    }
+
+    // 解析音效【XXX】
+    const soundMatch = text.match(/音效【(.+?)】/);
+    if (soundMatch) {
+        result.soundEffect = soundMatch[1];
+    }
+
+    return result;
+}
+
+// 保存分镜数据
+async function saveShotInline(shotId) {
+    const card = document.querySelector(`.shot-card[data-shot-id="${shotId}"]`);
+    if (!card) return;
+
+    const descriptionEditor = card.querySelector('[data-field="description"]');
+    const fullText = extractDescriptionText(descriptionEditor);
+
+    // 解析合并的文本格式
+    const parsed = parseShotText(fullText);
+
+    const data = {
+        startTime: parsed.startTime,
+        endTime: parsed.endTime,
+        shotType: parsed.shotType,
+        description: parsed.description,
+        soundEffect: parsed.soundEffect
+    };
+
+    showSaveIndicator(shotId, 'saving');
+
+    try {
+        // 保存分镜数据
+        const response = await fetch(`/api/v1/shots/${shotId}/`, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': getCookie('csrftoken')
+            },
+            body: JSON.stringify(data)
+        });
+
+        const result = await response.json();
+
+        if (result.code === 200 || result.success) {
+            // 保存参考图
+            await saveMentionedAssets(shotId, descriptionEditor);
+            showSaveIndicator(shotId, 'saved');
+        } else {
+            showSaveIndicator(shotId, 'error');
+        }
+    } catch (e) {
+        console.error('保存失败:', e);
+        showSaveIndicator(shotId, 'error');
+    }
+}
+
+// 从编辑器提取纯文本描述
+function extractDescriptionText(editor) {
+    if (!editor) return null;
+
+    const clone = editor.cloneNode(true);
+
+    // 将资产容器替换为 @名称 格式
+    clone.querySelectorAll('[data-asset-name]').forEach(wrapper => {
+        const name = wrapper.dataset.assetName;
+        const text = document.createTextNode(`@${name}`);
+        wrapper.replaceWith(text);
+    });
+
+    return clone.textContent.trim() || null;
+}
+
+// 提取提及的资产
+function extractMentionedAssets(editor) {
+    if (!editor) return [];
+
+    const mentioned = [];
+    // 查找资产容器（包装缩略图和名称的span）
+    editor.querySelectorAll('[data-asset-id]').forEach(wrapper => {
+        const id = parseInt(wrapper.dataset.assetId);
+        const type = wrapper.dataset.assetType;
+        const name = wrapper.dataset.assetName;
+        const url = wrapper.dataset.assetUrl;
+
+        // 避免重复
+        if (!mentioned.some(m => m.imageType === type && m.referenceId === id)) {
+            mentioned.push({
+                imageType: type,
+                referenceId: id,
+                referenceName: name,
+                imageUrl: url,
+                isUserAdded: true
+            });
+        }
+    });
+
+    return mentioned;
+}
+
+// 保存提及的资产作为参考图
+async function saveMentionedAssets(shotId, editor) {
+    const mentioned = extractMentionedAssets(editor);
+
+    // 添加顺序
+    mentioned.forEach((m, i) => m.displayOrder = i);
+
+    await fetch(`/api/v1/shots/${shotId}/references/`, {
+        method: 'PUT',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': getCookie('csrftoken')
+        },
+        body: JSON.stringify({ referenceImages: mentioned })
+    });
+}
+
+// 全局下拉列表（放在 body 最后，避免被遮挡）
+let globalMentionDropdown = null;
+
+function getGlobalMentionDropdown() {
+    if (!globalMentionDropdown) {
+        globalMentionDropdown = document.createElement('div');
+        globalMentionDropdown.className = 'mention-dropdown fixed bg-gray-900 border border-white/10 rounded-lg shadow-2xl z-[99999] max-h-56 overflow-y-auto min-w-[300px] hidden';
+        document.body.appendChild(globalMentionDropdown);
+    }
+    return globalMentionDropdown;
+}
+
+// 初始化剧情编辑器的@提及功能
+function initDescriptionMention(editor) {
+    const dropdown = getGlobalMentionDropdown();
+    let mentionStartIndex = -1;
+    let savedRange = null;  // 保存选区
+
+    console.log('initDescriptionMention called, dropdown:', dropdown);
+    console.log('editor:', editor);
+
+    // 保存选区（在编辑器获得焦点时）
+    editor.addEventListener('focus', function() {
+        const selection = window.getSelection();
+        if (selection.rangeCount) {
+            savedRange = selection.getRangeAt(0).cloneRange();
+        }
+    });
+
+    // 在输入时也保存选区
+    editor.addEventListener('input', function(e) {
+        const selection = window.getSelection();
+        if (selection.rangeCount) {
+            savedRange = selection.getRangeAt(0).cloneRange();
+        }
+    });
+
+    editor.addEventListener('input', function(e) {
+        console.log('INPUT EVENT FIRED');
+        const selection = window.getSelection();
+        if (!selection.rangeCount) {
+            console.log('No selection range');
+            dropdown.classList.add('hidden');
+            return;
+        }
+
+        const range = selection.getRangeAt(0);
+
+        // 确保光标在文本节点中
+        if (range.startContainer.nodeType !== Node.TEXT_NODE) {
+            console.log('Not in text node, nodeType:', range.startContainer.nodeType);
+            dropdown.classList.add('hidden');
+            return;
+        }
+
+        const textNode = range.startContainer;
+        const cursorPos = range.startOffset;
+
+        // 获取整个编辑器的文本
+        const fullText = editor.textContent;
+        console.log('input event, fullText:', fullText, 'cursorPos in node:', cursorPos);
+
+        // 获取光标前的文本
+        let textBeforeCursor = '';
+        if (range.startContainer.nodeType === Node.TEXT_NODE) {
+            textBeforeCursor = range.startContainer.textContent.substring(0, cursorPos);
+        } else {
+            // 如果不在文本节点中，使用整个编辑器文本
+            textBeforeCursor = fullText;
+        }
+
+        // 从光标位置向前查找@符号
+        let atIndex = -1;
+        for (let i = textBeforeCursor.length - 1; i >= 0; i--) {
+            const char = textBeforeCursor[i];
+            if (char === '@') {
+                atIndex = i;
+                break;
+            }
+            // 遇到空格或换行就停止
+            if (char === ' ' || char === '\n') {
+                break;
+            }
+        }
+
+        console.log('textBeforeCursor:', textBeforeCursor, 'atIndex:', atIndex);
+
+        if (atIndex === -1) {
+            dropdown.classList.add('hidden');
+            mentionStartIndex = -1;
+            return;
+        }
+
+        // 检查@后面是否有空格（如果有，说明@已经结束）
+        const afterAt = textBeforeCursor.substring(atIndex + 1);
+        if (afterAt.includes(' ') || afterAt.includes('\n')) {
+            dropdown.classList.add('hidden');
+            mentionStartIndex = -1;
+            return;
+        }
+
+        mentionStartIndex = atIndex;
+        const searchTerm = afterAt.toLowerCase();
+
+        console.log('searchTerm:', searchTerm, 'availableAssets:', availableAssets);
+
+        // 过滤资产
+        const allAssets = [
+            ...availableAssets.scene.map(a => ({...a, typeLabel: '场景'})),
+            ...availableAssets.role.map(a => ({...a, typeLabel: '角色'})),
+            ...availableAssets.prop.map(a => ({...a, typeLabel: '道具'}))
+        ];
+
+        const filtered = allAssets.filter(a =>
+            a.name.toLowerCase().includes(searchTerm) && a.imageUrl
+        );
+
+        if (filtered.length === 0) {
+            dropdown.classList.add('hidden');
+            return;
+        }
+
+        // 渲染下拉列表
+        dropdown.innerHTML = filtered.slice(0, 8).map(asset => `
+            <div class="mention-item flex items-center gap-3 px-3 py-2 hover:bg-white/10 cursor-pointer transition-colors"
+                 data-id="${asset.id}" data-type="${asset.type}" data-name="${asset.name}" data-url="${asset.imageUrl}">
+                <img src="${asset.imageUrl}" class="w-10 h-10 rounded-lg object-cover flex-shrink-0 border-2 ${assetTypeConfig[asset.type].borderColor}">
+                <div class="flex-1 min-w-0">
+                    <p class="text-sm text-white truncate font-medium">${asset.name}</p>
+                    <p class="text-xs text-white/40">${asset.typeLabel}</p>
+                </div>
+            </div>
+        `).join('');
+
+        // 定位下拉列表到光标位置
+        const cursorRect = range.getBoundingClientRect();
+        const viewportWidth = window.innerWidth;
+        const viewportHeight = window.innerHeight;
+
+        let left = cursorRect.left;
+        let top = cursorRect.bottom + 4;
+
+        // 确保不超出右边界
+        if (left + 300 > viewportWidth) {
+            left = viewportWidth - 310;
+        }
+
+        // 确保不超出下边界
+        if (top + 250 > viewportHeight) {
+            top = cursorRect.top - 260;
+        }
+
+        dropdown.style.left = left + 'px';
+        dropdown.style.top = top + 'px';
+        dropdown.style.width = '300px';
+        dropdown.classList.remove('hidden');
+
+        // 绑定点击事件
+        dropdown.querySelectorAll('.mention-item').forEach(item => {
+            item.addEventListener('click', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+
+                const id = this.dataset.id;
+                const type = this.dataset.type;
+                const name = this.dataset.name;
+                const url = this.dataset.url;
+
+                console.log('Asset selected:', { id, type, name, url });
+
+                // 恢复编辑器焦点和选区
+                editor.focus();
+
+                const selection = window.getSelection();
+                selection.removeAllRanges();
+
+                // 使用保存的选区
+                if (savedRange) {
+                    selection.addRange(savedRange);
+                }
+
+                if (!selection.rangeCount) {
+                    console.log('No range after restore');
+                    return;
+                }
+
+                const r = selection.getRangeAt(0);
+                console.log('Range restored:', r.startContainer, r.startOffset);
+
+                if (r.startContainer.nodeType === Node.TEXT_NODE) {
+                    const node = r.startContainer;
+                    const cursorPos = r.startOffset;
+                    const textBeforeCursor = node.textContent.substring(0, cursorPos);
+
+                    // 从光标位置向前查找@符号
+                    let atIndex = -1;
+                    for (let i = textBeforeCursor.length - 1; i >= 0; i--) {
+                        const char = textBeforeCursor[i];
+                        if (char === '@') {
+                            atIndex = i;
+                            break;
+                        }
+                        if (char === ' ' || char === '\n') {
+                            break;
+                        }
+                    }
+
+                    console.log('atIndex:', atIndex, 'textBeforeCursor:', textBeforeCursor);
+
+                    if (atIndex !== -1) {
+                        // 删除@及搜索文本
+                        const newText = node.textContent.substring(0, atIndex) + node.textContent.substring(cursorPos);
+                        node.textContent = newText;
+                        r.setStart(node, atIndex);
+                        r.collapse(true);
+                    }
+                }
+
+                // 插入资产缩略图
+                insertAssetThumb(editor, { id, type, name, url });
+
+                dropdown.classList.add('hidden');
+                mentionStartIndex = -1;
+            });
+        });
+    });
+
+    // 阻止下拉列表获取焦点（防止编辑器失焦）
+    dropdown.addEventListener('mousedown', function(e) {
+        e.preventDefault();
+    });
+
+    // 失焦隐藏下拉
+    editor.addEventListener('blur', function() {
+        setTimeout(() => dropdown.classList.add('hidden'), 200);
+    });
+
+    // 滚动时隐藏下拉（但下拉列表内部滚动不隐藏）
+    const hideOnScroll = (e) => {
+        // 如果滚动的是下拉列表内部，不隐藏
+        if (dropdown.contains(e.target)) return;
+        dropdown.classList.add('hidden');
+    };
+    window.addEventListener('scroll', hideOnScroll, true);
+
+    // 键盘导航支持
+    editor.addEventListener('keydown', function(e) {
+        if (dropdown.classList.contains('hidden')) return;
+
+        const items = dropdown.querySelectorAll('.mention-item');
+        const activeItem = dropdown.querySelector('.mention-item.bg-white\\/20');
+        let activeIndex = -1;
+
+        items.forEach((item, i) => {
+            if (item === activeItem) activeIndex = i;
+        });
+
+        if (e.key === 'ArrowDown') {
+            e.preventDefault();
+            items.forEach(item => item.classList.remove('bg-white/20'));
+            const nextIndex = activeIndex < items.length - 1 ? activeIndex + 1 : 0;
+            items[nextIndex]?.classList.add('bg-white/20');
+        } else if (e.key === 'ArrowUp') {
+            e.preventDefault();
+            items.forEach(item => item.classList.remove('bg-white/20'));
+            const prevIndex = activeIndex > 0 ? activeIndex - 1 : items.length - 1;
+            items[prevIndex]?.classList.add('bg-white/20');
+        } else if (e.key === 'Enter' && activeItem) {
+            e.preventDefault();
+            activeItem.click();
+        } else if (e.key === 'Escape') {
+            dropdown.classList.add('hidden');
+        }
+    });
+}
+
+// 删除@触发文本
+// 插入资产缩略图
+function insertAssetThumb(editor, asset) {
+    const selection = window.getSelection();
+    if (!selection.rangeCount) return;
+
+    const range = selection.getRangeAt(0);
+
+    // 创建外层容器（让缩略图和名称作为一个整体删除）
+    const wrapper = document.createElement('span');
+    wrapper.className = 'inline-flex items-center gap-1 whitespace-nowrap';
+    wrapper.contentEditable = false;
+    wrapper.dataset.assetId = asset.id;
+    wrapper.dataset.assetType = asset.type;
+    wrapper.dataset.assetName = asset.name;
+    wrapper.dataset.assetUrl = asset.url;
+
+    // 创建缩略图元素
+    const thumb = document.createElement('img');
+    thumb.className = `inline-asset-thumb w-5 h-5 rounded align-middle border-2 ${assetTypeConfig[asset.type].borderColor}`;
+    thumb.src = asset.url;
+    thumb.alt = asset.name;
+    thumb.title = `${assetTypeConfig[asset.type].label}: ${asset.name}`;
+
+    // 创建名称标签
+    const nameSpan = document.createElement('span');
+    nameSpan.className = `${assetTypeConfig[asset.type].bgColor} px-1.5 py-0.5 rounded text-xs text-white`;
+    nameSpan.textContent = asset.name;
+
+    wrapper.appendChild(thumb);
+    wrapper.appendChild(nameSpan);
+
+    range.insertNode(wrapper);
+
+    // 添加空格
+    const space = document.createTextNode('\u200B');  // 零宽空格，用于光标定位
+    range.setStartAfter(wrapper);
+    range.insertNode(space);
+
+    // 移动光标到后面
+    range.setStartAfter(space);
+    range.collapse(true);
+    selection.removeAllRanges();
+    selection.addRange(range);
+}
+
+// 渲染已有的@提及为缩略图
+function renderDescriptionWithThumbs(editor, rawText) {
+    if (!rawText) return;
+
+    // 解析 @名称 格式
+    const parts = rawText.split(/(@[\u4e00-\u9fa5\w]+)/g);
+
+    let html = '';
+    parts.forEach(part => {
+        if (part.startsWith('@')) {
+            const name = part.substring(1);
+            const asset = assetNameMap[name];
+            if (asset) {
+                html += `<span class="inline-flex items-center gap-1 whitespace-nowrap" contenteditable="false"
+                            data-asset-id="${asset.id}" data-asset-type="${asset.type}"
+                            data-asset-name="${asset.name}" data-asset-url="${asset.imageUrl}">
+                            <img class="inline-asset-thumb w-5 h-5 rounded align-middle border-2 ${assetTypeConfig[asset.type].borderColor}"
+                                src="${asset.imageUrl}" alt="${asset.name}"
+                                title="${assetTypeConfig[asset.type].label}: ${asset.name}">
+                            <span class="${assetTypeConfig[asset.type].bgColor} px-1.5 py-0.5 rounded text-xs text-white">${asset.name}</span>
+                        </span>`;
+            } else {
+                html += part;
+            }
+        } else {
+            html += part;
+        }
+    });
+
+    editor.innerHTML = html;
+}
+
+// 初始化内联编辑
+function initInlineEditing() {
+    console.log('initInlineEditing called');
+    const cards = document.querySelectorAll('.shot-card');
+    console.log('Found shot cards:', cards.length);
+
+    cards.forEach(card => {
+        const shotId = card.dataset.shotId;
+
+        // 剧情编辑器
+        const descEditor = card.querySelector('.description-editor');
+        console.log('descEditor for shot', shotId, ':', descEditor);
+
+        if (descEditor) {
+            // 初始化@提及
+            try {
+                initDescriptionMention(descEditor);
+            } catch (e) {
+                console.error('initDescriptionMention error:', e);
+            }
+
+            // 失焦保存
+            descEditor.addEventListener('blur', () => debouncedSave(shotId));
+        }
+    });
+}
+
+// 页面加载时初始化
+document.addEventListener('DOMContentLoaded', function() {
+    initInlineEditing();
 });
 
 function getCookie(name) {

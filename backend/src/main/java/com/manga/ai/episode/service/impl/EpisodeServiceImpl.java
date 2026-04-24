@@ -42,6 +42,8 @@ import com.manga.ai.shot.mapper.ShotMapper;
 import com.manga.ai.shot.mapper.ShotPropMapper;
 import com.manga.ai.role.entity.Role;
 import com.manga.ai.role.mapper.RoleMapper;
+import com.manga.ai.role.service.RoleService;
+import com.manga.ai.role.dto.RoleDetailVO;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.BeanUtils;
@@ -77,6 +79,7 @@ public class EpisodeServiceImpl implements EpisodeService {
     private final ShotCharacterMapper shotCharacterMapper;
     private final ShotPropMapper shotPropMapper;
     private final RoleMapper roleMapper;
+    private final RoleService roleService;
     private final ScriptParseService scriptParseService;
     private final SceneService sceneService;
     private final PropService propService;
@@ -360,7 +363,18 @@ public class EpisodeServiceImpl implements EpisodeService {
                 shot.setEpisodeId(episode.getId());
                 shot.setShotNumber(shotInfo.getShotNumber());
                 shot.setDescription(shotInfo.getDescription());
-                shot.setDuration(shotInfo.getDuration() != null ? shotInfo.getDuration() : 5);
+                shot.setShotType(shotInfo.getShotType());
+                shot.setStartTime(shotInfo.getStartTime());
+                shot.setEndTime(shotInfo.getEndTime());
+                shot.setSoundEffect(shotInfo.getSoundEffect());
+                // 计算时长（如果没提供，根据开始和结束时间计算）
+                if (shotInfo.getDuration() != null) {
+                    shot.setDuration(shotInfo.getDuration());
+                } else if (shotInfo.getStartTime() != null && shotInfo.getEndTime() != null) {
+                    shot.setDuration(shotInfo.getEndTime() - shotInfo.getStartTime());
+                } else {
+                    shot.setDuration(5);
+                }
                 shot.setCameraAngle(shotInfo.getCameraAngle());
                 shot.setCameraMovement(shotInfo.getCameraMovement());
                 shot.setGenerationStatus(ShotGenerationStatus.PENDING.getCode());
@@ -634,6 +648,13 @@ public class EpisodeServiceImpl implements EpisodeService {
                 .collect(Collectors.toList());
         vo.setShots(shotSummaries);
 
+        // 获取角色列表
+        List<RoleDetailVO> roleDetailVOs = roleService.getRolesBySeriesId(episode.getSeriesId());
+        List<EpisodeDetailVO.RoleInfo> roleInfos = roleDetailVOs.stream()
+                .map(this::convertToRoleInfo)
+                .collect(Collectors.toList());
+        vo.setRoles(roleInfos);
+
         return vo;
     }
 
@@ -832,6 +853,56 @@ public class EpisodeServiceImpl implements EpisodeService {
         }
 
         return summary;
+    }
+
+    /**
+     * 转换角色详情VO为剧集详情中的角色信息
+     */
+    private EpisodeDetailVO.RoleInfo convertToRoleInfo(RoleDetailVO roleDetailVO) {
+        EpisodeDetailVO.RoleInfo roleInfo = new EpisodeDetailVO.RoleInfo();
+        roleInfo.setId(roleDetailVO.getId());
+        roleInfo.setRoleName(roleDetailVO.getRoleName());
+        roleInfo.setStatus(roleDetailVO.getStatus());
+        roleInfo.setStatusDesc(roleDetailVO.getStatusDesc());
+
+        // 获取主资产图片（默认视图）
+        if (roleDetailVO.getAssets() != null && !roleDetailVO.getAssets().isEmpty()) {
+            // 找到默认视图的资产
+            for (RoleDetailVO.AssetInfo asset : roleDetailVO.getAssets()) {
+                if ("default".equals(asset.getViewType()) || asset.getViewType() == null) {
+                    roleInfo.setAssetUrl(asset.getFilePath());
+                    break;
+                }
+            }
+            // 如果没有默认视图，使用第一个资产
+            if (roleInfo.getAssetUrl() == null) {
+                roleInfo.setAssetUrl(roleDetailVO.getAssets().get(0).getFilePath());
+            }
+        }
+
+        // 获取服装信息（按clothingId分组）
+        if (roleDetailVO.getAssets() != null) {
+            Map<Integer, List<RoleDetailVO.AssetInfo>> clothingAssets = roleDetailVO.getAssets().stream()
+                    .filter(a -> a.getClothingId() != null)
+                    .collect(Collectors.groupingBy(RoleDetailVO.AssetInfo::getClothingId));
+
+            List<EpisodeDetailVO.RoleInfo.ClothingInfo> clothings = new ArrayList<>();
+            for (Map.Entry<Integer, List<RoleDetailVO.AssetInfo>> entry : clothingAssets.entrySet()) {
+                EpisodeDetailVO.RoleInfo.ClothingInfo clothingInfo = new EpisodeDetailVO.RoleInfo.ClothingInfo();
+                clothingInfo.setId(entry.getKey().longValue());
+                clothingInfo.setStatus(1);
+
+                // 获取第一个资产的名称和图片
+                RoleDetailVO.AssetInfo firstAsset = entry.getValue().get(0);
+                clothingInfo.setClothingName(firstAsset.getViewName() != null ? firstAsset.getViewName() : "服装" + entry.getKey());
+                clothingInfo.setAssetUrl(firstAsset.getFilePath());
+
+                clothings.add(clothingInfo);
+            }
+            roleInfo.setClothings(clothings);
+        }
+
+        return roleInfo;
     }
 
     @Override

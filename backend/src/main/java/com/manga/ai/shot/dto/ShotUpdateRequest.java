@@ -13,14 +13,29 @@ public class ShotUpdateRequest implements Serializable {
     private static final long serialVersionUID = 1L;
 
     /**
-     * 分镜描述
+     * 分镜描述（剧情）
      */
     private String description;
+
+    /**
+     * 开始时间（秒）
+     */
+    private Integer startTime;
+
+    /**
+     * 结束时间（秒）
+     */
+    private Integer endTime;
 
     /**
      * 时长
      */
     private Integer duration;
+
+    /**
+     * 镜头类型（中景/特写/全景等）
+     */
+    private String shotType;
 
     /**
      * 镜头角度
@@ -31,6 +46,11 @@ public class ShotUpdateRequest implements Serializable {
      * 镜头运动
      */
     private String cameraMovement;
+
+    /**
+     * 音效描述
+     */
+    private String soundEffect;
 
     /**
      * 用户修改的提示词

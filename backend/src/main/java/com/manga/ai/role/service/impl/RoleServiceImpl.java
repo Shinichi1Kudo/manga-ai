@@ -164,7 +164,7 @@ public class RoleServiceImpl implements RoleService {
         roles.forEach(role -> log.info("查询角色: roleId={}, customPrompt={}", role.getId(), role.getCustomPrompt()));
 
         return roles.stream()
-                .map(this::convertToVO)
+                .map(role -> convertToVOWithAssets(role))
                 .collect(Collectors.toList());
     }
 
@@ -401,6 +401,40 @@ public class RoleServiceImpl implements RoleService {
     private RoleDetailVO convertToVO(Role role) {
         RoleDetailVO vo = new RoleDetailVO();
         BeanUtils.copyProperties(role, vo);
+        return vo;
+    }
+
+    /**
+     * 转换为VO并包含资产信息
+     */
+    private RoleDetailVO convertToVOWithAssets(Role role) {
+        RoleDetailVO vo = new RoleDetailVO();
+        BeanUtils.copyProperties(role, vo);
+
+        // 获取角色资产
+        LambdaQueryWrapper<RoleAsset> assetWrapper = new LambdaQueryWrapper<>();
+        assetWrapper.eq(RoleAsset::getRoleId, role.getId())
+                .eq(RoleAsset::getIsActive, 1)
+                .orderByDesc(RoleAsset::getVersion);
+        List<RoleAsset> assets = roleAssetMapper.selectList(assetWrapper);
+
+        List<RoleDetailVO.AssetInfo> assetInfos = assets.stream().map(asset -> {
+            RoleDetailVO.AssetInfo info = new RoleDetailVO.AssetInfo();
+            info.setId(asset.getId());
+            info.setAssetType(asset.getAssetType());
+            info.setViewType(asset.getViewType());
+            info.setViewName(asset.getFileName());
+            info.setClothingId(asset.getClothingId());
+            info.setVersion(asset.getVersion());
+            info.setFilePath(asset.getFilePath());
+            info.setTransparentPath(asset.getTransparentPath());
+            info.setThumbnailPath(asset.getThumbnailPath());
+            info.setStatus(asset.getStatus());
+            info.setValidationPassed(asset.getValidationPassed() != null && asset.getValidationPassed() == 1);
+            return info;
+        }).collect(Collectors.toList());
+
+        vo.setAssets(assetInfos);
         return vo;
     }
 }

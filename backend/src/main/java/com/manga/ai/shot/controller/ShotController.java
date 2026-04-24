@@ -1,7 +1,9 @@
 package com.manga.ai.shot.controller;
 
 import com.manga.ai.common.result.Result;
+import com.manga.ai.shot.dto.ReferenceImageDTO;
 import com.manga.ai.shot.dto.ShotDetailVO;
+import com.manga.ai.shot.dto.ShotReferenceUpdateRequest;
 import com.manga.ai.shot.dto.ShotReviewRequest;
 import com.manga.ai.shot.dto.ShotUpdateRequest;
 import com.manga.ai.shot.service.ShotService;
@@ -77,6 +79,47 @@ public class ShotController {
     public Result<Void> generateVideosForEpisode(@PathVariable Long episodeId) {
         log.info("批量生成视频: episodeId={}", episodeId);
         shotService.generateVideosForEpisode(episodeId);
+        return Result.success();
+    }
+
+    /**
+     * 获取分镜参考图列表
+     */
+    @GetMapping("/{shotId}/references")
+    public Result<List<ReferenceImageDTO>> getReferenceImages(@PathVariable Long shotId) {
+        List<ReferenceImageDTO> references = shotService.getReferenceImages(shotId);
+        return Result.success(references);
+    }
+
+    /**
+     * 更新分镜参考图列表
+     */
+    @PutMapping("/{shotId}/references")
+    public Result<Void> updateReferenceImages(
+            @PathVariable Long shotId,
+            @RequestBody ShotReferenceUpdateRequest request) {
+        log.info("更新分镜参考图: shotId={}, count={}", shotId, request.getReferenceImages() != null ? request.getReferenceImages().size() : 0);
+        shotService.updateReferenceImages(shotId, request.getReferenceImages());
+        return Result.success();
+    }
+
+    /**
+     * 自动匹配分镜文案中的资产
+     */
+    @PostMapping("/{shotId}/match-assets")
+    public Result<List<ReferenceImageDTO>> matchAssets(@PathVariable Long shotId) {
+        log.info("自动匹配分镜资产: shotId={}", shotId);
+        List<ReferenceImageDTO> matched = shotService.matchAssetsFromDescription(shotId);
+        return Result.success(matched);
+    }
+
+    /**
+     * 带参考图生成视频
+     */
+    @PostMapping("/{shotId}/generate-with-references")
+    public Result<Void> generateVideoWithReferences(@PathVariable Long shotId) {
+        log.info("带参考图生成视频: shotId={}", shotId);
+        shotService.generateVideoWithReferences(shotId);
         return Result.success();
     }
 }

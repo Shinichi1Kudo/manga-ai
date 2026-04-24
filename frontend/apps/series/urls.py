@@ -120,4 +120,17 @@ urlpatterns = [
 
     # 审核分镜
     path('api/shots/<int:shot_id>/review/', views.shot_review, name='shot_review'),
+
+    # 更新分镜
+    path('api/v1/shots/<int:shot_id>/', views.shot_update, name='shot_update'),
+
+    # ========== 分镜参考图相关 ==========
+    # 获取分镜参考图列表
+    path('api/v1/shots/<int:shot_id>/references/', views.shot_references, name='shot_references'),
+
+    # 自动匹配分镜资产
+    path('api/v1/shots/<int:shot_id>/match-assets/', views.shot_match_assets, name='shot_match_assets'),
+
+    # 带参考图生成视频
+    path('api/v1/shots/<int:shot_id>/generate-with-references/', views.shot_generate_with_references, name='shot_generate_with_references'),
 ]

@@ -23,7 +23,11 @@ public class ShotDetailVO implements Serializable {
     private String description;
     private String cameraAngle;
     private String cameraMovement;
+    private String shotType;
+    private Integer startTime;
+    private Integer endTime;
     private Integer duration;
+    private String soundEffect;
     private String charactersJson;
     private String propsJson;
     private String referencePrompt;

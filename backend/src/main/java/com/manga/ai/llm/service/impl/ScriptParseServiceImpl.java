@@ -203,9 +203,22 @@ public class ScriptParseServiceImpl implements ScriptParseService {
         StringBuilder prompt = new StringBuilder();
         prompt.append("你是一个专业的剧本分析助手，擅长将剧本拆分为分镜脚本。\n\n");
         prompt.append("## 任务说明\n");
-        prompt.append("1. 将剧本拆分为多个分镜（每个分镜时长不超过15秒）\n");
-        prompt.append("2. 指定镜头角度和运动方式\n");
-        prompt.append("3. 分配角色动作和表情\n\n");
+        prompt.append("1. 将剧本拆分为多个分镜，每个分镜时长1-15秒\n");
+        prompt.append("2. 为每个分镜指定镜头类型（景别+运动方式）\n");
+        prompt.append("3. 为每个分镜编写详细的剧情描述（包含角色动作、表情、台词、环境变化等）\n");
+        prompt.append("4. 根据剧情需要，可选地添加音效描述\n\n");
+        prompt.append("## 镜头类型说明\n");
+        prompt.append("- 景别：远景、全景、中景、近景、特写、大特写\n");
+        prompt.append("- 运动：推镜头、拉镜头、摇镜头、移镜头、跟镜头\n");
+        prompt.append("- 示例：中景、全景+推镜头、特写+拉镜头\n\n");
+        prompt.append("## 时间说明\n");
+        prompt.append("- startTime: 镜头开始时间，固定为0\n");
+        prompt.append("- endTime: 镜头结束时间，等于该镜头的时长（1-15秒）\n");
+        prompt.append("- 例如：一个5秒的镜头，startTime=0, endTime=5\n\n");
+        prompt.append("## 剧情描述要求\n");
+        prompt.append("- 详细描述画面中发生的事情，包括角色动作、表情、台词\n");
+        prompt.append("- 描述环境变化、光线、氛围等细节\n");
+        prompt.append("- 示例: 小明站在客厅里，兴奋地挥舞手臂，大声说: \"今天终于要开学了!\" 他快速拿起书包，冲向门口。\n\n");
 
         if (!knownCharacters.isEmpty()) {
             prompt.append("## 已知角色列表\n");
@@ -234,10 +247,11 @@ public class ScriptParseServiceImpl implements ScriptParseService {
         prompt.append("    {\n");
         prompt.append("      \"shotNumber\": 1,\n");
         prompt.append("      \"sceneCode\": \"SC01\",\n");
-        prompt.append("      \"description\": \"分镜描述\",\n");
-        prompt.append("      \"duration\": 5,\n");
-        prompt.append("      \"cameraAngle\": \"平视/仰视/俯视\",\n");
-        prompt.append("      \"cameraMovement\": \"固定/推/拉/摇/移\",\n");
+        prompt.append("      \"startTime\": 0,\n");
+        prompt.append("      \"endTime\": 8,\n");
+        prompt.append("      \"shotType\": \"中景\",\n");
+        prompt.append("      \"description\": \"详细的剧情描述，包含角色动作、表情、台词、环境变化等\",\n");
+        prompt.append("      \"soundEffect\": \"音效描述（可选，根据剧情需要添加）\",\n");
         prompt.append("      \"characters\": [\n");
         prompt.append("        {\n");
         prompt.append("          \"roleName\": \"角色名\",\n");
@@ -376,7 +390,12 @@ public class ScriptParseServiceImpl implements ScriptParseService {
         prompt.append("1. 分析用户提供的剧本内容\n");
         prompt.append("2. 将剧本拆分为多个分镜（每个分镜时长不超过15秒）\n");
         prompt.append("3. 提取每个分镜中的场景、角色、道具信息\n");
-        prompt.append("4. 指定镜头角度和运动方式\n\n");
+        prompt.append("4. 指定镜头类型（景别+运动）\n");
+        prompt.append("5. 根据剧情需要，可选地添加音效描述\n\n");
+        prompt.append("## 镜头类型说明\n");
+        prompt.append("- 景别：远景、全景、中景、近景、特写、大特写\n");
+        prompt.append("- 运动：推镜头、拉镜头、摇镜头、移镜头、跟镜头\n");
+        prompt.append("- 示例：中景、全景+推镜头、特写+拉镜头\n\n");
 
         if (!knownCharacters.isEmpty()) {
             prompt.append("## 已知角色列表\n");
@@ -414,10 +433,11 @@ public class ScriptParseServiceImpl implements ScriptParseService {
         prompt.append("    {\n");
         prompt.append("      \"shotNumber\": 1,\n");
         prompt.append("      \"sceneCode\": \"SC01\",\n");
-        prompt.append("      \"description\": \"分镜描述\",\n");
-        prompt.append("      \"duration\": 5,\n");
-        prompt.append("      \"cameraAngle\": \"平视/仰视/俯视\",\n");
-        prompt.append("      \"cameraMovement\": \"固定/推/拉/摇/移\",\n");
+        prompt.append("      \"startTime\": 0,\n");
+        prompt.append("      \"endTime\": 8,\n");
+        prompt.append("      \"shotType\": \"中景\",\n");
+        prompt.append("      \"description\": \"分镜剧情描述\",\n");
+        prompt.append("      \"soundEffect\": \"音效描述（可选，根据剧情需要添加）\",\n");
         prompt.append("      \"characters\": [\n");
         prompt.append("        {\n");
         prompt.append("          \"roleName\": \"角色名\",\n");
@@ -563,6 +583,11 @@ public class ScriptParseServiceImpl implements ScriptParseService {
         shot.setDuration(shotObj.getInteger("duration"));
         shot.setCameraAngle(shotObj.getString("cameraAngle"));
         shot.setCameraMovement(shotObj.getString("cameraMovement"));
+        // 解析新字段
+        shot.setStartTime(shotObj.getInteger("startTime"));
+        shot.setEndTime(shotObj.getInteger("endTime"));
+        shot.setShotType(shotObj.getString("shotType"));
+        shot.setSoundEffect(shotObj.getString("soundEffect"));
 
         // 解析角色
         JSONArray charactersArray = shotObj.getJSONArray("characters");

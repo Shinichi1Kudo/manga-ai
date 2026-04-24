@@ -1,5 +1,6 @@
 package com.manga.ai.shot.service;
 
+import com.manga.ai.shot.dto.ReferenceImageDTO;
 import com.manga.ai.shot.dto.ShotDetailVO;
 import com.manga.ai.shot.dto.ShotReviewRequest;
 import com.manga.ai.shot.dto.ShotUpdateRequest;
@@ -50,4 +51,31 @@ public interface ShotService {
      * @param episodeId 剧集ID
      */
     void generateVideosForEpisode(Long episodeId);
+
+    /**
+     * 获取分镜参考图列表
+     * @param shotId 分镜ID
+     * @return 参考图列表
+     */
+    List<ReferenceImageDTO> getReferenceImages(Long shotId);
+
+    /**
+     * 更新分镜参考图列表
+     * @param shotId 分镜ID
+     * @param referenceImages 参考图列表
+     */
+    void updateReferenceImages(Long shotId, List<ReferenceImageDTO> referenceImages);
+
+    /**
+     * 自动匹配分镜文案中的资产
+     * @param shotId 分镜ID
+     * @return 匹配到的参考图列表
+     */
+    List<ReferenceImageDTO> matchAssetsFromDescription(Long shotId);
+
+    /**
+     * 带参考图生成视频
+     * @param shotId 分镜ID
+     */
+    void generateVideoWithReferences(Long shotId);
 }

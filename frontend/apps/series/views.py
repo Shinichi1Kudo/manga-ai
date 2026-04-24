@@ -384,6 +384,8 @@ def episode_detail(request, series_id, episode_id):
         # 获取场景和道具资产
         all_scenes = client.get(f'/v1/scenes/series/{series_id}') or []
         all_props = client.get(f'/v1/props/series/{series_id}') or []
+        # 从 episode API 获取角色数据（已包含 assetUrl）
+        all_roles = episode.get('roles', []) or []
     except BackendAPIError as e:
         messages.error(request, f'获取剧集信息失败: {e.message}')
         return redirect('series:episode_list', series_id=series_id)
@@ -452,6 +454,7 @@ def episode_detail(request, series_id, episode_id):
         'shots': shots,
         'scenes': scenes,
         'props': props,
+        'roles': all_roles,
         'series_id': series_id,
         'episode_id': episode_id,
     })
@@ -495,6 +498,21 @@ def shot_review(request, shot_id):
         return JsonResponse({'success': True})
     except BackendAPIError as e:
         return JsonResponse({'success': False, 'error': e.message}, status=400)
+
+
+@csrf_exempt
+@require_http_methods(["PUT"])
+def shot_update(request, shot_id):
+    """更新分镜"""
+    client = BackendClient()
+    try:
+        data = json.loads(request.body)
+        client.put(f'/v1/shots/{shot_id}', data)
+        return JsonResponse({'success': True})
+    except BackendAPIError as e:
+        return JsonResponse({'success': False, 'error': e.message}, status=400)
+    except json.JSONDecodeError:
+        return JsonResponse({'success': False, 'error': 'Invalid JSON'}, status=400)
 
 
 def episode_progress(request, episode_id):
@@ -791,6 +809,57 @@ def episode_generate_assets(request, episode_id):
             'unselectedPropNames': data.get('unselectedPropNames', []),
             'quality': data.get('quality', '2k')
         })
+        return JsonResponse({'code': 200, 'success': True})
+    except BackendAPIError as e:
+        return JsonResponse({'code': 400, 'message': e.message}, status=400)
+
+
+# ========== 分镜参考图相关接口 ==========
+
+@csrf_exempt
+@require_http_methods(["GET"])
+def shot_references(request, shot_id):
+    """获取分镜参考图列表"""
+    client = BackendClient()
+    try:
+        result = client.get(f'/v1/shots/{shot_id}/references')
+        return JsonResponse({'code': 200, 'data': result})
+    except BackendAPIError as e:
+        return JsonResponse({'code': 400, 'message': e.message}, status=400)
+
+
+@csrf_exempt
+@require_http_methods(["PUT"])
+def shot_update_references(request, shot_id):
+    """更新分镜参考图列表"""
+    client = BackendClient()
+    try:
+        data = json.loads(request.body)
+        client.put(f'/v1/shots/{shot_id}/references', data)
+        return JsonResponse({'code': 200, 'success': True})
+    except BackendAPIError as e:
+        return JsonResponse({'code': 400, 'message': e.message}, status=400)
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def shot_match_assets(request, shot_id):
+    """自动匹配分镜资产"""
+    client = BackendClient()
+    try:
+        result = client.post(f'/v1/shots/{shot_id}/match-assets')
+        return JsonResponse({'code': 200, 'data': result})
+    except BackendAPIError as e:
+        return JsonResponse({'code': 400, 'message': e.message}, status=400)
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def shot_generate_with_references(request, shot_id):
+    """带参考图生成视频"""
+    client = BackendClient()
+    try:
+        client.post(f'/v1/shots/{shot_id}/generate-with-references')
         return JsonResponse({'code': 200, 'success': True})
     except BackendAPIError as e:
         return JsonResponse({'code': 400, 'message': e.message}, status=400)

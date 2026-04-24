@@ -58,10 +58,14 @@ public class ScriptParseResult implements Serializable {
     public static class ShotInfo implements Serializable {
         private Integer shotNumber;
         private String sceneCode;
-        private String description;
-        private Integer duration;        // 时长(秒)
-        private String cameraAngle;      // 镜头角度
-        private String cameraMovement;   // 镜头运动
+        private String description;      // 剧情
+        private Integer startTime;       // 开始时间（秒）
+        private Integer endTime;         // 结束时间（秒）
+        private Integer duration;        // 时长(秒)，向后兼容
+        private String shotType;         // 镜头类型：中景/特写/全景 + 推镜头等
+        private String cameraAngle;      // 镜头角度，向后兼容
+        private String cameraMovement;   // 镜头运动，向后兼容
+        private String soundEffect;      // 音效描述
         private List<CharacterInShot> characters;
         private List<PropInShot> props;
     }

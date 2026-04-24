@@ -332,3 +332,27 @@ CREATE TABLE IF NOT EXISTS video_metadata (
     api_response CLOB,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
+-- 分镜参考图表
+CREATE TABLE IF NOT EXISTS shot_reference_image (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    shot_id BIGINT NOT NULL,
+    image_type VARCHAR(20) NOT NULL,
+    reference_id BIGINT,
+    reference_name VARCHAR(100),
+    image_url VARCHAR(500) NOT NULL,
+    display_order INT DEFAULT 0,
+    is_user_added TINYINT DEFAULT 0,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_shot_ref_shot_id ON shot_reference_image(shot_id);
+CREATE INDEX IF NOT EXISTS idx_shot_ref_reference ON shot_reference_image(image_type, reference_id);
+
+-- ==================== 分镜表补充字段 ====================
+-- 添加缺失的分镜字段
+ALTER TABLE shot ADD COLUMN IF NOT EXISTS shot_type VARCHAR(50);
+ALTER TABLE shot ADD COLUMN IF NOT EXISTS start_time INT;
+ALTER TABLE shot ADD COLUMN IF NOT EXISTS end_time INT;
+ALTER TABLE shot ADD COLUMN IF NOT EXISTS sound_effect CLOB;

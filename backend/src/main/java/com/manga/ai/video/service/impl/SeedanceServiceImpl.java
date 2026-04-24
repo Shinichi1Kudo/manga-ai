@@ -70,22 +70,61 @@ public class SeedanceServiceImpl implements SeedanceService {
 
     @Override
     public SeedanceResponse submitVideoGeneration(SeedanceRequest request) {
-        log.info("提交视频生成任务: model={}, duration={}s", model, request.getDuration());
+        log.info("提交视频生成任务: model={}, duration={}s, referenceImages={}",
+                model, request.getDuration(),
+                request.getContents() != null ? request.getContents().size() : 0);
 
         try {
             JSONObject requestBody = new JSONObject();
-            requestBody.put("model", model);
-            requestBody.put("prompt", request.getPrompt());
-            requestBody.put("duration", request.getDuration());
-            requestBody.put("width", request.getWidth());
-            requestBody.put("height", request.getHeight());
+
+            // 判断是否使用多参考图格式
+            boolean useMultiReferenceFormat = request.getContents() != null && !request.getContents().isEmpty();
+
+            if (useMultiReferenceFormat) {
+                // 新格式：多参考图 i2v 模型
+                requestBody.put("model", "doubao-seedance-1-0-lite-i2v-250428");
+
+                // 构建 contents 数组
+                JSONArray contentsArray = new JSONArray();
+
+                // 1. 添加文本 prompt
+                JSONObject textContent = new JSONObject();
+                textContent.put("type", "text");
+                textContent.put("text", request.getPrompt());
+                contentsArray.add(textContent);
+
+                // 2. 添加参考图
+                for (SeedanceRequest.ReferenceContent content : request.getContents()) {
+                    if ("image_url".equals(content.getType()) && content.getImageUrl() != null) {
+                        JSONObject imageContent = new JSONObject();
+                        imageContent.put("type", "image_url");
+                        imageContent.put("role", "reference_image");
+
+                        JSONObject imageUrl = new JSONObject();
+                        imageUrl.put("url", content.getImageUrl().getUrl());
+                        imageContent.put("image_url", imageUrl);
+
+                        contentsArray.add(imageContent);
+                    }
+                }
+
+                requestBody.put("contents", contentsArray);
+                requestBody.put("duration", request.getDuration());
+            } else {
+                // 旧格式：单参考图或纯文本
+                requestBody.put("model", model);
+                requestBody.put("prompt", request.getPrompt());
+                requestBody.put("duration", request.getDuration());
+                requestBody.put("width", request.getWidth());
+                requestBody.put("height", request.getHeight());
+
+                if (request.getReferenceImageUrl() != null && !request.getReferenceImageUrl().isEmpty()) {
+                    requestBody.put("image", request.getReferenceImageUrl());
+                }
+            }
 
             if (request.getSeed() != null) {
                 requestBody.put("seed", request.getSeed());
-            }
-
-            if (request.getReferenceImageUrl() != null && !request.getReferenceImageUrl().isEmpty()) {
-                requestBody.put("image", request.getReferenceImageUrl());
             }
 
             HttpHeaders headers = new HttpHeaders();
@@ -95,7 +134,7 @@ public class SeedanceServiceImpl implements SeedanceService {
             HttpEntity<String> entity = new HttpEntity<>(requestBody.toJSONString(), headers);
             String url = baseUrl + "/video/generations";
 
-            log.info("调用Seedance API: {}", url);
+            log.info("调用Seedance API ({}): {}", useMultiReferenceFormat ? "多参考图" : "单参考图", url);
             ResponseEntity<String> response = restTemplate.exchange(url, HttpMethod.POST, entity, String.class);
 
             if (response.getStatusCode() == HttpStatus.OK && response.getBody() != null) {

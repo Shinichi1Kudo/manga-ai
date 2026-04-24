@@ -35,6 +35,11 @@ public class EpisodeDetailVO implements Serializable {
     private List<ShotSummary> shots;
 
     /**
+     * 角色列表
+     */
+    private List<RoleInfo> roles;
+
+    /**
      * 分镜摘要
      */
     @Data
@@ -49,6 +54,27 @@ public class EpisodeDetailVO implements Serializable {
         private String generationStatusDesc;
         private Integer status;
         private String statusDesc;
+    }
+
+    /**
+     * 角色信息
+     */
+    @Data
+    public static class RoleInfo implements Serializable {
+        private Long id;
+        private String roleName;
+        private String assetUrl;
+        private Integer status;
+        private String statusDesc;
+        private List<ClothingInfo> clothings;
+
+        @Data
+        public static class ClothingInfo implements Serializable {
+            private Long id;
+            private String clothingName;
+            private String assetUrl;
+            private Integer status;
+        }
     }
 
     public String getStatusDesc() {
