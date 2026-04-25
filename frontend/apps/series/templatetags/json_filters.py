@@ -17,3 +17,25 @@ def to_json(value):
         return mark_safe(json.dumps(value, ensure_ascii=False))
     except (TypeError, ValueError):
         return '[]'
+
+
+@register.filter(name='modulo')
+def modulo(value, arg):
+    """
+    Return value % arg
+    """
+    try:
+        return int(value) % int(arg)
+    except (ValueError, TypeError):
+        return 0
+
+
+@register.filter(name='div')
+def div(value, arg):
+    """
+    Return value // arg (integer division)
+    """
+    try:
+        return int(value) // int(arg)
+    except (ValueError, TypeError):
+        return 0

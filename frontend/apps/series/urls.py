@@ -58,6 +58,7 @@ urlpatterns = [
 
     # 剧集进度API
     path('api/episodes/<int:episode_id>/progress/', views.episode_progress, name='episode_progress'),
+    path('api/v1/episodes/<int:episode_id>/progress/', views.episode_progress, name='episode_progress_v1'),
 
     # 更新剧本
     path('api/v1/episodes/<int:episode_id>/script', views.episode_update_script, name='episode_update_script'),
@@ -117,9 +118,11 @@ urlpatterns = [
 
     # 批量生成视频
     path('api/episodes/<int:episode_id>/generate/', views.episode_generate_videos, name='episode_generate'),
+    path('api/v1/episodes/<int:episode_id>/generate/', views.episode_generate_videos, name='episode_generate_v1'),
 
     # 审核分镜
     path('api/shots/<int:shot_id>/review/', views.shot_review, name='shot_review'),
+    path('api/v1/shots/<int:shot_id>/review/', views.shot_review, name='shot_review_v1'),
 
     # 更新分镜
     path('api/v1/shots/<int:shot_id>/', views.shot_update, name='shot_update'),

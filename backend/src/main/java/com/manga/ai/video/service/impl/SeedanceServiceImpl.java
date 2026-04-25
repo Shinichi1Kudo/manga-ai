@@ -76,22 +76,23 @@ public class SeedanceServiceImpl implements SeedanceService {
 
         try {
             JSONObject requestBody = new JSONObject();
+            String url;
 
             // 判断是否使用多参考图格式
             boolean useMultiReferenceFormat = request.getContents() != null && !request.getContents().isEmpty();
 
             if (useMultiReferenceFormat) {
                 // 新格式：多参考图 i2v 模型
-                requestBody.put("model", "doubao-seedance-1-0-lite-i2v-250428");
+                requestBody.put("model", "doubao-seedance-2-0-fast-260128");
 
-                // 构建 contents 数组
-                JSONArray contentsArray = new JSONArray();
+                // 构建 content 数组 (注意：官方用 content 单数)
+                JSONArray contentArray = new JSONArray();
 
                 // 1. 添加文本 prompt
                 JSONObject textContent = new JSONObject();
                 textContent.put("type", "text");
                 textContent.put("text", request.getPrompt());
-                contentsArray.add(textContent);
+                contentArray.add(textContent);
 
                 // 2. 添加参考图
                 for (SeedanceRequest.ReferenceContent content : request.getContents()) {
@@ -104,12 +105,18 @@ public class SeedanceServiceImpl implements SeedanceService {
                         imageUrl.put("url", content.getImageUrl().getUrl());
                         imageContent.put("image_url", imageUrl);
 
-                        contentsArray.add(imageContent);
+                        contentArray.add(imageContent);
                     }
                 }
 
-                requestBody.put("contents", contentsArray);
+                // 官方示例用 content (单数)
+                requestBody.put("content", contentArray);
                 requestBody.put("duration", request.getDuration());
+                requestBody.put("ratio", "16:9");
+                requestBody.put("watermark", false);
+
+                // 使用新的 API 端点
+                url = baseUrl + "/contents/generations/tasks";
             } else {
                 // 旧格式：单参考图或纯文本
                 requestBody.put("model", model);
@@ -121,6 +128,8 @@ public class SeedanceServiceImpl implements SeedanceService {
                 if (request.getReferenceImageUrl() != null && !request.getReferenceImageUrl().isEmpty()) {
                     requestBody.put("image", request.getReferenceImageUrl());
                 }
+
+                url = baseUrl + "/video/generations";
             }
 
             if (request.getSeed() != null) {
@@ -132,9 +141,9 @@ public class SeedanceServiceImpl implements SeedanceService {
             headers.set("Authorization", "Bearer " + apiKey);
 
             HttpEntity<String> entity = new HttpEntity<>(requestBody.toJSONString(), headers);
-            String url = baseUrl + "/video/generations";
 
             log.info("调用Seedance API ({}): {}", useMultiReferenceFormat ? "多参考图" : "单参考图", url);
+            log.info("请求体: {}", requestBody.toJSONString());
             ResponseEntity<String> response = restTemplate.exchange(url, HttpMethod.POST, entity, String.class);
 
             if (response.getStatusCode() == HttpStatus.OK && response.getBody() != null) {
@@ -168,8 +177,10 @@ public class SeedanceServiceImpl implements SeedanceService {
             headers.set("Authorization", "Bearer " + apiKey);
 
             HttpEntity<String> entity = new HttpEntity<>(headers);
-            String url = baseUrl + "/video/generations/" + taskId;
+            // 使用新的查询端点
+            String url = baseUrl + "/contents/generations/tasks/" + taskId;
 
+            log.info("查询任务状态: taskId={}", taskId);
             ResponseEntity<String> response = restTemplate.exchange(url, HttpMethod.GET, entity, String.class);
 
             if (response.getStatusCode() == HttpStatus.OK && response.getBody() != null) {
@@ -195,7 +206,12 @@ public class SeedanceServiceImpl implements SeedanceService {
 
         // 提交任务
         SeedanceResponse response = submitVideoGeneration(request);
-        if (!"pending".equals(response.getStatus()) && !"processing".equals(response.getStatus())) {
+        // 如果提交失败（有错误信息），直接返回
+        if ("failed".equals(response.getStatus()) && response.getErrorMessage() != null) {
+            return response;
+        }
+        // 如果没有 taskId，说明提交失败
+        if (response.getTaskId() == null) {
             return response;
         }
 
@@ -215,7 +231,7 @@ public class SeedanceServiceImpl implements SeedanceService {
             response = queryTaskStatus(taskId);
             log.info("轮询任务状态: taskId={}, status={}", taskId, response.getStatus());
 
-            if ("completed".equals(response.getStatus())) {
+            if ("completed".equals(response.getStatus()) || "succeeded".equals(response.getStatus())) {
                 response.setGenerationTimeMs(System.currentTimeMillis() - startTime);
 
                 // 上传视频到OSS
@@ -293,12 +309,18 @@ public class SeedanceServiceImpl implements SeedanceService {
 
     /**
      * 解析提交响应
+     * 官方响应: {"id": "cgt-2025******-****"}
      */
     private SeedanceResponse parseSubmitResponse(String responseBody) {
+        log.info("解析提交响应: {}", responseBody);
         JSONObject json = JSON.parseObject(responseBody);
         SeedanceResponse response = new SeedanceResponse();
         response.setTaskId(json.getString("id"));
+        // 提交成功后默认为 pending 状态
         response.setStatus(json.getString("status"));
+        if (response.getStatus() == null) {
+            response.setStatus("pending");
+        }
         response.setSeed(json.getLong("seed"));
         return response;
     }
@@ -307,13 +329,20 @@ public class SeedanceServiceImpl implements SeedanceService {
      * 解析查询响应
      */
     private SeedanceResponse parseQueryResponse(String responseBody) {
+        log.info("解析查询响应: {}", responseBody);
         JSONObject json = JSON.parseObject(responseBody);
         SeedanceResponse response = new SeedanceResponse();
         response.setTaskId(json.getString("id"));
         response.setStatus(json.getString("status"));
         response.setSeed(json.getLong("seed"));
 
-        if ("completed".equals(response.getStatus())) {
+        if ("completed".equals(response.getStatus()) || "succeeded".equals(response.getStatus())) {
+            // 新格式：content.video_url
+            JSONObject content = json.getJSONObject("content");
+            if (content != null) {
+                response.setVideoUrl(content.getString("video_url"));
+            }
+            // 兼容旧格式：data[0].url
             JSONArray dataArray = json.getJSONArray("data");
             if (dataArray != null && !dataArray.isEmpty()) {
                 JSONObject videoData = dataArray.getJSONObject(0);

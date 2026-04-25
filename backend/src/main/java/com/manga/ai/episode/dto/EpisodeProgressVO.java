@@ -20,6 +20,7 @@ public class EpisodeProgressVO implements Serializable {
     private Integer failedShots;
     private Integer progress;  // 百分比
     private Boolean assetsReady;  // 资产解析完成，等待用户选择
+    private Boolean shotsParsing;  // 正在解析分镜（资产已确认）
 
     public String getStatusDesc() {
         if (status == null) return "";

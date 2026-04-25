@@ -35,6 +35,11 @@ public class Shot implements Serializable {
     private Long sceneId;
 
     /**
+     * 场景名称（LLM识别的场景描述）
+     */
+    private String sceneName;
+
+    /**
      * 分镜描述
      */
     private String description;
@@ -113,6 +118,21 @@ public class Shot implements Serializable {
      * 生成状态: 0-待生成 1-生成中 2-已完成 3-失败
      */
     private Integer generationStatus;
+
+    /**
+     * 生成失败原因
+     */
+    private String generationError;
+
+    /**
+     * 生成耗时（秒）
+     */
+    private Integer generationDuration;
+
+    /**
+     * 生成开始时间
+     */
+    private LocalDateTime generationStartTime;
 
     /**
      * 审核状态: 0-待审核 1-已通过 2-已拒绝

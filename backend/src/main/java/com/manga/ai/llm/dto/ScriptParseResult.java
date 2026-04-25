@@ -58,6 +58,7 @@ public class ScriptParseResult implements Serializable {
     public static class ShotInfo implements Serializable {
         private Integer shotNumber;
         private String sceneCode;
+        private String sceneName;        // 场景名称
         private String description;      // 剧情
         private Integer startTime;       // 开始时间（秒）
         private Integer endTime;         // 结束时间（秒）

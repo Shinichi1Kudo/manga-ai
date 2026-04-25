@@ -765,10 +765,21 @@
     </div>
 </div>
 
-<!-- Shot List -->
-{% if shots %}
-<div class="space-y-4">
-    {% for shot in shots %}
+<!-- Shot List Container with Overlay -->
+<div id="shotsContainer" class="relative min-h-[200px]">
+    <!-- 局部遮罩层 -->
+    <div id="shotParsingOverlay" class="absolute inset-0 bg-black/70 backdrop-blur-sm z-10 hidden items-center justify-center rounded-2xl">
+        <div class="text-center p-8">
+            <div class="w-12 h-12 border-4 border-blue-500/30 border-t-blue-500 rounded-full animate-spin mx-auto mb-3"></div>
+            <p class="text-white font-medium">正在解析剧本...</p>
+            <p class="text-white/60 text-sm mt-1">请稍候，分镜正在生成中</p>
+        </div>
+    </div>
+
+    <!-- Shot List -->
+    {% if shots %}
+    <div class="space-y-4">
+        {% for shot in shots %}
     <div class="glass-card glass-card-hover p-6 shot-card" data-shot-id="{{ shot.id }}" data-status="{{ shot.generationStatus }}">
         <div class="flex items-start gap-6">
             <!-- 缩略图 -->
@@ -800,18 +811,34 @@
 
                 <!-- 内联编辑字段 -->
                 <div class="space-y-2 text-sm">
+                    <!-- 场景 -->
+                    <div class="shot-field flex items-start gap-2">
+                        <label class="text-gray-400 text-sm whitespace-nowrap pt-2">场景：</label>
+                        <div class="flex-1 relative">
+                            <div class="scene-editor min-h-[40px] bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-white focus:border-blue-400 focus:outline-none text-sm"
+                                 contenteditable="true"
+                                 data-field="scene"
+                                 data-shot-id="{{ shot.id }}"
+                                 data-scene-name="{{ shot.sceneName|default:'' }}"
+                                 placeholder="场景描述..."></div>
+                        </div>
+                    </div>
+
                     <!-- 剧情 - 包含时间、镜头、剧情、音效 -->
                     <div class="shot-field flex items-start gap-2">
+                        <label class="text-gray-400 text-sm whitespace-nowrap pt-2">剧情：</label>
                         <div class="flex-1 relative">
                             <!-- 可编辑区域 -->
                             <div class="description-editor min-h-[80px] bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-white focus:border-blue-400 focus:outline-none text-sm leading-relaxed"
                                  contenteditable="true"
                                  data-field="description"
                                  data-shot-id="{{ shot.id }}"
-                                 data-raw=""
-                                 placeholder="输入分镜内容...">时间【00:{{ shot.startTime|default:0|stringformat:'02d' }}-00:{{ shot.endTime|default:shot.duration|default:5|stringformat:'02d' }}】
-镜头【{{ shot.shotType|default:'中景' }}】
-剧情【{{ shot.description|default:'' }}】{% if shot.soundEffect %}音效【{{ shot.soundEffect }}】{% endif %}</div>
+                                 data-start-time="{{ shot.startTime|default:0 }}"
+                                 data-end-time="{{ shot.endTime|default:shot.duration|default:5 }}"
+                                 data-shot-type="{{ shot.shotType|default:'中景' }}"
+                                 data-description="{{ shot.description|default:'' }}"
+                                 data-sound-effect="{{ shot.soundEffect|default:'' }}"
+                                 placeholder="输入分镜内容..."></div>
                             <!-- 保存状态指示 -->
                             <div class="save-indicator hidden absolute top-2 right-2 text-xs px-2 py-0.5 rounded"></div>
                         </div>
@@ -827,14 +854,46 @@
                     <i data-lucide="play" class="w-4 h-4"></i>生成
                 </button>
                 {% endif %}
+                {% if shot.generationStatus == 1 %}
+                <span class="generating-timer px-4 py-2 rounded-lg bg-blue-500/20 text-blue-300 text-sm flex items-center gap-2"
+                      data-start-time="{{ shot.generationStartTime }}">
+                    <i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i>生成中 0秒
+                </span>
+                {% endif %}
                 {% if shot.generationStatus == 2 %}
                 <a href="{{ shot.videoUrl }}" target="_blank"
                    class="px-4 py-2 rounded-lg bg-emerald-500/20 text-emerald-300 hover:bg-emerald-500/30 transition-colors text-sm flex items-center gap-2">
                     <i data-lucide="play-circle" class="w-4 h-4"></i>预览
                 </a>
+                {% if shot.generationDuration %}
+                <span class="px-3 py-2 rounded-lg bg-white/5 text-white/60 text-xs flex items-center gap-1">
+                    <i data-lucide="clock" class="w-3 h-3"></i>
+                    {% if shot.generationDuration >= 60 %}
+                    {{ shot.generationDuration|div:60 }}分{{ shot.generationDuration|modulo:60 }}秒
+                    {% else %}
+                    {{ shot.generationDuration }}秒
+                    {% endif %}
+                </span>
+                {% endif %}
+                <button class="regenerate-btn px-4 py-2 rounded-lg bg-white/5 hover:bg-white/10 transition-colors text-sm flex items-center gap-2"
+                        data-shot-id="{{ shot.id }}">
+                    <i data-lucide="refresh-cw" class="w-4 h-4"></i>重新生成
+                </button>
                 <button class="approve-btn px-4 py-2 rounded-lg bg-white/5 hover:bg-white/10 transition-colors text-sm flex items-center gap-2"
                         data-shot-id="{{ shot.id }}">
                     <i data-lucide="check" class="w-4 h-4"></i>通过
+                </button>
+                {% endif %}
+                {% if shot.generationStatus == 3 %}
+                <span class="px-3 py-2 rounded-lg bg-red-500/20 text-red-300 text-sm flex items-center gap-2" title="{{ shot.generationError|default:'' }}">
+                    <i data-lucide="alert-circle" class="w-4 h-4"></i>生成失败
+                </span>
+                {% if shot.generationError %}
+                <span class="text-xs text-red-400/80 max-w-xs truncate" title="{{ shot.generationError }}">{{ shot.generationError|truncatechars:50 }}</span>
+                {% endif %}
+                <button class="regenerate-btn px-4 py-2 rounded-lg bg-orange-500/20 text-orange-300 hover:bg-orange-500/30 transition-colors text-sm flex items-center gap-2"
+                        data-shot-id="{{ shot.id }}">
+                    <i data-lucide="refresh-cw" class="w-4 h-4"></i>重新生成
                 </button>
                 {% endif %}
             </div>
@@ -844,11 +903,18 @@
 </div>
 {% else %}
 <div class="glass-card p-12 text-center">
+    {% if episode.status == 1 %}
+    <i data-lucide="loader-2" class="w-16 h-16 text-blue-400 mx-auto mb-4 animate-spin"></i>
+    <h3 class="text-lg font-medium text-blue-300 mb-2">正在解析剧本...</h3>
+    <p class="text-white/40">请稍候，分镜正在生成中</p>
+    {% else %}
     <i data-lucide="video" class="w-16 h-16 text-white/20 mx-auto mb-4"></i>
     <h3 class="text-lg font-medium text-white/70 mb-2">暂无分镜数据</h3>
     <p class="text-white/40">剧本解析后将生成分镜列表</p>
+    {% endif %}
 </div>
 {% endif %}
+</div><!-- shotsContainer end -->
 
 <script>
 const episodeId = {{ episode_id }};
@@ -865,15 +931,140 @@ propsData.forEach((p, i) => {
 
 // 统计数据
 const shots = {{ shots|to_json }};
-let completed = 0, pending = 0;
+let completed = 0, pending = 0, generating = 0;
 shots.forEach(s => {
     if (s.generationStatus === 2) completed++;
     if (s.generationStatus === 0) pending++;
+    if (s.generationStatus === 1) generating++;
 });
 document.getElementById('completedShots').textContent = completed;
 document.getElementById('pendingShots').textContent = pending;
 const progress = shots.length > 0 ? Math.round(completed / shots.length * 100) : 0;
 document.getElementById('progressPercent').textContent = progress + '%';
+
+// 如果有正在生成中的视频，启动轮询
+if (generating > 0) {
+    console.log(`检测到 ${generating} 个视频正在生成中，启动轮询...`);
+    startShotGenerationPolling();
+}
+
+// 无论是否有生成中的视频，都尝试启动计时器（处理页面刷新的情况）
+startGeneratingTimers();
+
+// 检查分镜解析状态并更新空状态显示
+async function checkShotsParsingStatus() {
+    if (episodeStatus !== 1) return;
+
+    try {
+        const response = await fetch(`/api/v1/episodes/${episodeId}/progress/`);
+        const result = await response.json();
+        const data = result.data || result;
+
+        // 如果正在解析分镜（资产已确认），更新空状态提示
+        if (data.shotsParsing) {
+            const emptyState = document.querySelector('.glass-card.p-12.text-center');
+            if (emptyState) {
+                emptyState.innerHTML = `
+                    <i data-lucide="loader-2" class="w-16 h-16 text-blue-400 mx-auto mb-4 animate-spin"></i>
+                    <h3 class="text-lg font-medium text-blue-300 mb-2">正在解析分镜...</h3>
+                    <p class="text-white/40">资产已确认，分镜正在生成中</p>
+                `;
+                lucide.createIcons();
+            }
+            // 启动轮询
+            pollShotParsing();
+        }
+    } catch (e) {
+        console.error('检查分镜解析状态失败:', e);
+    }
+}
+
+// 页面加载时检查分镜解析状态
+checkShotsParsingStatus();
+
+// 为正在生成的视频启动计时器
+function startGeneratingTimers() {
+    document.querySelectorAll('.generating-timer').forEach(timer => {
+        const startTimeStr = timer.dataset.startTime;
+        console.log('[TIMER] Found timer element, startTime:', startTimeStr);
+        if (startTimeStr) {
+            const startTime = new Date(startTimeStr);
+            console.log('[TIMER] Parsed startTime:', startTime, 'isValid:', !isNaN(startTime.getTime()));
+            if (isNaN(startTime.getTime())) {
+                console.error('[TIMER] Invalid date:', startTimeStr);
+                return;
+            }
+            const updateTimer = () => {
+                const elapsed = Math.floor((Date.now() - startTime.getTime()) / 1000);
+                const minutes = Math.floor(elapsed / 60);
+                const seconds = elapsed % 60;
+                const timeStr = minutes > 0 ? `${minutes}分${seconds}秒` : `${seconds}秒`;
+                timer.innerHTML = `<i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i>生成中 ${timeStr}`;
+                lucide.createIcons();
+            };
+            updateTimer();
+            setInterval(updateTimer, 1000);
+        }
+    });
+}
+
+// 轮询视频生成状态
+let pollingIntervalId = null;
+function startShotGenerationPolling() {
+    // 防止重复启动轮询
+    if (pollingIntervalId) {
+        console.log('轮询已在运行中，跳过');
+        return;
+    }
+    console.log('启动视频生成状态轮询');
+    pollingIntervalId = setInterval(async () => {
+        try {
+            const response = await fetch(`/api/v1/episodes/${episodeId}/progress/`);
+            const data = await response.json();
+
+            if (data.shots) {
+                let stillGenerating = false;
+                let hasChanges = false;
+
+                data.shots.forEach(shot => {
+                    // 检查页面上的分镜卡片
+                    const card = document.querySelector(`.shot-card[data-shot-id="${shot.id}"]`);
+                    if (card) {
+                        const currentStatus = parseInt(card.dataset.status);
+                        const newStatus = shot.generationStatus;
+
+                        // 如果状态从生成中变为其他状态
+                        if (currentStatus === 1 && newStatus !== 1) {
+                            hasChanges = true;
+                            console.log(`分镜 ${shot.id} 状态变化: ${currentStatus} -> ${newStatus}`);
+                        }
+
+                        if (newStatus === 1) {
+                            stillGenerating = true;
+                        }
+                    }
+                });
+
+                // 如果有状态变化，刷新页面
+                if (hasChanges) {
+                    console.log('检测到状态变化，刷新页面');
+                    clearInterval(pollingIntervalId);
+                    pollingIntervalId = null;
+                    location.reload();
+                }
+
+                // 如果没有正在生成的了，停止轮询
+                if (!stillGenerating) {
+                    console.log('所有视频生成完成，停止轮询');
+                    clearInterval(pollingIntervalId);
+                    pollingIntervalId = null;
+                }
+            }
+        } catch (e) {
+            console.error('轮询视频状态失败:', e);
+        }
+    }, 5000); // 每5秒轮询一次
+}
 
 // Helper functions for form modals (not image preview)
 function openFormModal(modalId) {
@@ -936,7 +1127,9 @@ function removeOverlayAndUpdateCard(card, type, data) {
     card.dataset.status = data.status;
 
     const imgContainer = card.querySelector(`.${type}-history-btn`);
-    const statusSpan = card.querySelector('.text-xs');
+    // 使用更精确的选择器：选中包含状态文字的容器下的第一个span（排除版本号）
+    const statusContainer = card.querySelector('.flex.items-center.gap-1');
+    const statusSpan = statusContainer ? statusContainer.querySelector('span:not(.version-count)') : null;
 
     if (imgContainer) {
         if (data.activeAssetUrl) {
@@ -952,7 +1145,16 @@ function removeOverlayAndUpdateCard(card, type, data) {
 
     if (statusSpan) {
         statusSpan.textContent = data.statusDesc || (data.status === 1 ? '待审核' : '已锁定');
-        statusSpan.className = 'text-xs text-amber-400';
+        // 更新样式类
+        statusSpan.className = 'text-xs ' + (data.status === 3 ? 'text-amber-400' : 'text-amber-400');
+    }
+
+    // 更新版本号显示
+    const versionSpan = card.querySelector('.version-count');
+    if (versionSpan && data.assets) {
+        const activeAsset = data.assets.find(a => a.isActive);
+        const activeVersion = activeAsset ? activeAsset.version : data.assets.length;
+        versionSpan.textContent = `· v${activeVersion}`;
     }
 
     lucide.createIcons();
@@ -987,6 +1189,8 @@ setInterval(async () => {
 }, 5000);
 
 // 页面加载时，为所有生成中的场景和道具添加遮罩并启动轮询
+// status === 0 表示正在生成中，需要显示遮罩
+// 注意：即使是重新生成（已有图片），也应该显示遮罩
 document.querySelectorAll('[data-scene-id]').forEach(card => {
     const status = parseInt(card.dataset.status);
     if (status === 0) {
@@ -1626,7 +1830,7 @@ saveScriptBtn?.addEventListener('click', async () => {
     saveScriptBtn.textContent = '保存中...';
 
     try {
-        const response = await fetch(`/api/v1/episodes/${episodeId}/script/`, {
+        const response = await fetch(`/api/v1/episodes/${episodeId}/script`, {
             method: 'PUT',
             headers: {
                 'Content-Type': 'application/json',
@@ -1653,6 +1857,11 @@ saveScriptBtn?.addEventListener('click', async () => {
 document.getElementById('reparseBtn')?.addEventListener('click', async function() {
     if (!confirm('确定要重新解析剧本吗？这将清除现有的分镜数据。')) return;
 
+    // 清除之前的弹窗标志，允许重新显示
+    clearAssetModalFlag();
+    // 清除分镜解析标记
+    localStorage.removeItem(`shotParsing_${episodeId}`);
+
     this.disabled = true;
     this.innerHTML = '<i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i>解析中...';
     lucide.createIcons();
@@ -1670,21 +1879,44 @@ document.getElementById('reparseBtn')?.addEventListener('click', async function(
         const data = await response.json();
         console.log('解析请求响应:', data);
         if (data.code === 200) {
-            // 解析请求已提交，轮询检查结果
-            await pollParseResult();
+            // 等待几秒后刷新页面，让后端有时间更新状态
+            setTimeout(() => {
+                // 添加参数表示需要显示资产选择弹窗
+                window.location.href = window.location.pathname + '?show_asset_picker=1';
+            }, 3000);
         } else {
             alert('解析失败: ' + (data.message || '未知错误'));
+            this.disabled = false;
+            this.innerHTML = '<i data-lucide="refresh-cw" class="w-4 h-4"></i>重新解析';
+            lucide.createIcons();
         }
     } catch (e) {
         console.error('解析请求失败:', e);
         alert('请求失败: ' + e.message);
+        this.disabled = false;
+        this.innerHTML = '<i data-lucide="refresh-cw" class="w-4 h-4"></i>重新解析';
+        lucide.createIcons();
     }
-    this.disabled = false;
-    this.innerHTML = '<i data-lucide="refresh-cw" class="w-4 h-4"></i>重新解析';
-    lucide.createIcons();
 });
 
 // 轮询检查解析结果
+// 使用 localStorage 防止重复弹窗（跨页面刷新）
+function getAssetModalKey() {
+    return `assetModalShown_${episodeId}`;
+}
+
+function isAssetModalShown() {
+    return localStorage.getItem(getAssetModalKey()) === 'true';
+}
+
+function setAssetModalShown() {
+    localStorage.setItem(getAssetModalKey(), 'true');
+}
+
+function clearAssetModalFlag() {
+    localStorage.removeItem(getAssetModalKey());
+}
+
 async function pollParseResult() {
     console.log('开始轮询解析结果...');
     const maxAttempts = 60; // 最多等待60秒
@@ -1695,26 +1927,47 @@ async function pollParseResult() {
         console.log(`轮询第 ${i+1} 次`);
 
         try {
-            const response = await fetch(`/api/episodes/${episodeId}/progress/`);
-            const data = await response.json();
-            console.log('进度数据:', data);
+            const response = await fetch(`/api/v1/episodes/${episodeId}/progress/`);
+            const result = await response.json();
+            console.log('进度数据:', result);
 
+            // API 返回 { code, data: { status, assetsReady, shotsParsing, ... } }
+            const data = result.data || result;
             if (data.status !== undefined) {
                 const status = data.status;
-                console.log('当前状态:', status, '资产准备就绪:', data.assetsReady);
+                console.log('当前状态:', status, '资产准备就绪:', data.assetsReady, '分镜解析中:', data.shotsParsing);
                 // status: 0-待解析, 1-解析中, 2-待审核
-                // 如果资产解析完成（assetsReady=true），显示资产选择弹窗
-                if (status === 1 && data.assetsReady) {
+                // 如果正在解析分镜（shotsParsing=true），显示解析中状态
+                if (status === 1 && data.shotsParsing) {
+                    console.log('正在解析分镜，启动轮询等待完成');
+                    // 更新空状态显示
+                    const emptyState = document.querySelector('.glass-card.p-12.text-center');
+                    if (emptyState) {
+                        emptyState.innerHTML = `
+                            <i data-lucide="loader-2" class="w-16 h-16 text-blue-400 mx-auto mb-4 animate-spin"></i>
+                            <h3 class="text-lg font-medium text-blue-300 mb-2">正在解析分镜...</h3>
+                            <p class="text-white/40">资产已确认，分镜正在生成中</p>
+                        `;
+                        lucide.createIcons();
+                    }
+                    pollShotParsing();
+                    return;
+                }
+                // 如果资产解析完成（assetsReady=true）且未确认，显示资产选择弹窗
+                else if (status === 1 && data.assetsReady && !isAssetModalShown()) {
                     console.log('资产解析完成，显示资产选择弹窗');
+                    setAssetModalShown(); // 标记已显示
                     await showAssetSelectionModal();
                     return;
                 } else if (status === 2) {
-                    // 分镜解析完成，刷新页面
+                    // 分镜解析完成，清除标志并刷新页面
                     console.log('分镜解析完成');
+                    clearAssetModalFlag();
                     location.reload();
                     return;
                 } else if (status === 0) {
                     // 解析失败（回到待解析状态）
+                    clearAssetModalFlag();
                     alert('剧本解析失败，请检查剧本格式后重新解析。');
                     location.reload();
                     return;
@@ -1738,7 +1991,7 @@ document.getElementById('generateAllBtn')?.addEventListener('click', async funct
     this.innerHTML = '<i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i>提交中...';
 
     try {
-        const response = await fetch(`/api/episodes/${episodeId}/generate/`, {
+        const response = await fetch(`/api/v1/episodes/${episodeId}/generate/`, {
             method: 'POST',
             headers: { 'X-CSRFToken': getCookie('csrftoken') }
         });
@@ -1757,41 +2010,103 @@ document.getElementById('generateAllBtn')?.addEventListener('click', async funct
     lucide.createIcons();
 });
 
+// 实时计时器辅助函数
+function startTimer(button) {
+    const startTime = Date.now();
+    button.dataset.startTime = startTime;
+
+    const updateTimer = () => {
+        if (!button.dataset.startTime) return;
+        const elapsed = Math.floor((Date.now() - startTime) / 1000);
+        const minutes = Math.floor(elapsed / 60);
+        const seconds = elapsed % 60;
+        const timeStr = minutes > 0 ? `${minutes}分${seconds}秒` : `${seconds}秒`;
+        button.innerHTML = `<i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i>生成中 ${timeStr}`;
+        lucide.createIcons();
+    };
+
+    updateTimer();
+    const timerId = setInterval(updateTimer, 1000);
+    button.dataset.timerId = timerId;
+    return timerId;
+}
+
+function stopTimer(button) {
+    if (button.dataset.timerId) {
+        clearInterval(parseInt(button.dataset.timerId));
+        delete button.dataset.timerId;
+        delete button.dataset.startTime;
+    }
+}
+
 // 单个生成
 document.querySelectorAll('.generate-btn').forEach(btn => {
     btn.addEventListener('click', async function() {
         const shotId = this.dataset.shotId;
         this.disabled = true;
-        this.innerHTML = '<i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i>生成中...';
-        lucide.createIcons();
+        startTimer(this);
 
         try {
-            // 检查剧情中是否有@提及的资产
-            const card = document.querySelector(`.shot-card[data-shot-id="${shotId}"]`);
-            const descEditor = card?.querySelector('.description-editor');
-            const hasReferences = descEditor && descEditor.querySelectorAll('.inline-asset-thumb').length > 0;
-
-            const endpoint = hasReferences
-                ? `/api/v1/shots/${shotId}/generate-with-references/`
-                : `/api/shots/${shotId}/generate/`;
-
-            const response = await fetch(endpoint, {
+            // 统一使用 generate-with-references 接口，后端会解析 @{资产名称}
+            const response = await fetch(`/api/v1/shots/${shotId}/generate-with-references/`, {
                 method: 'POST',
                 headers: { 'X-CSRFToken': getCookie('csrftoken') }
             });
             const data = await response.json();
             if (data.success || data.code === 200) {
-                setTimeout(() => location.reload(), 2000);
+                // 更新卡片状态
+                const card = this.closest('.shot-card');
+                if (card) card.dataset.status = '1';
+                // 启动轮询
+                startShotGenerationPolling();
             } else {
+                stopTimer(this);
                 alert('生成失败: ' + (data.error || data.message));
                 this.disabled = false;
                 this.innerHTML = '<i data-lucide="play" class="w-4 h-4"></i>生成';
                 lucide.createIcons();
             }
         } catch (e) {
+            stopTimer(this);
             alert('请求失败: ' + e.message);
             this.disabled = false;
             this.innerHTML = '<i data-lucide="play" class="w-4 h-4"></i>生成';
+            lucide.createIcons();
+        }
+    });
+});
+
+// 重新生成
+document.querySelectorAll('.regenerate-btn').forEach(btn => {
+    btn.addEventListener('click', async function() {
+        const shotId = this.dataset.shotId;
+        this.disabled = true;
+        startTimer(this);
+
+        try {
+            const response = await fetch(`/api/v1/shots/${shotId}/generate-with-references/`, {
+                method: 'POST',
+                headers: { 'X-CSRFToken': getCookie('csrftoken') }
+            });
+            const data = await response.json();
+            if (data.success || data.code === 200) {
+                // 更新卡片状态
+                const card = this.closest('.shot-card');
+                if (card) card.dataset.status = '1';
+                // 启动轮询
+                startShotGenerationPolling();
+            } else {
+                stopTimer(this);
+                alert('生成失败: ' + (data.error || data.message));
+                this.disabled = false;
+                this.innerHTML = '<i data-lucide="refresh-cw" class="w-4 h-4"></i>重新生成';
+                lucide.createIcons();
+            }
+        } catch (e) {
+            stopTimer(this);
+            alert('请求失败: ' + e.message);
+            this.disabled = false;
+            this.innerHTML = '<i data-lucide="refresh-cw" class="w-4 h-4"></i>重新生成';
             lucide.createIcons();
         }
     });
@@ -1802,7 +2117,7 @@ document.querySelectorAll('.approve-btn').forEach(btn => {
     btn.addEventListener('click', async function() {
         const shotId = this.dataset.shotId;
         try {
-            const response = await fetch(`/api/shots/${shotId}/review/`, {
+            const response = await fetch(`/api/v1/shots/${shotId}/review/`, {
                 method: 'POST',
                 headers: {
                     'X-CSRFToken': getCookie('csrftoken'),
@@ -2227,11 +2542,22 @@ function renderAssetList(data) {
 function bindAssetSelectionEvents() {
     // 关闭弹窗
     document.getElementById('closeAssetModal')?.addEventListener('click', function() {
+        // 取消可能存在的弹窗显示定时器
+        if (window.assetModalTimeoutId) {
+            clearTimeout(window.assetModalTimeoutId);
+            window.assetModalTimeoutId = null;
+        }
         closeFormModal('assetSelectionModal');
     });
 
     // 稍后生成（只解析分镜，不生成资产图片）
     document.getElementById('skipGenerationBtn')?.addEventListener('click', async function() {
+        // 取消可能存在的弹窗显示定时器
+        if (window.assetModalTimeoutId) {
+            clearTimeout(window.assetModalTimeoutId);
+            window.assetModalTimeoutId = null;
+        }
+
         this.disabled = true;
         this.textContent = '解析中...';
 
@@ -2243,17 +2569,22 @@ function bindAssetSelectionEvents() {
             const data = await response.json();
             if (data.code === 200) {
                 closeFormModal('assetSelectionModal');
-                alert('分镜解析已提交，请稍后刷新页面查看结果');
-                location.reload();
+                // 标记正在解析分镜
+                localStorage.setItem(`shotParsing_${episodeId}`, 'true');
+                // 显示解析中提示
+                showShotParsingOverlay();
+                // 开始轮询
+                pollShotParsing();
             } else {
                 alert('解析失败: ' + (data.message || '未知错误'));
+                this.disabled = false;
+                this.textContent = '稍后生成';
             }
         } catch (e) {
             alert('请求失败: ' + e.message);
+            this.disabled = false;
+            this.textContent = '稍后生成';
         }
-
-        this.disabled = false;
-        this.textContent = '稍后生成';
     });
 
     // 全选场景
@@ -2279,6 +2610,12 @@ function bindAssetSelectionEvents() {
 
     // 生成选中资产
     document.getElementById('generateSelectedBtn')?.addEventListener('click', async function() {
+        // 取消可能存在的弹窗显示定时器
+        if (window.assetModalTimeoutId) {
+            clearTimeout(window.assetModalTimeoutId);
+            window.assetModalTimeoutId = null;
+        }
+
         // 收集选中的资产：区分已有ID和新资产
         const selectedScenes = [...document.querySelectorAll('.scene-checkbox:checked:not(:disabled)')];
         const selectedProps = [...document.querySelectorAll('.prop-checkbox:checked:not(:disabled)')];
@@ -2319,11 +2656,6 @@ function bindAssetSelectionEvents() {
         console.log('未选中的新场景名称:', unselectedSceneNames);
         console.log('未选中的新道具名称:', unselectedPropNames);
 
-        if (sceneIds.length === 0 && propIds.length === 0 && newSceneNames.length === 0 && newPropNames.length === 0) {
-            alert('请至少选择一个资产');
-            return;
-        }
-
         this.disabled = true;
         this.innerHTML = '<i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i> 提交中...';
         lucide.createIcons();
@@ -2350,6 +2682,9 @@ function bindAssetSelectionEvents() {
             const result = await response.json();
             if (result.code === 200) {
                 closeFormModal('assetSelectionModal');
+                // 标记资产已确认，正在等待分镜生成
+                localStorage.setItem(`shotParsing_${episodeId}`, 'true');
+                // 立即刷新页面以显示"生成中"状态
                 location.reload();
             } else {
                 alert('提交失败: ' + (result.message || '未知错误'));
@@ -2364,6 +2699,59 @@ function bindAssetSelectionEvents() {
     });
 }
 
+// 显示分镜解析中的遮罩层（局部遮罩）
+function showShotParsingOverlay() {
+    const overlay = document.getElementById('shotParsingOverlay');
+    if (overlay) {
+        overlay.classList.remove('hidden');
+        overlay.classList.add('flex');
+    }
+}
+
+// 隐藏分镜解析中的遮罩层
+function hideShotParsingOverlay() {
+    const overlay = document.getElementById('shotParsingOverlay');
+    if (overlay) {
+        overlay.classList.add('hidden');
+        overlay.classList.remove('flex');
+    }
+}
+
+// 轮询等待分镜解析完成
+let shotParsingIntervalId = null;
+async function pollShotParsing() {
+    // 防止重复轮询
+    if (shotParsingIntervalId) return;
+
+    console.log('开始轮询分镜解析状态...');
+    shotParsingIntervalId = setInterval(async () => {
+        try {
+            const response = await fetch(`/api/v1/episodes/${episodeId}/progress/`);
+            const result = await response.json();
+            const data = result.data || result;
+
+            console.log('轮询分镜状态:', data.status, '分镜数:', data.totalShots);
+
+            // status === 2 表示分镜解析完成
+            if (data.status === 2) {
+                console.log('分镜解析完成，刷新页面');
+                clearInterval(shotParsingIntervalId);
+                shotParsingIntervalId = null;
+                localStorage.removeItem(`shotParsing_${episodeId}`);
+                hideShotParsingOverlay();
+                location.reload();
+            } else if (data.status === 0) {
+                clearInterval(shotParsingIntervalId);
+                shotParsingIntervalId = null;
+                localStorage.removeItem(`shotParsing_${episodeId}`);
+                hideShotParsingOverlay();
+            }
+        } catch (e) {
+            console.error('轮询失败:', e);
+        }
+    }, 3000); // 每3秒检查一次
+}
+
 // 更新选中计数
 function updateSelectedCount() {
     const count = document.querySelectorAll('.asset-checkbox:checked:not(:disabled)').length;
@@ -2372,12 +2760,64 @@ function updateSelectedCount() {
 
 // 页面加载时检查是否需要显示资产选择弹窗
 document.addEventListener('DOMContentLoaded', async function() {
+    // 始终先检查后端状态
+    try {
+        const response = await fetch(`/api/v1/episodes/${episodeId}/progress/`);
+        const result = await response.json();
+        const data = result.data || result;
+
+        console.log('页面加载时的后端状态:', data);
+
+        // shotsParsing=true 表示资产已确认，正在解析分镜
+        if (data.status === 1 && data.shotsParsing) {
+            console.log('检测到正在解析分镜，启动轮询...');
+            showShotParsingOverlay();
+            pollShotParsing();
+            return;
+        }
+        // assetsReady=true 表示资产解析完成，等待用户选择
+        else if (data.status === 1 && data.assetsReady && !isAssetModalShown()) {
+            console.log('检测到资产已解析，显示选择弹窗...');
+            setAssetModalShown();
+            await showAssetSelectionModal();
+            return;
+        } else if (data.status === 2) {
+            // 分镜已完成，清除标记
+            localStorage.removeItem(`shotParsing_${episodeId}`);
+        }
+    } catch (e) {
+        console.error('检查状态失败:', e);
+    }
+
+    // 检查URL参数，优先显示资产选择弹窗
     const urlParams = new URLSearchParams(window.location.search);
     if (urlParams.get('show_asset_picker') === '1') {
+        console.log('检测到show_asset_picker参数，显示资产选择弹窗');
+        // 立即标记弹窗已显示，防止pollParseResult重复触发
+        setAssetModalShown();
         // 等待一小段时间让页面完全加载
-        setTimeout(async () => {
+        window.assetModalTimeoutId = setTimeout(async () => {
+            // 检查弹窗是否已被用户关闭（通过检查按钮状态）
+            const modal = document.getElementById('assetSelectionModal');
+            if (modal && modal.classList.contains('hidden')) {
+                console.log('弹窗已关闭，跳过显示');
+                return;
+            }
             await showAssetSelectionModal();
         }, 500);
+        return;
+    }
+
+    // 如果已经显示过弹窗（localStorage有记录），不再显示
+    if (isAssetModalShown()) {
+        console.log('弹窗已显示过，跳过');
+        return;
+    }
+
+    // 如果状态是解析中且资产未准备好，启动资产解析轮询
+    if (episodeStatus === 1) {
+        console.log('检测到解析中状态，启动资产解析轮询...');
+        pollParseResult();
     }
 });
 
@@ -2521,7 +2961,10 @@ async function saveShotInline(shotId) {
     if (!card) return;
 
     const descriptionEditor = card.querySelector('[data-field="description"]');
+    const sceneEditor = card.querySelector('[data-field="scene"]');
+
     const fullText = extractDescriptionText(descriptionEditor);
+    const sceneText = extractDescriptionText(sceneEditor);
 
     // 解析合并的文本格式
     const parsed = parseShotText(fullText);
@@ -2531,7 +2974,8 @@ async function saveShotInline(shotId) {
         endTime: parsed.endTime,
         shotType: parsed.shotType,
         description: parsed.description,
-        soundEffect: parsed.soundEffect
+        soundEffect: parsed.soundEffect,
+        sceneName: sceneText
     };
 
     showSaveIndicator(shotId, 'saving');
@@ -2568,10 +3012,10 @@ function extractDescriptionText(editor) {
 
     const clone = editor.cloneNode(true);
 
-    // 将资产容器替换为 @名称 格式
+    // 将资产容器替换为 @{名称} 格式
     clone.querySelectorAll('[data-asset-name]').forEach(wrapper => {
         const name = wrapper.dataset.assetName;
-        const text = document.createTextNode(`@${name}`);
+        const text = document.createTextNode(`@{${name}}`);
         wrapper.replaceWith(text);
     });
 
@@ -2976,6 +3420,81 @@ function renderDescriptionWithThumbs(editor, rawText) {
     editor.innerHTML = html;
 }
 
+// 渲染描述文本，自动识别资产名称并在后面追加缩略图
+function renderDescriptionWithAutoAssets(editor) {
+    const startTime = editor.dataset.startTime || '0';
+    const endTime = editor.dataset.endTime || '5';
+    const shotType = editor.dataset.shotType || '中景';
+    const description = editor.dataset.description || '';
+    const soundEffect = editor.dataset.soundEffect || '';
+
+    // 收集所有资产名称，按名称长度降序排列（优先匹配长名称）
+    const allAssets = [
+        ...availableAssets.scene.map(a => ({...a, typeLabel: '场景'})),
+        ...availableAssets.role.map(a => ({...a, typeLabel: '角色'})),
+        ...availableAssets.prop.map(a => ({...a, typeLabel: '道具'}))
+    ].sort((a, b) => b.name.length - a.name.length);
+
+    // 只对剧情部分进行资产名称识别，在后面追加缩略图
+    let processedDescription = description;
+    allAssets.forEach(asset => {
+        if (asset.name && asset.imageUrl) {
+            // 创建缩略图HTML（追加在原文字后面）
+            const thumbHtml = `<span class="inline-flex items-center gap-1 whitespace-nowrap" contenteditable="false"
+                            data-asset-id="${asset.id}" data-asset-type="${asset.type}"
+                            data-asset-name="${asset.name}" data-asset-url="${asset.imageUrl}">
+                            <img class="inline-asset-thumb w-5 h-5 rounded align-middle border-2 ${assetTypeConfig[asset.type].borderColor}"
+                                src="${asset.imageUrl}" alt="${asset.name}"
+                                title="${assetTypeConfig[asset.type].label}: ${asset.name}">
+                            <span class="${assetTypeConfig[asset.type].bgColor} px-1.5 py-0.5 rounded text-xs text-white">${asset.name}</span>
+                        </span>`;
+
+            // 在资产名称后面追加缩略图（保留原文字）
+            const regex = new RegExp(asset.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g');
+            processedDescription = processedDescription.replace(regex, asset.name + thumbHtml);
+        }
+    });
+
+    // 构建完整HTML
+    let html = `时间【00:${String(startTime).padStart(2, '0')}-00:${String(endTime).padStart(2, '0')}】\n`;
+    html += `镜头【${shotType}】\n`;
+    html += `剧情【${processedDescription}】`;
+    if (soundEffect) {
+        html += `\n音效【${soundEffect}】`;
+    }
+
+    editor.innerHTML = html;
+}
+
+// 渲染场景输入框，自动识别场景资产
+function renderSceneWithAutoAssets(editor) {
+    const sceneName = editor.dataset.sceneName || '';
+    if (!sceneName) {
+        editor.innerHTML = '';
+        return;
+    }
+
+    // 只在场景资产中查找匹配
+    let processedScene = sceneName;
+    availableAssets.scene.forEach(asset => {
+        if (asset.name && asset.imageUrl) {
+            const thumbHtml = `<span class="inline-flex items-center gap-1 whitespace-nowrap" contenteditable="false"
+                            data-asset-id="${asset.id}" data-asset-type="scene"
+                            data-asset-name="${asset.name}" data-asset-url="${asset.imageUrl}">
+                            <img class="inline-asset-thumb w-5 h-5 rounded align-middle border-2 ${assetTypeConfig.scene.borderColor}"
+                                src="${asset.imageUrl}" alt="${asset.name}"
+                                title="场景: ${asset.name}">
+                            <span class="${assetTypeConfig.scene.bgColor} px-1.5 py-0.5 rounded text-xs text-white">${asset.name}</span>
+                        </span>`;
+
+            const regex = new RegExp(asset.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g');
+            processedScene = processedScene.replace(regex, asset.name + thumbHtml);
+        }
+    });
+
+    editor.innerHTML = processedScene;
+}
+
 // 初始化内联编辑
 function initInlineEditing() {
     console.log('initInlineEditing called');
@@ -2990,6 +3509,9 @@ function initInlineEditing() {
         console.log('descEditor for shot', shotId, ':', descEditor);
 
         if (descEditor) {
+            // 渲染内容，自动识别资产
+            renderDescriptionWithAutoAssets(descEditor);
+
             // 初始化@提及
             try {
                 initDescriptionMention(descEditor);
@@ -2999,6 +3521,22 @@ function initInlineEditing() {
 
             // 失焦保存
             descEditor.addEventListener('blur', () => debouncedSave(shotId));
+        }
+
+        // 场景编辑器
+        const sceneEditor = card.querySelector('.scene-editor');
+        if (sceneEditor) {
+            renderSceneWithAutoAssets(sceneEditor);
+
+            // 初始化@提及
+            try {
+                initDescriptionMention(sceneEditor);
+            } catch (e) {
+                console.error('sceneEditor initDescriptionMention error:', e);
+            }
+
+            // 失焦保存
+            sceneEditor.addEventListener('blur', () => debouncedSave(shotId));
         }
     });
 }

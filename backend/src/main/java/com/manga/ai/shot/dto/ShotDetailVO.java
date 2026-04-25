@@ -36,6 +36,9 @@ public class ShotDetailVO implements Serializable {
     private String thumbnailUrl;
     private Integer generationStatus;
     private String generationStatusDesc;
+    private String generationError;
+    private Integer generationDuration;
+    private LocalDateTime generationStartTime;
     private Integer status;
     private String statusDesc;
     private LocalDateTime createdAt;

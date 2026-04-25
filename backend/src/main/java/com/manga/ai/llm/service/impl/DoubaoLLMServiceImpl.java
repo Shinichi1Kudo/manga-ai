@@ -140,7 +140,9 @@ public class DoubaoLLMServiceImpl implements DoubaoLLMService {
             JSONObject choice = choices.getJSONObject(0);
             JSONObject message = choice.getJSONObject("message");
             if (message != null) {
-                response.setContent(message.getString("content"));
+                String content = message.getString("content");
+                response.setContent(content);
+                log.info("LLM响应内容长度: {}", content != null ? content.length() : "null");
             }
         }
 

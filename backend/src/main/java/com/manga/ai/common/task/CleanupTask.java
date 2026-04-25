@@ -41,12 +41,12 @@ public class CleanupTask {
 
     /**
      * 每30秒检查一次卡住的解析任务
-     * 如果解析中状态超过2分钟，自动变为待审核
+     * 如果解析中状态超过5分钟，自动变为待审核
      */
     @Scheduled(fixedRate = 30000)
     public void cleanupStuckParsingEpisodes() {
         try {
-            LocalDateTime timeout = LocalDateTime.now().minusMinutes(2);
+            LocalDateTime timeout = LocalDateTime.now().minusMinutes(5);
             LambdaUpdateWrapper<Episode> updateWrapper = new LambdaUpdateWrapper<>();
             updateWrapper.eq(Episode::getStatus, EpisodeStatus.PARSING.getCode())
                     .lt(Episode::getUpdatedAt, timeout)

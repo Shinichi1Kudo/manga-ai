@@ -53,7 +53,17 @@ public class ShotUpdateRequest implements Serializable {
     private String soundEffect;
 
     /**
+     * 场景名称
+     */
+    private String sceneName;
+
+    /**
      * 用户修改的提示词
      */
     private String userPrompt;
+
+    /**
+     * 生成状态: 0-待生成 1-生成中 2-已完成 3-失败
+     */
+    private Integer generationStatus;
 }

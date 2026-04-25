@@ -193,6 +193,20 @@ public class EpisodeServiceImpl implements EpisodeService {
         }
 
         try {
+            // 标记资产已确认，正在解析分镜
+            try {
+                JSONObject parsedJson = JSON.parseObject(episode.getParsedScript());
+                if (parsedJson != null) {
+                    parsedJson.put("assetsConfirmed", true);
+                    episode.setParsedScript(parsedJson.toJSONString());
+                    episode.setUpdatedAt(LocalDateTime.now());
+                    episodeMapper.updateById(episode);
+                    log.info("标记资产已确认: episodeId={}", episodeId);
+                }
+            } catch (Exception e) {
+                log.error("更新资产确认状态失败: episodeId={}", episodeId, e);
+            }
+
             // 删除已有的分镜数据
             deleteExistingShots(episodeId);
 
@@ -221,6 +235,17 @@ public class EpisodeServiceImpl implements EpisodeService {
                 episode.setTotalShots(result.getShots().size());
                 episode.setTotalDuration(totalDuration);
 
+                // 清除assetsConfirmed标记
+                try {
+                    JSONObject parsedJson = JSON.parseObject(episode.getParsedScript());
+                    if (parsedJson != null) {
+                        parsedJson.remove("assetsConfirmed");
+                        episode.setParsedScript(parsedJson.toJSONString());
+                    }
+                } catch (Exception e) {
+                    log.warn("清除assetsConfirmed标记失败: episodeId={}", episodeId);
+                }
+
                 // 分镜解析完成，更新状态为待审核
                 episode.setStatus(EpisodeStatus.PENDING_REVIEW.getCode());
                 episode.setUpdatedAt(LocalDateTime.now());
@@ -229,17 +254,36 @@ public class EpisodeServiceImpl implements EpisodeService {
                 log.info("分镜解析完成: episodeId={}, shots={}, 状态更新为待审核", episodeId, result.getShots().size());
             } else {
                 log.error("分镜解析失败: episodeId={}, error={}", episodeId, result.getErrorMessage());
-                // 分镜解析失败，状态也更新为待审核（让用户可以手动操作）
-                episode.setStatus(EpisodeStatus.PENDING_REVIEW.getCode());
+                // 分镜解析失败，清除assetsConfirmed标记，保持解析中状态让用户可以重试
+                try {
+                    JSONObject parsedJson = JSON.parseObject(episode.getParsedScript());
+                    if (parsedJson != null) {
+                        parsedJson.remove("assetsConfirmed");
+                        episode.setParsedScript(parsedJson.toJSONString());
+                    }
+                } catch (Exception e) {
+                    log.warn("清除assetsConfirmed标记失败: episodeId={}", episodeId);
+                }
+                // 保持解析中状态，让用户可以重新选择资产
                 episode.setUpdatedAt(LocalDateTime.now());
                 episodeMapper.updateById(episode);
+                log.info("分镜解析失败，保持解析中状态等待重试: episodeId={}", episodeId);
             }
         } catch (Exception e) {
             log.error("分镜解析异常: episodeId={}", episodeId, e);
-            // 分镜解析异常，状态更新为待审核
-            episode.setStatus(EpisodeStatus.PENDING_REVIEW.getCode());
+            // 分镜解析异常，清除assetsConfirmed标记，保持解析中状态
+            try {
+                JSONObject parsedJson = JSON.parseObject(episode.getParsedScript());
+                if (parsedJson != null) {
+                    parsedJson.remove("assetsConfirmed");
+                    episode.setParsedScript(parsedJson.toJSONString());
+                }
+            } catch (Exception ex) {
+                log.warn("清除assetsConfirmed标记失败: episodeId={}", episodeId);
+            }
             episode.setUpdatedAt(LocalDateTime.now());
             episodeMapper.updateById(episode);
+            log.info("分镜解析异常，保持解析中状态等待重试: episodeId={}", episodeId);
         }
     }
 
@@ -367,6 +411,7 @@ public class EpisodeServiceImpl implements EpisodeService {
                 shot.setStartTime(shotInfo.getStartTime());
                 shot.setEndTime(shotInfo.getEndTime());
                 shot.setSoundEffect(shotInfo.getSoundEffect());
+                shot.setSceneName(shotInfo.getSceneName());
                 // 计算时长（如果没提供，根据开始和结束时间计算）
                 if (shotInfo.getDuration() != null) {
                     shot.setDuration(shotInfo.getDuration());
@@ -671,14 +716,20 @@ public class EpisodeServiceImpl implements EpisodeService {
         vo.setTotalShots(episode.getTotalShots());
 
         // 检查资产是否解析完成（等待用户选择）
+        // 如果 assetsConfirmed=true，说明用户已确认，正在解析分镜
         boolean assetsReady = false;
+        boolean shotsParsing = false;
         if (EpisodeStatus.PARSING.getCode().equals(episode.getStatus())) {
             String parsedScript = episode.getParsedScript();
             if (parsedScript != null && !parsedScript.isEmpty()) {
                 try {
                     JSONObject json = JSON.parseObject(parsedScript);
+                    // 如果 assetsConfirmed=true，说明用户已确认，正在解析分镜
+                    if (json.getBooleanValue("assetsConfirmed")) {
+                        shotsParsing = true;
+                    }
                     // 如果有 scenes 和 props 且没有 error，说明资产解析完成
-                    if (json.containsKey("scenes") && json.containsKey("props") && !json.getBooleanValue("error")) {
+                    else if (json.containsKey("scenes") && json.containsKey("props") && !json.getBooleanValue("error")) {
                         assetsReady = true;
                     }
                 } catch (Exception e) {
@@ -687,6 +738,7 @@ public class EpisodeServiceImpl implements EpisodeService {
             }
         }
         vo.setAssetsReady(assetsReady);
+        vo.setShotsParsing(shotsParsing);
 
         // 统计已完成和失败的分镜数
         LambdaQueryWrapper<Shot> wrapper = new LambdaQueryWrapper<>();
@@ -1052,6 +1104,21 @@ public class EpisodeServiceImpl implements EpisodeService {
             return;
         }
 
+        // 标记资产已确认，正在解析分镜
+        // 更新 parsedScript，添加 assetsConfirmed 标记
+        try {
+            JSONObject parsedJson = JSON.parseObject(episode.getParsedScript());
+            if (parsedJson != null) {
+                parsedJson.put("assetsConfirmed", true);
+                episode.setParsedScript(parsedJson.toJSONString());
+                episode.setUpdatedAt(LocalDateTime.now());
+                episodeMapper.updateById(episode);
+                log.info("标记资产已确认: episodeId={}", episodeId);
+            }
+        } catch (Exception e) {
+            log.error("更新资产确认状态失败: episodeId={}", episodeId, e);
+        }
+
         Long seriesId = episode.getSeriesId();
 
         // 从 parsedScript 获取 LLM 解析的详细信息
@@ -1079,35 +1146,9 @@ public class EpisodeServiceImpl implements EpisodeService {
             }
         }
 
-        // 删除未选中的已存在道具
-        if (request.getUnselectedPropIds() != null && !request.getUnselectedPropIds().isEmpty()) {
-            for (Long propId : request.getUnselectedPropIds()) {
-                try {
-                    Prop prop = propMapper.selectById(propId);
-                    if (prop != null && !PropStatus.LOCKED.getCode().equals(prop.getStatus())) {
-                        propService.deleteProp(propId);
-                        log.info("删除未选中的道具: propId={}, propName={}", propId, prop.getPropName());
-                    }
-                } catch (Exception e) {
-                    log.error("删除道具失败: propId={}", propId, e);
-                }
-            }
-        }
-
-        // 删除未选中的已存在场景
-        if (request.getUnselectedSceneIds() != null && !request.getUnselectedSceneIds().isEmpty()) {
-            for (Long sceneId : request.getUnselectedSceneIds()) {
-                try {
-                    Scene scene = sceneMapper.selectById(sceneId);
-                    if (scene != null && !SceneStatus.LOCKED.getCode().equals(scene.getStatus())) {
-                        sceneService.deleteScene(sceneId);
-                        log.info("删除未选中的场景: sceneId={}, sceneName={}", sceneId, scene.getSceneName());
-                    }
-                } catch (Exception e) {
-                    log.error("删除场景失败: sceneId={}", sceneId, e);
-                }
-            }
-        }
+        // 注意：不再自动删除未选中的已存在资产
+        // 已存在的资产应该通过单独的删除操作来删除
+        // 用户重新解析后只需选择要生成哪些新资产
 
         // 创建新道具并生成图片
         List<Long> allPropIds = new ArrayList<>(request.getPropIds() != null ? request.getPropIds() : new ArrayList<>());

@@ -427,10 +427,11 @@ def episode_detail(request, series_id, episode_id):
             scenes.append(scene)
         elif scene.get('id') in episode_scene_ids:  # 本集关联的未锁定场景
             scenes.append(scene)
-        # 添加当前版本号 (isActive 可能是 1/0 或 true/false)
+        # 添加当前版本号和资产URL (isActive 可能是 1/0 或 true/false)
         assets = scene.get('assets', [])
         active_asset = next((a for a in assets if a.get('isActive') == 1 or a.get('isActive') is True), None)
         scene['activeVersion'] = active_asset.get('version') if active_asset else (len(assets) if assets else None)
+        scene['activeAssetUrl'] = active_asset.get('filePath') if active_asset else None
 
     # 过滤道具：已锁定的全部显示 + 生成中/待审核的全部显示 + 本集关联的未锁定道具
     props = []
@@ -443,10 +444,12 @@ def episode_detail(request, series_id, episode_id):
             props.append(prop)
         elif prop.get('propName') in episode_prop_names:  # 本集关联的未锁定道具(通过名称)
             props.append(prop)
-        # 添加当前版本号 (isActive 可能是 1/0 或 true/false)
+        # 添加当前版本号和资产URL (isActive 可能是 1/0 或 true/false)
         assets = prop.get('assets', [])
         active_asset = next((a for a in assets if a.get('isActive') == 1 or a.get('isActive') is True), None)
         prop['activeVersion'] = active_asset.get('version') if active_asset else (len(assets) if assets else None)
+        prop['activeAssetUrl'] = active_asset.get('filePath') if active_asset else None
+        prop['transparentUrl'] = active_asset.get('filePath') if active_asset else None
 
     return render(request, 'episode/episode_detail.html', {
         'series': series,

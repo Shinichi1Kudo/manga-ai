@@ -10,8 +10,10 @@ import com.manga.ai.common.exception.BusinessException;
 import com.manga.ai.episode.entity.Episode;
 import com.manga.ai.episode.mapper.EpisodeMapper;
 import com.manga.ai.common.enums.EpisodeStatus;
+import com.manga.ai.prop.entity.Prop;
 import com.manga.ai.prop.entity.PropAsset;
 import com.manga.ai.prop.mapper.PropAssetMapper;
+import com.manga.ai.prop.mapper.PropMapper;
 import com.manga.ai.role.entity.Role;
 import com.manga.ai.role.mapper.RoleMapper;
 import com.manga.ai.scene.entity.Scene;
@@ -68,6 +70,7 @@ public class ShotServiceImpl implements ShotService {
     private final RoleMapper roleMapper;
     private final RoleAssetMapper roleAssetMapper;
     private final PropAssetMapper propAssetMapper;
+    private final PropMapper propMapper;
     private final EpisodeMapper episodeMapper;
     private final VideoMetadataMapper videoMetadataMapper;
     private final SeedanceService seedanceService;
@@ -204,8 +207,14 @@ public class ShotServiceImpl implements ShotService {
         if (request.getSoundEffect() != null) {
             shot.setSoundEffect(request.getSoundEffect());
         }
+        if (request.getSceneName() != null) {
+            shot.setSceneName(request.getSceneName());
+        }
         if (request.getUserPrompt() != null) {
             shot.setUserPrompt(request.getUserPrompt());
+        }
+        if (request.getGenerationStatus() != null) {
+            shot.setGenerationStatus(request.getGenerationStatus());
         }
 
         shot.setUpdatedAt(LocalDateTime.now());
@@ -267,7 +276,7 @@ public class ShotServiceImpl implements ShotService {
             // 调用Seedance生成视频
             SeedanceResponse response = seedanceService.generateVideo(request);
 
-            if ("completed".equals(response.getStatus())) {
+            if ("completed".equals(response.getStatus()) || "succeeded".equals(response.getStatus())) {
                 // 保存视频URL
                 shot.setVideoUrl(response.getVideoUrl());
                 shot.setThumbnailUrl(response.getThumbnailUrl());
@@ -651,6 +660,7 @@ public class ShotServiceImpl implements ShotService {
     @Async("videoGenerateExecutor")
     public void generateVideoWithReferences(Long shotId) {
         log.info("开始生成视频(带参考图): shotId={}", shotId);
+        long startTime = System.currentTimeMillis();
 
         Shot shot = shotMapper.selectById(shotId);
         if (shot == null) {
@@ -659,30 +669,53 @@ public class ShotServiceImpl implements ShotService {
         }
 
         try {
-            // 更新状态为生成中
+            // 更新状态为生成中，清除之前的错误信息，记录开始时间
             shot.setGenerationStatus(ShotGenerationStatus.GENERATING.getCode());
+            shot.setGenerationError(null);
+            shot.setGenerationStartTime(LocalDateTime.now());
             shot.setUpdatedAt(LocalDateTime.now());
             shotMapper.updateById(shot);
 
-            // 获取参考图
-            List<ReferenceImageDTO> referenceImages = getReferenceImages(shotId);
+            // 获取 seriesId
+            Episode episode = episodeMapper.selectById(shot.getEpisodeId());
+            Long seriesId = episode != null ? episode.getSeriesId() : null;
 
-            // 构建 prompt
-            String prompt = shot.getUserPrompt();
-            if (prompt == null || prompt.trim().isEmpty()) {
-                prompt = buildPromptWithImageReferences(shot, referenceImages);
+            // 构建提示词和参考图
+            PromptWithReferences result = buildPromptFromSceneAndDescription(shot, seriesId);
+
+            log.info("构建的提示词: {}", result.getPrompt());
+            log.info("原始参考图数量: {}", result.getReferenceImages().size());
+
+            // 去重：基于图片URL去重
+            List<AssetReference> references = new ArrayList<>();
+            Set<String> seenUrls = new HashSet<>();
+            for (AssetReference ref : result.getReferenceImages()) {
+                if (ref.getImageUrl() != null && !seenUrls.contains(ref.getImageUrl())) {
+                    seenUrls.add(ref.getImageUrl());
+                    references.add(ref);
+                }
+            }
+            log.info("去重后参考图数量: {}", references.size());
+
+            // 参考图数量限制检查（最多9张）
+            if (references.size() > 9) {
+                throw new BusinessException("参考图数量超过9张（当前" + references.size() + "张），请删减后重试");
+            }
+
+            for (AssetReference ref : references) {
+                log.info("参考图: type={}, name={}, url={}", ref.getType(), ref.getName(), ref.getImageUrl());
             }
 
             // 创建生成请求
             SeedanceRequest request = new SeedanceRequest();
-            request.setPrompt(prompt);
+            request.setPrompt(result.getPrompt());
             request.setDuration(shot.getDuration() != null ? shot.getDuration() : 5);
             request.setShotId(shotId);
 
             // 构建参考图列表
-            if (!referenceImages.isEmpty()) {
+            if (!references.isEmpty()) {
                 List<SeedanceRequest.ReferenceContent> contents = new ArrayList<>();
-                for (ReferenceImageDTO ref : referenceImages) {
+                for (AssetReference ref : references) {
                     SeedanceRequest.ReferenceContent content = new SeedanceRequest.ReferenceContent();
                     content.setType("image_url");
                     content.setRole("reference_image");
@@ -699,56 +732,386 @@ public class ShotServiceImpl implements ShotService {
             // 调用 Seedance 生成视频
             SeedanceResponse response = seedanceService.generateVideo(request);
 
-            if ("completed".equals(response.getStatus())) {
+            if ("completed".equals(response.getStatus()) || "succeeded".equals(response.getStatus())) {
+                // 计算生成耗时
+                int durationSeconds = (int) ((System.currentTimeMillis() - startTime) / 1000);
+                log.info("视频生成耗时: {}秒 (约{}分{}秒)", durationSeconds, durationSeconds / 60, durationSeconds % 60);
+
                 // 保存视频URL
                 shot.setVideoUrl(response.getVideoUrl());
                 shot.setThumbnailUrl(response.getThumbnailUrl());
                 shot.setVideoSeed(response.getSeed());
                 shot.setGenerationStatus(ShotGenerationStatus.COMPLETED.getCode());
+                shot.setGenerationDuration(durationSeconds);
                 shot.setUpdatedAt(LocalDateTime.now());
                 shotMapper.updateById(shot);
 
                 // 保存元数据
-                saveVideoMetadata(shot, prompt, response);
+                saveVideoMetadata(shot, result.getPrompt(), response);
 
-                log.info("视频生成完成(带参考图): shotId={}", shotId);
+                log.info("视频生成完成(带参考图): shotId={}, 耗时: {}分{}秒", shotId, durationSeconds / 60, durationSeconds % 60);
             } else {
                 throw new RuntimeException("视频生成失败: " + response.getErrorMessage());
             }
         } catch (Exception e) {
             log.error("视频生成异常(带参考图): shotId={}", shotId, e);
             shot.setGenerationStatus(ShotGenerationStatus.FAILED.getCode());
+            // 提取关键错误信息
+            String errorMsg = e.getMessage();
+            if (errorMsg != null && errorMsg.contains("ModelNotOpen")) {
+                shot.setGenerationError("模型未开通，请在火山引擎控制台开通 doubao-seedance-2-0-260128 模型");
+            } else if (errorMsg != null && errorMsg.length() > 200) {
+                shot.setGenerationError(errorMsg.substring(0, 200));
+            } else {
+                shot.setGenerationError(errorMsg);
+            }
             shot.setUpdatedAt(LocalDateTime.now());
             shotMapper.updateById(shot);
         }
     }
 
     /**
-     * 构建带图注的 prompt
+     * 从场景和描述构建结构化提示词
+     * 格式：场景：xxx，时间【00:00-00:08】 镜头【xxx】 剧情【xxx】 音效【xxx】
+     * 同时解析 @{资产名称} 并转换为 [图N] 格式
      */
-    private String buildPromptWithImageReferences(Shot shot, List<ReferenceImageDTO> referenceImages) {
-        StringBuilder prompt = new StringBuilder();
+    private PromptWithReferences buildPromptFromSceneAndDescription(Shot shot, Long seriesId) {
+        PromptWithReferences result = new PromptWithReferences();
+        List<AssetReference> references = new ArrayList<>();
+        StringBuilder promptBuilder = new StringBuilder();
 
-        // 在 prompt 中添加图注标记
-        for (int i = 0; i < referenceImages.size(); i++) {
-            ReferenceImageDTO ref = referenceImages.get(i);
-            prompt.append("[图").append(i + 1).append("]");
+        // 1. 场景 - 解析 @{资产名称} 并添加参考图
+        String sceneName = shot.getSceneName();
+        if (sceneName != null && !sceneName.isEmpty()) {
+            String processedSceneName = parseSceneMentions(sceneName, seriesId, references);
+            promptBuilder.append("场景：").append(processedSceneName);
         }
 
-        // 添加场景描述
-        if (shot.getSceneId() != null) {
-            Scene scene = sceneMapper.selectById(shot.getSceneId());
-            if (scene != null && scene.getDescription() != null) {
-                prompt.append(scene.getDescription()).append(" ");
+        // 2. 时间
+        String timeRange = formatTimeRange(shot.getStartTime(), shot.getEndTime());
+        promptBuilder.append("，时间【").append(timeRange).append("】");
+
+        // 3. 镜头
+        String shotType = shot.getShotType();
+        if (shotType != null && !shotType.isEmpty()) {
+            promptBuilder.append(" 镜头【").append(shotType).append("】");
+        }
+
+        // 4. 剧情 - 解析资产引用
+        String description = shot.getDescription();
+        if (description != null && !description.isEmpty()) {
+            String processedDesc = parseAssetMentionsAndAutoMatch(description, seriesId, references);
+            promptBuilder.append(" 剧情【").append(processedDesc).append("】");
+        }
+
+        // 5. 音效
+        String soundEffect = shot.getSoundEffect();
+        if (soundEffect != null && !soundEffect.isEmpty()) {
+            promptBuilder.append(" 音效【").append(soundEffect).append("】");
+        }
+
+        result.setPrompt(promptBuilder.toString());
+        result.setReferenceImages(references);
+
+        log.info("构建的提示词: {}", result.getPrompt());
+        log.info("参考图数量: {}", references.size());
+        for (int i = 0; i < references.size(); i++) {
+            AssetReference ref = references.get(i);
+            log.info("  [图{}] {} - {}", i + 1, ref.getType(), ref.getName());
+        }
+
+        return result;
+    }
+
+    /**
+     * 解析场景名称中的 @{资产名称} 并转换为 [图N] 格式
+     */
+    private String parseSceneMentions(String sceneName, Long seriesId, List<AssetReference> references) {
+        java.util.regex.Pattern pattern = java.util.regex.Pattern.compile("@\\{([^}]+)\\}");
+        java.util.regex.Matcher matcher = pattern.matcher(sceneName);
+
+        StringBuffer result = new StringBuffer();
+        Set<String> matchedAssets = new HashSet<>();
+
+        while (matcher.find()) {
+            String assetName = matcher.group(1);
+            // 检查是否已匹配过（去重）
+            if (matchedAssets.contains(assetName)) {
+                int existingIndex = findAssetIndex(references, assetName);
+                if (existingIndex > 0) {
+                    matcher.appendReplacement(result, "[图" + existingIndex + "]");
+                } else {
+                    matcher.appendReplacement(result, assetName);
+                }
+                continue;
+            }
+
+            AssetReference assetRef = findAssetByName(assetName, seriesId);
+            if (assetRef != null) {
+                int imageIndex = references.size() + 1;
+                references.add(assetRef);
+                matchedAssets.add(assetName);
+                matcher.appendReplacement(result, "[图" + imageIndex + "]");
+            } else {
+                matcher.appendReplacement(result, assetName);
+            }
+        }
+        matcher.appendTail(result);
+
+        String processed = result.toString().trim();
+        // 如果没有找到 @{} 格式，尝试按场景名称匹配
+        if (references.isEmpty() && seriesId != null) {
+            AssetReference sceneRef = findAssetByName(sceneName.trim(), seriesId);
+            if (sceneRef != null) {
+                references.add(sceneRef);
+                // 场景名称不需要替换，保持原样
             }
         }
 
-        // 添加分镜描述
-        if (shot.getDescription() != null) {
-            prompt.append(shot.getDescription());
+        return processed;
+    }
+
+    /**
+     * 格式化时间范围
+     */
+    private String formatTimeRange(Integer startTime, Integer endTime) {
+        String start = formatTime(startTime != null ? startTime : 0);
+        String end = formatTime(endTime != null ? endTime : 0);
+        return start + "-" + end;
+    }
+
+    /**
+     * 格式化秒数为 mm:ss 格式
+     */
+    private String formatTime(int seconds) {
+        int minutes = seconds / 60;
+        int secs = seconds % 60;
+        return String.format("%02d:%02d", minutes, secs);
+    }
+
+    /**
+     * 解析文本中的 @{资产名称} 并转换为 [图N] 格式
+     * 同时自动匹配文本中出现的资产名称
+     */
+    private String parseAssetMentionsAndAutoMatch(String text, Long seriesId, List<AssetReference> references) {
+        // 先处理 @{资产名称} 格式
+        java.util.regex.Pattern pattern = java.util.regex.Pattern.compile("@\\{([^}]+)\\}");
+        java.util.regex.Matcher matcher = pattern.matcher(text);
+
+        StringBuffer result = new StringBuffer();
+        Set<String> matchedAssets = new HashSet<>(); // 已匹配的资产名称
+
+        while (matcher.find()) {
+            String assetName = matcher.group(1);
+            // 检查是否已匹配过（去重）
+            if (matchedAssets.contains(assetName)) {
+                // 已匹配过，用已有索引
+                int existingIndex = findAssetIndex(references, assetName);
+                if (existingIndex > 0) {
+                    matcher.appendReplacement(result, "[图" + existingIndex + "]");
+                } else {
+                    matcher.appendReplacement(result, assetName);
+                }
+                continue;
+            }
+
+            AssetReference assetRef = findAssetByName(assetName, seriesId);
+            if (assetRef != null) {
+                int imageIndex = references.size() + 1;
+                references.add(assetRef);
+                matchedAssets.add(assetName);
+                matcher.appendReplacement(result, "[图" + imageIndex + "]");
+            } else {
+                matcher.appendReplacement(result, assetName);
+            }
+        }
+        matcher.appendTail(result);
+        String processedText = result.toString();
+
+        // 如果没有找到 @{} 格式，尝试自动匹配资产名称
+        if (references.isEmpty() && seriesId != null) {
+            processedText = autoMatchAssetsInText(processedText, seriesId, references);
         }
 
-        return prompt.toString();
+        return processedText;
+    }
+
+    /**
+     * 查找资产在列表中的索引
+     */
+    private int findAssetIndex(List<AssetReference> references, String assetName) {
+        for (int i = 0; i < references.size(); i++) {
+            if (references.get(i).getName().equals(assetName)) {
+                return i + 1;
+            }
+        }
+        return 0;
+    }
+
+    /**
+     * 自动匹配文本中出现的资产名称
+     */
+    private String autoMatchAssetsInText(String text, Long seriesId, List<AssetReference> references) {
+        // 获取该系列所有资产
+        List<AssetReference> allAssets = new ArrayList<>();
+
+        // 场景
+        LambdaQueryWrapper<Scene> sceneWrapper = new LambdaQueryWrapper<>();
+        sceneWrapper.eq(Scene::getSeriesId, seriesId);
+        List<Scene> scenes = sceneMapper.selectList(sceneWrapper);
+        for (Scene scene : scenes) {
+            SceneAsset asset = getActiveSceneAsset(scene.getId());
+            if (asset != null && asset.getFilePath() != null) {
+                AssetReference ref = new AssetReference();
+                ref.setType("scene");
+                ref.setName(scene.getSceneName());
+                ref.setImageUrl(asset.getFilePath());
+                allAssets.add(ref);
+            }
+        }
+
+        // 角色
+        LambdaQueryWrapper<Role> roleWrapper = new LambdaQueryWrapper<>();
+        roleWrapper.eq(Role::getSeriesId, seriesId);
+        List<Role> roles = roleMapper.selectList(roleWrapper);
+        for (Role role : roles) {
+            RoleAsset asset = getActiveRoleAsset(role.getId(), null);
+            if (asset != null && asset.getFilePath() != null) {
+                AssetReference ref = new AssetReference();
+                ref.setType("role");
+                ref.setName(role.getRoleName());
+                ref.setImageUrl(asset.getFilePath());
+                allAssets.add(ref);
+            }
+        }
+
+        // 道具
+        LambdaQueryWrapper<Prop> propWrapper = new LambdaQueryWrapper<>();
+        propWrapper.eq(Prop::getSeriesId, seriesId);
+        List<Prop> props = propMapper.selectList(propWrapper);
+        for (Prop prop : props) {
+            PropAsset asset = getActivePropAsset(prop.getId());
+            if (asset != null && asset.getFilePath() != null) {
+                AssetReference ref = new AssetReference();
+                ref.setType("prop");
+                ref.setName(prop.getPropName());
+                ref.setImageUrl(asset.getFilePath());
+                allAssets.add(ref);
+            }
+        }
+
+        // 按名称长度降序排序，优先匹配长名称
+        allAssets.sort((a, b) -> b.getName().length() - a.getName().length());
+
+        // 在文本中查找资产名称并替换
+        String result = text;
+        Set<String> matched = new HashSet<>();
+        for (AssetReference asset : allAssets) {
+            if (!matched.contains(asset.getName()) && result.contains(asset.getName())) {
+                int imageIndex = references.size() + 1;
+                references.add(asset);
+                matched.add(asset.getName());
+                result = result.replace(asset.getName(), "[图" + imageIndex + "]");
+            }
+        }
+
+        return result;
+    }
+
+    /**
+     * 根据名称查找资产
+     */
+    private AssetReference findAssetByName(String name, Long seriesId) {
+        log.info("查找资产: name={}, seriesId={}", name, seriesId);
+
+        // 1. 查找场景
+        if (seriesId != null) {
+            LambdaQueryWrapper<Scene> sceneWrapper = new LambdaQueryWrapper<>();
+            sceneWrapper.eq(Scene::getSeriesId, seriesId)
+                    .eq(Scene::getSceneName, name);
+            Scene scene = sceneMapper.selectOne(sceneWrapper);
+            if (scene != null) {
+                SceneAsset asset = getActiveSceneAsset(scene.getId());
+                if (asset != null && asset.getFilePath() != null) {
+                    log.info("找到场景资产: name={}, url={}", name, asset.getFilePath());
+                    AssetReference ref = new AssetReference();
+                    ref.setType("scene");
+                    ref.setName(name);
+                    ref.setImageUrl(asset.getFilePath());
+                    return ref;
+                }
+            }
+        }
+
+        // 2. 查找角色
+        if (seriesId != null) {
+            LambdaQueryWrapper<Role> roleWrapper = new LambdaQueryWrapper<>();
+            roleWrapper.eq(Role::getSeriesId, seriesId)
+                    .eq(Role::getRoleName, name);
+            Role role = roleMapper.selectOne(roleWrapper);
+            if (role != null) {
+                RoleAsset asset = getActiveRoleAsset(role.getId(), null);
+                log.info("找到角色: name={}, roleId={}, asset={}", name, role.getId(), asset != null ? asset.getFilePath() : "null");
+                if (asset != null && asset.getFilePath() != null) {
+                    AssetReference ref = new AssetReference();
+                    ref.setType("role");
+                    ref.setName(name);
+                    ref.setImageUrl(asset.getFilePath());
+                    return ref;
+                }
+            } else {
+                log.info("未找到角色: name={}", name);
+            }
+        }
+
+        // 3. 查找道具
+        if (seriesId != null) {
+            LambdaQueryWrapper<Prop> propWrapper = new LambdaQueryWrapper<>();
+            propWrapper.eq(Prop::getSeriesId, seriesId)
+                    .eq(Prop::getPropName, name);
+            Prop prop = propMapper.selectOne(propWrapper);
+            if (prop != null) {
+                PropAsset asset = getActivePropAsset(prop.getId());
+                if (asset != null && asset.getFilePath() != null) {
+                    AssetReference ref = new AssetReference();
+                    ref.setType("prop");
+                    ref.setName(name);
+                    ref.setImageUrl(asset.getFilePath());
+                    return ref;
+                }
+            }
+        }
+
+        return null;
+    }
+
+    /**
+     * 提示词和参考图结果
+     */
+    private static class PromptWithReferences {
+        private String prompt;
+        private List<AssetReference> referenceImages;
+
+        public String getPrompt() { return prompt; }
+        public void setPrompt(String prompt) { this.prompt = prompt; }
+        public List<AssetReference> getReferenceImages() { return referenceImages; }
+        public void setReferenceImages(List<AssetReference> referenceImages) { this.referenceImages = referenceImages; }
+    }
+
+    /**
+     * 资产引用
+     */
+    private static class AssetReference {
+        private String type;
+        private String name;
+        private String imageUrl;
+
+        public String getType() { return type; }
+        public void setType(String type) { this.type = type; }
+        public String getName() { return name; }
+        public void setName(String name) { this.name = name; }
+        public String getImageUrl() { return imageUrl; }
+        public void setImageUrl(String imageUrl) { this.imageUrl = imageUrl; }
     }
 
     /**
@@ -764,15 +1127,19 @@ public class ShotServiceImpl implements ShotService {
 
     /**
      * 获取角色激活资产
+     * 如果未指定服装ID，使用默认服装(clothingId=1)
      */
     private RoleAsset getActiveRoleAsset(Long roleId, Integer clothingId) {
+        // 如果未指定服装，使用默认服装
+        if (clothingId == null) {
+            clothingId = 1;
+        }
+
         LambdaQueryWrapper<RoleAsset> wrapper = new LambdaQueryWrapper<>();
         wrapper.eq(RoleAsset::getRoleId, roleId)
-                .eq(RoleAsset::getIsActive, 1);
-        if (clothingId != null) {
-            wrapper.eq(RoleAsset::getClothingId, clothingId);
-        }
-        wrapper.last("LIMIT 1");
+                .eq(RoleAsset::getClothingId, clothingId)
+                .eq(RoleAsset::getIsActive, 1)
+                .last("LIMIT 1");
         return roleAssetMapper.selectOne(wrapper);
     }
 
