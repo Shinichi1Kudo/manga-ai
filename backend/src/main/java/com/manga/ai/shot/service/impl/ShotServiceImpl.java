@@ -245,9 +245,30 @@ public class ShotServiceImpl implements ShotService {
     }
 
     @Override
-    @Async("videoGenerateExecutor")
     public void generateVideo(Long shotId) {
         log.info("开始生成视频: shotId={}", shotId);
+
+        // 同步更新状态为生成中，确保状态立即持久化
+        Shot shot = shotMapper.selectById(shotId);
+        if (shot == null) {
+            log.error("分镜不存在: shotId={}", shotId);
+            return;
+        }
+
+        shot.setGenerationStatus(ShotGenerationStatus.GENERATING.getCode());
+        shot.setGenerationError(null);
+        shot.setGenerationStartTime(LocalDateTime.now());
+        shot.setUpdatedAt(LocalDateTime.now());
+        shotMapper.updateById(shot);
+        log.info("已更新分镜状态为生成中: shotId={}", shotId);
+
+        // 异步执行视频生成
+        doGenerateVideo(shotId);
+    }
+
+    @Async("videoGenerateExecutor")
+    public void doGenerateVideo(Long shotId) {
+        log.info("异步执行视频生成: shotId={}", shotId);
 
         Shot shot = shotMapper.selectById(shotId);
         if (shot == null) {
@@ -256,11 +277,6 @@ public class ShotServiceImpl implements ShotService {
         }
 
         try {
-            // 更新状态为生成中
-            shot.setGenerationStatus(ShotGenerationStatus.GENERATING.getCode());
-            shot.setUpdatedAt(LocalDateTime.now());
-            shotMapper.updateById(shot);
-
             // 构建提示词
             String prompt = shot.getUserPrompt();
             if (prompt == null || prompt.trim().isEmpty()) {
@@ -295,6 +311,7 @@ public class ShotServiceImpl implements ShotService {
         } catch (Exception e) {
             log.error("视频生成异常: shotId={}", shotId, e);
             shot.setGenerationStatus(ShotGenerationStatus.FAILED.getCode());
+            shot.setGenerationError(e.getMessage());
             shot.setUpdatedAt(LocalDateTime.now());
             shotMapper.updateById(shot);
         }
@@ -657,9 +674,30 @@ public class ShotServiceImpl implements ShotService {
     }
 
     @Override
-    @Async("videoGenerateExecutor")
     public void generateVideoWithReferences(Long shotId) {
         log.info("开始生成视频(带参考图): shotId={}", shotId);
+
+        // 同步更新状态为生成中，确保状态立即持久化
+        Shot shot = shotMapper.selectById(shotId);
+        if (shot == null) {
+            log.error("分镜不存在: shotId={}", shotId);
+            return;
+        }
+
+        shot.setGenerationStatus(ShotGenerationStatus.GENERATING.getCode());
+        shot.setGenerationError(null);
+        shot.setGenerationStartTime(LocalDateTime.now());
+        shot.setUpdatedAt(LocalDateTime.now());
+        shotMapper.updateById(shot);
+        log.info("已更新分镜状态为生成中: shotId={}", shotId);
+
+        // 异步执行视频生成
+        doGenerateVideoWithReferences(shotId);
+    }
+
+    @Async("videoGenerateExecutor")
+    public void doGenerateVideoWithReferences(Long shotId) {
+        log.info("异步执行视频生成: shotId={}", shotId);
         long startTime = System.currentTimeMillis();
 
         Shot shot = shotMapper.selectById(shotId);
@@ -669,12 +707,6 @@ public class ShotServiceImpl implements ShotService {
         }
 
         try {
-            // 更新状态为生成中，清除之前的错误信息，记录开始时间
-            shot.setGenerationStatus(ShotGenerationStatus.GENERATING.getCode());
-            shot.setGenerationError(null);
-            shot.setGenerationStartTime(LocalDateTime.now());
-            shot.setUpdatedAt(LocalDateTime.now());
-            shotMapper.updateById(shot);
 
             // 获取 seriesId
             Episode episode = episodeMapper.selectById(shot.getEpisodeId());
