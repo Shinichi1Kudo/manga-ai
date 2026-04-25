@@ -942,6 +942,64 @@ document.getElementById('pendingShots').textContent = pending;
 const progress = shots.length > 0 ? Math.round(completed / shots.length * 100) : 0;
 document.getElementById('progressPercent').textContent = progress + '%';
 
+// 轮询视频生成状态 - 变量声明必须在使用前
+let pollingIntervalId = null;
+function startShotGenerationPolling() {
+    // 防止重复启动轮询
+    if (pollingIntervalId) {
+        console.log('轮询已在运行中，跳过');
+        return;
+    }
+    console.log('启动视频生成状态轮询');
+    pollingIntervalId = setInterval(async () => {
+        try {
+            const response = await fetch(`/api/v1/episodes/${episodeId}/progress/`);
+            const data = await response.json();
+
+            if (data.shots) {
+                let stillGenerating = false;
+                let hasChanges = false;
+
+                data.shots.forEach(shot => {
+                    // 检查页面上的分镜卡片
+                    const card = document.querySelector(`.shot-card[data-shot-id="${shot.id}"]`);
+                    if (card) {
+                        const currentStatus = parseInt(card.dataset.status);
+                        const newStatus = shot.generationStatus;
+
+                        // 如果状态从生成中变为其他状态
+                        if (currentStatus === 1 && newStatus !== 1) {
+                            hasChanges = true;
+                            console.log(`分镜 ${shot.id} 状态变化: ${currentStatus} -> ${newStatus}`);
+                        }
+
+                        if (newStatus === 1) {
+                            stillGenerating = true;
+                        }
+                    }
+                });
+
+                // 如果有状态变化，刷新页面
+                if (hasChanges) {
+                    console.log('检测到状态变化，刷新页面');
+                    clearInterval(pollingIntervalId);
+                    pollingIntervalId = null;
+                    location.reload();
+                }
+
+                // 如果没有正在生成的了，停止轮询
+                if (!stillGenerating) {
+                    console.log('所有视频生成完成，停止轮询');
+                    clearInterval(pollingIntervalId);
+                    pollingIntervalId = null;
+                }
+            }
+        } catch (e) {
+            console.error('轮询视频状态失败:', e);
+        }
+    }, 5000); // 每5秒轮询一次
+}
+
 // 如果有正在生成中的视频，启动轮询
 if (generating > 0) {
     console.log(`检测到 ${generating} 个视频正在生成中，启动轮询...`);
@@ -1006,64 +1064,6 @@ function startGeneratingTimers() {
             setInterval(updateTimer, 1000);
         }
     });
-}
-
-// 轮询视频生成状态
-let pollingIntervalId = null;
-function startShotGenerationPolling() {
-    // 防止重复启动轮询
-    if (pollingIntervalId) {
-        console.log('轮询已在运行中，跳过');
-        return;
-    }
-    console.log('启动视频生成状态轮询');
-    pollingIntervalId = setInterval(async () => {
-        try {
-            const response = await fetch(`/api/v1/episodes/${episodeId}/progress/`);
-            const data = await response.json();
-
-            if (data.shots) {
-                let stillGenerating = false;
-                let hasChanges = false;
-
-                data.shots.forEach(shot => {
-                    // 检查页面上的分镜卡片
-                    const card = document.querySelector(`.shot-card[data-shot-id="${shot.id}"]`);
-                    if (card) {
-                        const currentStatus = parseInt(card.dataset.status);
-                        const newStatus = shot.generationStatus;
-
-                        // 如果状态从生成中变为其他状态
-                        if (currentStatus === 1 && newStatus !== 1) {
-                            hasChanges = true;
-                            console.log(`分镜 ${shot.id} 状态变化: ${currentStatus} -> ${newStatus}`);
-                        }
-
-                        if (newStatus === 1) {
-                            stillGenerating = true;
-                        }
-                    }
-                });
-
-                // 如果有状态变化，刷新页面
-                if (hasChanges) {
-                    console.log('检测到状态变化，刷新页面');
-                    clearInterval(pollingIntervalId);
-                    pollingIntervalId = null;
-                    location.reload();
-                }
-
-                // 如果没有正在生成的了，停止轮询
-                if (!stillGenerating) {
-                    console.log('所有视频生成完成，停止轮询');
-                    clearInterval(pollingIntervalId);
-                    pollingIntervalId = null;
-                }
-            }
-        } catch (e) {
-            console.error('轮询视频状态失败:', e);
-        }
-    }, 5000); // 每5秒轮询一次
 }
 
 // Helper functions for form modals (not image preview)
