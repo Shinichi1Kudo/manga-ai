@@ -2269,8 +2269,8 @@ sceneContextMenu.querySelector('.scene-toggle-lock-btn')?.addEventListener('clic
     if (!currentContextSceneId) return;
     hideContextMenus();
 
-    const sceneCard = document.querySelector(`.scene-menu-btn[data-scene-id="${currentContextSceneId}"]`);
-    const isLocked = sceneCard?.dataset.sceneLocked === 'true';
+    const menuBtn = document.querySelector(`.scene-menu-btn[data-scene-id="${currentContextSceneId}"]`);
+    const isLocked = menuBtn?.dataset.sceneLocked === 'true';
     const action = isLocked ? 'unlock' : 'lock';
 
     try {
@@ -2280,7 +2280,8 @@ sceneContextMenu.querySelector('.scene-toggle-lock-btn')?.addEventListener('clic
         });
         const data = await response.json();
         if (data.code === 200) {
-            location.reload();
+            // 直接更新UI，不刷新页面
+            updateSceneLockUI(currentContextSceneId, !isLocked);
         } else {
             alert('操作失败: ' + (data.message || '未知错误'));
         }
@@ -2288,6 +2289,54 @@ sceneContextMenu.querySelector('.scene-toggle-lock-btn')?.addEventListener('clic
         alert('请求失败: ' + e.message);
     }
 });
+
+// 更新场景锁定状态UI
+function updateSceneLockUI(sceneId, isLocked) {
+    // 更新卡片data-status
+    const card = document.querySelector(`.glass-card[data-scene-id="${sceneId}"]`);
+    if (card) {
+        card.dataset.status = isLocked ? '3' : '1';
+    }
+
+    // 更新菜单按钮的locked状态
+    const menuBtn = document.querySelector(`.scene-menu-btn[data-scene-id="${sceneId}"]`);
+    if (menuBtn) {
+        menuBtn.dataset.sceneLocked = isLocked ? 'true' : 'false';
+    }
+
+    // 更新锁定图标
+    const imageContainer = document.querySelector(`.scene-history-btn[data-scene-id="${sceneId}"]`);
+    if (imageContainer) {
+        let lockOverlay = imageContainer.querySelector('.lock-overlay');
+        if (isLocked) {
+            if (!lockOverlay) {
+                lockOverlay = document.createElement('div');
+                lockOverlay.className = 'absolute top-1 left-1 lock-overlay';
+                lockOverlay.innerHTML = '<i data-lucide="lock" class="w-4 h-4 text-amber-400"></i>';
+                imageContainer.appendChild(lockOverlay);
+                lucide.createIcons();
+            }
+        } else {
+            if (lockOverlay) lockOverlay.remove();
+        }
+    }
+
+    // 更新状态文字
+    if (card) {
+        const statusSpan = card.querySelector('.flex.items-center.gap-1 span:not(.version-count)');
+        if (statusSpan) {
+            statusSpan.textContent = isLocked ? '已锁定' : '待审核';
+            statusSpan.className = 'text-xs ' + (isLocked ? 'text-amber-400' : 'text-amber-400');
+        }
+    }
+
+    // 更新右键菜单文字和图标
+    const lockText = sceneContextMenu.querySelector('.lock-text');
+    const lockIcon = sceneContextMenu.querySelector('.lock-icon');
+    if (lockText) lockText.textContent = isLocked ? '解锁' : '锁定';
+    if (lockIcon) lockIcon.setAttribute('data-lucide', isLocked ? 'unlock' : 'lock');
+    lucide.createIcons();
+}
 
 // 场景重新生成（菜单）
 sceneContextMenu.querySelector('.scene-regenerate-menu-btn')?.addEventListener('click', function(e) {
@@ -2376,8 +2425,8 @@ propContextMenu.querySelector('.prop-toggle-lock-btn')?.addEventListener('click'
     if (!currentContextPropId) return;
     hideContextMenus();
 
-    const propCard = document.querySelector(`.prop-menu-btn[data-prop-id="${currentContextPropId}"]`);
-    const isLocked = propCard?.dataset.propLocked === 'true';
+    const menuBtn = document.querySelector(`.prop-menu-btn[data-prop-id="${currentContextPropId}"]`);
+    const isLocked = menuBtn?.dataset.propLocked === 'true';
     const action = isLocked ? 'unlock' : 'lock';
 
     try {
@@ -2387,7 +2436,8 @@ propContextMenu.querySelector('.prop-toggle-lock-btn')?.addEventListener('click'
         });
         const data = await response.json();
         if (data.code === 200) {
-            location.reload();
+            // 直接更新UI，不刷新页面
+            updatePropLockUI(currentContextPropId, !isLocked);
         } else {
             alert('操作失败: ' + (data.message || '未知错误'));
         }
@@ -2395,6 +2445,54 @@ propContextMenu.querySelector('.prop-toggle-lock-btn')?.addEventListener('click'
         alert('请求失败: ' + e.message);
     }
 });
+
+// 更新道具锁定状态UI
+function updatePropLockUI(propId, isLocked) {
+    // 更新卡片data-status
+    const card = document.querySelector(`.glass-card[data-prop-id="${propId}"]`);
+    if (card) {
+        card.dataset.status = isLocked ? '3' : '1';
+    }
+
+    // 更新菜单按钮的locked状态
+    const menuBtn = document.querySelector(`.prop-menu-btn[data-prop-id="${propId}"]`);
+    if (menuBtn) {
+        menuBtn.dataset.propLocked = isLocked ? 'true' : 'false';
+    }
+
+    // 更新锁定图标
+    const imageContainer = document.querySelector(`.prop-history-btn[data-prop-id="${propId}"]`);
+    if (imageContainer) {
+        let lockOverlay = imageContainer.querySelector('.lock-overlay');
+        if (isLocked) {
+            if (!lockOverlay) {
+                lockOverlay = document.createElement('div');
+                lockOverlay.className = 'absolute top-1 left-1 lock-overlay';
+                lockOverlay.innerHTML = '<i data-lucide="lock" class="w-4 h-4 text-amber-400"></i>';
+                imageContainer.appendChild(lockOverlay);
+                lucide.createIcons();
+            }
+        } else {
+            if (lockOverlay) lockOverlay.remove();
+        }
+    }
+
+    // 更新状态文字
+    if (card) {
+        const statusSpan = card.querySelector('.flex.items-center.gap-1 span:not(.version-count)');
+        if (statusSpan) {
+            statusSpan.textContent = isLocked ? '已锁定' : '待审核';
+            statusSpan.className = 'text-xs ' + (isLocked ? 'text-amber-400' : 'text-amber-400');
+        }
+    }
+
+    // 更新右键菜单文字和图标
+    const lockText = propContextMenu.querySelector('.lock-text');
+    const lockIcon = propContextMenu.querySelector('.lock-icon');
+    if (lockText) lockText.textContent = isLocked ? '解锁' : '锁定';
+    if (lockIcon) lockIcon.setAttribute('data-lucide', isLocked ? 'unlock' : 'lock');
+    lucide.createIcons();
+}
 
 // 道具重新生成（菜单）
 propContextMenu.querySelector('.prop-regenerate-menu-btn')?.addEventListener('click', function(e) {
