@@ -656,7 +656,10 @@
         </div>
         <div class="p-6 border-t border-white/10 flex justify-end gap-3">
             <button onclick="closeRegenerateModal()" class="px-5 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 transition-colors font-medium">取消</button>
-            <button onclick="submitRegenerate()" class="btn-neon">生成</button>
+            <button onclick="submitRegenerate()" class="btn-neon flex items-center gap-2">
+                <i data-lucide="sparkles" class="w-4 h-4"></i>生成
+                <span class="text-yellow-300 text-sm">(耗费 6 积分)</span>
+            </button>
         </div>
     </div>
 </div>
@@ -735,7 +738,10 @@
         </div>
         <div class="p-6 border-t border-white/10 flex justify-end gap-3">
             <button onclick="closeNewClothingModal()" class="px-5 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 transition-colors font-medium">取消</button>
-            <button id="submitNewClothingBtn" onclick="submitNewClothing()" class="btn-neon">生成</button>
+            <button id="submitNewClothingBtn" onclick="submitNewClothing()" class="btn-neon flex items-center gap-2">
+                <i data-lucide="sparkles" class="w-4 h-4"></i>生成
+                <span class="text-yellow-300 text-sm">(耗费 6 积分)</span>
+            </button>
         </div>
     </div>
 </div>
