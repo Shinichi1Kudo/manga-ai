@@ -4,6 +4,12 @@
 
 ## 功能概览
 
+### 用户系统（已完成）
+- ✅ 邮箱注册与登录
+- ✅ JWT Token 认证
+- ✅ 积分系统
+- ✅ 积分消费记录
+
 ### 阶段一：角色资产管理（已完成）
 - ✅ 系列创建与管理
 - ✅ 角色提取与图片生成
@@ -29,7 +35,7 @@ manga-ai/
 ├── backend/                    # Spring Boot 后端
 │   └── src/main/java/com/manga/ai/
 │       ├── asset/              # 资产管理模块
-│       ├── common/             # 通用配置
+│       ├── common/             # 通用配置、枚举、工具类
 │       ├── episode/            # 剧集管理模块
 │       ├── image/              # 图片生成服务
 │       ├── llm/                # LLM服务（豆包）
@@ -39,16 +45,20 @@ manga-ai/
 │       ├── scene/              # 场景管理模块
 │       ├── series/             # 系列管理模块
 │       ├── shot/               # 分镜管理模块
+│       ├── user/               # 用户管理模块
 │       └── video/              # 视频生成服务（Seedance）
 │
 └── frontend/                   # Django 前端
     ├── api/                    # 后端API客户端
     ├── apps/
     │   ├── asset/              # 资产管理
+    │   ├── auth/               # 用户认证
     │   ├── role/               # 角色管理
     │   └── series/             # 系列与剧集管理
     ├── manga_ai/               # Django项目配置
     └── templates/              # HTML模板
+        ├── auth/               # 登录注册页面
+        ├── credits/            # 积分记录页面
         ├── series/             # 系列、角色审核页面
         └── episode/            # 剧集制作页面
 ```
@@ -79,6 +89,9 @@ manga-ai/
 ### 核心表
 | 表名 | 说明 |
 |------|------|
+| `user` | 用户信息 |
+| `credit_record` | 积分消费记录 |
+| `email_verification` | 邮箱验证码 |
 | `series` | 系列信息 |
 | `role` | 角色信息 |
 | `role_asset` | 角色资产（图片） |
@@ -127,6 +140,15 @@ python manage.py runserver 8000
 默认端口：8000
 
 ## API 接口
+
+### 用户认证
+- `POST /v1/auth/send-code` - 发送验证码
+- `POST /v1/auth/register` - 用户注册
+- `POST /v1/auth/login` - 用户登录
+- `GET /v1/user/info` - 获取当前用户信息
+
+### 积分相关
+- `GET /v1/credits/records` - 获取积分记录（分页）
 
 ### 系列相关
 - `GET /v1/series/list` - 获取系列列表（分页）
@@ -254,6 +276,9 @@ BACKEND_API_URL = 'http://localhost:8081/api'
 ## 开发进度
 
 ### 已完成
+- [x] 用户注册登录系统
+- [x] JWT Token 认证
+- [x] 积分系统与消费记录
 - [x] 系列管理 CRUD
 - [x] 角色提取与图片生成
 - [x] 多服装版本管理
