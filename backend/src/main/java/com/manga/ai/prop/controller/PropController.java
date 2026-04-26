@@ -63,7 +63,7 @@ public class PropController {
     @PostMapping("/{propId}/generate")
     public Result<Void> generatePropAssets(@PathVariable Long propId) {
         log.info("生成道具资产: propId={}", propId);
-        propService.generatePropAssets(propId);
+        propService.generatePropAssetsWithCredit(propId);
         return Result.success();
     }
 
@@ -78,7 +78,7 @@ public class PropController {
         String quality = body != null ? (String) body.get("quality") : null;
         log.info("重新生成道具资产: propId={}, quality={}, customPrompt={}",
                 propId, quality, customPrompt != null);
-        propService.regeneratePropAsset(propId, customPrompt, quality);
+        propService.regeneratePropAssetWithCredit(propId, customPrompt, quality);
         return Result.success();
     }
 

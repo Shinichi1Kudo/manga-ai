@@ -29,12 +29,28 @@ public interface PropService {
     void generatePropAssets(Long propId);
 
     /**
+     * 生成道具资产（含积分扣费）
+     * 同步扣费后异步生成
+     * @param propId 道具ID
+     */
+    void generatePropAssetsWithCredit(Long propId);
+
+    /**
      * 重新生成道具图片
      * @param propId 道具ID
      * @param customPrompt 自定义提示词（可为null）
      * @param quality 清晰度（可为null，使用原值）
      */
     void regeneratePropAsset(Long propId, String customPrompt, String quality);
+
+    /**
+     * 重新生成道具图片（含积分扣费）
+     * 同步扣费后异步生成
+     * @param propId 道具ID
+     * @param customPrompt 自定义提示词（可为null）
+     * @param quality 清晰度（可为null，使用原值）
+     */
+    void regeneratePropAssetWithCredit(Long propId, String customPrompt, String quality);
 
     /**
      * 审核道具

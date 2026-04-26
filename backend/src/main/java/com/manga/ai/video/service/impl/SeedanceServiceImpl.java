@@ -70,16 +70,22 @@ public class SeedanceServiceImpl implements SeedanceService {
 
     @Override
     public SeedanceResponse submitVideoGeneration(SeedanceRequest request) {
+        // 确定使用的模型：优先使用请求中的模型，否则使用配置的默认模型
+        String useModel = request.getModel();
+        if (useModel == null || useModel.isEmpty()) {
+            useModel = "doubao-seedance-2-0-fast-260128"; // 默认使用 Fast 模型
+        }
+
         log.info("提交视频生成任务: model={}, duration={}s, referenceImages={}",
-                model, request.getDuration(),
+                useModel, request.getDuration(),
                 request.getContents() != null ? request.getContents().size() : 0);
 
         try {
             JSONObject requestBody = new JSONObject();
             String url;
 
-            // 统一使用新格式 API
-            requestBody.put("model", "doubao-seedance-2-0-fast-260128");
+            // 使用请求中指定的模型
+            requestBody.put("model", useModel);
 
             // 构建 content 数组
             JSONArray contentArray = new JSONArray();

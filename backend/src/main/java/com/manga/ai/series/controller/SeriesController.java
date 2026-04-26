@@ -4,6 +4,7 @@ import com.manga.ai.common.result.Result;
 import com.manga.ai.series.dto.SeriesDetailVO;
 import com.manga.ai.series.dto.SeriesInitRequest;
 import com.manga.ai.series.dto.SeriesProgressVO;
+import com.manga.ai.series.dto.SeriesVideoAssetsVO;
 import com.manga.ai.series.service.SeriesService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -134,5 +135,14 @@ public class SeriesController {
     public Result<Void> permanentDeleteSeries(@PathVariable Long id) {
         seriesService.permanentDeleteSeries(id);
         return Result.success();
+    }
+
+    /**
+     * 获取系列影视资产
+     */
+    @GetMapping("/{id}/video-assets")
+    public Result<SeriesVideoAssetsVO> getSeriesVideoAssets(@PathVariable Long id) {
+        SeriesVideoAssetsVO result = seriesService.getSeriesVideoAssets(id);
+        return Result.success(result);
     }
 }

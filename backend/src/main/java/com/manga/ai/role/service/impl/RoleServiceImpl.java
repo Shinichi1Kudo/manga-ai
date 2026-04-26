@@ -4,6 +4,8 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.manga.ai.asset.entity.RoleAsset;
 import com.manga.ai.asset.mapper.RoleAssetMapper;
 import com.manga.ai.asset.service.AssetService;
+import com.manga.ai.common.constants.CreditConstants;
+import com.manga.ai.common.enums.CreditUsageType;
 import com.manga.ai.common.enums.RoleStatus;
 import com.manga.ai.common.exception.AssetLockedException;
 import com.manga.ai.common.exception.BusinessException;
@@ -20,8 +22,11 @@ import com.manga.ai.role.mapper.RoleAttributeMapper;
 import com.manga.ai.role.mapper.RoleMapper;
 import com.manga.ai.role.service.RoleService;
 import com.manga.ai.series.entity.Series;
+import com.manga.ai.user.service.UserService;
+import com.manga.ai.user.service.impl.UserServiceImpl.UserContextHolder;
 import com.manga.ai.series.mapper.SeriesMapper;
 import com.manga.ai.common.enums.SeriesStatus;
+import com.manga.ai.common.service.OssService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.BeanUtils;
@@ -52,6 +57,8 @@ public class RoleServiceImpl implements RoleService {
     private final ImageGenerateService imageGenerateService;
     private final AssetService assetService;
     private final TransactionTemplate transactionTemplate;
+    private final OssService ossService;
+    private final UserService userService;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -88,6 +95,20 @@ public class RoleServiceImpl implements RoleService {
 
         roleMapper.insert(role);
         log.info("创建角色: roleId={}, roleName={}", role.getId(), role.getRoleName());
+
+        // 扣除积分（角色生成1张图，包含多视角）
+        int requiredCredits = CreditConstants.CREDITS_PER_IMAGE;
+        Long userId = UserContextHolder.getUserId();
+        if (userId == null) {
+            throw new BusinessException("用户未登录");
+        }
+        userService.deductCredits(userId, requiredCredits, CreditUsageType.ROLE_CREATE.getCode(),
+                "角色创建-" + role.getRoleName(), role.getId(), "ROLE");
+        log.info("角色生成扣费: userId={}, roleId={}, credits={}", userId, role.getId(), requiredCredits);
+
+        // 记录扣除的积分
+        role.setDeductedCredits(requiredCredits);
+        roleMapper.updateById(role);
 
         // 保存必要参数，用于事务提交后启动异步任务
         Long roleId = role.getId();
@@ -351,6 +372,20 @@ public class RoleServiceImpl implements RoleService {
 
         log.info("资产创建事务已提交: roleId={}, clothingId={}, assetId={}", roleId, clothingId, generatingAssetId);
 
+        // 扣除积分（角色重新生成1张图）
+        int requiredCredits = CreditConstants.CREDITS_PER_IMAGE;
+        Long userId = UserContextHolder.getUserId();
+        if (userId == null) {
+            throw new BusinessException("用户未登录");
+        }
+        userService.deductCredits(userId, requiredCredits, CreditUsageType.ROLE_CREATE.getCode(),
+                "角色重新生成-" + role.getRoleName(), roleId, "ROLE");
+        log.info("角色重新生成扣费: userId={}, roleId={}, credits={}", userId, roleId, requiredCredits);
+
+        // 记录扣除的积分
+        role.setDeductedCredits(requiredCredits);
+        roleMapper.updateById(role);
+
         // 启动异步生成（在事务提交后）
         // 只要有参考图就使用图生图，不管是新服装还是重新生成
         if (hasReferenceImage) {
@@ -426,9 +461,9 @@ public class RoleServiceImpl implements RoleService {
             info.setViewName(asset.getFileName());
             info.setClothingId(asset.getClothingId());
             info.setVersion(asset.getVersion());
-            info.setFilePath(asset.getFilePath());
-            info.setTransparentPath(asset.getTransparentPath());
-            info.setThumbnailPath(asset.getThumbnailPath());
+            info.setFilePath(ossService.refreshUrl(asset.getFilePath()));
+            info.setTransparentPath(ossService.refreshUrl(asset.getTransparentPath()));
+            info.setThumbnailPath(ossService.refreshUrl(asset.getThumbnailPath()));
             info.setStatus(asset.getStatus());
             info.setValidationPassed(asset.getValidationPassed() != null && asset.getValidationPassed() == 1);
             return info;

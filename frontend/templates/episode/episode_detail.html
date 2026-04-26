@@ -868,8 +868,8 @@
                     <div>
                         <label class="block text-sm text-white/70 mb-1">分辨率</label>
                         <select id="addShotResolution" class="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-blue-500/50">
-                            <option value="480p">480p</option>
-                            <option value="720p" selected>720p</option>
+                            <option value="480p">高清</option>
+                            <option value="720p" selected>超清</option>
                         </select>
                     </div>
                     <div>
@@ -950,8 +950,11 @@
                 <div class="flex flex-col gap-1.5 w-full">
                     {% if shot.generationStatus == 0 and episode.status == 2 %}
                     <button class="generate-btn w-full px-3 py-1.5 rounded-lg bg-gradient-to-r from-blue-500 to-cyan-500 hover:from-blue-600 hover:to-cyan-600 transition-colors text-xs flex items-center justify-center gap-1.5 text-white"
-                            data-shot-id="{{ shot.id }}">
+                            data-shot-id="{{ shot.id }}"
+                            data-duration="{{ shot.duration|default:5 }}"
+                            data-resolution="{{ shot.resolution|default:'720p' }}">
                         <i data-lucide="play" class="w-3.5 h-3.5"></i>生成
+                        <span class="credit-cost text-white/80 text-xs ml-1"></span>
                     </button>
                     {% endif %}
                     {% if shot.generationStatus == 1 %}
@@ -966,8 +969,11 @@
                         <i data-lucide="play-circle" class="w-3.5 h-3.5"></i>预览
                     </a>
                     <button class="regenerate-btn w-full px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 transition-colors text-xs flex items-center justify-center gap-1.5 text-white/70"
-                            data-shot-id="{{ shot.id }}">
+                            data-shot-id="{{ shot.id }}"
+                            data-duration="{{ shot.duration|default:5 }}"
+                            data-resolution="{{ shot.resolution|default:'720p' }}">
                         <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i>重新生成
+                        <span class="credit-cost text-white/50 text-xs ml-1"></span>
                     </button>
                     {% if shot.generationDuration %}
                     <span class="w-full text-center text-xs text-white/40 flex items-center justify-center gap-1">
@@ -994,8 +1000,11 @@
                     </span>
                     {% endif %}
                     <button class="regenerate-btn w-full px-3 py-1.5 rounded-lg bg-orange-500/20 text-orange-300 hover:bg-orange-500/30 transition-colors text-xs flex items-center justify-center gap-1.5"
-                            data-shot-id="{{ shot.id }}">
+                            data-shot-id="{{ shot.id }}"
+                            data-duration="{{ shot.duration|default:5 }}"
+                            data-resolution="{{ shot.resolution|default:'720p' }}">
                         <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i>重试
+                        <span class="credit-cost text-white/50 text-xs ml-1"></span>
                     </button>
                     {% endif %}
                     <!-- 删除按钮 -->
@@ -1073,8 +1082,18 @@
                             <select class="resolution-select bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-xs focus:border-blue-400 focus:outline-none cursor-pointer"
                                     data-field="resolution"
                                     data-shot-id="{{ shot.id }}">
-                                <option value="480p" {% if shot.resolution == '480p' %}selected{% endif %}>480p</option>
-                                <option value="720p" {% if shot.resolution == '720p' or not shot.resolution %}selected{% endif %}>720p</option>
+                                <option value="480p" {% if shot.resolution == '480p' %}selected{% endif %}>高清</option>
+                                <option value="720p" {% if shot.resolution == '720p' or not shot.resolution %}selected{% endif %}>超清</option>
+                                <option value="1080p" {% if shot.resolution == '1080p' %}selected{% endif %} class="vip-only">4K</option>
+                            </select>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <label class="text-gray-400 text-xs">模型：</label>
+                            <select class="video-model-select bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-xs focus:border-blue-400 focus:outline-none cursor-pointer"
+                                    data-field="videoModel"
+                                    data-shot-id="{{ shot.id }}">
+                                <option value="seedance-2.0-fast" {% if shot.videoModel == 'seedance-2.0-fast' or not shot.videoModel %}selected{% endif %}>Seedance 2.0 Fast VIP</option>
+                                <option value="seedance-2.0" {% if shot.videoModel == 'seedance-2.0' %}selected{% endif %}>Seedance 2.0 VIP</option>
                             </select>
                         </div>
                         <div class="flex items-center gap-2">
@@ -2396,6 +2415,116 @@ function updateCardToGenerating(card) {
     }
 }
 
+// 计算并显示积分消耗
+function calculateCredits(resolution, duration) {
+    const durationSec = duration || 5;
+    let creditsPerSecond;
+    if (resolution === '480p') {
+        creditsPerSecond = 12;
+    } else if (resolution === '1080p') {
+        creditsPerSecond = 50;  // 4K (1080p) - 仅VIP模型
+    } else {
+        creditsPerSecond = 23;  // 720p
+    }
+    return creditsPerSecond * durationSec;
+}
+
+// 根据模型更新分辨率选项
+function updateResolutionOptions(card, videoModel) {
+    const resolutionSelect = card.querySelector('.resolution-select');
+    if (!resolutionSelect) return;
+
+    const isVipModel = videoModel === 'seedance-2.0';
+    const currentResolution = resolutionSelect.value;
+
+    // 获取4K选项
+    const option4K = resolutionSelect.querySelector('option[value="1080p"]');
+
+    if (isVipModel) {
+        // VIP模型：启用4K选项
+        if (option4K) {
+            option4K.disabled = false;
+            option4K.style.display = '';
+        }
+    } else {
+        // Fast模型：禁用4K选项
+        if (option4K) {
+            option4K.disabled = true;
+            option4K.style.display = 'none';
+        }
+        // 如果当前选中的是4K，自动切换到720p
+        if (currentResolution === '1080p') {
+            resolutionSelect.value = '720p';
+        }
+    }
+}
+
+// 更新分镜卡片上的积分显示
+function updateShotCreditDisplay(card) {
+    const durationSelect = card.querySelector('.duration-select');
+    const resolutionSelect = card.querySelector('.resolution-select');
+    const generateBtn = card.querySelector('.generate-btn');
+    const regenerateBtn = card.querySelector('.regenerate-btn');
+
+    const duration = durationSelect ? parseInt(durationSelect.value) : 5;
+    const resolution = resolutionSelect ? resolutionSelect.value : '720p';
+    const credits = calculateCredits(resolution, duration);
+
+    // 更新生成按钮
+    if (generateBtn) {
+        generateBtn.dataset.duration = duration;
+        generateBtn.dataset.resolution = resolution;
+        const creditSpan = generateBtn.querySelector('.credit-cost');
+        if (creditSpan) {
+            creditSpan.innerHTML = `<i data-lucide="coins" class="w-3 h-3 text-yellow-400 inline-block"></i>${credits}`;
+            lucide.createIcons();
+        }
+    }
+
+    // 更新重新生成按钮
+    if (regenerateBtn) {
+        regenerateBtn.dataset.duration = duration;
+        regenerateBtn.dataset.resolution = resolution;
+        const creditSpan = regenerateBtn.querySelector('.credit-cost');
+        if (creditSpan) {
+            creditSpan.innerHTML = `<i data-lucide="coins" class="w-3 h-3 text-yellow-400 inline-block"></i>${credits}`;
+            lucide.createIcons();
+        }
+    }
+}
+
+// 为所有生成按钮显示积分消耗
+document.querySelectorAll('.generate-btn').forEach(btn => {
+    const duration = parseInt(btn.dataset.duration) || 5;
+    const resolution = btn.dataset.resolution || '720p';
+    const credits = calculateCredits(resolution, duration);
+    const creditSpan = btn.querySelector('.credit-cost');
+    if (creditSpan) {
+        creditSpan.innerHTML = `<i data-lucide="coins" class="w-3 h-3 text-yellow-400 inline-block"></i>${credits}`;
+    }
+});
+lucide.createIcons();
+
+// 初始化所有分镜卡片的分辨率选项（根据模型）
+document.querySelectorAll('.shot-card').forEach(card => {
+    const videoModelSelect = card.querySelector('.video-model-select');
+    if (videoModelSelect) {
+        updateResolutionOptions(card, videoModelSelect.value);
+    }
+});
+
+// 为所有重新生成按钮显示积分消耗
+document.querySelectorAll('.regenerate-btn').forEach(btn => {
+    const duration = parseInt(btn.dataset.duration) || 5;
+    const resolution = btn.dataset.resolution || '720p';
+    const credits = calculateCredits(resolution, duration);
+    const creditSpan = btn.querySelector('.credit-cost');
+    if (creditSpan) {
+        creditSpan.innerHTML = `<i data-lucide="coins" class="w-3 h-3 text-yellow-400 inline-block"></i>${credits}`;
+    }
+});
+lucide.createIcons();
+
 // 单个生成
 document.querySelectorAll('.generate-btn').forEach(btn => {
     btn.addEventListener('click', async function() {
@@ -2451,14 +2580,16 @@ document.querySelectorAll('.generate-btn').forEach(btn => {
                 stopTimer(this);
                 alert('生成失败: ' + (data.error || data.message));
                 this.disabled = false;
-                this.innerHTML = '<i data-lucide="play" class="w-4 h-4"></i>生成';
+                const credits = calculateCredits(this.dataset.resolution, this.dataset.duration);
+                this.innerHTML = '<i data-lucide="play" class="w-4 h-4"></i>生成<span class="credit-cost text-white/80 text-xs ml-1"><i data-lucide="coins" class="w-3 h-3 text-yellow-400 inline-block"></i>' + credits + '</span>';
                 lucide.createIcons();
             }
         } catch (e) {
             stopTimer(this);
             alert('请求失败: ' + e.message);
             this.disabled = false;
-            this.innerHTML = '<i data-lucide="play" class="w-4 h-4"></i>生成';
+            const credits = calculateCredits(this.dataset.resolution, this.dataset.duration);
+            this.innerHTML = '<i data-lucide="play" class="w-4 h-4"></i>生成<span class="credit-cost text-white/80 text-xs ml-1"><i data-lucide="coins" class="w-3 h-3 text-yellow-400 inline-block"></i>' + credits + '</span>';
             lucide.createIcons();
         }
     });
@@ -2519,14 +2650,16 @@ document.querySelectorAll('.regenerate-btn').forEach(btn => {
                 stopTimer(this);
                 alert('生成失败: ' + (data.error || data.message));
                 this.disabled = false;
-                this.innerHTML = '<i data-lucide="refresh-cw" class="w-4 h-4"></i>重新生成';
+                const credits = calculateCredits(this.dataset.resolution, this.dataset.duration);
+                this.innerHTML = '<i data-lucide="refresh-cw" class="w-4 h-4"></i>重新生成<span class="credit-cost text-white/50 text-xs ml-1"><i data-lucide="coins" class="w-3 h-3 text-yellow-400 inline-block"></i>' + credits + '</span>';
                 lucide.createIcons();
             }
         } catch (e) {
             stopTimer(this);
             alert('请求失败: ' + e.message);
             this.disabled = false;
-            this.innerHTML = '<i data-lucide="refresh-cw" class="w-4 h-4"></i>重新生成';
+            const credits = calculateCredits(this.dataset.resolution, this.dataset.duration);
+            this.innerHTML = '<i data-lucide="refresh-cw" class="w-4 h-4"></i>重新生成<span class="credit-cost text-white/50 text-xs ml-1"><i data-lucide="coins" class="w-3 h-3 text-yellow-400 inline-block"></i>' + credits + '</span>';
             lucide.createIcons();
         }
     });
@@ -3520,6 +3653,7 @@ async function saveShotInline(shotId) {
     const durationSelect = card.querySelector('.duration-select');
     const resolutionSelect = card.querySelector('.resolution-select');
     const aspectRatioSelect = card.querySelector('.aspect-ratio-select');
+    const videoModelSelect = card.querySelector('.video-model-select');
 
     const fullText = extractDescriptionText(descriptionEditor);
     const sceneText = extractDescriptionText(sceneEditor);
@@ -3529,6 +3663,7 @@ async function saveShotInline(shotId) {
         duration: durationSelect ? parseInt(durationSelect.value) : null,
         resolution: resolutionSelect ? resolutionSelect.value : null,
         aspectRatio: aspectRatioSelect ? aspectRatioSelect.value : null,
+        videoModel: videoModelSelect ? videoModelSelect.value : null,
         description: fullText,  // 保存完整文本，不拆分
         sceneName: sceneText
     };
@@ -4171,6 +4306,8 @@ function initInlineEditing() {
         const durationSelect = card.querySelector('.duration-select');
         if (durationSelect) {
             durationSelect.addEventListener('change', () => {
+                // 更新积分显示
+                updateShotCreditDisplay(card);
                 // 立即保存
                 saveShotInline(shotId);
             });
@@ -4180,6 +4317,8 @@ function initInlineEditing() {
         const resolutionSelect = card.querySelector('.resolution-select');
         if (resolutionSelect) {
             resolutionSelect.addEventListener('change', () => {
+                // 更新积分显示
+                updateShotCreditDisplay(card);
                 saveShotInline(shotId);
             });
         }
@@ -4188,6 +4327,17 @@ function initInlineEditing() {
         const aspectRatioSelect = card.querySelector('.aspect-ratio-select');
         if (aspectRatioSelect) {
             aspectRatioSelect.addEventListener('change', () => {
+                saveShotInline(shotId);
+            });
+        }
+
+        // 视频模型下拉框
+        const videoModelSelect = card.querySelector('.video-model-select');
+        if (videoModelSelect) {
+            videoModelSelect.addEventListener('change', () => {
+                // 根据模型更新分辨率选项
+                updateResolutionOptions(card, videoModelSelect.value);
+                updateShotCreditDisplay(card);
                 saveShotInline(shotId);
             });
         }

@@ -1184,20 +1184,26 @@ public class ImageGenerateServiceImpl implements ImageGenerateService {
             asset.setValidationPassed(1);
             asset.setUpdatedAt(LocalDateTime.now());
 
-            // 上传图片到OSS并保存URL
+            // 上传图片到OSS并保存URL（重试3次）
             if (response.getImageUrl() != null) {
-                String ossUrl = ossService.uploadImageFromUrl(response.getImageUrl(), "characters");
+                String ossUrl = null;
+                for (int retry = 0; retry < 3 && ossUrl == null; retry++) {
+                    ossUrl = ossService.uploadImageFromUrl(response.getImageUrl(), "characters");
+                    if (ossUrl == null && retry < 2) {
+                        log.warn("OSS上传失败，第{}次重试...", retry + 2);
+                        try { Thread.sleep(1000); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
+                    }
+                }
                 if (ossUrl != null) {
                     asset.setFilePath(ossUrl);
                     asset.setThumbnailPath(ossUrl);
                     asset.setTransparentPath(ossUrl);
                     log.info("图片已上传到OSS: {}", ossUrl.substring(0, Math.min(80, ossUrl.length())));
                 } else {
-                    // OSS上传失败，使用原始URL
-                    log.warn("OSS上传失败，使用原始URL");
-                    asset.setFilePath(response.getImageUrl());
-                    asset.setThumbnailPath(response.getImageUrl());
-                    asset.setTransparentPath(response.getImageUrl());
+                    // OSS上传失败，标记为失败状态，不使用临时URL
+                    log.error("OSS上传失败3次，资产ID: {}", asset.getId());
+                    asset.setStatus(AssetStatus.FAILED.getCode());
+                    asset.setValidationPassed(0);
                 }
             }
 

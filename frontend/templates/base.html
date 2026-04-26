@@ -446,9 +446,47 @@
             </a>
 
             <div class="flex items-center gap-4">
+                <!-- 联系我们按钮 -->
+                <button onclick="showContactModal()" class="px-5 py-2.5 rounded-xl bg-gradient-to-r from-green-500/20 to-emerald-500/20 border border-green-500/30 hover:from-green-500/30 hover:to-emerald-500/30 transition-all font-medium text-sm flex items-center gap-2 text-green-300">
+                    <i data-lucide="message-circle" class="w-4 h-4"></i>联系我们
+                </button>
+
+                {% if request.session.token %}
+                <div class="flex items-center gap-3">
+                    <div class="px-4 py-2 rounded-xl bg-white/5 border border-white/10 flex items-center gap-2">
+                        <i data-lucide="coins" class="w-4 h-4 text-yellow-400"></i>
+                        <span id="userCredits" class="text-sm font-medium">{{ request.session.credits|default:0 }}</span>
+                    </div>
+                    <div class="relative" id="userMenu">
+                        <button onclick="toggleUserMenu()" class="flex items-center gap-2 px-4 py-2 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 transition-all">
+                            <div class="w-8 h-8 rounded-full bg-gradient-to-br from-violet-500 to-blue-500 flex items-center justify-center">
+                                <i data-lucide="user" class="w-4 h-4"></i>
+                            </div>
+                            <span class="text-sm font-medium">{{ request.session.nickname|default:request.session.email }}</span>
+                            <i data-lucide="chevron-down" class="w-4 h-4"></i>
+                        </button>
+                        <div id="userDropdown" class="absolute right-0 top-full mt-2 w-48 glass-card py-2 hidden">
+                            <a href="/auth/logout/" class="flex items-center gap-2 px-4 py-2 hover:bg-white/10 transition-colors">
+                                <i data-lucide="log-out" class="w-4 h-4"></i>
+                                <span>退出登录</span>
+                            </a>
+                        </div>
+                    </div>
+                </div>
+                {% else %}
+                <a href="/auth/login/" class="px-5 py-2.5 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 transition-all font-medium text-sm">
+                    登录
+                </a>
+                <a href="/auth/register/" class="btn-neon text-sm">
+                    注册
+                </a>
+                {% endif %}
+
+                {% if request.session.token %}
                 <a href="/init/" class="px-5 py-2.5 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 transition-all font-medium text-sm">
                     <i data-lucide="plus" class="w-4 h-4 inline mr-2"></i>新建系列
                 </a>
+                {% endif %}
             </div>
         </div>
     </nav>
@@ -628,10 +666,59 @@
         // Initialize image drag
         initImageDrag();
 
+        // User menu toggle
+        function toggleUserMenu() {
+            const dropdown = document.getElementById('userDropdown');
+            if (dropdown) {
+                dropdown.classList.toggle('hidden');
+            }
+        }
+
+        // Close user menu when clicking outside
+        document.addEventListener('click', (e) => {
+            const userMenu = document.getElementById('userMenu');
+            const dropdown = document.getElementById('userDropdown');
+            if (userMenu && dropdown && !userMenu.contains(e.target)) {
+                dropdown.classList.add('hidden');
+            }
+        });
+
         // Toast auto-hide
         document.querySelectorAll('.toast').forEach(toast => {
             setTimeout(() => toast.classList.remove('show'), 5000);
         });
+
+        // 实时获取用户积分
+        function loadUserCredits() {
+            fetch('/api/user/info/')
+                .then(res => res.json())
+                .then(data => {
+                    if (data.code === 200 && data.data) {
+                        const creditsEl = document.getElementById('userCredits');
+                        if (creditsEl) {
+                            creditsEl.textContent = data.data.credits || 0;
+                        }
+                    }
+                })
+                .catch(err => console.log('获取积分失败:', err));
+        }
+        loadUserCredits();
+
+        // Contact Modal
+        function showContactModal() {
+            const modal = document.getElementById('contactModal');
+            if (modal) {
+                modal.classList.add('active');
+                lucide.createIcons();
+            }
+        }
+
+        function closeContactModal() {
+            const modal = document.getElementById('contactModal');
+            if (modal) {
+                modal.classList.remove('active');
+            }
+        }
 
         // CSRF token helper
         function getCookie(name) {
@@ -651,5 +738,106 @@
     </script>
 
     {% block extra_js %}{% endblock %}
+
+    <!-- 联系我们弹窗 -->
+    <div class="modal-backdrop" id="contactModal" onclick="if(event.target === this) closeContactModal()">
+        <div class="modal-content max-w-md" onclick="event.stopPropagation()">
+            <div class="text-center">
+                <div class="w-16 h-16 rounded-full bg-gradient-to-br from-green-500 to-emerald-500 flex items-center justify-center mx-auto mb-4 shadow-lg shadow-green-500/30">
+                    <i data-lucide="message-circle" class="w-8 h-8"></i>
+                </div>
+                <h3 class="text-2xl font-bold mb-2">联系我们</h3>
+                <p class="text-white/50 mb-6">扫码添加微信，获取更多积分</p>
+
+                <!-- 二维码区域 -->
+                <div class="bg-white rounded-2xl p-4 inline-block mb-6 cursor-pointer hover:shadow-lg hover:shadow-green-500/20 transition-all" onclick="showQrPreview()">
+                    <img id="contactQrImg" src="" alt="微信二维码" class="max-w-52 max-h-52 w-auto h-auto object-contain">
+                    <p class="text-gray-400 text-xs mt-2 flex items-center justify-center gap-1">
+                        <i data-lucide="zoom-in" class="w-3 h-3"></i>
+                        点击查看大图
+                    </p>
+                </div>
+
+                <div class="bg-gradient-to-r from-green-500/10 to-emerald-500/10 border border-green-500/20 rounded-xl p-4 mb-6">
+                    <div class="flex items-center justify-center gap-2 text-green-300 font-medium mb-2">
+                        <i data-lucide="gift" class="w-5 h-5"></i>
+                        <span>邀请注册 获取积分</span>
+                    </div>
+                    <p class="text-white/60 text-sm">
+                        目前处于邀请注册阶段<br>
+                        扫码添加微信，获取更多积分体验
+                    </p>
+                </div>
+
+                <button onclick="closeContactModal()" class="px-8 py-2.5 rounded-xl bg-white/10 hover:bg-white/15 transition-colors font-medium">
+                    关闭
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 二维码大图预览 -->
+    <div class="fixed inset-0 bg-black/90 z-[300] hidden items-center justify-center p-8" id="qrPreviewModal" onclick="closeQrPreview()">
+        <div class="relative max-w-2xl w-full" onclick="event.stopPropagation()">
+            <button onclick="closeQrPreview()" class="absolute -top-12 right-0 text-white/70 hover:text-white transition-colors flex items-center gap-2">
+                <span>关闭</span>
+                <i data-lucide="x" class="w-5 h-5"></i>
+            </button>
+            <div class="bg-white rounded-3xl p-6 shadow-2xl">
+                <img id="contactQrPreviewImg" src="" alt="微信二维码" class="w-full h-auto object-contain rounded-2xl">
+                <p class="text-center text-gray-500 mt-4 text-sm">扫码添加微信，获取更多积分</p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // 联系我们图片URL缓存
+        let contactImageUrl = null;
+
+        function loadContactImage() {
+            if (contactImageUrl) return; // 已加载
+
+            fetch('/api/v1/common/contact-image/')
+                .then(res => res.json())
+                .then(data => {
+                    if (data.code === 200 && data.data && data.data.url) {
+                        contactImageUrl = data.data.url;
+                        document.getElementById('contactQrImg').src = contactImageUrl;
+                        document.getElementById('contactQrPreviewImg').src = contactImageUrl;
+                    }
+                })
+                .catch(err => console.error('加载联系我们图片失败:', err));
+        }
+
+        function showQrPreview() {
+            const modal = document.getElementById('qrPreviewModal');
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+            document.body.style.overflow = 'hidden';
+        }
+
+        function closeQrPreview() {
+            const modal = document.getElementById('qrPreviewModal');
+            modal.classList.add('hidden');
+            modal.classList.remove('flex');
+            document.body.style.overflow = '';
+        }
+
+        function showContactModal() {
+            loadContactImage();
+            const modal = document.getElementById('contactModal');
+            if (modal) {
+                modal.classList.add('active');
+            }
+        }
+    </script>
+
+    {% if request.session.token %}
+    <!-- 回收站浮动按钮 -->
+    <a href="/trash/" class="fixed left-4 top-1/2 -translate-y-1/2 z-40 glass-card px-3 py-3 rounded-xl hover:bg-white/10 transition-all flex flex-col items-center gap-1">
+        <i data-lucide="trash-2" class="w-5 h-5"></i>
+        <span class="text-xs text-white/60" style="writing-mode: vertical-rl; letter-spacing: 2px;">回收站</span>
+    </a>
+    {% endif %}
 </body>
 </html>

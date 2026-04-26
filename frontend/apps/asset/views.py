@@ -7,9 +7,15 @@ import json
 from api.backend_client import BackendClient, BackendAPIError
 
 
+def get_client(request):
+    """获取带认证Token的BackendClient"""
+    token = request.session.get('token')
+    return BackendClient(token=token)
+
+
 def asset_library_page(request):
     """资产库页面"""
-    client = BackendClient()
+    client = get_client(request)
     try:
         # 获取已锁定的系列列表
         locked_series = client.get('/v1/series/locked')
@@ -23,7 +29,7 @@ def asset_library_page(request):
 
 def get_locked_series(request):
     """API: 获取已锁定的系列列表"""
-    client = BackendClient()
+    client = get_client(request)
     try:
         locked_series = client.get('/v1/series/locked')
         return JsonResponse({'success': True, 'data': locked_series})
@@ -33,7 +39,7 @@ def get_locked_series(request):
 
 def get_series_assets(request, series_id):
     """API: 获取系列的所有资产（角色资产按系列，场景/道具资产展示全部）"""
-    client = BackendClient()
+    client = get_client(request)
     try:
         # 获取系列信息
         series = client.get(f'/v1/series/{series_id}')
@@ -82,7 +88,7 @@ def get_series_assets(request, series_id):
 
 def get_all_locked_scenes(request):
     """API: 获取所有已锁定系列的场景资产"""
-    client = BackendClient()
+    client = get_client(request)
     try:
         # 获取所有已锁定的系列
         locked_series = client.get('/v1/series/locked') or []
@@ -108,9 +114,35 @@ def get_all_locked_scenes(request):
         return JsonResponse({'success': False, 'error': str(e)}, status=500)
 
 
+def get_series_scenes(request, series_id):
+    """API: 获取指定系列的场景资产"""
+    client = get_client(request)
+    try:
+        # 获取系列信息
+        series = client.get(f'/v1/series/{series_id}')
+        series_name = series.get('seriesName', '') if series else ''
+
+        scenes = client.get(f'/v1/scenes/series/{series_id}') or []
+        # 只取已锁定的场景，并添加系列名称
+        locked_scenes = []
+        for scene in scenes:
+            if scene.get('status') == 3:
+                scene['seriesName'] = series_name
+                locked_scenes.append(scene)
+
+        return JsonResponse({
+            'success': True,
+            'data': locked_scenes
+        })
+    except BackendAPIError as e:
+        return JsonResponse({'success': False, 'error': e.message}, status=400)
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)}, status=500)
+
+
 def get_all_locked_props(request):
     """API: 获取所有已锁定系列的道具资产"""
-    client = BackendClient()
+    client = get_client(request)
     try:
         # 获取所有已锁定的系列
         locked_series = client.get('/v1/series/locked') or []
@@ -136,9 +168,35 @@ def get_all_locked_props(request):
         return JsonResponse({'success': False, 'error': str(e)}, status=500)
 
 
+def get_series_props(request, series_id):
+    """API: 获取指定系列的道具资产"""
+    client = get_client(request)
+    try:
+        # 获取系列信息
+        series = client.get(f'/v1/series/{series_id}')
+        series_name = series.get('seriesName', '') if series else ''
+
+        props = client.get(f'/v1/props/series/{series_id}') or []
+        # 只取已锁定的道具，并添加系列名称
+        locked_props = []
+        for prop in props:
+            if prop.get('status') == 3:
+                prop['seriesName'] = series_name
+                locked_props.append(prop)
+
+        return JsonResponse({
+            'success': True,
+            'data': locked_props
+        })
+    except BackendAPIError as e:
+        return JsonResponse({'success': False, 'error': e.message}, status=400)
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)}, status=500)
+
+
 def asset_detail(request, asset_id):
     """资产详情"""
-    client = BackendClient()
+    client = get_client(request)
     try:
         asset = client.get(f'/v1/assets/{asset_id}')
     except BackendAPIError as e:
@@ -149,7 +207,7 @@ def asset_detail(request, asset_id):
 
 def asset_prompt(request, asset_id):
     """获取资产生成时使用的提示词"""
-    client = BackendClient()
+    client = get_client(request)
     try:
         prompt = client.get(f'/v1/assets/{asset_id}/prompt')
         return JsonResponse({'data': prompt})
@@ -159,7 +217,7 @@ def asset_prompt(request, asset_id):
 
 def asset_download(request, asset_id):
     """下载资产"""
-    client = BackendClient()
+    client = get_client(request)
     try:
         asset = client.get(f'/v1/assets/{asset_id}')
         file_path = asset.get('transparent_path') or asset.get('file_path')
@@ -182,7 +240,7 @@ def asset_download(request, asset_id):
 @require_http_methods(["POST"])
 def set_default_clothing(request, role_id, clothing_id):
     """设置默认服装"""
-    client = BackendClient()
+    client = get_client(request)
     try:
         client.post(f'/v1/assets/role/{role_id}/default/{clothing_id}')
         return JsonResponse({'success': True})
@@ -194,7 +252,7 @@ def set_default_clothing(request, role_id, clothing_id):
 @require_http_methods(["POST"])
 def rollback_asset(request, asset_id):
     """回滚到指定版本的资产"""
-    client = BackendClient()
+    client = get_client(request)
     try:
         client.post(f'/v1/assets/{asset_id}/rollback')
         return JsonResponse({'success': True})
@@ -206,7 +264,7 @@ def rollback_asset(request, asset_id):
 @require_http_methods(["POST"])
 def rename_clothing(request, role_id, clothing_id):
     """重命名服装"""
-    client = BackendClient()
+    client = get_client(request)
     try:
         import json
         data = json.loads(request.body)
@@ -221,7 +279,7 @@ def rename_clothing(request, role_id, clothing_id):
 @require_http_methods(["DELETE"])
 def delete_clothing(request, role_id, clothing_id):
     """删除服装"""
-    client = BackendClient()
+    client = get_client(request)
     try:
         client.delete(f'/v1/assets/role/{role_id}/clothing/{clothing_id}')
         return JsonResponse({'success': True})
@@ -231,7 +289,7 @@ def delete_clothing(request, role_id, clothing_id):
 
 def get_clothing_versions(request, role_id, clothing_id):
     """获取服装的所有版本"""
-    client = BackendClient()
+    client = get_client(request)
     try:
         # 获取所有资产，然后过滤指定服装
         all_assets = client.get(f'/v1/assets/role/{role_id}/all')
@@ -245,7 +303,7 @@ def get_clothing_versions(request, role_id, clothing_id):
 
 def asset_library(request, series_id):
     """资产库页面"""
-    client = BackendClient()
+    client = get_client(request)
     try:
         series = client.get(f'/v1/series/{series_id}')
         roles = client.get(f'/v1/roles/series/{series_id}')
@@ -264,3 +322,15 @@ def asset_library(request, series_id):
         'assets': all_assets,
         'series_id': series_id,
     })
+
+
+def get_series_video_assets(request, series_id):
+    """API: 获取系列影视资产"""
+    client = get_client(request)
+    try:
+        data = client.get(f'/v1/series/{series_id}/video-assets')
+        return JsonResponse({'success': True, 'data': data})
+    except BackendAPIError as e:
+        return JsonResponse({'success': False, 'error': e.message}, status=400)
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)}, status=500)

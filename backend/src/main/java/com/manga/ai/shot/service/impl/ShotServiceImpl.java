@@ -4,6 +4,8 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.manga.ai.asset.entity.RoleAsset;
 import com.manga.ai.asset.mapper.RoleAssetMapper;
+import com.manga.ai.common.constants.CreditConstants;
+import com.manga.ai.common.enums.CreditUsageType;
 import com.manga.ai.common.enums.ShotGenerationStatus;
 import com.manga.ai.common.enums.ShotStatus;
 import com.manga.ai.common.exception.BusinessException;
@@ -20,6 +22,8 @@ import com.manga.ai.scene.entity.Scene;
 import com.manga.ai.scene.entity.SceneAsset;
 import com.manga.ai.scene.mapper.SceneAssetMapper;
 import com.manga.ai.scene.mapper.SceneMapper;
+import com.manga.ai.series.entity.Series;
+import com.manga.ai.series.mapper.SeriesMapper;
 import com.manga.ai.shot.dto.ReferenceImageDTO;
 import com.manga.ai.shot.dto.ShotDetailVO;
 import com.manga.ai.shot.dto.ShotReviewRequest;
@@ -40,6 +44,8 @@ import com.manga.ai.shot.mapper.ShotVideoAssetMapper;
 import com.manga.ai.shot.mapper.ShotVideoAssetMetadataMapper;
 import com.manga.ai.shot.mapper.VideoMetadataMapper;
 import com.manga.ai.shot.service.ShotService;
+import com.manga.ai.user.service.UserService;
+import com.manga.ai.user.service.impl.UserServiceImpl.UserContextHolder;
 import com.manga.ai.video.dto.SeedanceRequest;
 import com.manga.ai.video.dto.SeedanceResponse;
 import com.manga.ai.video.service.SeedanceService;
@@ -77,11 +83,13 @@ public class ShotServiceImpl implements ShotService {
     private final PropAssetMapper propAssetMapper;
     private final PropMapper propMapper;
     private final EpisodeMapper episodeMapper;
+    private final SeriesMapper seriesMapper;
     private final VideoMetadataMapper videoMetadataMapper;
     private final SeedanceService seedanceService;
     private final ShotReferenceImageMapper shotReferenceImageMapper;
     private final ShotVideoAssetMapper shotVideoAssetMapper;
     private final ShotVideoAssetMetadataMapper shotVideoAssetMetadataMapper;
+    private final UserService userService;
 
     // 自注入代理，用于正确调用 @Async 方法
     private final ShotService self;
@@ -96,11 +104,13 @@ public class ShotServiceImpl implements ShotService {
                           PropAssetMapper propAssetMapper,
                           PropMapper propMapper,
                           EpisodeMapper episodeMapper,
+                          SeriesMapper seriesMapper,
                           VideoMetadataMapper videoMetadataMapper,
                           SeedanceService seedanceService,
                           ShotReferenceImageMapper shotReferenceImageMapper,
                           ShotVideoAssetMapper shotVideoAssetMapper,
                           ShotVideoAssetMetadataMapper shotVideoAssetMetadataMapper,
+                          UserService userService,
                           @Lazy ShotService self) {
         this.shotMapper = shotMapper;
         this.shotCharacterMapper = shotCharacterMapper;
@@ -112,17 +122,19 @@ public class ShotServiceImpl implements ShotService {
         this.propAssetMapper = propAssetMapper;
         this.propMapper = propMapper;
         this.episodeMapper = episodeMapper;
+        this.seriesMapper = seriesMapper;
         this.videoMetadataMapper = videoMetadataMapper;
         this.seedanceService = seedanceService;
         this.shotReferenceImageMapper = shotReferenceImageMapper;
         this.shotVideoAssetMapper = shotVideoAssetMapper;
         this.shotVideoAssetMetadataMapper = shotVideoAssetMetadataMapper;
+        this.userService = userService;
         this.self = self;
     }
 
     /**
      * 根据分辨率和比例计算视频尺寸
-     * @param resolution 分辨率: 480p, 720p
+     * @param resolution 分辨率: 480p, 720p, 1080p (仅VIP模型支持)
      * @param aspectRatio 比例: 16:9, 4:3, 1:1, 3:4, 9:16, 21:9
      * @return [width, height]
      */
@@ -145,6 +157,17 @@ public class ShotServiceImpl implements ShotService {
                 case "21:9": width = 960; height = 416; break;
                 default:     width = 864; height = 480; break;
             }
+        } else if ("1080p".equals(resolution)) {
+            // 1080p (4K) - 仅 Seedance 2.0 VIP 支持
+            switch (aspectRatio) {
+                case "16:9": width = 1920; height = 1080; break;
+                case "4:3":  width = 1664; height = 1248; break;
+                case "1:1":  width = 1440; height = 1440; break;
+                case "3:4":  width = 1248; height = 1664; break;
+                case "9:16": width = 1080; height = 1920; break;
+                case "21:9": width = 2206; height = 946; break;
+                default:     width = 1920; height = 1080; break;
+            }
         } else { // 720p
             switch (aspectRatio) {
                 case "16:9": width = 1280; height = 720; break;
@@ -158,6 +181,41 @@ public class ShotServiceImpl implements ShotService {
         }
 
         return new int[]{width, height};
+    }
+
+    /**
+     * 将前端模型标识转换为API模型名称
+     * @param videoModel 前端模型标识 (seedance-2.0-fast, seedance-2.0)
+     * @return API模型名称
+     */
+    private String convertToApiModel(String videoModel) {
+        if (videoModel == null || videoModel.isEmpty()) {
+            return "doubao-seedance-2-0-fast-260128"; // 默认 Fast 模型
+        }
+        switch (videoModel) {
+            case "seedance-2.0":
+            case "doubao-seedance-2-0-260128":
+                return "doubao-seedance-2-0-260128"; // VIP 模型
+            case "seedance-2.0-fast":
+            case "doubao-seedance-2-0-fast-260128":
+            default:
+                return "doubao-seedance-2-0-fast-260128"; // Fast VIP 模型
+        }
+    }
+
+    /**
+     * 获取分镜所属用户的ID（用于异步方法中获取用户）
+     */
+    private Long getUserIdForShot(Shot shot) {
+        if (shot.getEpisodeId() == null) {
+            return null;
+        }
+        Episode episode = episodeMapper.selectById(shot.getEpisodeId());
+        if (episode == null || episode.getSeriesId() == null) {
+            return null;
+        }
+        Series series = seriesMapper.selectById(episode.getSeriesId());
+        return series != null ? series.getUserId() : null;
     }
 
     @Override
@@ -309,6 +367,9 @@ public class ShotServiceImpl implements ShotService {
         if (request.getGenerationStatus() != null) {
             shot.setGenerationStatus(request.getGenerationStatus());
         }
+        if (request.getVideoModel() != null) {
+            shot.setVideoModel(request.getVideoModel());
+        }
 
         shot.setUpdatedAt(LocalDateTime.now());
         shotMapper.updateById(shot);
@@ -345,9 +406,21 @@ public class ShotServiceImpl implements ShotService {
         Shot shot = shotMapper.selectById(shotId);
         if (shot == null) {
             log.error("分镜不存在: shotId={}", shotId);
-            return;
+            throw new BusinessException("分镜不存在");
         }
 
+        // 计算并扣除积分
+        int requiredCredits = CreditConstants.calculateCredits(shot.getResolution(), shot.getDuration());
+        Long userId = UserContextHolder.getUserId();
+        if (userId == null) {
+            throw new BusinessException("用户未登录");
+        }
+        userService.deductCredits(userId, requiredCredits, CreditUsageType.VIDEO_GENERATION.getCode(),
+                "视频生成-分镜" + shot.getShotNumber(), shotId, "SHOT");
+        log.info("积分扣除成功: userId={}, amount={}, shotId={}", userId, requiredCredits, shotId);
+
+        // 记录扣除的积分（用于失败时返还）
+        shot.setDeductedCredits(requiredCredits);
         shot.setGenerationStatus(ShotGenerationStatus.GENERATING.getCode());
         shot.setGenerationError(null);
         shot.setGenerationStartTime(LocalDateTime.now());
@@ -382,6 +455,7 @@ public class ShotServiceImpl implements ShotService {
             request.setPrompt(prompt);
             request.setDuration(shot.getDuration() != null ? shot.getDuration() : 5);
             request.setShotId(shotId);
+            request.setModel(convertToApiModel(shot.getVideoModel()));
 
             // 设置视频尺寸
             int[] size = calculateVideoSize(shot.getResolution(), shot.getAspectRatio());
@@ -397,6 +471,7 @@ public class ShotServiceImpl implements ShotService {
                 shot.setThumbnailUrl(response.getThumbnailUrl());
                 shot.setVideoSeed(response.getSeed());
                 shot.setGenerationStatus(ShotGenerationStatus.COMPLETED.getCode());
+                shot.setDeductedCredits(null); // 成功后清除扣除积分记录
                 shot.setUpdatedAt(LocalDateTime.now());
                 shotMapper.updateById(shot);
 
@@ -426,6 +501,18 @@ public class ShotServiceImpl implements ShotService {
             } else {
                 shot.setGenerationError("视频生成失败，请稍后重试");
             }
+
+            // 生成失败，返还积分
+            if (shot.getDeductedCredits() != null && shot.getDeductedCredits() > 0) {
+                Long userId = getUserIdForShot(shot);
+                if (userId != null) {
+                    userService.refundCredits(userId, shot.getDeductedCredits(),
+                            "视频生成失败返还-分镜" + shot.getShotNumber(), shotId, "SHOT");
+                    log.info("视频生成失败，积分已返还: shotId={}, credits={}", shotId, shot.getDeductedCredits());
+                }
+                shot.setDeductedCredits(null);
+            }
+
             shot.setUpdatedAt(LocalDateTime.now());
             shotMapper.updateById(shot);
         }
@@ -796,18 +883,38 @@ public class ShotServiceImpl implements ShotService {
     public void generateVideoWithReferences(Long shotId, List<String> referenceUrls) {
         log.info("开始生成视频(带参考图): shotId={}, referenceUrls={}", shotId, referenceUrls);
 
-        // 使用 UPDATE 语句直接更新状态，避免先查询再更新的两次数据库操作
+        // 获取分镜信息
+        Shot shot = shotMapper.selectById(shotId);
+        if (shot == null) {
+            log.error("分镜不存在: shotId={}", shotId);
+            throw new BusinessException("分镜不存在");
+        }
+
+        // 计算并扣除积分
+        int requiredCredits = CreditConstants.calculateCredits(shot.getResolution(), shot.getDuration());
+        Long userId = UserContextHolder.getUserId();
+        if (userId == null) {
+            throw new BusinessException("用户未登录");
+        }
+        userService.deductCredits(userId, requiredCredits, CreditUsageType.VIDEO_GENERATION.getCode(),
+                "视频生成-分镜" + shot.getShotNumber(), shotId, "SHOT");
+        log.info("积分扣除成功: userId={}, amount={}, shotId={}", userId, requiredCredits, shotId);
+
+        // 更新状态并记录扣除的积分
         LambdaUpdateWrapper<Shot> updateWrapper = new LambdaUpdateWrapper<>();
         updateWrapper.eq(Shot::getId, shotId)
                 .set(Shot::getGenerationStatus, ShotGenerationStatus.GENERATING.getCode())
                 .set(Shot::getGenerationError, null)
+                .set(Shot::getDeductedCredits, requiredCredits)
                 .set(Shot::getGenerationStartTime, LocalDateTime.now())
                 .set(Shot::getUpdatedAt, LocalDateTime.now());
         int updated = shotMapper.update(null, updateWrapper);
 
         if (updated == 0) {
-            log.error("分镜不存在或更新失败: shotId={}", shotId);
-            return;
+            log.error("分镜更新失败: shotId={}", shotId);
+            // 返还积分
+            userService.refundCredits(userId, requiredCredits, "视频生成失败返还-分镜" + shot.getShotNumber(), shotId, "SHOT");
+            throw new BusinessException("分镜更新失败");
         }
         log.info("已更新分镜状态为生成中: shotId={}", shotId);
 
@@ -890,6 +997,7 @@ public class ShotServiceImpl implements ShotService {
             request.setPrompt(result.getPrompt());
             request.setDuration(shot.getDuration() != null ? shot.getDuration() : 5);
             request.setShotId(shotId);
+            request.setModel(convertToApiModel(shot.getVideoModel()));
 
             // 设置视频尺寸
             int[] size = calculateVideoSize(shot.getResolution(), shot.getAspectRatio());
@@ -927,6 +1035,7 @@ public class ShotServiceImpl implements ShotService {
                 shot.setVideoSeed(response.getSeed());
                 shot.setGenerationStatus(ShotGenerationStatus.COMPLETED.getCode());
                 shot.setGenerationDuration(durationSeconds);
+                shot.setDeductedCredits(null); // 成功后清除扣除积分记录
                 shot.setUpdatedAt(LocalDateTime.now());
                 shotMapper.updateById(shot);
 
@@ -958,6 +1067,18 @@ public class ShotServiceImpl implements ShotService {
             } else {
                 shot.setGenerationError("视频生成失败，请稍后重试");
             }
+
+            // 生成失败，返还积分
+            if (shot.getDeductedCredits() != null && shot.getDeductedCredits() > 0) {
+                Long userId = getUserIdForShot(shot);
+                if (userId != null) {
+                    userService.refundCredits(userId, shot.getDeductedCredits(),
+                            "视频生成失败返还-分镜" + shot.getShotNumber(), shotId, "SHOT");
+                    log.info("视频生成失败，积分已返还: shotId={}, credits={}", shotId, shot.getDeductedCredits());
+                }
+                shot.setDeductedCredits(null);
+            }
+
             shot.setUpdatedAt(LocalDateTime.now());
             shotMapper.updateById(shot);
         }
@@ -1645,5 +1766,31 @@ public class ShotServiceImpl implements ShotService {
         }
 
         log.info("分镜排序完成: episodeId={}", episodeId);
+    }
+
+    @Override
+    public Map<String, Object> getVideoCreditPreview(Long shotId) {
+        Shot shot = shotMapper.selectById(shotId);
+        if (shot == null) {
+            throw new BusinessException("分镜不存在");
+        }
+
+        int duration = shot.getDuration() != null ? shot.getDuration() : CreditConstants.DEFAULT_DURATION;
+        String resolution = shot.getResolution() != null ? shot.getResolution() : "720p";
+        int creditsPerSecond = "480p".equals(resolution) ? CreditConstants.CREDITS_PER_SECOND_480P : CreditConstants.CREDITS_PER_SECOND_720P;
+        int totalCredits = CreditConstants.calculateCredits(resolution, duration);
+
+        Long userId = UserContextHolder.getUserId();
+        Integer currentCredits = userId != null ? userService.getUserCredits(userId) : null;
+
+        Map<String, Object> result = new HashMap<>();
+        result.put("duration", duration);
+        result.put("resolution", resolution);
+        result.put("creditsPerSecond", creditsPerSecond);
+        result.put("totalCredits", totalCredits);
+        result.put("currentCredits", currentCredits);
+        result.put("sufficient", currentCredits != null && currentCredits >= totalCredits);
+
+        return result;
     }
 }

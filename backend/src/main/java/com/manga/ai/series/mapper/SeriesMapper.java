@@ -23,6 +23,12 @@ public interface SeriesMapper extends BaseMapper<Series> {
     List<Series> selectTrashList();
 
     /**
+     * 查询回收站列表（按用户过滤）
+     */
+    @Select("SELECT * FROM series WHERE is_deleted = 1 AND user_id = #{userId} ORDER BY deleted_at DESC")
+    List<Series> selectTrashListByUserId(Long userId);
+
+    /**
      * 查询包含已删除的系列（绕过逻辑删除）
      */
     @Select("SELECT * FROM series WHERE id = #{id}")

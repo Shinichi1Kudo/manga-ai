@@ -114,6 +114,11 @@ public class Role implements Serializable {
     private Integer isDeleted;
 
     /**
+     * 已扣除的积分（用于图像生成失败时返还）
+     */
+    private Integer deductedCredits;
+
+    /**
      * 扩展属性列表
      */
     @TableField(exist = false)

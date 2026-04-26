@@ -4,12 +4,14 @@ import com.alibaba.fastjson2.JSON;
 import com.alibaba.fastjson2.JSONArray;
 import com.alibaba.fastjson2.JSONObject;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.manga.ai.common.enums.CreditUsageType;
 import com.manga.ai.common.enums.EpisodeStatus;
 import com.manga.ai.common.enums.SceneStatus;
 import com.manga.ai.common.enums.PropStatus;
 import com.manga.ai.common.enums.ShotStatus;
 import com.manga.ai.common.enums.ShotGenerationStatus;
 import com.manga.ai.common.exception.BusinessException;
+import com.manga.ai.common.constants.CreditConstants;
 import com.manga.ai.common.utils.NamingUtil;
 import com.manga.ai.episode.dto.EpisodeCreateRequest;
 import com.manga.ai.episode.dto.EpisodeDetailVO;
@@ -44,6 +46,9 @@ import com.manga.ai.role.entity.Role;
 import com.manga.ai.role.mapper.RoleMapper;
 import com.manga.ai.role.service.RoleService;
 import com.manga.ai.role.dto.RoleDetailVO;
+import com.manga.ai.user.service.UserService;
+import com.manga.ai.user.service.impl.UserServiceImpl.UserContextHolder;
+import com.manga.ai.common.service.OssService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.BeanUtils;
@@ -83,6 +88,8 @@ public class EpisodeServiceImpl implements EpisodeService {
     private final ScriptParseService scriptParseService;
     private final SceneService sceneService;
     private final PropService propService;
+    private final OssService ossService;
+    private final UserService userService;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -135,6 +142,15 @@ public class EpisodeServiceImpl implements EpisodeService {
             return;
         }
 
+        // 扣除积分
+        Long userId = UserContextHolder.getUserId();
+        int requiredCredits = CreditConstants.CREDITS_PER_SCRIPT_PARSE;
+        if (userId != null) {
+            userService.deductCredits(userId, requiredCredits, CreditUsageType.SCRIPT_PARSE.getCode(),
+                    "剧本解析-资产解析", episodeId, "EPISODE");
+            log.info("剧本解析扣费: userId={}, credits={}", userId, requiredCredits);
+        }
+
         try {
             // 更新状态为解析中
             episode.setStatus(EpisodeStatus.PARSING.getCode());
@@ -157,7 +173,11 @@ public class EpisodeServiceImpl implements EpisodeService {
                 log.info("资产解析完成: episodeId={}, scenes={}, props={}, 等待用户选择资产",
                         episodeId, result.getScenes().size(), result.getProps().size());
             } else {
-                // 解析失败
+                // 解析失败，返还积分
+                if (userId != null) {
+                    userService.refundCredits(userId, requiredCredits, "剧本解析失败返还-资产解析", episodeId, "EPISODE");
+                    log.info("剧本解析失败，返还积分: userId={}, credits={}", userId, requiredCredits);
+                }
                 log.error("资产解析失败: episodeId={}, error={}", episodeId, result.getErrorMessage());
                 episode.setStatus(EpisodeStatus.PENDING_PARSE.getCode());
                 JSONObject errorJson = new JSONObject();
@@ -169,6 +189,11 @@ public class EpisodeServiceImpl implements EpisodeService {
                 episodeMapper.updateById(episode);
             }
         } catch (Exception e) {
+            // 异常时返还积分
+            if (userId != null) {
+                userService.refundCredits(userId, requiredCredits, "剧本解析异常返还-资产解析", episodeId, "EPISODE");
+                log.info("剧本解析异常，返还积分: userId={}, credits={}", userId, requiredCredits);
+            }
             log.error("资产解析异常: episodeId={}", episodeId, e);
             episode.setStatus(EpisodeStatus.PENDING_PARSE.getCode());
             JSONObject errorJson = new JSONObject();
@@ -190,6 +215,15 @@ public class EpisodeServiceImpl implements EpisodeService {
         if (episode == null) {
             log.error("剧集不存在: episodeId={}", episodeId);
             return;
+        }
+
+        // 扣除积分
+        Long userId = UserContextHolder.getUserId();
+        int requiredCredits = CreditConstants.CREDITS_PER_SCRIPT_PARSE;
+        if (userId != null) {
+            userService.deductCredits(userId, requiredCredits, CreditUsageType.SCRIPT_PARSE.getCode(),
+                    "剧本解析-分镜解析", episodeId, "EPISODE");
+            log.info("分镜解析扣费: userId={}, credits={}", userId, requiredCredits);
         }
 
         try {
@@ -241,6 +275,11 @@ public class EpisodeServiceImpl implements EpisodeService {
                 saveShotsResult(episode, result);
                 log.info("分镜解析完成: episodeId={}, shots={}", episodeId, result.getShots().size());
             } else {
+                // 解析失败，返还积分
+                if (userId != null) {
+                    userService.refundCredits(userId, requiredCredits, "剧本解析失败返还-分镜解析", episodeId, "EPISODE");
+                    log.info("分镜解析失败，返还积分: userId={}, credits={}", userId, requiredCredits);
+                }
                 log.error("分镜解析失败: episodeId={}, error={}", episodeId, result.getErrorMessage());
                 // 分镜解析失败，清除assetsConfirmed标记，保持解析中状态让用户可以重试
                 try {
@@ -258,6 +297,11 @@ public class EpisodeServiceImpl implements EpisodeService {
                 log.info("分镜解析失败，保持解析中状态等待重试: episodeId={}", episodeId);
             }
         } catch (Exception e) {
+            // 异常时返还积分
+            if (userId != null) {
+                userService.refundCredits(userId, requiredCredits, "剧本解析异常返还-分镜解析", episodeId, "EPISODE");
+                log.info("分镜解析异常，返还积分: userId={}, credits={}", userId, requiredCredits);
+            }
             log.error("分镜解析异常: episodeId={}", episodeId, e);
             // 分镜解析异常，清除assetsConfirmed标记，保持解析中状态
             try {
@@ -972,13 +1016,13 @@ public class EpisodeServiceImpl implements EpisodeService {
             // 找到默认视图的资产
             for (RoleDetailVO.AssetInfo asset : roleDetailVO.getAssets()) {
                 if ("default".equals(asset.getViewType()) || asset.getViewType() == null) {
-                    roleInfo.setAssetUrl(asset.getFilePath());
+                    roleInfo.setAssetUrl(ossService.refreshUrl(asset.getFilePath()));
                     break;
                 }
             }
             // 如果没有默认视图，使用第一个资产
             if (roleInfo.getAssetUrl() == null) {
-                roleInfo.setAssetUrl(roleDetailVO.getAssets().get(0).getFilePath());
+                roleInfo.setAssetUrl(ossService.refreshUrl(roleDetailVO.getAssets().get(0).getFilePath()));
             }
         }
 
@@ -997,7 +1041,7 @@ public class EpisodeServiceImpl implements EpisodeService {
                 // 获取第一个资产的名称和图片
                 RoleDetailVO.AssetInfo firstAsset = entry.getValue().get(0);
                 clothingInfo.setClothingName(firstAsset.getViewName() != null ? firstAsset.getViewName() : "服装" + entry.getKey());
-                clothingInfo.setAssetUrl(firstAsset.getFilePath());
+                clothingInfo.setAssetUrl(ossService.refreshUrl(firstAsset.getFilePath()));
 
                 clothings.add(clothingInfo);
             }
@@ -1295,11 +1339,11 @@ public class EpisodeServiceImpl implements EpisodeService {
                 if (existingAsset != null) {
                     // 已有资产，重新生成（版本+1）
                     log.info("提交场景重新生成任务: sceneId={}", sceneId);
-                    sceneService.regenerateSceneAsset(sceneId, null, null, request.getQuality());
+                    sceneService.regenerateSceneAssetWithCredit(sceneId, null, null, request.getQuality());
                 } else {
                     // 无资产，首次生成
                     log.info("提交场景首次生成任务: sceneId={}", sceneId);
-                    sceneService.generateSceneAssets(sceneId);
+                    sceneService.generateSceneAssetsWithCredit(sceneId);
                 }
         }
 
@@ -1318,10 +1362,10 @@ public class EpisodeServiceImpl implements EpisodeService {
 
             if (existingPropAsset != null) {
                 log.info("提交道具重新生成任务: propId={}", propId);
-                propService.regeneratePropAsset(propId, null, request.getQuality());
+                propService.regeneratePropAssetWithCredit(propId, null, request.getQuality());
             } else {
                 log.info("提交道具首次生成任务: propId={}", propId);
-                propService.generatePropAssets(propId);
+                propService.generatePropAssetsWithCredit(propId);
             }
         }
 

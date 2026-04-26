@@ -1,0 +1,180 @@
+{% extends "base.html" %}
+
+{% block title %}积分记录 - Manga AI{% endblock %}
+
+{% block content %}
+<div class="max-w-4xl mx-auto">
+    <!-- Header -->
+    <div class="flex items-center justify-between mb-8">
+        <div class="flex items-center gap-4">
+            <a href="/" class="p-2 rounded-lg bg-white/5 hover:bg-white/10 transition-colors">
+                <i data-lucide="arrow-left" class="w-5 h-5"></i>
+            </a>
+            <h1 class="text-2xl font-bold">积分记录</h1>
+        </div>
+        <div class="px-4 py-2 rounded-xl bg-white/5 border border-white/10 flex items-center gap-2">
+            <i data-lucide="coins" class="w-5 h-5 text-yellow-400"></i>
+            <span class="font-medium">{{ credits|default:0 }} 积分</span>
+        </div>
+    </div>
+
+    <!-- Records List -->
+    <div id="recordsList" class="space-y-3">
+        <div class="glass-card p-8 text-center">
+            <div class="spinner mx-auto mb-4"></div>
+            <p class="text-white/50">加载中...</p>
+        </div>
+    </div>
+
+    <!-- Pagination -->
+    <div id="pagination" class="flex justify-center items-center gap-4 mt-8"></div>
+</div>
+
+<style>
+    .record-item {
+        background: rgba(255, 255, 255, 0.03);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 16px;
+        padding: 16px 20px;
+        transition: all 0.3s ease;
+    }
+    .record-item:hover {
+        background: rgba(255, 255, 255, 0.06);
+        border-color: rgba(255, 255, 255, 0.15);
+    }
+    .amount-deduct {
+        color: #f87171;
+    }
+    .amount-refund {
+        color: #34d399;
+    }
+</style>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+let currentPage = 1;
+const pageSize = 20;
+
+function loadRecords(page = 1) {
+    currentPage = page;
+    fetch(`/api/credits/records?page=${page}&pageSize=${pageSize}`)
+    .then(res => res.json())
+    .then(data => {
+        if (data.code === 200) {
+            renderRecords(data.data.records || []);
+            renderPagination(data.data.total || 0, data.data.current || 1, data.data.size || pageSize);
+        } else {
+            document.getElementById('recordsList').innerHTML = `
+                <div class="glass-card p-8 text-center">
+                    <p class="text-white/50">${data.message || '加载失败'}</p>
+                </div>
+            `;
+        }
+    })
+    .catch(err => {
+        console.error('加载失败:', err);
+        document.getElementById('recordsList').innerHTML = `
+            <div class="glass-card p-8 text-center">
+                <p class="text-white/50">网络错误，请稍后重试</p>
+            </div>
+        `;
+    });
+}
+
+function renderRecords(records) {
+    if (!records || records.length === 0) {
+        document.getElementById('recordsList').innerHTML = `
+            <div class="glass-card p-8 text-center">
+                <i data-lucide="inbox" class="w-12 h-12 mx-auto mb-4 text-white/20"></i>
+                <p class="text-white/50">暂无积分记录</p>
+            </div>
+        `;
+        lucide.createIcons();
+        return;
+    }
+
+    let html = records.map(record => {
+        const isDeduct = record.amount < 0;
+        const amountClass = isDeduct ? 'amount-deduct' : 'amount-refund';
+        const amountText = isDeduct ? record.amount : '+' + record.amount;
+
+        return `
+            <div class="record-item flex items-center justify-between">
+                <div class="flex-1">
+                    <div class="flex items-center gap-2 mb-1">
+                        <span class="text-white/90">${record.description || '-'}</span>
+                    </div>
+                    <div class="flex items-center gap-3 text-sm text-white/50">
+                        <span>${record.createdAt || '-'}</span>
+                    </div>
+                </div>
+                <div class="text-right">
+                    <div class="text-lg font-medium ${amountClass}">${amountText}</div>
+                    <div class="text-sm text-white/40">余额: ${record.balanceAfter}</div>
+                </div>
+            </div>
+        `;
+    }).join('');
+
+    document.getElementById('recordsList').innerHTML = html;
+    lucide.createIcons();
+}
+
+function renderPagination(total, currentPage, pageSize) {
+    const totalPages = Math.ceil(total / pageSize);
+    if (totalPages <= 1) {
+        document.getElementById('pagination').innerHTML = '';
+        return;
+    }
+
+    let html = '';
+
+    // Previous button
+    if (currentPage > 1) {
+        html += `<button onclick="loadRecords(${currentPage - 1})" class="px-4 py-2 rounded-lg bg-white/5 hover:bg-white/10 transition-colors">
+            <i data-lucide="chevron-left" class="w-4 h-4"></i>
+        </button>`;
+    }
+
+    // Page numbers
+    const startPage = Math.max(1, currentPage - 2);
+    const endPage = Math.min(totalPages, currentPage + 2);
+
+    if (startPage > 1) {
+        html += `<button onclick="loadRecords(1)" class="px-4 py-2 rounded-lg bg-white/5 hover:bg-white/10 transition-colors">1</button>`;
+        if (startPage > 2) {
+            html += `<span class="text-white/40">...</span>`;
+        }
+    }
+
+    for (let i = startPage; i <= endPage; i++) {
+        if (i === currentPage) {
+            html += `<button class="px-4 py-2 rounded-lg bg-violet-500/30 border border-violet-500/50">${i}</button>`;
+        } else {
+            html += `<button onclick="loadRecords(${i})" class="px-4 py-2 rounded-lg bg-white/5 hover:bg-white/10 transition-colors">${i}</button>`;
+        }
+    }
+
+    if (endPage < totalPages) {
+        if (endPage < totalPages - 1) {
+            html += `<span class="text-white/40">...</span>`;
+        }
+        html += `<button onclick="loadRecords(${totalPages})" class="px-4 py-2 rounded-lg bg-white/5 hover:bg-white/10 transition-colors">${totalPages}</button>`;
+    }
+
+    // Next button
+    if (currentPage < totalPages) {
+        html += `<button onclick="loadRecords(${currentPage + 1})" class="px-4 py-2 rounded-lg bg-white/5 hover:bg-white/10 transition-colors">
+            <i data-lucide="chevron-right" class="w-4 h-4"></i>
+        </button>`;
+    }
+
+    document.getElementById('pagination').innerHTML = html;
+    lucide.createIcons();
+}
+
+// Initial load
+loadRecords(1);
+</script>
+{% endblock %}

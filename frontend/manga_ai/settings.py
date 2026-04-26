@@ -25,6 +25,7 @@ INSTALLED_APPS = [
     'apps.series',
     'apps.role',
     'apps.asset',
+    'apps.auth',
 ]
 
 MIDDLEWARE = [
@@ -33,6 +34,7 @@ MIDDLEWARE = [
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
+    'manga_ai.middleware.LoginRequiredMiddleware',
 ]
 
 ROOT_URLCONF = 'manga_ai.urls'
@@ -73,6 +75,14 @@ MEDIA_ROOT = BASE_DIR / 'media'
 
 # Default primary key field type
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+# Database - SQLite for Django session storage
+DATABASES = {
+    'default': {
+        'ENGINE': 'django.db.backends.sqlite3',
+        'NAME': BASE_DIR / 'db.sqlite3',
+    }
+}
 
 # 后端 API 配置
 BACKEND_API_URL = os.environ.get('BACKEND_API_URL', 'http://localhost:8081/api')

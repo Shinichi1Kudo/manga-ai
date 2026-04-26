@@ -64,7 +64,7 @@ public class SceneController {
     @PostMapping("/{sceneId}/generate")
     public Result<Void> generateSceneAssets(@PathVariable Long sceneId) {
         log.info("生成场景资产: sceneId={}", sceneId);
-        sceneService.generateSceneAssets(sceneId);
+        sceneService.generateSceneAssetsWithCredit(sceneId);
         return Result.success();
     }
 
@@ -80,7 +80,7 @@ public class SceneController {
         String quality = body != null ? (String) body.get("quality") : null;
         log.info("重新生成场景资产: sceneId={}, aspectRatio={}, quality={}, customPrompt={}",
                 sceneId, aspectRatio, quality, customPrompt != null);
-        sceneService.regenerateSceneAsset(sceneId, customPrompt, aspectRatio, quality);
+        sceneService.regenerateSceneAssetWithCredit(sceneId, customPrompt, aspectRatio, quality);
         return Result.success();
     }
 

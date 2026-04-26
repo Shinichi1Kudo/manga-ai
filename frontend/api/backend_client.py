@@ -10,7 +10,7 @@ from django.conf import settings
 class BackendClient:
     """后端 API 客户端"""
 
-    def __init__(self):
+    def __init__(self, token: Optional[str] = None):
         self.base_url = settings.BACKEND_API_URL
         self.timeout = settings.BACKEND_API_TIMEOUT
         self.session = requests.Session()
@@ -18,6 +18,11 @@ class BackendClient:
             'Content-Type': 'application/json',
             'Accept': 'application/json',
         })
+        # 设置认证Token
+        if token:
+            self.session.headers.update({
+                'Authorization': f'Bearer {token}'
+            })
 
     def _build_url(self, endpoint: str) -> str:
         return f"{self.base_url.rstrip('/')}{endpoint}"

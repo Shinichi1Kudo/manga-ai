@@ -3,6 +3,7 @@ package com.manga.ai.series.service;
 import com.manga.ai.series.dto.SeriesDetailVO;
 import com.manga.ai.series.dto.SeriesInitRequest;
 import com.manga.ai.series.dto.SeriesProgressVO;
+import com.manga.ai.series.dto.SeriesVideoAssetsVO;
 
 import java.util.List;
 
@@ -90,4 +91,9 @@ public interface SeriesService {
      * 彻底删除系列
      */
     void permanentDeleteSeries(Long seriesId);
+
+    /**
+     * 获取系列影视资产
+     */
+    SeriesVideoAssetsVO getSeriesVideoAssets(Long seriesId);
 }

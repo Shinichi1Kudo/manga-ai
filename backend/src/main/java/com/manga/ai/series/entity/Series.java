@@ -19,6 +19,11 @@ public class Series implements Serializable {
     private Long id;
 
     /**
+     * 用户ID
+     */
+    private Long userId;
+
+    /**
      * 系列名称
      */
     private String seriesName;

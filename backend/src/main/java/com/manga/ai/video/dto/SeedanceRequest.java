@@ -54,6 +54,13 @@ public class SeedanceRequest implements Serializable {
     private Long shotId;
 
     /**
+     * 视频生成模型
+     * - doubao-seedance-2-0-fast-260128: Seedance 2.0 Fast VIP
+     * - doubao-seedance-2-0-260128: Seedance 2.0 VIP
+     */
+    private String model;
+
+    /**
      * 参考内容
      */
     @Data

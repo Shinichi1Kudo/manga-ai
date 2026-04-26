@@ -162,6 +162,48 @@ public class OssService {
     }
 
     /**
+     * 获取文件的签名访问URL（有效期10年）
+     * @param objectKey OSS对象键（如 contact/联系我.jpg）
+     * @return 签名URL
+     */
+    public String getPresignedUrl(String objectKey) {
+        try {
+            Date expiration = new Date(System.currentTimeMillis() + (long) urlExpirationYears * 365 * 24 * 60 * 60 * 1000L);
+            URL url = ossClient.generatePresignedUrl(bucketName, objectKey, expiration);
+            log.info("生成签名URL成功: {}", objectKey);
+            return url.toString();
+        } catch (Exception e) {
+            log.error("生成签名URL失败: {}", objectKey, e);
+            return null;
+        }
+    }
+
+    /**
+     * 刷新OSS URL（生成新的签名URL）
+     * 如果传入的是OSS URL，提取对象键并生成新签名
+     * 如果传入的是对象键，直接生成签名URL
+     * 如果不是OSS链接，原样返回
+     * @param urlOrKey URL或对象键
+     * @return 新的签名URL或原URL
+     */
+    public String refreshUrl(String urlOrKey) {
+        if (urlOrKey == null || urlOrKey.isEmpty()) {
+            return urlOrKey;
+        }
+
+        // 检查是否是OSS URL
+        if (urlOrKey.contains("aliyuncs.com")) {
+            String objectKey = extractFileNameFromUrl(urlOrKey);
+            if (objectKey != null) {
+                return getPresignedUrl(objectKey);
+            }
+        }
+
+        // 不是OSS链接，原样返回
+        return urlOrKey;
+    }
+
+    /**
      * 删除OSS文件
      * @param fileUrl 文件URL
      */

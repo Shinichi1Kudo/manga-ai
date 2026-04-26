@@ -151,4 +151,16 @@ urlpatterns = [
 
     # 重新排序分镜
     path('api/v1/shots/episode/<int:episode_id>/reorder', views.shot_reorder, name='shot_reorder'),
+
+    # 联系我们图片
+    path('api/v1/common/contact-image/', views.contact_image, name='contact_image'),
+
+    # 积分记录页面
+    path('credits/records/', views.credit_records, name='credit_records'),
+
+    # 积分记录API
+    path('api/credits/records/', views.credit_records_api, name='credit_records_api'),
+
+    # 用户信息API
+    path('api/user/info/', views.user_info_api, name='user_info_api'),
 ]

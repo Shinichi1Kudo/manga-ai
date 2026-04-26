@@ -8,13 +8,19 @@ import json
 from api.backend_client import BackendClient, BackendAPIError
 
 
+def get_client(request):
+    """获取带认证Token的BackendClient"""
+    token = request.session.get('token')
+    return BackendClient(token=token)
+
+
 def series_list(request):
     """首页 - 系列列表"""
     if request.headers.get('X-Requested-With') == 'XMLHttpRequest' or request.path.startswith('/api/'):
         # API 请求 - 支持分页
         page = request.GET.get('page', 1)
         page_size = request.GET.get('pageSize', 9)
-        client = BackendClient()
+        client = get_client(request)
         try:
             result = client.get(f'/v1/series/list?page={page}&pageSize={page_size}')
             response = JsonResponse({'data': result})
@@ -27,7 +33,7 @@ def series_list(request):
             return JsonResponse({'data': [], 'error': e.message}, status=500)
 
     # 获取第一页系列，提取处理中的系列ID
-    client = BackendClient()
+    client = get_client(request)
     try:
         result = client.get('/v1/series/list?page=1&pageSize=100')
         series_list = result.get('list', [])
@@ -75,7 +81,7 @@ def series_init(request):
             messages.error(request, '请至少添加一个角色')
             return render(request, 'series/series_init.html', {'form_data': form_data})
 
-        client = BackendClient()
+        client = get_client(request)
         try:
             result = client.post('/v1/series/init', {
                 'seriesName': series_name,
@@ -96,7 +102,7 @@ def series_init(request):
 
 def series_progress(request, series_id):
     """处理进度页面"""
-    client = BackendClient()
+    client = get_client(request)
     try:
         series = client.get(f'/v1/series/{series_id}')
     except BackendAPIError as e:
@@ -111,7 +117,7 @@ def series_progress(request, series_id):
 
 def series_detail(request, series_id):
     """系列详情页面"""
-    client = BackendClient()
+    client = get_client(request)
     try:
         series = client.get(f'/v1/series/{series_id}')
         roles = client.get(f'/v1/roles/series/{series_id}')
@@ -127,7 +133,7 @@ def series_detail(request, series_id):
 
 def series_review(request, series_id):
     """角色审核页面"""
-    client = BackendClient()
+    client = get_client(request)
     try:
         series = client.get(f'/v1/series/{series_id}')
         roles = client.get(f'/v1/roles/series/{series_id}')
@@ -165,7 +171,7 @@ def series_review(request, series_id):
 @require_http_methods(["POST"])
 def series_lock(request, series_id):
     """锁定系列"""
-    client = BackendClient()
+    client = get_client(request)
     try:
         client.post(f'/v1/series/{series_id}/lock')
         return JsonResponse({'success': True})
@@ -177,7 +183,7 @@ def series_lock(request, series_id):
 @require_http_methods(["PUT"])
 def series_update(request, series_id):
     """更新系列信息"""
-    client = BackendClient()
+    client = get_client(request)
     try:
         data = json.loads(request.body)
         client.put(f'/v1/series/{series_id}', {
@@ -192,7 +198,7 @@ def series_update(request, series_id):
 
 def api_progress(request, series_id):
     """获取处理进度 - AJAX 接口"""
-    client = BackendClient()
+    client = get_client(request)
     try:
         result = client.get(f'/v1/series/{series_id}/progress')
         return JsonResponse(result)
@@ -204,7 +210,7 @@ def api_progress(request, series_id):
 @require_http_methods(["DELETE"])
 def series_delete(request, series_id):
     """删除系列（移入回收站）"""
-    client = BackendClient()
+    client = get_client(request)
     try:
         client.delete(f'/v1/series/{series_id}')
         return JsonResponse({'success': True})
@@ -214,7 +220,7 @@ def series_delete(request, series_id):
 
 def trash_page(request):
     """回收站页面"""
-    client = BackendClient()
+    client = get_client(request)
     try:
         trash_list = client.get('/v1/series/trash')
     except BackendAPIError as e:
@@ -231,7 +237,7 @@ def trash_page(request):
 @require_http_methods(["POST"])
 def series_restore(request, series_id):
     """恢复系列"""
-    client = BackendClient()
+    client = get_client(request)
     try:
         client.post(f'/v1/series/{series_id}/restore')
         return JsonResponse({'success': True})
@@ -243,7 +249,7 @@ def series_restore(request, series_id):
 @require_http_methods(["DELETE"])
 def series_permanent_delete(request, series_id):
     """彻底删除系列"""
-    client = BackendClient()
+    client = get_client(request)
     try:
         client.delete(f'/v1/series/{series_id}/permanent')
         return JsonResponse({'success': True})
@@ -255,7 +261,7 @@ def series_permanent_delete(request, series_id):
 
 def select_series_for_episode(request):
     """选择系列页面 - 用于剧集制作"""
-    client = BackendClient()
+    client = get_client(request)
     try:
         result = client.get('/v1/series/list?page=1&pageSize=100')
         series_list = result.get('list', [])
@@ -280,7 +286,7 @@ def select_series_for_episode(request):
 
 def episode_list(request, series_id):
     """剧集列表页面"""
-    client = BackendClient()
+    client = get_client(request)
     try:
         series = client.get(f'/v1/series/{series_id}')
         episodes = client.get(f'/v1/episodes/series/{series_id}')
@@ -298,7 +304,7 @@ def episode_list(request, series_id):
 @csrf_exempt
 def episode_create(request, series_id):
     """创建剧集页面"""
-    client = BackendClient()
+    client = get_client(request)
     try:
         series = client.get(f'/v1/series/{series_id}')
     except BackendAPIError as e:
@@ -382,7 +388,7 @@ def episode_create(request, series_id):
 
 def episode_detail(request, series_id, episode_id):
     """剧集详情/分镜审核页面"""
-    client = BackendClient()
+    client = get_client(request)
     try:
         series = client.get(f'/v1/series/{series_id}')
         episode = client.get(f'/v1/episodes/{episode_id}')
@@ -473,7 +479,7 @@ def episode_detail(request, series_id, episode_id):
 @require_http_methods(["POST"])
 def shot_generate_video(request, shot_id):
     """生成单个分镜视频"""
-    client = BackendClient()
+    client = get_client(request)
     try:
         client.post(f'/v1/shots/{shot_id}/generate')
         return JsonResponse({'success': True})
@@ -485,7 +491,7 @@ def shot_generate_video(request, shot_id):
 @require_http_methods(["POST"])
 def episode_generate_videos(request, episode_id):
     """批量生成剧集的所有分镜视频"""
-    client = BackendClient()
+    client = get_client(request)
     try:
         client.post(f'/v1/shots/episode/{episode_id}/generate')
         return JsonResponse({'success': True})
@@ -497,7 +503,7 @@ def episode_generate_videos(request, episode_id):
 @require_http_methods(["POST"])
 def shot_review(request, shot_id):
     """审核分镜"""
-    client = BackendClient()
+    client = get_client(request)
     try:
         data = json.loads(request.body)
         client.post(f'/v1/shots/{shot_id}/review', {
@@ -513,7 +519,7 @@ def shot_review(request, shot_id):
 @require_http_methods(["PUT"])
 def shot_update(request, shot_id):
     """更新分镜"""
-    client = BackendClient()
+    client = get_client(request)
     try:
         data = json.loads(request.body)
         client.put(f'/v1/shots/{shot_id}', data)
@@ -526,7 +532,7 @@ def shot_update(request, shot_id):
 
 def episode_progress(request, episode_id):
     """获取剧集进度 - AJAX接口"""
-    client = BackendClient()
+    client = get_client(request)
     try:
         result = client.get(f'/v1/episodes/{episode_id}/progress')
         return JsonResponse(result)
@@ -538,7 +544,7 @@ def episode_progress(request, episode_id):
 @require_http_methods(["PUT"])
 def episode_update_script(request, episode_id):
     """更新剧本内容"""
-    client = BackendClient()
+    client = get_client(request)
     try:
         data = json.loads(request.body)
         client.put(f'/v1/episodes/{episode_id}/script', {
@@ -553,7 +559,7 @@ def episode_update_script(request, episode_id):
 @require_http_methods(["POST"])
 def episode_parse_script(request, episode_id):
     """重新解析剧本（只解析资产）"""
-    client = BackendClient()
+    client = get_client(request)
     try:
         client.post(f'/v1/episodes/{episode_id}/parse')
         return JsonResponse({'code': 200, 'success': True})
@@ -565,7 +571,7 @@ def episode_parse_script(request, episode_id):
 @require_http_methods(["POST"])
 def episode_parse_shots(request, episode_id):
     """解析分镜"""
-    client = BackendClient()
+    client = get_client(request)
     try:
         client.post(f'/v1/episodes/{episode_id}/parse-shots')
         return JsonResponse({'code': 200, 'success': True})
@@ -577,7 +583,7 @@ def episode_parse_shots(request, episode_id):
 @require_http_methods(["POST"])
 def scene_create(request):
     """创建场景"""
-    client = BackendClient()
+    client = get_client(request)
     try:
         data = json.loads(request.body)
         result = client.post('/v1/scenes', {
@@ -598,7 +604,7 @@ def scene_create(request):
 @require_http_methods(["POST"])
 def prop_create(request):
     """创建道具"""
-    client = BackendClient()
+    client = get_client(request)
     try:
         data = json.loads(request.body)
         result = client.post('/v1/props', {
@@ -618,7 +624,7 @@ def prop_create(request):
 @require_http_methods(["POST"])
 def scene_regenerate(request, scene_id):
     """重新生成场景"""
-    client = BackendClient()
+    client = get_client(request)
     try:
         data = json.loads(request.body) if request.body else {}
         client.post(f'/v1/scenes/{scene_id}/regenerate', {
@@ -635,7 +641,7 @@ def scene_regenerate(request, scene_id):
 @require_http_methods(["POST"])
 def prop_regenerate(request, prop_id):
     """重新生成道具"""
-    client = BackendClient()
+    client = get_client(request)
     try:
         data = json.loads(request.body) if request.body else {}
         client.post(f'/v1/props/{prop_id}/regenerate', {
@@ -651,7 +657,7 @@ def prop_regenerate(request, prop_id):
 @require_http_methods(["POST"])
 def scene_rollback(request, scene_id):
     """场景回滚"""
-    client = BackendClient()
+    client = get_client(request)
     try:
         data = json.loads(request.body)
         asset_id = data.get('assetId')
@@ -665,7 +671,7 @@ def scene_rollback(request, scene_id):
 @require_http_methods(["POST"])
 def prop_rollback(request, prop_id):
     """道具回滚"""
-    client = BackendClient()
+    client = get_client(request)
     try:
         data = json.loads(request.body)
         asset_id = data.get('assetId')
@@ -681,7 +687,7 @@ def prop_rollback(request, prop_id):
 @require_http_methods(["POST"])
 def scene_lock(request, scene_id):
     """锁定场景"""
-    client = BackendClient()
+    client = get_client(request)
     try:
         client.post(f'/v1/scenes/{scene_id}/lock')
         return JsonResponse({'code': 200, 'success': True})
@@ -693,7 +699,7 @@ def scene_lock(request, scene_id):
 @require_http_methods(["POST"])
 def scene_unlock(request, scene_id):
     """解锁场景"""
-    client = BackendClient()
+    client = get_client(request)
     try:
         client.post(f'/v1/scenes/{scene_id}/unlock')
         return JsonResponse({'code': 200, 'success': True})
@@ -705,7 +711,7 @@ def scene_unlock(request, scene_id):
 @require_http_methods(["PUT"])
 def scene_update_name(request, scene_id):
     """更新场景名称"""
-    client = BackendClient()
+    client = get_client(request)
     try:
         data = json.loads(request.body)
         client.put(f'/v1/scenes/{scene_id}/name', {'sceneName': data.get('sceneName')})
@@ -718,7 +724,7 @@ def scene_update_name(request, scene_id):
 @require_http_methods(["POST"])
 def prop_lock(request, prop_id):
     """锁定道具"""
-    client = BackendClient()
+    client = get_client(request)
     try:
         client.post(f'/v1/props/{prop_id}/lock')
         return JsonResponse({'code': 200, 'success': True})
@@ -730,7 +736,7 @@ def prop_lock(request, prop_id):
 @require_http_methods(["POST"])
 def prop_unlock(request, prop_id):
     """解锁道具"""
-    client = BackendClient()
+    client = get_client(request)
     try:
         client.post(f'/v1/props/{prop_id}/unlock')
         return JsonResponse({'code': 200, 'success': True})
@@ -742,7 +748,7 @@ def prop_unlock(request, prop_id):
 @require_http_methods(["PUT"])
 def prop_update_name(request, prop_id):
     """更新道具名称"""
-    client = BackendClient()
+    client = get_client(request)
     try:
         data = json.loads(request.body)
         client.put(f'/v1/props/{prop_id}/name', {'propName': data.get('propName')})
@@ -757,7 +763,7 @@ def prop_update_name(request, prop_id):
 @require_http_methods(["GET", "DELETE"])
 def prop_detail(request, prop_id):
     """道具详情（GET）或删除（DELETE）"""
-    client = BackendClient()
+    client = get_client(request)
     try:
         if request.method == 'DELETE':
             client.delete(f'/v1/props/{prop_id}')
@@ -774,7 +780,7 @@ def prop_detail(request, prop_id):
 @require_http_methods(["GET", "DELETE"])
 def scene_detail(request, scene_id):
     """场景详情（GET）或删除（DELETE）"""
-    client = BackendClient()
+    client = get_client(request)
     try:
         if request.method == 'DELETE':
             client.delete(f'/v1/scenes/{scene_id}')
@@ -792,7 +798,7 @@ def scene_detail(request, scene_id):
 @require_http_methods(["GET"])
 def episode_parsed_assets(request, episode_id):
     """获取解析后的资产清单"""
-    client = BackendClient()
+    client = get_client(request)
     try:
         result = client.get(f'/v1/episodes/{episode_id}/parsed-assets')
         return JsonResponse({'code': 200, 'data': result})
@@ -804,7 +810,7 @@ def episode_parsed_assets(request, episode_id):
 @require_http_methods(["POST"])
 def episode_generate_assets(request, episode_id):
     """批量生成选中资产的图片"""
-    client = BackendClient()
+    client = get_client(request)
     try:
         data = json.loads(request.body)
         result = client.post(f'/v1/episodes/{episode_id}/generate-assets', {
@@ -832,7 +838,7 @@ def episode_generate_assets(request, episode_id):
 @require_http_methods(["GET", "PUT"])
 def shot_references(request, shot_id):
     """获取或更新分镜参考图列表"""
-    client = BackendClient()
+    client = get_client(request)
     try:
         if request.method == 'GET':
             result = client.get(f'/v1/shots/{shot_id}/references')
@@ -849,7 +855,7 @@ def shot_references(request, shot_id):
 @require_http_methods(["PUT"])
 def shot_update_references(request, shot_id):
     """更新分镜参考图列表"""
-    client = BackendClient()
+    client = get_client(request)
     try:
         data = json.loads(request.body)
         client.put(f'/v1/shots/{shot_id}/references', data)
@@ -862,7 +868,7 @@ def shot_update_references(request, shot_id):
 @require_http_methods(["POST"])
 def shot_match_assets(request, shot_id):
     """自动匹配分镜资产"""
-    client = BackendClient()
+    client = get_client(request)
     try:
         result = client.post(f'/v1/shots/{shot_id}/match-assets')
         return JsonResponse({'code': 200, 'data': result})
@@ -874,7 +880,7 @@ def shot_match_assets(request, shot_id):
 @require_http_methods(["POST"])
 def shot_generate_with_references(request, shot_id):
     """带参考图生成视频"""
-    client = BackendClient()
+    client = get_client(request)
     try:
         client.post(f'/v1/shots/{shot_id}/generate-with-references')
         return JsonResponse({'code': 200, 'success': True})
@@ -886,7 +892,7 @@ def shot_generate_with_references(request, shot_id):
 @require_http_methods(["GET"])
 def shot_video_history(request, shot_id):
     """获取分镜视频版本历史"""
-    client = BackendClient()
+    client = get_client(request)
     try:
         data = client.get(f'/v1/shots/{shot_id}/video-history')
         return JsonResponse({'code': 200, 'data': data, 'success': True})
@@ -898,7 +904,7 @@ def shot_video_history(request, shot_id):
 @require_http_methods(["POST"])
 def shot_video_rollback(request, shot_id, asset_id):
     """回滚到指定视频版本"""
-    client = BackendClient()
+    client = get_client(request)
     try:
         client.post(f'/v1/shots/{shot_id}/rollback-video/{asset_id}')
         return JsonResponse({'code': 200, 'success': True})
@@ -910,7 +916,7 @@ def shot_video_rollback(request, shot_id, asset_id):
 @require_http_methods(["POST"])
 def shot_create(request, episode_id):
     """创建分镜"""
-    client = BackendClient()
+    client = get_client(request)
     try:
         data = json.loads(request.body) if request.body else {}
         result = client.post(f'/v1/shots/episode/{episode_id}/create', data=data)
@@ -923,7 +929,7 @@ def shot_create(request, episode_id):
 @require_http_methods(["DELETE"])
 def shot_delete(request, shot_id):
     """删除分镜"""
-    client = BackendClient()
+    client = get_client(request)
     try:
         client.delete(f'/v1/shots/{shot_id}')
         return JsonResponse({'code': 200, 'success': True})
@@ -935,10 +941,53 @@ def shot_delete(request, shot_id):
 @require_http_methods(["POST"])
 def shot_reorder(request, episode_id):
     """重新排序分镜"""
-    client = BackendClient()
+    client = get_client(request)
     try:
         data = json.loads(request.body)
         client.post(f'/v1/shots/episode/{episode_id}/reorder', data)
         return JsonResponse({'code': 200, 'success': True})
+    except BackendAPIError as e:
+        return JsonResponse({'code': 400, 'message': e.message}, status=400)
+
+
+def contact_image(request):
+    """获取联系我们二维码图片URL"""
+    client = get_client(request)
+    try:
+        result = client.get('/v1/common/contact-image')
+        return JsonResponse({'code': 200, 'data': result})
+    except BackendAPIError as e:
+        return JsonResponse({'code': 400, 'message': e.message}, status=400)
+
+
+def credit_records(request):
+    """积分记录页面"""
+    credits = request.session.get('credits', 0)
+    return render(request, 'credits/credit_records.html', {
+        'credits': credits,
+    })
+
+
+def credit_records_api(request):
+    """积分记录API"""
+    page = request.GET.get('page', 1)
+    page_size = request.GET.get('pageSize', 20)
+    record_type = request.GET.get('type', '')
+
+    client = get_client(request)
+    try:
+        type_param = f'&type={record_type}' if record_type else ''
+        result = client.get(f'/v1/credits/records?page={page}&pageSize={page_size}{type_param}')
+        return JsonResponse({'code': 200, 'data': result})
+    except BackendAPIError as e:
+        return JsonResponse({'code': 400, 'message': e.message}, status=400)
+
+
+def user_info_api(request):
+    """用户信息API"""
+    client = get_client(request)
+    try:
+        result = client.get('/v1/user/info')
+        return JsonResponse({'code': 200, 'data': result})
     except BackendAPIError as e:
         return JsonResponse({'code': 400, 'message': e.message}, status=400)

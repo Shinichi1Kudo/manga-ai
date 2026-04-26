@@ -7,6 +7,7 @@ import com.manga.ai.shot.dto.ShotUpdateRequest;
 import com.manga.ai.shot.dto.ShotVideoAssetVO;
 
 import java.util.List;
+import java.util.Map;
 
 /**
  * 分镜服务接口
@@ -128,4 +129,11 @@ public interface ShotService {
      * @param shotIds 分镜ID列表（按新顺序）
      */
     void reorderShots(Long episodeId, List<Long> shotIds);
+
+    /**
+     * 获取视频生成积分预览
+     * @param shotId 分镜ID
+     * @return 积分预览信息
+     */
+    Map<String, Object> getVideoCreditPreview(Long shotId);
 }

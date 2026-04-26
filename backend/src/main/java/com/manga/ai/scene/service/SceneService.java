@@ -29,6 +29,13 @@ public interface SceneService {
     void generateSceneAssets(Long sceneId);
 
     /**
+     * 生成场景资产（含积分扣费）
+     * 同步扣费后异步生成
+     * @param sceneId 场景ID
+     */
+    void generateSceneAssetsWithCredit(Long sceneId);
+
+    /**
      * 重新生成场景图片
      * @param sceneId 场景ID
      * @param customPrompt 自定义提示词（可为null）
@@ -36,6 +43,16 @@ public interface SceneService {
      * @param quality 清晰度（可为null，使用原值）
      */
     void regenerateSceneAsset(Long sceneId, String customPrompt, String aspectRatio, String quality);
+
+    /**
+     * 重新生成场景图片（含积分扣费）
+     * 同步扣费后异步生成
+     * @param sceneId 场景ID
+     * @param customPrompt 自定义提示词（可为null）
+     * @param aspectRatio 图片比例（可为null，使用原值）
+     * @param quality 清晰度（可为null，使用原值）
+     */
+    void regenerateSceneAssetWithCredit(Long sceneId, String customPrompt, String aspectRatio, String quality);
 
     /**
      * 审核场景

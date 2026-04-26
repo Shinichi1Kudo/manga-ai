@@ -8,6 +8,9 @@ urlpatterns = [
     # 首页
     path('', include('apps.series.urls')),
 
+    # 用户认证
+    path('auth/', include(('apps.auth.urls', 'auth'), namespace='auth')),
+
     # 角色管理
     path('roles/', include('apps.role.urls')),
 

@@ -1,6 +1,8 @@
 package com.manga.ai.scene.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.manga.ai.common.constants.CreditConstants;
+import com.manga.ai.common.enums.CreditUsageType;
 import com.manga.ai.common.enums.SceneStatus;
 import com.manga.ai.common.exception.BusinessException;
 import com.manga.ai.common.service.OssService;
@@ -18,6 +20,8 @@ import com.manga.ai.scene.mapper.SceneAssetMetadataMapper;
 import com.manga.ai.scene.service.SceneService;
 import com.manga.ai.series.entity.Series;
 import com.manga.ai.series.mapper.SeriesMapper;
+import com.manga.ai.user.service.UserService;
+import com.manga.ai.user.service.impl.UserServiceImpl.UserContextHolder;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.BeanUtils;
@@ -47,6 +51,7 @@ public class SceneServiceImpl implements SceneService {
     private final ImageGenerateService imageGenerateService;
     private final OssService ossService;
     private final ImagePromptGenerateService imagePromptGenerateService;
+    private final UserService userService;
 
     @Qualifier("imageGenerateExecutor")
     private final Executor imageGenerateExecutor;
@@ -176,6 +181,33 @@ public class SceneServiceImpl implements SceneService {
             scene.setUpdatedAt(LocalDateTime.now());
             sceneMapper.updateById(scene);
         }
+    }
+
+    @Override
+    public void generateSceneAssetsWithCredit(Long sceneId) {
+        log.info("生成场景资产（含积分扣费）: sceneId={}", sceneId);
+
+        Scene scene = sceneMapper.selectById(sceneId);
+        if (scene == null) {
+            throw new BusinessException("场景不存在");
+        }
+
+        // 扣除积分（场景生成1张图）
+        int requiredCredits = CreditConstants.CREDITS_PER_IMAGE;
+        Long userId = UserContextHolder.getUserId();
+        if (userId == null) {
+            throw new BusinessException("用户未登录");
+        }
+        userService.deductCredits(userId, requiredCredits, CreditUsageType.SCENE_CREATE.getCode(),
+                "场景创建-" + scene.getSceneName(), sceneId, "SCENE");
+        log.info("场景生成扣费: userId={}, sceneId={}, credits={}", userId, sceneId, requiredCredits);
+
+        // 记录扣除的积分
+        scene.setDeductedCredits(requiredCredits);
+        sceneMapper.updateById(scene);
+
+        // 异步生成
+        generateSceneAssets(sceneId);
     }
 
     @Override
@@ -326,6 +358,38 @@ public class SceneServiceImpl implements SceneService {
                 sceneAssetMapper.deleteById(asset.getId());
             }
         }
+    }
+
+    @Override
+    public void regenerateSceneAssetWithCredit(Long sceneId, String customPrompt, String aspectRatio, String quality) {
+        log.info("重新生成场景资产（含积分扣费）: sceneId={}, aspectRatio={}, quality={}", sceneId, aspectRatio, quality);
+
+        Scene scene = sceneMapper.selectById(sceneId);
+        if (scene == null) {
+            throw new BusinessException("场景不存在");
+        }
+
+        // 检查是否已锁定
+        if (SceneStatus.LOCKED.getCode().equals(scene.getStatus())) {
+            throw new BusinessException("场景已锁定，无法重新生成");
+        }
+
+        // 扣除积分（场景生成1张图）
+        int requiredCredits = CreditConstants.CREDITS_PER_IMAGE;
+        Long userId = UserContextHolder.getUserId();
+        if (userId == null) {
+            throw new BusinessException("用户未登录");
+        }
+        userService.deductCredits(userId, requiredCredits, CreditUsageType.SCENE_CREATE.getCode(),
+                "场景重新生成-" + scene.getSceneName(), sceneId, "SCENE");
+        log.info("场景重新生成扣费: userId={}, sceneId={}, credits={}", userId, sceneId, requiredCredits);
+
+        // 记录扣除的积分
+        scene.setDeductedCredits(requiredCredits);
+        sceneMapper.updateById(scene);
+
+        // 异步生成
+        regenerateSceneAsset(sceneId, customPrompt, aspectRatio, quality);
     }
 
     @Override
@@ -576,6 +640,9 @@ public class SceneServiceImpl implements SceneService {
     private SceneDetailVO.SceneAssetVO convertAssetToVO(SceneAsset asset) {
         SceneDetailVO.SceneAssetVO vo = new SceneDetailVO.SceneAssetVO();
         BeanUtils.copyProperties(asset, vo);
+        // 刷新OSS URL
+        vo.setFilePath(ossService.refreshUrl(asset.getFilePath()));
+        vo.setThumbnailPath(ossService.refreshUrl(asset.getThumbnailPath()));
         return vo;
     }
 

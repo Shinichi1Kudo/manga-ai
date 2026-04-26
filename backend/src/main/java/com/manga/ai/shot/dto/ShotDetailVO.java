@@ -44,6 +44,7 @@ public class ShotDetailVO implements Serializable {
     private LocalDateTime generationStartTime;
     private Integer status;
     private String statusDesc;
+    private String videoModel;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 

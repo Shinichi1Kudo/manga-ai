@@ -1,8 +1,33 @@
 -- H2 数据库初始化脚本
 
+-- 用户表
+CREATE TABLE IF NOT EXISTS user (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    email VARCHAR(100) NOT NULL UNIQUE,
+    password VARCHAR(255) NOT NULL,
+    nickname VARCHAR(50),
+    credits INT DEFAULT 10,
+    status INT DEFAULT 1,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    last_login_at TIMESTAMP
+);
+
+-- 邮箱验证码表
+CREATE TABLE IF NOT EXISTS email_verification (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    email VARCHAR(100) NOT NULL,
+    code VARCHAR(6) NOT NULL,
+    type VARCHAR(20) NOT NULL,
+    expired_at TIMESTAMP NOT NULL,
+    used INT DEFAULT 0,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
 -- 系列表
 CREATE TABLE IF NOT EXISTS series (
     id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    user_id BIGINT,
     series_name VARCHAR(100) NOT NULL,
     outline CLOB,
     background CLOB,

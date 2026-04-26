@@ -85,6 +85,11 @@ public class Shot implements Serializable {
     private String resolution;
 
     /**
+     * 视频生成模型: seedance-2.0-fast (Seedance 2.0 Fast VIP), seedance-2.0 (Seedance 2.0 VIP)
+     */
+    private String videoModel;
+
+    /**
      * 视频比例: 16:9, 4:3, 1:1, 3:4, 9:16, 21:9
      */
     private String aspectRatio;
@@ -148,6 +153,11 @@ public class Shot implements Serializable {
      * 生成开始时间
      */
     private LocalDateTime generationStartTime;
+
+    /**
+     * 视频生成扣除的积分（用于失败时返还）
+     */
+    private Integer deductedCredits;
 
     /**
      * 审核状态: 0-待审核 1-已通过 2-已拒绝

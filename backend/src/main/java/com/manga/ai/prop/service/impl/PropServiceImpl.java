@@ -1,6 +1,8 @@
 package com.manga.ai.prop.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.manga.ai.common.constants.CreditConstants;
+import com.manga.ai.common.enums.CreditUsageType;
 import com.manga.ai.common.enums.PropStatus;
 import com.manga.ai.common.exception.BusinessException;
 import com.manga.ai.common.service.OssService;
@@ -18,6 +20,8 @@ import com.manga.ai.prop.mapper.PropAssetMetadataMapper;
 import com.manga.ai.prop.service.PropService;
 import com.manga.ai.series.entity.Series;
 import com.manga.ai.series.mapper.SeriesMapper;
+import com.manga.ai.user.service.UserService;
+import com.manga.ai.user.service.impl.UserServiceImpl.UserContextHolder;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.BeanUtils;
@@ -47,6 +51,7 @@ public class PropServiceImpl implements PropService {
     private final ImageGenerateService imageGenerateService;
     private final OssService ossService;
     private final ImagePromptGenerateService imagePromptGenerateService;
+    private final UserService userService;
 
     @Qualifier("imageGenerateExecutor")
     private final Executor imageGenerateExecutor;
@@ -177,6 +182,33 @@ public class PropServiceImpl implements PropService {
             prop.setUpdatedAt(LocalDateTime.now());
             propMapper.updateById(prop);
         }
+    }
+
+    @Override
+    public void generatePropAssetsWithCredit(Long propId) {
+        log.info("生成道具资产（含积分扣费）: propId={}", propId);
+
+        Prop prop = propMapper.selectById(propId);
+        if (prop == null) {
+            throw new BusinessException("道具不存在");
+        }
+
+        // 扣除积分（道具生成1张图）
+        int requiredCredits = CreditConstants.CREDITS_PER_IMAGE;
+        Long userId = UserContextHolder.getUserId();
+        if (userId == null) {
+            throw new BusinessException("用户未登录");
+        }
+        userService.deductCredits(userId, requiredCredits, CreditUsageType.PROP_CREATE.getCode(),
+                "道具创建-" + prop.getPropName(), propId, "PROP");
+        log.info("道具生成扣费: userId={}, propId={}, credits={}", userId, propId, requiredCredits);
+
+        // 记录扣除的积分
+        prop.setDeductedCredits(requiredCredits);
+        propMapper.updateById(prop);
+
+        // 异步生成
+        generatePropAssets(propId);
     }
 
     @Override
@@ -318,6 +350,38 @@ public class PropServiceImpl implements PropService {
             prop.setUpdatedAt(LocalDateTime.now());
             propMapper.updateById(prop);
         }
+    }
+
+    @Override
+    public void regeneratePropAssetWithCredit(Long propId, String customPrompt, String quality) {
+        log.info("重新生成道具资产（含积分扣费）: propId={}, quality={}", propId, quality);
+
+        Prop prop = propMapper.selectById(propId);
+        if (prop == null) {
+            throw new BusinessException("道具不存在");
+        }
+
+        // 检查是否已锁定
+        if (PropStatus.LOCKED.getCode().equals(prop.getStatus())) {
+            throw new BusinessException("道具已锁定，无法重新生成");
+        }
+
+        // 扣除积分（道具生成1张图）
+        int requiredCredits = CreditConstants.CREDITS_PER_IMAGE;
+        Long userId = UserContextHolder.getUserId();
+        if (userId == null) {
+            throw new BusinessException("用户未登录");
+        }
+        userService.deductCredits(userId, requiredCredits, CreditUsageType.PROP_CREATE.getCode(),
+                "道具重新生成-" + prop.getPropName(), propId, "PROP");
+        log.info("道具重新生成扣费: userId={}, propId={}, credits={}", userId, propId, requiredCredits);
+
+        // 记录扣除的积分
+        prop.setDeductedCredits(requiredCredits);
+        propMapper.updateById(prop);
+
+        // 异步生成
+        regeneratePropAsset(propId, customPrompt, quality);
     }
 
     @Override
@@ -576,6 +640,10 @@ public class PropServiceImpl implements PropService {
     private PropDetailVO.PropAssetVO convertAssetToVO(PropAsset asset) {
         PropDetailVO.PropAssetVO vo = new PropDetailVO.PropAssetVO();
         BeanUtils.copyProperties(asset, vo);
+        // 刷新OSS URL
+        vo.setFilePath(ossService.refreshUrl(asset.getFilePath()));
+        vo.setTransparentPath(ossService.refreshUrl(asset.getTransparentPath()));
+        vo.setThumbnailPath(ossService.refreshUrl(asset.getThumbnailPath()));
         return vo;
     }
 

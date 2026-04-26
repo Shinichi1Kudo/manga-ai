@@ -81,4 +81,9 @@ public class ShotUpdateRequest implements Serializable {
      * 生成状态: 0-待生成 1-生成中 2-已完成 3-失败
      */
     private Integer generationStatus;
+
+    /**
+     * 视频生成模型: seedance-2.0-fast, seedance-2.0
+     */
+    private String videoModel;
 }

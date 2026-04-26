@@ -43,6 +43,9 @@
     <button class="asset-type-tab px-6 py-3 rounded-xl font-medium transition-all" data-type="prop">
         <i data-lucide="package" class="w-4 h-4 inline mr-2"></i>道具资产
     </button>
+    <button class="asset-type-tab px-6 py-3 rounded-xl font-medium transition-all" data-type="video">
+        <i data-lucide="film" class="w-4 h-4 inline mr-2"></i>影视资产
+    </button>
 </div>
 
 <!-- Asset Content -->
@@ -93,6 +96,36 @@
         <div class="p-4 border-t border-white/10 flex justify-end gap-3">
             <button onclick="closePreviewModal()" class="px-5 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 transition-colors font-medium">关闭</button>
             <a id="downloadBtn" href="#" download class="btn-neon">
+                <i data-lucide="download" class="w-4 h-4 inline mr-2"></i>下载
+            </a>
+        </div>
+    </div>
+</div>
+
+<!-- Video Preview Modal -->
+<div class="modal-backdrop" id="videoPreviewModal" onclick="closeVideoModal(event)">
+    <div class="modal-content max-w-5xl" onclick="event.stopPropagation()">
+        <div class="p-4 border-b border-white/10 flex items-center justify-between">
+            <h3 class="text-lg font-semibold" id="videoPreviewTitle">视频预览</h3>
+            <div class="flex items-center gap-2">
+                <button onclick="toggleFullscreen()" class="p-2 hover:bg-white/10 rounded-lg transition-colors" title="全屏">
+                    <i data-lucide="maximize-2" class="w-5 h-5"></i>
+                </button>
+                <button onclick="closeVideoModal()" class="p-2 hover:bg-white/10 rounded-lg transition-colors">
+                    <i data-lucide="x" class="w-5 h-5"></i>
+                </button>
+            </div>
+        </div>
+        <div class="p-4 bg-black/50">
+            <video id="previewVideo" src="" class="w-full max-h-[60vh] mx-auto rounded-lg" controls autoplay>
+            </video>
+        </div>
+        <div id="videoDescription" class="px-4 py-3 bg-white/5 border-t border-white/10 hidden">
+            <p class="text-sm text-white/70"><span class="text-white/40">提示词：</span><span id="videoDescText"></span></p>
+        </div>
+        <div class="p-4 border-t border-white/10 flex justify-end gap-3">
+            <button onclick="closeVideoModal()" class="px-5 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 transition-colors font-medium">关闭</button>
+            <a id="videoDownloadBtn" href="#" download class="btn-neon">
                 <i data-lucide="download" class="w-4 h-4 inline mr-2"></i>下载
             </a>
         </div>
@@ -247,10 +280,120 @@
     color: rgba(255, 255, 255, 0.4);
     font-size: 14px;
 }
-    background: linear-gradient(transparent, rgba(0,0,0,0.8));
-    text-align: center;
+
+/* Video Grid */
+.video-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 16px;
+}
+
+.video-card {
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 16px;
+    overflow: hidden;
+    cursor: pointer;
+    transition: all 0.3s ease;
+}
+
+.video-card:hover {
+    background: rgba(255, 255, 255, 0.06);
+    border-color: rgba(124, 58, 237, 0.5);
+    transform: translateY(-4px);
+    box-shadow: 0 8px 24px rgba(124, 58, 237, 0.2);
+}
+
+.video-thumbnail {
+    position: relative;
+    aspect-ratio: 16/9;
+    background: rgba(0, 0, 0, 0.3);
+    overflow: hidden;
+}
+
+.video-thumbnail img,
+.video-thumbnail video {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+.play-overlay {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0, 0, 0, 0.3);
+    opacity: 0;
+    transition: opacity 0.3s ease;
+}
+
+.video-card:hover .play-overlay {
+    opacity: 1;
+}
+
+.duration-badge {
+    position: absolute;
+    bottom: 8px;
+    right: 8px;
+    padding: 2px 8px;
+    background: rgba(0, 0, 0, 0.7);
+    border-radius: 4px;
     font-size: 12px;
     font-weight: 500;
+}
+
+.video-info {
+    padding: 12px;
+}
+
+.video-name {
+    font-weight: 500;
+    margin-bottom: 4px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.video-desc {
+    font-size: 12px;
+    color: rgba(255, 255, 255, 0.5);
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+}
+
+.episode-section {
+    background: rgba(255, 255, 255, 0.02);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    border-radius: 16px;
+    padding: 20px;
+    margin-bottom: 20px;
+}
+
+.no-videos {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 16px;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px dashed rgba(255, 255, 255, 0.1);
+    border-radius: 12px;
+    color: rgba(255, 255, 255, 0.4);
+    font-size: 14px;
+}
+
+.video-badge {
+    position: absolute;
+    top: 8px;
+    left: 8px;
+    padding: 2px 8px;
+    background: linear-gradient(135deg, rgba(124, 58, 237, 0.8), rgba(37, 99, 235, 0.8));
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 600;
 }
 </style>
 {% endblock %}
@@ -367,9 +510,11 @@ function loadSeriesAssets(seriesId, assetType = 'role') {
     if (assetType === 'role') {
         apiUrl = `/assets/api/series/${seriesId}/assets/`;
     } else if (assetType === 'scene') {
-        apiUrl = `/assets/api/locked-scenes/`;
+        apiUrl = `/assets/api/series/${seriesId}/scenes/`;
     } else if (assetType === 'prop') {
-        apiUrl = `/assets/api/locked-props/`;
+        apiUrl = `/assets/api/series/${seriesId}/props/`;
+    } else if (assetType === 'video') {
+        apiUrl = `/assets/api/series/${seriesId}/video-assets/`;
     }
 
     fetch(apiUrl)
@@ -388,6 +533,8 @@ function loadSeriesAssets(seriesId, assetType = 'role') {
                         renderSceneAssets(result.data);
                     } else if (assetType === 'prop') {
                         renderPropAssets(result.data);
+                    } else if (assetType === 'video') {
+                        renderVideoAssets(result.data);
                     }
                 } catch (e) {
                     console.error('renderAssets error:', e);
@@ -782,6 +929,132 @@ function updatePreviewZoom() {
     const zoomLevel = document.getElementById('zoomLevel');
     if (zoomLevel) {
         zoomLevel.textContent = Math.round(assetZoom * 100) + '%';
+    }
+}
+
+// 渲染影视资产
+function renderVideoAssets(data) {
+    const content = document.getElementById('assetContent');
+    const { seriesId, seriesName, episodes } = data;
+
+    if (!episodes || episodes.length === 0) {
+        content.innerHTML = `
+            <div class="text-center py-12">
+                <i data-lucide="film" class="w-16 h-16 text-white/20 mx-auto mb-4"></i>
+                <p class="text-white/50">暂无影视资产</p>
+                <p class="text-white/30 text-sm mt-2">视频生成完成后将显示在这里</p>
+            </div>
+        `;
+        initIcons();
+        return;
+    }
+
+    // 统计总数
+    let totalShots = 0, totalCompleted = 0;
+    episodes.forEach(ep => {
+        totalShots += ep.totalShots || 0;
+        totalCompleted += ep.completedShots || 0;
+    });
+
+    let html = `
+        <div class="mb-6">
+            <h2 class="text-xl font-bold">${seriesName}</h2>
+            <p class="text-white/50 text-sm mt-1">共 ${episodes.length} 集 · ${totalCompleted}/${totalShots} 个分镜已完成</p>
+        </div>
+    `;
+
+    episodes.forEach(episode => {
+        const episodeName = episode.episodeName || ('第' + episode.episodeNumber + '集');
+        html += `
+            <div class="episode-section">
+                <div class="flex items-center gap-3 mb-4">
+                    <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-purple-500 to-blue-500 flex items-center justify-center">
+                        <span class="text-sm font-bold">${episode.episodeNumber}</span>
+                    </div>
+                    <div>
+                        <h3 class="font-semibold">${episodeName}</h3>
+                        <p class="text-white/40 text-xs">${episode.completedShots}/${episode.totalShots} 分镜已完成</p>
+                    </div>
+                </div>
+        `;
+
+        if (episode.shots && episode.shots.length > 0) {
+            html += `<div class="video-grid">`;
+            episode.shots.forEach(shot => {
+                const shotName = shot.shotName || ('分镜 ' + shot.shotNumber);
+                const duration = shot.duration || 5;
+                html += `
+                    <div class="video-card" onclick="openVideoPreview('${shot.videoUrl}', '${shot.thumbnailUrl || ''}', '${seriesName} - ${episodeName} - ${shotName}', '${(shot.description || '').replace(/'/g, "\\'")}')">
+                        <div class="video-thumbnail">
+                            ${shot.thumbnailUrl
+                                ? `<img src="${shot.thumbnailUrl}" alt="${shotName}">`
+                                : `<video src="${shot.videoUrl}" muted preload="metadata"></video>`
+                            }
+                            <div class="play-overlay">
+                                <i data-lucide="play" class="w-8 h-8"></i>
+                            </div>
+                            <span class="duration-badge">${duration}s</span>
+                            <span class="video-badge">V${shot.shotNumber}</span>
+                        </div>
+                        <div class="video-info">
+                            <p class="video-name">${shotName}</p>
+                            ${shot.description ? `<p class="video-desc">${shot.description}</p>` : ''}
+                        </div>
+                    </div>
+                `;
+            });
+            html += `</div>`;
+        } else {
+            html += `
+                <div class="no-videos">
+                    <i data-lucide="video-off" class="w-6 h-6 text-white/30"></i>
+                    <span>暂无已完成的视频</span>
+                </div>
+            `;
+        }
+
+        html += `</div>`; // episode-section
+    });
+
+    content.innerHTML = html;
+    initIcons();
+}
+
+// 视频预览
+function openVideoPreview(videoUrl, thumbnailUrl, title, description) {
+    document.getElementById('videoPreviewTitle').textContent = title || '视频预览';
+    const video = document.getElementById('previewVideo');
+    video.src = videoUrl;
+    video.poster = thumbnailUrl;
+    document.getElementById('videoDownloadBtn').href = videoUrl;
+
+    // 显示描述
+    const descContainer = document.getElementById('videoDescription');
+    const descText = document.getElementById('videoDescText');
+    if (description) {
+        descText.textContent = description;
+        descContainer.classList.remove('hidden');
+    } else {
+        descContainer.classList.add('hidden');
+    }
+
+    document.getElementById('videoPreviewModal').classList.add('active');
+    initIcons();
+}
+
+function closeVideoModal(event) {
+    if (event && event.target !== event.currentTarget) return;
+    document.getElementById('videoPreviewModal').classList.remove('active');
+    const video = document.getElementById('previewVideo');
+    if (video) video.pause();
+}
+
+function toggleFullscreen() {
+    const video = document.getElementById('previewVideo');
+    if (video.requestFullscreen) {
+        video.requestFullscreen();
+    } else if (video.webkitRequestFullscreen) {
+        video.webkitRequestFullscreen();
     }
 }
 </script>

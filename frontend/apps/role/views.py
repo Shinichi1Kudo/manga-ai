@@ -7,9 +7,15 @@ from django.views.decorators.csrf import csrf_exempt
 from api.backend_client import BackendClient, BackendAPIError
 
 
+def get_client(request):
+    """获取带认证Token的BackendClient"""
+    token = request.session.get('token')
+    return BackendClient(token=token)
+
+
 def role_detail(request, role_id):
     """角色详情页面"""
-    client = BackendClient()
+    client = get_client(request)
     try:
         role = client.get(f'/v1/roles/{role_id}')
         assets = client.get(f'/v1/assets/role/{role_id}')
@@ -33,7 +39,7 @@ def role_detail(request, role_id):
 @require_http_methods(["POST"])
 def role_create(request, series_id):
     """创建角色"""
-    client = BackendClient()
+    client = get_client(request)
     try:
         data = json.loads(request.body)
         data['seriesId'] = series_id
@@ -47,7 +53,7 @@ def role_create(request, series_id):
 @require_http_methods(["DELETE"])
 def role_delete(request, role_id):
     """删除角色"""
-    client = BackendClient()
+    client = get_client(request)
     try:
         client.delete(f'/v1/roles/{role_id}')
         return JsonResponse({'success': True})
@@ -59,7 +65,7 @@ def role_delete(request, role_id):
 @require_http_methods(["POST"])
 def role_confirm(request, role_id):
     """确认角色"""
-    client = BackendClient()
+    client = get_client(request)
     try:
         client.post(f'/v1/roles/{role_id}/confirm')
         return JsonResponse({'success': True})
@@ -71,7 +77,7 @@ def role_confirm(request, role_id):
 @require_http_methods(["POST"])
 def role_regenerate(request, role_id):
     """重新生成角色图片"""
-    client = BackendClient()
+    client = get_client(request)
     try:
         data = json.loads(request.body)
         result = client.post(f'/v1/roles/{role_id}/regenerate', {
@@ -98,7 +104,7 @@ def role_regenerate(request, role_id):
 @require_http_methods(["PUT"])
 def role_update(request, role_id):
     """更新角色属性"""
-    client = BackendClient()
+    client = get_client(request)
     try:
         data = json.loads(request.body)
         result = client.put(f'/v1/roles/{role_id}', data)
@@ -111,7 +117,7 @@ def role_update(request, role_id):
 @require_http_methods(["POST"])
 def role_unlock(request, role_id):
     """解锁角色（恢复为待审核状态）"""
-    client = BackendClient()
+    client = get_client(request)
     try:
         client.post(f'/v1/roles/{role_id}/unlock')
         return JsonResponse({'success': True})

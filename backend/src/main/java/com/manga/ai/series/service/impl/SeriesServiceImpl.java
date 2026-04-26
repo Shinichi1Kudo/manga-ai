@@ -24,9 +24,19 @@ import com.manga.ai.series.dto.SeriesDetailVO;
 import com.manga.ai.series.dto.SeriesInitRequest;
 import com.manga.ai.series.dto.SeriesProgressMessage;
 import com.manga.ai.series.dto.SeriesProgressVO;
+import com.manga.ai.series.dto.SeriesVideoAssetsVO;
+import com.manga.ai.series.dto.EpisodeVideoAssetsVO;
+import com.manga.ai.series.dto.ShotVideoInfoVO;
 import com.manga.ai.series.entity.Series;
 import com.manga.ai.series.mapper.SeriesMapper;
 import com.manga.ai.series.service.SeriesService;
+import com.manga.ai.episode.entity.Episode;
+import com.manga.ai.episode.mapper.EpisodeMapper;
+import com.manga.ai.shot.entity.Shot;
+import com.manga.ai.shot.mapper.ShotMapper;
+import com.manga.ai.shot.entity.ShotVideoAsset;
+import com.manga.ai.shot.mapper.ShotVideoAssetMapper;
+import com.manga.ai.user.service.impl.UserServiceImpl.UserContextHolder;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.BeanUtils;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -62,6 +72,9 @@ public class SeriesServiceImpl implements SeriesService {
     private final NLPExtractService nlpExtractService;
     private final ImageGenerateService imageGenerateService;
     private final SimpMessagingTemplate messagingTemplate;
+    private final EpisodeMapper episodeMapper;
+    private final ShotMapper shotMapper;
+    private final ShotVideoAssetMapper shotVideoAssetMapper;
 
     // 自注入，用于调用 @Async 方法（解决 Spring 代理问题）
     private SeriesService self;
@@ -74,7 +87,10 @@ public class SeriesServiceImpl implements SeriesService {
                              NLPExtractService nlpExtractService,
                              @Lazy ImageGenerateService imageGenerateService,
                              SimpMessagingTemplate messagingTemplate,
-                             @Lazy SeriesService self) {
+                             @Lazy SeriesService self,
+                             EpisodeMapper episodeMapper,
+                             ShotMapper shotMapper,
+                             ShotVideoAssetMapper shotVideoAssetMapper) {
         this.seriesMapper = seriesMapper;
         this.roleMapper = roleMapper;
         this.roleAssetMapper = roleAssetMapper;
@@ -83,6 +99,9 @@ public class SeriesServiceImpl implements SeriesService {
         this.imageGenerateService = imageGenerateService;
         this.messagingTemplate = messagingTemplate;
         this.self = self;
+        this.episodeMapper = episodeMapper;
+        this.shotMapper = shotMapper;
+        this.shotVideoAssetMapper = shotVideoAssetMapper;
     }
 
     @Value("${storage.project-path:./storage/projects}")
@@ -91,8 +110,12 @@ public class SeriesServiceImpl implements SeriesService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public SeriesDetailVO initSeries(SeriesInitRequest request) {
+        // 获取当前用户ID
+        Long userId = UserContextHolder.getUserId();
+
         // 1. 创建系列记录
         Series series = new Series();
+        series.setUserId(userId);
         series.setSeriesName(request.getSeriesName());
         series.setOutline(request.getOutline());
         series.setBackground(request.getBackground());
@@ -166,7 +189,11 @@ public class SeriesServiceImpl implements SeriesService {
 
     @Override
     public List<SeriesDetailVO> getSeriesList(Integer page, Integer pageSize) {
+        Long userId = UserContextHolder.getUserId();
         LambdaQueryWrapper<Series> wrapper = new LambdaQueryWrapper<>();
+        if (userId != null) {
+            wrapper.eq(Series::getUserId, userId);
+        }
         wrapper.orderByDesc(Series::getCreatedAt);
 
         // 分页查询
@@ -197,12 +224,21 @@ public class SeriesServiceImpl implements SeriesService {
 
     @Override
     public Integer getSeriesCount() {
-        return Math.toIntExact(seriesMapper.selectCount(null));
+        Long userId = UserContextHolder.getUserId();
+        LambdaQueryWrapper<Series> wrapper = new LambdaQueryWrapper<>();
+        if (userId != null) {
+            wrapper.eq(Series::getUserId, userId);
+        }
+        return Math.toIntExact(seriesMapper.selectCount(wrapper));
     }
 
     @Override
     public List<SeriesDetailVO> getAllSeries() {
+        Long userId = UserContextHolder.getUserId();
         LambdaQueryWrapper<Series> wrapper = new LambdaQueryWrapper<>();
+        if (userId != null) {
+            wrapper.eq(Series::getUserId, userId);
+        }
         wrapper.orderByDesc(Series::getCreatedAt);
         List<Series> seriesList = seriesMapper.selectList(wrapper);
 
@@ -675,7 +711,11 @@ public class SeriesServiceImpl implements SeriesService {
 
     @Override
     public List<SeriesDetailVO> getLockedSeries() {
+        Long userId = UserContextHolder.getUserId();
         LambdaQueryWrapper<Series> wrapper = new LambdaQueryWrapper<>();
+        if (userId != null) {
+            wrapper.eq(Series::getUserId, userId);
+        }
         // 状态为 LOCKED(2) 或 LOCKED(3，角色锁定后系列状态)
         wrapper.in(Series::getStatus, SeriesStatus.LOCKED.getCode(), 3)
                 .orderByDesc(Series::getCreatedAt);
@@ -715,7 +755,13 @@ public class SeriesServiceImpl implements SeriesService {
 
     @Override
     public List<SeriesDetailVO> getTrashList() {
-        List<Series> seriesList = seriesMapper.selectTrashList();
+        Long userId = UserContextHolder.getUserId();
+        List<Series> seriesList;
+        if (userId != null) {
+            seriesList = seriesMapper.selectTrashListByUserId(userId);
+        } else {
+            seriesList = seriesMapper.selectTrashList();
+        }
 
         // 批量查询角色数量
         java.util.Map<Long, Integer> roleCountMap = new java.util.HashMap<>();
@@ -754,5 +800,84 @@ public class SeriesServiceImpl implements SeriesService {
     public void permanentDeleteSeries(Long seriesId) {
         seriesMapper.realDeleteById(seriesId);
         log.info("系列已彻底删除: seriesId={}", seriesId);
+    }
+
+    @Override
+    public SeriesVideoAssetsVO getSeriesVideoAssets(Long seriesId) {
+        // 1. 获取系列信息
+        Series series = seriesMapper.selectById(seriesId);
+        if (series == null) {
+            throw new BusinessException("系列不存在");
+        }
+
+        // 2. 获取该系列下所有剧集（@TableLogic会自动过滤已删除的）
+        LambdaQueryWrapper<Episode> episodeWrapper = new LambdaQueryWrapper<>();
+        episodeWrapper.eq(Episode::getSeriesId, seriesId)
+                .orderByAsc(Episode::getEpisodeNumber);
+        List<Episode> episodes = episodeMapper.selectList(episodeWrapper);
+
+        // 3. 遍历剧集，获取分镜视频
+        List<EpisodeVideoAssetsVO> episodeVOs = new ArrayList<>();
+        for (Episode episode : episodes) {
+            // 获取剧集下所有分镜（@TableLogic会自动过滤已删除的）
+            LambdaQueryWrapper<Shot> shotWrapper = new LambdaQueryWrapper<>();
+            shotWrapper.eq(Shot::getEpisodeId, episode.getId())
+                    .orderByAsc(Shot::getShotNumber);
+            List<Shot> shots = shotMapper.selectList(shotWrapper);
+
+            List<ShotVideoInfoVO> shotVOs = new ArrayList<>();
+            int completedCount = 0;
+
+            for (Shot shot : shots) {
+                // 优先从 ShotVideoAsset 获取激活视频
+                ShotVideoAsset activeAsset = shotVideoAssetMapper.selectActiveByShotId(shot.getId());
+
+                String videoUrl = null;
+                String thumbnailUrl = null;
+
+                if (activeAsset != null) {
+                    videoUrl = activeAsset.getVideoUrl();
+                    thumbnailUrl = activeAsset.getThumbnailUrl();
+                } else {
+                    // 兼容旧逻辑：直接从 Shot 获取
+                    videoUrl = shot.getVideoUrl();
+                    thumbnailUrl = shot.getThumbnailUrl();
+                }
+
+                // 只返回有视频的分镜
+                if (videoUrl != null && !videoUrl.isEmpty()) {
+                    ShotVideoInfoVO shotVO = new ShotVideoInfoVO();
+                    shotVO.setShotId(shot.getId());
+                    shotVO.setShotNumber(shot.getShotNumber());
+                    shotVO.setShotName(shot.getShotName());
+                    shotVO.setDescription(shot.getDescription());
+                    shotVO.setDuration(shot.getDuration());
+                    shotVO.setVideoUrl(videoUrl);
+                    shotVO.setThumbnailUrl(thumbnailUrl);
+                    shotVO.setGenerationStatus(shot.getGenerationStatus());
+                    shotVO.setCreatedAt(shot.getCreatedAt());
+                    shotVOs.add(shotVO);
+
+                    if (shot.getGenerationStatus() != null && shot.getGenerationStatus() == 2) {
+                        completedCount++;
+                    }
+                }
+            }
+
+            EpisodeVideoAssetsVO episodeVO = new EpisodeVideoAssetsVO();
+            episodeVO.setEpisodeId(episode.getId());
+            episodeVO.setEpisodeNumber(episode.getEpisodeNumber());
+            episodeVO.setEpisodeName(episode.getEpisodeName());
+            episodeVO.setTotalShots(shots.size());
+            episodeVO.setCompletedShots(completedCount);
+            episodeVO.setShots(shotVOs);
+            episodeVOs.add(episodeVO);
+        }
+
+        SeriesVideoAssetsVO result = new SeriesVideoAssetsVO();
+        result.setSeriesId(seriesId);
+        result.setSeriesName(series.getSeriesName());
+        result.setEpisodes(episodeVOs);
+        return result;
     }
 }

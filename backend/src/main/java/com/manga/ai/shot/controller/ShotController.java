@@ -12,7 +12,9 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * 分镜控制器
@@ -71,6 +73,16 @@ public class ShotController {
         log.info("生成视频: shotId={}", shotId);
         shotService.generateVideo(shotId);
         return Result.success();
+    }
+
+    /**
+     * 获取视频生成积分预览
+     */
+    @GetMapping("/{shotId}/credit-preview")
+    public Result<Map<String, Object>> getVideoCreditPreview(@PathVariable Long shotId) {
+        log.info("获取积分预览: shotId={}", shotId);
+        Map<String, Object> preview = shotService.getVideoCreditPreview(shotId);
+        return Result.success(preview);
     }
 
     /**
