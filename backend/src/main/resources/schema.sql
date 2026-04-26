@@ -204,11 +204,16 @@ CREATE TABLE IF NOT EXISTS shot (
     id BIGINT AUTO_INCREMENT PRIMARY KEY,
     episode_id BIGINT NOT NULL,
     shot_number INT NOT NULL,
+    shot_name VARCHAR(100),
     scene_id BIGINT,
     description CLOB,
     camera_angle VARCHAR(50),
     camera_movement VARCHAR(50),
+    shot_type VARCHAR(100),
+    start_time INT DEFAULT 0,
+    end_time INT DEFAULT 5,
     duration INT DEFAULT 5,
+    sound_effect VARCHAR(500),
     characters_json CLOB,
     props_json CLOB,
     reference_prompt CLOB,
@@ -217,11 +222,21 @@ CREATE TABLE IF NOT EXISTS shot (
     thumbnail_url VARCHAR(500),
     video_seed BIGINT,
     generation_status INT DEFAULT 0,
+    generation_error VARCHAR(500),
+    generation_duration INT,
+    generation_start_time TIMESTAMP,
     status INT DEFAULT 0,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     is_deleted INT DEFAULT 0
 );
+
+-- 添加 shot_name 列（如果不存在）
+ALTER TABLE shot ADD COLUMN IF NOT EXISTS shot_name VARCHAR(100);
+
+-- 添加视频分辨率和比例字段
+ALTER TABLE shot ADD COLUMN IF NOT EXISTS resolution VARCHAR(10) DEFAULT '720p';
+ALTER TABLE shot ADD COLUMN IF NOT EXISTS aspect_ratio VARCHAR(10) DEFAULT '16:9';
 
 -- 分镜-角色关联表
 CREATE TABLE IF NOT EXISTS shot_character (
@@ -346,6 +361,34 @@ CREATE TABLE IF NOT EXISTS shot_reference_image (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
+-- 分镜视频资产版本表
+CREATE TABLE IF NOT EXISTS shot_video_asset (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    shot_id BIGINT NOT NULL,
+    version INT NOT NULL DEFAULT 1,
+    video_url VARCHAR(1024),
+    thumbnail_url VARCHAR(1024),
+    is_active TINYINT DEFAULT 0,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_shot_video_asset_shot_id ON shot_video_asset(shot_id);
+CREATE INDEX IF NOT EXISTS idx_shot_video_asset_version ON shot_video_asset(shot_id, version);
+
+-- 分镜视频资产元数据表
+CREATE TABLE IF NOT EXISTS shot_video_asset_metadata (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    shot_video_asset_id BIGINT NOT NULL UNIQUE,
+    model VARCHAR(100),
+    prompt CLOB,
+    reference_urls CLOB,
+    generation_params CLOB,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_shot_video_asset_metadata_asset_id ON shot_video_asset_metadata(shot_video_asset_id);
 
 CREATE INDEX IF NOT EXISTS idx_shot_ref_shot_id ON shot_reference_image(shot_id);
 CREATE INDEX IF NOT EXISTS idx_shot_ref_reference ON shot_reference_image(image_type, reference_id);

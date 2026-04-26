@@ -78,23 +78,20 @@ public class SeedanceServiceImpl implements SeedanceService {
             JSONObject requestBody = new JSONObject();
             String url;
 
-            // 判断是否使用多参考图格式
-            boolean useMultiReferenceFormat = request.getContents() != null && !request.getContents().isEmpty();
+            // 统一使用新格式 API
+            requestBody.put("model", "doubao-seedance-2-0-fast-260128");
 
-            if (useMultiReferenceFormat) {
-                // 新格式：多参考图 i2v 模型
-                requestBody.put("model", "doubao-seedance-2-0-fast-260128");
+            // 构建 content 数组
+            JSONArray contentArray = new JSONArray();
 
-                // 构建 content 数组 (注意：官方用 content 单数)
-                JSONArray contentArray = new JSONArray();
+            // 1. 添加文本 prompt
+            JSONObject textContent = new JSONObject();
+            textContent.put("type", "text");
+            textContent.put("text", request.getPrompt());
+            contentArray.add(textContent);
 
-                // 1. 添加文本 prompt
-                JSONObject textContent = new JSONObject();
-                textContent.put("type", "text");
-                textContent.put("text", request.getPrompt());
-                contentArray.add(textContent);
-
-                // 2. 添加参考图
+            // 2. 添加参考图（如果有）
+            if (request.getContents() != null && !request.getContents().isEmpty()) {
                 for (SeedanceRequest.ReferenceContent content : request.getContents()) {
                     if ("image_url".equals(content.getType()) && content.getImageUrl() != null) {
                         JSONObject imageContent = new JSONObject();
@@ -108,29 +105,16 @@ public class SeedanceServiceImpl implements SeedanceService {
                         contentArray.add(imageContent);
                     }
                 }
-
-                // 官方示例用 content (单数)
-                requestBody.put("content", contentArray);
-                requestBody.put("duration", request.getDuration());
-                requestBody.put("ratio", "16:9");
-                requestBody.put("watermark", false);
-
-                // 使用新的 API 端点
-                url = baseUrl + "/contents/generations/tasks";
-            } else {
-                // 旧格式：单参考图或纯文本
-                requestBody.put("model", model);
-                requestBody.put("prompt", request.getPrompt());
-                requestBody.put("duration", request.getDuration());
-                requestBody.put("width", request.getWidth());
-                requestBody.put("height", request.getHeight());
-
-                if (request.getReferenceImageUrl() != null && !request.getReferenceImageUrl().isEmpty()) {
-                    requestBody.put("image", request.getReferenceImageUrl());
-                }
-
-                url = baseUrl + "/video/generations";
             }
+
+            // 官方示例用 content (单数)
+            requestBody.put("content", contentArray);
+            requestBody.put("duration", request.getDuration());
+            requestBody.put("ratio", "16:9");
+            requestBody.put("watermark", false);
+
+            // 统一使用新的 API 端点
+            url = baseUrl + "/contents/generations/tasks";
 
             if (request.getSeed() != null) {
                 requestBody.put("seed", request.getSeed());
@@ -142,7 +126,7 @@ public class SeedanceServiceImpl implements SeedanceService {
 
             HttpEntity<String> entity = new HttpEntity<>(requestBody.toJSONString(), headers);
 
-            log.info("调用Seedance API ({}): {}", useMultiReferenceFormat ? "多参考图" : "单参考图", url);
+            log.info("调用Seedance API: {}", url);
             log.info("请求体: {}", requestBody.toJSONString());
             ResponseEntity<String> response = restTemplate.exchange(url, HttpMethod.POST, entity, String.class);
 
@@ -158,7 +142,11 @@ public class SeedanceServiceImpl implements SeedanceService {
             log.error("Seedance API调用失败: statusCode={}, responseBody={}", e.getStatusCode(), e.getResponseBodyAsString());
             SeedanceResponse errorResponse = new SeedanceResponse();
             errorResponse.setStatus("failed");
-            errorResponse.setErrorMessage(e.getStatusCode() + ": " + e.getResponseBodyAsString());
+
+            // 解析错误信息并转换为中文友好提示
+            String errorBody = e.getResponseBodyAsString();
+            String friendlyError = parseApiError(errorBody);
+            errorResponse.setErrorMessage(friendlyError);
             return errorResponse;
         } catch (Exception e) {
             log.error("视频生成任务提交异常", e);
@@ -341,18 +329,69 @@ public class SeedanceServiceImpl implements SeedanceService {
             JSONObject content = json.getJSONObject("content");
             if (content != null) {
                 response.setVideoUrl(content.getString("video_url"));
+                // 尝试多个可能的缩略图字段名
+                String thumbnailUrl = content.getString("thumbnail_url");
+                if (thumbnailUrl == null) {
+                    thumbnailUrl = content.getString("cover_url");
+                }
+                if (thumbnailUrl == null) {
+                    thumbnailUrl = content.getString("poster_url");
+                }
+                response.setThumbnailUrl(thumbnailUrl);
             }
             // 兼容旧格式：data[0].url
             JSONArray dataArray = json.getJSONArray("data");
             if (dataArray != null && !dataArray.isEmpty()) {
                 JSONObject videoData = dataArray.getJSONObject(0);
-                response.setVideoUrl(videoData.getString("url"));
-                response.setThumbnailUrl(videoData.getString("thumbnail_url"));
+                if (response.getVideoUrl() == null) {
+                    response.setVideoUrl(videoData.getString("url"));
+                }
+                if (response.getThumbnailUrl() == null) {
+                    String thumbnailUrl = videoData.getString("thumbnail_url");
+                    if (thumbnailUrl == null) {
+                        thumbnailUrl = videoData.getString("cover_url");
+                    }
+                    response.setThumbnailUrl(thumbnailUrl);
+                }
             }
         } else if ("failed".equals(response.getStatus())) {
             response.setErrorMessage(json.getString("error"));
         }
 
         return response;
+    }
+
+    /**
+     * 解析API错误并返回中文友好提示
+     */
+    private String parseApiError(String errorBody) {
+        try {
+            JSONObject json = JSON.parseObject(errorBody);
+            JSONObject error = json.getJSONObject("error");
+            if (error != null) {
+                String code = error.getString("code");
+                String message = error.getString("message");
+
+                // 根据错误代码返回中文提示
+                if ("AccountOverdueError".equals(code)) {
+                    return "火山引擎账户欠费，请充值后重试";
+                } else if ("InsufficientBalance".equals(code)) {
+                    return "账户余额不足，请充值后重试";
+                } else if ("RateLimitExceeded".equals(code)) {
+                    return "请求过于频繁，请稍后重试";
+                } else if ("InvalidApiKey".equals(code)) {
+                    return "API密钥无效，请检查配置";
+                } else if ("ModelNotFound".equals(code)) {
+                    return "模型不存在或已下线";
+                } else if ("ContentViolation".equals(code)) {
+                    return "内容违规，请修改后重试";
+                } else if (message != null && !message.isEmpty()) {
+                    return message;
+                }
+            }
+        } catch (Exception e) {
+            log.warn("解析错误信息失败: {}", e.getMessage());
+        }
+        return "视频生成失败，请稍后重试";
     }
 }

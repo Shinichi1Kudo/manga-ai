@@ -5,6 +5,7 @@ import lombok.Data;
 
 import java.io.Serializable;
 import java.time.LocalDateTime;
+import java.util.List;
 
 /**
  * 系列详情 VO
@@ -40,6 +41,11 @@ public class SeriesDetailVO implements Serializable {
      * 已确认角色数量
      */
     private Integer confirmedRoleCount;
+
+    /**
+     * 角色名称列表
+     */
+    private List<String> roles;
 
     /**
      * 资产数量

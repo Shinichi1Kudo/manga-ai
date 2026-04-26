@@ -97,7 +97,12 @@ public class SeriesServiceImpl implements SeriesService {
         series.setOutline(request.getOutline());
         series.setBackground(request.getBackground());
         series.setCharacterIntro(request.getCharacterIntro());
-        series.setStyleKeywords(request.getStyleKeywords());
+        // 系列风格优先使用 seriesStyle，兼容旧格式 styleKeywords
+        if (request.getSeriesStyle() != null && !request.getSeriesStyle().isEmpty()) {
+            series.setStyleKeywords(request.getSeriesStyle());
+        } else {
+            series.setStyleKeywords(request.getStyleKeywords());
+        }
         series.setColorPreference(request.getColorPreference());
         series.setArtStyleRef(request.getArtStyleRef());
         series.setAspectRatio(request.getAspectRatio());
@@ -135,16 +140,25 @@ public class SeriesServiceImpl implements SeriesService {
 
         SeriesDetailVO vo = convertToVO(series);
 
-        // 统计角色和资产数量
+        // 查询角色列表
         LambdaQueryWrapper<Role> roleWrapper = new LambdaQueryWrapper<>();
-        roleWrapper.eq(Role::getSeriesId, seriesId);
-        Long totalRoles = roleMapper.selectCount(roleWrapper);
-        vo.setRoleCount(totalRoles.intValue());
+        roleWrapper.eq(Role::getSeriesId, seriesId)
+                .orderByAsc(Role::getRoleCode);
+        List<Role> roles = roleMapper.selectList(roleWrapper);
 
-        LambdaQueryWrapper<Role> confirmedWrapper = new LambdaQueryWrapper<>();
-        confirmedWrapper.eq(Role::getSeriesId, seriesId)
-                .ge(Role::getStatus, 2);
-        Long confirmedRoles = roleMapper.selectCount(confirmedWrapper);
+        // 统计角色数量
+        vo.setRoleCount(roles.size());
+
+        // 设置角色名称列表
+        List<String> roleNames = roles.stream()
+                .map(Role::getRoleName)
+                .collect(java.util.stream.Collectors.toList());
+        vo.setRoles(roleNames);
+
+        // 统计已确认角色数量
+        Long confirmedRoles = roles.stream()
+                .filter(r -> r.getStatus() >= 2)
+                .count();
         vo.setConfirmedRoleCount(confirmedRoles.intValue());
 
         return vo;
@@ -460,6 +474,16 @@ public class SeriesServiceImpl implements SeriesService {
             // 发送当前处理角色
             sendProgress(seriesId, "PROCESSING", completedRoles.get(), totalRoles, 0, "正在生成: " + roleName);
 
+            // 获取系列的默认风格
+            Series series = seriesMapper.selectById(seriesId);
+            String seriesStyle = series != null ? series.getStyleKeywords() : null;
+
+            // 角色风格：优先使用角色指定风格，否则使用系列默认风格
+            String charStyle = charData.getString("styleKeywords");
+            if (charStyle == null || charStyle.isEmpty()) {
+                charStyle = seriesStyle;
+            }
+
             // 创建角色记录
             Role role = new Role();
             role.setSeriesId(seriesId);
@@ -468,18 +492,18 @@ public class SeriesServiceImpl implements SeriesService {
             role.setStatus(RoleStatus.EXTRACTING.getCode());
             role.setCustomPrompt(charData.getString("customPrompt"));
             role.setOriginalPrompt(charData.getString("originalPrompt"));
-            role.setStyleKeywords(charData.getString("styleKeywords"));
+            role.setStyleKeywords(charStyle);
             role.setExtractConfidence(new BigDecimal("1.0"));
             role.setCreatedAt(LocalDateTime.now());
             role.setUpdatedAt(LocalDateTime.now());
             roleMapper.insert(role);
 
-            log.info("创建角色: id={}, name={}", role.getId(), role.getRoleName());
+            log.info("创建角色: id={}, name={}, style={}", role.getId(), role.getRoleName(), charStyle);
 
             // 构建请求
             ImageGenerateRequest imageRequest = ImageGenerateRequest.builder()
                     .roleName(role.getRoleName())
-                    .styleKeywords(role.getStyleKeywords())
+                    .styleKeywords(charStyle)
                     .aspectRatio(charData.getString("aspectRatio"))
                     .quality(charData.getString("quality"))
                     .customPrompt(role.getCustomPrompt())

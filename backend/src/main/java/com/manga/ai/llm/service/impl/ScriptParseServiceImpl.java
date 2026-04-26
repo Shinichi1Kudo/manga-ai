@@ -201,6 +201,206 @@ public class ScriptParseServiceImpl implements ScriptParseService {
         return result;
     }
 
+    @Override
+    public ScriptParseResult parseShots(String scriptText, Long seriesId, Map<String, Long> sceneCodeToIdMap, String parseMode) {
+        log.info("开始解析分镜: seriesId={}, parseMode={}", seriesId, parseMode);
+
+        int maxRetries = 3;
+        ScriptParseResult result = new ScriptParseResult();
+
+        for (int attempt = 1; attempt <= maxRetries; attempt++) {
+            log.info("分镜解析尝试 {}/{}", attempt, maxRetries);
+
+            try {
+                List<String> knownCharacters = getKnownCharacters(seriesId);
+
+                // 根据模式选择不同的提示词
+                String systemPrompt;
+                if ("detailed".equals(parseMode)) {
+                    systemPrompt = buildDetailedShotsPrompt(knownCharacters, sceneCodeToIdMap);
+                } else {
+                    systemPrompt = buildShotsOnlyPrompt(knownCharacters, sceneCodeToIdMap);
+                }
+
+                String userPrompt = buildUserPrompt(scriptText);
+
+                LLMResponse response = llmService.chat(systemPrompt, userPrompt);
+
+                if ("success".equals(response.getStatus())) {
+                    result = parseLLMResponseShotsOnly(response.getContent());
+
+                    if (result.getShots() != null && !result.getShots().isEmpty()) {
+                        result.setStatus("success");
+                        log.info("分镜解析完成: shots={}, parseMode={}, 尝试次数={}",
+                                result.getShots().size(), parseMode, attempt);
+                        return result;
+                    } else {
+                        log.warn("分镜解析结果为空，准备重试 (尝试 {}/{})", attempt, maxRetries);
+                    }
+                } else {
+                    log.warn("LLM调用失败: {}, 准备重试 (尝试 {}/{})", response.getErrorMessage(), attempt, maxRetries);
+                    result.setErrorMessage(response.getErrorMessage());
+                }
+            } catch (Exception e) {
+                log.error("分镜解析异常 (尝试 {}/{}): {}", attempt, maxRetries, e.getMessage());
+                result.setErrorMessage(e.getMessage());
+            }
+
+            if (attempt < maxRetries) {
+                try {
+                    long waitTime = 2000 * attempt;
+                    log.info("等待 {}ms 后重试...", waitTime);
+                    Thread.sleep(waitTime);
+                } catch (InterruptedException ie) {
+                    Thread.currentThread().interrupt();
+                    break;
+                }
+            }
+        }
+
+        result.setStatus("failed");
+        log.error("分镜解析失败，已重试{}次", maxRetries);
+        return result;
+    }
+
+    /**
+     * 构建详细版分镜解析提示词（适配 Seedance 2.0）
+     * 遵循三段式结构、八大核心要素、运镜限制等规范
+     */
+    private String buildDetailedShotsPrompt(List<String> knownCharacters, Map<String, Long> sceneCodeToIdMap) {
+        StringBuilder prompt = new StringBuilder();
+        prompt.append("你是一位专业的电影导演和编剧，擅长将剧本转化为精细的分镜脚本。\n");
+        prompt.append("你的任务是将剧本拆分为高质量的分镜，每个分镜都需要有电影感的视觉描述。\n\n");
+
+        prompt.append("## 核心原则\n");
+        prompt.append("### 每个分镜必须包含\n");
+        prompt.append("1. **镜头标题**：格式为「镜头X｜镜头类型描述」，如「镜头1｜车内主观视角」\n");
+        prompt.append("2. **详细视觉描述**：包含场景环境、人物动作、表情细节、光影氛围\n");
+        prompt.append("3. **角色状态**：眼神、表情、肢体语言的精确描写\n");
+        prompt.append("4. **环境氛围**：光线、色调、动态元素（雨、烟、光斑等）\n");
+        prompt.append("5. **声音元素**：环境音、角色台词、特殊音效\n\n");
+
+        prompt.append("### 镜头精简原则\n");
+        prompt.append("- **合并相似镜头**：同一场景、同一角色的连续动作尽量合并为一个分镜\n");
+        prompt.append("- **减少切换频率**：每个分镜应承载完整的叙事单元\n");
+        prompt.append("- **时长优先**：单个镜头优先使用 8-15 秒，充分展现动作和情感\n");
+        prompt.append("- **最短时长**：单个镜头不少于 5 秒，除非是特写强调或转场\n\n");
+
+        prompt.append("## 镜头类型与运镜\n");
+        prompt.append("### 景别\n");
+        prompt.append("- 远景：展示环境全貌，人物渺小，适合开场/环境交代\n");
+        prompt.append("- 全景：展示人物全身及周边环境，适合动作场景\n");
+        prompt.append("- 中景：展示人物膝盖以上，适合对话/互动\n");
+        prompt.append("- 近景：展示人物胸部以上，适合情绪表达\n");
+        prompt.append("- 特写：展示人物面部或物体细节，适合强调\n");
+        prompt.append("- 大特写：极近距离展示细节，适合强烈情绪冲击\n\n");
+
+        prompt.append("### 特殊镜头技巧\n");
+        prompt.append("- 主观视角(POV)：从角色眼睛看到的画面\n");
+        prompt.append("- 低角度：从低处向上拍摄，突出威严或压迫感\n");
+        prompt.append("- 交叉剪辑：在不同场景间快速切换，营造紧张感\n");
+        prompt.append("- 手持感：模拟颠簸中的拍摄效果，增加临场感\n");
+        prompt.append("- 晃动镜头：表现紧张、混乱或冲击感\n\n");
+
+        prompt.append("### 镜头运动（每个分镜只能选1种）\n");
+        prompt.append("- 固定：镜头不动，适合对话/静止场景\n");
+        prompt.append("- 推镜头：向前推进，靠近主体，突出重点\n");
+        prompt.append("- 拉镜头：向后拉远，远离主体，展示环境\n");
+        prompt.append("- 摇镜头：原地转动，展示全景或跟随视线\n");
+        prompt.append("- 跟镜头：跟随移动的主体移动\n\n");
+
+        prompt.append("## 描述风格要求\n");
+        prompt.append("### 必须包含的细节\n");
+        prompt.append("- **眼神描写**：目光方向、焦点、情感传达\n");
+        prompt.append("  例：\"目光坚定地注视前方\"、\"眼神躲闪不敢直视\"、\"眼眶微红含泪凝视\"\n");
+        prompt.append("- **表情细节**：面部微表情变化，避免僵硬\n");
+        prompt.append("  例：\"嘴角微微上扬\"、\"眉心紧锁\"、\"下颚紧绷\"、\"嘴唇颤抖\"\n");
+        prompt.append("- **肢体语言**：动作力度、身体状态\n");
+        prompt.append("  例：\"手臂肌肉绷紧\"、\"双手颤抖\"、\"身体微微前倾\"\n");
+        prompt.append("- **动态元素**：环境中的运动物体\n");
+        prompt.append("  例：\"雨刮器疯狂摆动\"、\"血迹与雨水混成一片\"、\"光斑在脸上跳跃\"\n\n");
+
+        prompt.append("### 描述示例（参考风格）\n");
+        prompt.append("镜头1｜车内主观视角\n");
+        prompt.append("雨刮器疯狂摆动，挡风玻璃上血迹与雨水混成一片。车外，两只丧尸正以狂暴的姿态猛扑引擎盖，口中低吼伴随尖锐、断续的神经性嘶叫。\n\n");
+
+        prompt.append("镜头2｜中景·林骁猛打方向盘\n");
+        prompt.append("林骁咬紧牙关，手臂肌肉绷紧，猛地向右急转！他脸上有擦伤，眼神锐利却透着疲惫。\n\n");
+
+        prompt.append("镜头3｜低角度外拍·撞飞丧尸\n");
+        prompt.append("越野车咆哮冲出，前保险杠狠狠撞上第一只丧尸的胸腔——它竟在撞击瞬间张开双臂试图抱住引擎盖，指爪刮出刺耳金属声！冲击力将它掀飞，脊椎在空中扭曲成S形。\n\n");
+
+        prompt.append("## 时长说明\n");
+        prompt.append("- duration: 该分镜的时长（秒），范围 4-15 秒\n");
+        prompt.append("- 建议：普通分镜 8-10 秒，重要场景 10-15 秒，转场或特写 4-6 秒\n\n");
+
+        if (!knownCharacters.isEmpty()) {
+            prompt.append("## 已知角色列表\n");
+            prompt.append("以下角色已存在于本系列中，**必须使用这些角色名称**：\n");
+            for (String name : knownCharacters) {
+                prompt.append("- ").append(name).append("\n");
+            }
+            prompt.append("\n**重要**: 分镜中的角色必须从上述列表中选择，不要创建新角色。\n\n");
+        }
+
+        if (!sceneCodeToIdMap.isEmpty()) {
+            prompt.append("## 可用场景\n");
+            prompt.append("请使用以下场景编码：\n");
+            for (String sceneCode : sceneCodeToIdMap.keySet()) {
+                prompt.append("- ").append(sceneCode).append("\n");
+            }
+            prompt.append("\n");
+        }
+
+        prompt.append("## 输出格式\n");
+        prompt.append("请严格按照以下JSON格式输出，不要添加任何其他文字说明：\n");
+        prompt.append("```json\n");
+        prompt.append("{\n");
+        prompt.append("  \"shots\": [\n");
+        prompt.append("    {\n");
+        prompt.append("      \"shotNumber\": 1,\n");
+        prompt.append("      \"sceneCode\": \"SC01\",\n");
+        prompt.append("      \"sceneName\": \"场景名称\",\n");
+        prompt.append("      \"duration\": 10,\n");
+        prompt.append("      \"shotSize\": \"中景\",\n");
+        prompt.append("      \"cameraAngle\": \"平视\",\n");
+        prompt.append("      \"cameraMovement\": \"推镜头\",\n");
+        prompt.append("      \"shotType\": \"中景·角色名动作描述\",\n");
+        prompt.append("      \"description\": \"详细的视觉描述，包含场景环境、人物动作、表情细节、光影氛围。要求：眼神描写具体、表情细节丰富、肢体语言精确、动态元素明确。\",\n");
+        prompt.append("      \"soundEffect\": \"音效描述，如：引擎轰鸣声、雨声、角色喊叫等\",\n");
+        prompt.append("      \"characters\": [\n");
+        prompt.append("        {\n");
+        prompt.append("          \"roleName\": \"角色名称\",\n");
+        prompt.append("          \"action\": \"角色动作描述\",\n");
+        prompt.append("          \"expression\": \"表情描述（含微表情细节）\",\n");
+        prompt.append("          \"eyeExpression\": \"眼神描述（方向、焦点、情感）\",\n");
+        prompt.append("          \"position\": \"画面位置\",\n");
+        prompt.append("          \"clothingId\": 1\n");
+        prompt.append("        }\n");
+        prompt.append("      ],\n");
+        prompt.append("      \"props\": [\n");
+        prompt.append("        {\n");
+        prompt.append("          \"propName\": \"道具名称\",\n");
+        prompt.append("          \"position\": \"道具位置\",\n");
+        prompt.append("          \"interaction\": \"与角色的交互方式\"\n");
+        prompt.append("        }\n");
+        prompt.append("      ]\n");
+        prompt.append("    }\n");
+        prompt.append("  ]\n");
+        prompt.append("}\n");
+        prompt.append("```\n\n");
+
+        prompt.append("## 关键注意事项\n");
+        prompt.append("1. **描述要具体**：避免模糊的描述，使用具体的视觉细节\n");
+        prompt.append("2. **情感要到位**：每个角色必须有清晰的情感状态和表情描写\n");
+        prompt.append("3. **动作要有力**：动作描述要有力度感和方向感\n");
+        prompt.append("4. **环境要生动**：加入动态元素让画面活起来\n");
+        prompt.append("5. **镜头要精简**：优先使用长镜头（8-15秒），减少不必要的切换\n");
+        prompt.append("6. **保持连贯性**：相邻分镜之间要有逻辑衔接\n");
+
+        return prompt.toString();
+    }
+
     /**
      * 构建只解析资产的系统提示词
      */
@@ -258,24 +458,32 @@ public class ScriptParseServiceImpl implements ScriptParseService {
         prompt.append("## 任务说明\n");
         prompt.append("1. 将剧本拆分为多个分镜，每个分镜时长1-15秒\n");
         prompt.append("2. 为每个分镜指定镜头类型（景别+运动方式）\n");
-        prompt.append("3. 为每个分镜编写详细的剧情描述（包含角色动作、表情、台词、环境变化等）\n");
-        prompt.append("4. 根据剧情需要，可选地添加音效描述\n");
-        prompt.append("5. 为每个分镜指定场景名称（描述该分镜发生的环境）\n\n");
+        prompt.append("3. 为每个分镜编写详细的剧情描述\n");
+        prompt.append("4. 根据剧情需要，添加音效描述\n");
+        prompt.append("5. 为每个分镜指定场景名称\n\n");
+
         prompt.append("## 镜头类型说明\n");
         prompt.append("- 景别：远景、全景、中景、近景、特写、大特写\n");
         prompt.append("- 运动：推镜头、拉镜头、摇镜头、移镜头、跟镜头\n");
         prompt.append("- 示例：中景、全景+推镜头、特写+拉镜头\n\n");
+
         prompt.append("## 时间说明\n");
-        prompt.append("- startTime: 镜头开始时间，固定为0\n");
-        prompt.append("- endTime: 镜头结束时间，等于该镜头的时长（1-15秒）\n");
-        prompt.append("- 例如：一个5秒的镜头，startTime=0, endTime=5\n\n");
-        prompt.append("## 剧情描述要求\n");
-        prompt.append("- 详细描述画面中发生的事情，包括角色动作、表情、台词\n");
-        prompt.append("- 描述环境变化、光线、氛围等细节\n");
-        prompt.append("- 示例: 小明站在客厅里，兴奋地挥舞手臂，大声说: \"今天终于要开学了!\" 他快速拿起书包，冲向门口。\n\n");
+        prompt.append("- duration: 该分镜的时长（秒），范围 4-15 秒\n");
+        prompt.append("- 建议：普通分镜 8-10 秒，重要场景 10-15 秒，转场或特写 4-6 秒\n\n");
+
+        prompt.append("## 剧情描述要求（非常重要）\n");
+        prompt.append("剧情描述必须**完整保留原始剧本内容**，包含：\n");
+        prompt.append("- 角色的完整台词（不要简化或省略）\n");
+        prompt.append("- 角色的动作和表情\n");
+        prompt.append("- 环境变化、光线、氛围等细节\n");
+        prompt.append("- 场景转换和过渡\n\n");
+        prompt.append("**示例格式**：\n");
+        prompt.append("小明站在客厅里，兴奋地挥舞手臂，大声说：\"今天终于要开学了！\" 他快速拿起书包，冲向门口。\n\n");
+        prompt.append("**错误示例**（太简略）：\n");
+        prompt.append("小明说今天要开学了。\n\n");
+
         prompt.append("## 场景说明\n");
-        prompt.append("- sceneName: 场景名称，描述该分镜发生的环境，如：现代会议室、森林小径、城市街道\n");
-        prompt.append("- 场景名称应简洁明了，便于识别\n\n");
+        prompt.append("- sceneName: 场景名称，描述该分镜发生的环境\n\n");
 
         if (!knownCharacters.isEmpty()) {
             prompt.append("## 已知角色列表\n");
@@ -305,11 +513,10 @@ public class ScriptParseServiceImpl implements ScriptParseService {
         prompt.append("      \"shotNumber\": 1,\n");
         prompt.append("      \"sceneCode\": \"SC01\",\n");
         prompt.append("      \"sceneName\": \"场景名称\",\n");
-        prompt.append("      \"startTime\": 0,\n");
-        prompt.append("      \"endTime\": 8,\n");
+        prompt.append("      \"duration\": 10,\n");
         prompt.append("      \"shotType\": \"中景\",\n");
-        prompt.append("      \"description\": \"详细的剧情描述，包含角色动作、表情、台词、环境变化等\",\n");
-        prompt.append("      \"soundEffect\": \"音效描述（可选，根据剧情需要添加）\",\n");
+        prompt.append("      \"description\": \"完整的剧情描述，包含角色台词、动作、表情、环境变化等，不要简化\",\n");
+        prompt.append("      \"soundEffect\": \"音效描述\",\n");
         prompt.append("      \"characters\": [\n");
         prompt.append("        {\n");
         prompt.append("          \"roleName\": \"角色名\",\n");
@@ -703,8 +910,7 @@ public class ScriptParseServiceImpl implements ScriptParseService {
         prompt.append("    {\n");
         prompt.append("      \"shotNumber\": 1,\n");
         prompt.append("      \"sceneCode\": \"SC01\",\n");
-        prompt.append("      \"startTime\": 0,\n");
-        prompt.append("      \"endTime\": 8,\n");
+        prompt.append("      \"duration\": 10,\n");
         prompt.append("      \"shotType\": \"中景\",\n");
         prompt.append("      \"description\": \"分镜剧情描述\",\n");
         prompt.append("      \"soundEffect\": \"音效描述（可选，根据剧情需要添加）\",\n");
@@ -851,14 +1057,28 @@ public class ScriptParseServiceImpl implements ScriptParseService {
         shot.setSceneCode(shotObj.getString("sceneCode"));
         shot.setSceneName(shotObj.getString("sceneName"));
         shot.setDescription(shotObj.getString("description"));
-        shot.setDuration(shotObj.getInteger("duration"));
         shot.setCameraAngle(shotObj.getString("cameraAngle"));
         shot.setCameraMovement(shotObj.getString("cameraMovement"));
-        // 解析新字段
-        shot.setStartTime(shotObj.getInteger("startTime"));
-        shot.setEndTime(shotObj.getInteger("endTime"));
         shot.setShotType(shotObj.getString("shotType"));
         shot.setSoundEffect(shotObj.getString("soundEffect"));
+
+        // 处理时长：优先使用 duration，兼容旧的 startTime/endTime 格式
+        Integer duration = shotObj.getInteger("duration");
+        if (duration != null) {
+            shot.setDuration(duration);
+            shot.setStartTime(0);
+            shot.setEndTime(duration);
+        } else {
+            // 兼容旧格式
+            Integer startTime = shotObj.getInteger("startTime");
+            Integer endTime = shotObj.getInteger("endTime");
+            shot.setStartTime(startTime != null ? startTime : 0);
+            shot.setEndTime(endTime != null ? endTime : 5);
+            shot.setDuration(shot.getEndTime() - shot.getStartTime());
+            if (shot.getDuration() == null || shot.getDuration() <= 0) {
+                shot.setDuration(5);
+            }
+        }
 
         // 解析角色
         JSONArray charactersArray = shotObj.getJSONArray("characters");

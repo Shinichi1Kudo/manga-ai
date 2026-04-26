@@ -39,6 +39,24 @@
     cursor: pointer;
     transition: transform 0.2s, box-shadow 0.2s;
 }
+
+/* 拖拽排序样式 */
+.shot-card.dragging {
+    opacity: 0.5;
+    transform: scale(0.98);
+}
+
+.shot-card.drag-over {
+    border-top: 3px solid #3b82f6;
+}
+
+.drag-handle {
+    user-select: none;
+}
+
+.shot-name-input {
+    max-width: 200px;
+}
 .inline-asset-thumb:hover {
     transform: scale(1.2);
     box-shadow: 0 4px 12px rgba(0,0,0,0.4);
@@ -194,13 +212,13 @@
         <div class="glass-card glass-card-hover p-3 text-center group relative" data-scene-name="{{ scene.sceneName }}" data-scene-id="{{ scene.id }}" data-status="{{ scene.status }}">
             <div class="w-full aspect-video rounded-lg bg-white/5 mb-2 overflow-hidden flex items-center justify-center cursor-pointer scene-history-btn"
                  data-scene-id="{{ scene.id }}" data-scene-name="{{ scene.sceneName }}" data-scene-assets='{{ scene.assets|to_json }}'>
-                {% if scene.activeAssetUrl %}
-                <img src="{{ scene.activeAssetUrl }}" class="w-full h-full object-cover" alt="{{ scene.sceneName }}">
-                {% elif scene.status == 0 %}
+                {% if scene.status == 0 %}
                 <div class="text-center">
                     <i data-lucide="loader-2" class="w-6 h-6 text-blue-400 animate-spin mx-auto"></i>
                     <p class="text-xs text-white/50 mt-1">生成中</p>
                 </div>
+                {% elif scene.activeAssetUrl %}
+                <img src="{{ scene.activeAssetUrl }}" class="w-full h-full object-cover" alt="{{ scene.sceneName }}">
                 {% else %}
                 <i data-lucide="image" class="w-8 h-8 text-white/20"></i>
                 {% endif %}
@@ -631,6 +649,23 @@
     </div>
 </div>
 
+<!-- Video History Modal -->
+<div id="videoHistoryModal" class="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 hidden overflow-y-auto">
+    <div class="flex items-center justify-center min-h-full p-4">
+        <div class="glass-card p-6 w-full max-w-4xl max-h-[90vh] overflow-y-auto relative">
+        <div class="flex items-center justify-between mb-4">
+            <h3 class="text-xl font-semibold text-white">视频历史版本 - 分镜 <span id="videoHistoryShotNum"></span></h3>
+            <button class="close-modal-btn text-white/50 hover:text-white transition-colors" data-modal="videoHistoryModal">
+                <i data-lucide="x" class="w-6 h-6"></i>
+            </button>
+        </div>
+        <div id="videoHistoryList" class="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <!-- 动态填充 -->
+        </div>
+        </div>
+    </div>
+</div>
+
 <!-- Role Image Preview Modal -->
 <div id="rolePreviewModal" class="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
     <div class="relative max-w-4xl max-h-[90vh] w-full">
@@ -695,6 +730,30 @@
                 </div>
                 <div id="propAssetList" class="space-y-2 max-h-[200px] overflow-y-auto">
                     <!-- 动态填充 -->
+                </div>
+            </div>
+
+            <!-- 解析模式选择 -->
+            <div class="mb-6">
+                <h4 class="text-lg font-medium text-white flex items-center gap-2 mb-3">
+                    <i data-lucide="settings-2" class="w-5 h-5"></i>分镜解析模式
+                </h4>
+                <div class="space-y-2">
+                    <label class="flex items-start gap-3 p-3 rounded-xl bg-white/5 hover:bg-white/10 cursor-pointer border border-transparent transition-all parse-mode-option" data-mode="default">
+                        <input type="radio" name="parseMode" value="default" checked class="mt-1 w-4 h-4 text-blue-500 bg-white/5 border-white/20 focus:ring-blue-500/50">
+                        <div class="flex-1">
+                            <span class="text-white font-medium">默认版</span>
+                            <p class="text-white/50 text-sm mt-1">标准分镜解析，包含基础镜头类型和剧情描述</p>
+                        </div>
+                    </label>
+                    <label class="flex items-start gap-3 p-3 rounded-xl bg-white/5 hover:bg-white/10 cursor-pointer border border-transparent transition-all parse-mode-option" data-mode="detailed">
+                        <input type="radio" name="parseMode" value="detailed" class="mt-1 w-4 h-4 text-blue-500 bg-white/5 border-white/20 focus:ring-blue-500/50">
+                        <div class="flex-1">
+                            <span class="text-white font-medium">详细版</span>
+                            <span class="ml-2 px-2 py-0.5 text-xs rounded-full bg-purple-500/20 text-purple-300">Seedance 2.0</span>
+                            <p class="text-white/50 text-sm mt-1">包含镜头角度、运动强度、参考图建议等，适配即梦视频生成</p>
+                        </div>
+                    </label>
                 </div>
             </div>
 
@@ -765,6 +824,80 @@
     </div>
 </div>
 
+<!-- Add Shot Modal -->
+<div id="addShotModal" class="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 hidden overflow-y-auto">
+    <div class="flex items-center justify-center min-h-full p-4">
+        <div class="glass-card p-6 w-full max-w-2xl relative">
+            <div class="flex items-center justify-between mb-4">
+                <h3 class="text-xl font-semibold text-white">添加分镜</h3>
+                <button class="close-modal-btn text-white/50 hover:text-white transition-colors" data-modal="addShotModal">
+                    <i data-lucide="x" class="w-6 h-6"></i>
+                </button>
+            </div>
+            <div class="space-y-4">
+                <!-- 分镜名称 -->
+                <div>
+                    <label class="block text-sm text-white/70 mb-1">分镜名称 <span class="text-red-400">*</span></label>
+                    <input type="text" id="addShotName" class="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-blue-500/50" placeholder="如：开场、追逐戏、结局">
+                </div>
+                <!-- 场景 -->
+                <div>
+                    <label class="block text-sm text-white/70 mb-1">场景</label>
+                    <div id="addShotSceneEditor" class="min-h-[60px] bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-white focus:border-blue-400 focus:outline-none text-sm" contenteditable="true" placeholder="输入场景描述，可用@提及场景资产..."></div>
+                </div>
+                <!-- 时长 -->
+                <div>
+                    <label class="block text-sm text-white/70 mb-1">时长</label>
+                    <select id="addShotDuration" class="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-blue-500/50">
+                        <option value="4">4秒</option>
+                        <option value="5">5秒</option>
+                        <option value="6">6秒</option>
+                        <option value="7">7秒</option>
+                        <option value="8" selected>8秒</option>
+                        <option value="9">9秒</option>
+                        <option value="10">10秒</option>
+                        <option value="11">11秒</option>
+                        <option value="12">12秒</option>
+                        <option value="13">13秒</option>
+                        <option value="14">14秒</option>
+                        <option value="15">15秒</option>
+                    </select>
+                </div>
+                <!-- 分辨率和比例 -->
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-sm text-white/70 mb-1">分辨率</label>
+                        <select id="addShotResolution" class="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-blue-500/50">
+                            <option value="480p">480p</option>
+                            <option value="720p" selected>720p</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-sm text-white/70 mb-1">比例</label>
+                        <select id="addShotAspectRatio" class="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-blue-500/50">
+                            <option value="16:9" selected>16:9</option>
+                            <option value="4:3">4:3</option>
+                            <option value="1:1">1:1</option>
+                            <option value="3:4">3:4</option>
+                            <option value="9:16">9:16</option>
+                            <option value="21:9">21:9</option>
+                        </select>
+                    </div>
+                </div>
+                <!-- 剧情 -->
+                <div>
+                    <label class="block text-sm text-white/70 mb-1">剧情描述</label>
+                    <div id="addShotDescEditor" class="min-h-[120px] bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-white focus:border-blue-400 focus:outline-none text-sm leading-relaxed" contenteditable="true" placeholder="输入分镜剧情描述，可用@提及角色、道具等资产..."></div>
+                </div>
+            </div>
+            <div class="flex justify-end gap-3 mt-6">
+                <button class="close-modal-btn px-5 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 transition-all" data-modal="addShotModal">取消</button>
+                <button id="confirmAddShotBtn" class="px-5 py-2.5 rounded-xl bg-gradient-to-r from-blue-500 to-cyan-500 hover:from-blue-600 hover:to-cyan-600 transition-all font-medium">确认添加</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- Shot List Container with Overlay -->
 <div id="shotsContainer" class="relative min-h-[200px]">
     <!-- 局部遮罩层 -->
@@ -776,31 +909,121 @@
         </div>
     </div>
 
+    <!-- Shot List Header -->
+    <div class="flex items-center justify-between mb-4">
+        <h3 class="text-lg font-medium text-white">分镜列表</h3>
+        <button id="addShotBtn" class="px-4 py-2 rounded-lg bg-blue-500/20 text-blue-300 hover:bg-blue-500/30 transition-colors text-sm flex items-center gap-2">
+            <i data-lucide="plus" class="w-4 h-4"></i>添加分镜
+        </button>
+    </div>
+
     <!-- Shot List -->
     {% if shots %}
-    <div class="space-y-4">
+    <div class="space-y-4" id="shotList">
         {% for shot in shots %}
-    <div class="glass-card glass-card-hover p-6 shot-card" data-shot-id="{{ shot.id }}" data-status="{{ shot.generationStatus }}">
-        <div class="flex items-start gap-6">
-            <!-- 缩略图 -->
-            <div class="w-40 h-24 rounded-xl bg-white/5 flex items-center justify-center flex-shrink-0 overflow-hidden">
-                {% if shot.thumbnailUrl %}
-                <img src="{{ shot.thumbnailUrl }}" class="w-full h-full object-cover">
-                {% elif shot.generationStatus == 1 %}
-                <div class="text-center">
-                    <i data-lucide="loader-2" class="w-8 h-8 text-blue-400 animate-spin mx-auto"></i>
-                    <p class="text-xs text-white/50 mt-1">生成中...</p>
+    <div class="glass-card glass-card-hover p-5 shot-card" data-shot-id="{{ shot.id }}" data-status="{{ shot.generationStatus }}">
+        <div class="flex items-start gap-5">
+            <!-- 左侧：缩略图 + 操作按钮 -->
+            <div class="flex flex-col items-center gap-3 flex-shrink-0">
+                <!-- 缩略图/视频预览 -->
+                <div class="w-36 h-20 rounded-xl bg-white/5 flex items-center justify-center overflow-hidden relative">
+                    {% if shot.thumbnailUrl %}
+                    <img src="{{ shot.thumbnailUrl }}" class="w-full h-full object-cover cursor-pointer hover:opacity-80 transition-opacity" onclick="window.open('{{ shot.videoUrl }}', '_blank')">
+                    {% elif shot.videoUrl and shot.generationStatus == 2 %}
+                    <!-- 有视频但没有缩略图，显示视频第一帧 -->
+                    <video src="{{ shot.videoUrl }}" class="w-full h-full object-cover cursor-pointer hover:opacity-80 transition-opacity" muted preload="metadata" onclick="window.open('{{ shot.videoUrl }}', '_blank')"></video>
+                    <div class="absolute inset-0 flex items-center justify-center pointer-events-none">
+                        <div class="w-8 h-8 rounded-full bg-black/50 flex items-center justify-center">
+                            <i data-lucide="play" class="w-4 h-4 text-white"></i>
+                        </div>
+                    </div>
+                    {% elif shot.generationStatus == 1 %}
+                    <div class="text-center">
+                        <i data-lucide="loader-2" class="w-6 h-6 text-blue-400 animate-spin mx-auto"></i>
+                        <p class="text-xs text-white/50 mt-1">生成中...</p>
+                    </div>
+                    {% else %}
+                    <i data-lucide="video" class="w-8 h-8 text-white/20"></i>
+                    {% endif %}
                 </div>
-                {% else %}
-                <i data-lucide="video" class="w-10 h-10 text-white/20"></i>
-                {% endif %}
+                <!-- 操作按钮（竖向排列） -->
+                <div class="flex flex-col gap-1.5 w-full">
+                    {% if shot.generationStatus == 0 and episode.status == 2 %}
+                    <button class="generate-btn w-full px-3 py-1.5 rounded-lg bg-gradient-to-r from-blue-500 to-cyan-500 hover:from-blue-600 hover:to-cyan-600 transition-colors text-xs flex items-center justify-center gap-1.5 text-white"
+                            data-shot-id="{{ shot.id }}">
+                        <i data-lucide="play" class="w-3.5 h-3.5"></i>生成
+                    </button>
+                    {% endif %}
+                    {% if shot.generationStatus == 1 %}
+                    <span class="generating-timer w-full px-3 py-1.5 rounded-lg bg-blue-500/20 text-blue-300 text-xs flex items-center justify-center gap-1.5"
+                          data-start-time="{{ shot.generationStartTime }}">
+                        <i data-lucide="loader-2" class="w-3.5 h-3.5 animate-spin"></i><span class="timer-text">0秒</span>
+                    </span>
+                    {% endif %}
+                    {% if shot.generationStatus == 2 %}
+                    <a href="{{ shot.videoUrl }}" target="_blank"
+                       class="w-full px-3 py-1.5 rounded-lg bg-emerald-500/20 text-emerald-300 hover:bg-emerald-500/30 transition-colors text-xs flex items-center justify-center gap-1.5">
+                        <i data-lucide="play-circle" class="w-3.5 h-3.5"></i>预览
+                    </a>
+                    <button class="regenerate-btn w-full px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 transition-colors text-xs flex items-center justify-center gap-1.5 text-white/70"
+                            data-shot-id="{{ shot.id }}">
+                        <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i>重新生成
+                    </button>
+                    {% if shot.generationDuration %}
+                    <span class="w-full text-center text-xs text-white/40 flex items-center justify-center gap-1">
+                        <i data-lucide="clock" class="w-3 h-3"></i>
+                        {% if shot.generationDuration >= 60 %}
+                        {{ shot.generationDuration|div:60 }}分{{ shot.generationDuration|modulo:60 }}秒
+                        {% else %}
+                        {{ shot.generationDuration }}秒
+                        {% endif %}
+                    </span>
+                    {% endif %}
+                    <button class="video-history-btn w-full px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 transition-colors text-xs flex items-center justify-center gap-1.5 text-white/70"
+                            data-shot-id="{{ shot.id }}">
+                        <i data-lucide="history" class="w-3.5 h-3.5"></i>历史
+                    </button>
+                    {% endif %}
+                    {% if shot.generationStatus == 3 %}
+                    <span class="w-full px-3 py-1.5 rounded-lg bg-red-500/20 text-red-300 text-xs flex items-center justify-center gap-1.5">
+                        <i data-lucide="alert-circle" class="w-3.5 h-3.5"></i>失败
+                    </span>
+                    {% if shot.generationError %}
+                    <span class="w-full px-2 py-1 rounded bg-red-500/10 text-red-300/80 text-xs truncate" title="{{ shot.generationError }}">
+                        {{ shot.generationError|truncatechars:30 }}
+                    </span>
+                    {% endif %}
+                    <button class="regenerate-btn w-full px-3 py-1.5 rounded-lg bg-orange-500/20 text-orange-300 hover:bg-orange-500/30 transition-colors text-xs flex items-center justify-center gap-1.5"
+                            data-shot-id="{{ shot.id }}">
+                        <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i>重试
+                    </button>
+                    {% endif %}
+                    <!-- 删除按钮 -->
+                    <button class="delete-shot-btn w-full px-3 py-1.5 rounded-lg bg-white/5 hover:bg-red-500/20 text-white/40 hover:text-red-300 transition-colors text-xs flex items-center justify-center gap-1.5"
+                            data-shot-id="{{ shot.id }}"
+                            data-shot-number="{{ shot.shotNumber }}"
+                            title="删除分镜">
+                        <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>删除
+                    </button>
+                </div>
             </div>
 
-            <!-- 信息 - 内联可编辑 -->
-            <div class="flex-1">
+            <!-- 右侧：信息 - 内联可编辑 -->
+            <div class="flex-1 min-w-0">
                 <div class="flex items-center gap-3 mb-2">
-                    <span class="text-lg font-semibold text-white">镜头 {{ shot.shotNumber }}</span>
-                    <span class="px-2 py-0.5 rounded text-xs
+                    <!-- 拖动手柄 -->
+                    <div class="drag-handle cursor-grab text-white/30 hover:text-white/60 transition-colors" title="拖动排序">
+                        <i data-lucide="grip-vertical" class="w-5 h-5"></i>
+                    </div>
+                    <!-- 分镜名称 -->
+                    <input type="text"
+                           class="shot-name-input bg-transparent text-lg font-semibold text-white border-b border-transparent hover:border-white/30 focus:border-blue-400 focus:outline-none transition-colors flex-1 min-w-0"
+                           data-field="shotName"
+                           data-shot-id="{{ shot.id }}"
+                           data-shot-number="{{ shot.shotNumber }}"
+                           data-shot-name="{{ shot.shotName|default:'' }}"
+                           placeholder="分镜名称">
+                    <span class="px-2 py-0.5 rounded text-xs flex-shrink-0
                         {% if shot.generationStatus == 2 %}bg-emerald-500/20 text-emerald-300
                         {% elif shot.generationStatus == 1 %}bg-blue-500/20 text-blue-300
                         {% elif shot.generationStatus == 3 %}bg-red-500/20 text-red-300
@@ -813,9 +1036,9 @@
                 <div class="space-y-2 text-sm">
                     <!-- 场景 -->
                     <div class="shot-field flex items-start gap-2">
-                        <label class="text-gray-400 text-sm whitespace-nowrap pt-2">场景：</label>
-                        <div class="flex-1 relative">
-                            <div class="scene-editor min-h-[40px] bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-white focus:border-blue-400 focus:outline-none text-sm"
+                        <label class="text-gray-400 text-sm whitespace-nowrap pt-1.5">场景：</label>
+                        <div class="flex-1 relative min-w-0">
+                            <div class="scene-editor min-h-[36px] bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 text-white focus:border-blue-400 focus:outline-none text-sm"
                                  contenteditable="true"
                                  data-field="scene"
                                  data-shot-id="{{ shot.id }}"
@@ -824,78 +1047,67 @@
                         </div>
                     </div>
 
-                    <!-- 剧情 - 包含时间、镜头、剧情、音效 -->
+                    <!-- 时长、分辨率、比例 -->
+                    <div class="shot-field flex items-center gap-4 flex-wrap">
+                        <div class="flex items-center gap-2">
+                            <label class="text-gray-400 text-xs">时长：</label>
+                            <select class="duration-select bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-xs focus:border-blue-400 focus:outline-none cursor-pointer"
+                                    data-field="duration"
+                                    data-shot-id="{{ shot.id }}">
+                                <option value="4" {% if shot.duration == 4 %}selected{% endif %}>4秒</option>
+                                <option value="5" {% if shot.duration == 5 %}selected{% endif %}>5秒</option>
+                                <option value="6" {% if shot.duration == 6 %}selected{% endif %}>6秒</option>
+                                <option value="7" {% if shot.duration == 7 %}selected{% endif %}>7秒</option>
+                                <option value="8" {% if shot.duration == 8 %}selected{% endif %}>8秒</option>
+                                <option value="9" {% if shot.duration == 9 %}selected{% endif %}>9秒</option>
+                                <option value="10" {% if shot.duration == 10 %}selected{% endif %}>10秒</option>
+                                <option value="11" {% if shot.duration == 11 %}selected{% endif %}>11秒</option>
+                                <option value="12" {% if shot.duration == 12 %}selected{% endif %}>12秒</option>
+                                <option value="13" {% if shot.duration == 13 %}selected{% endif %}>13秒</option>
+                                <option value="14" {% if shot.duration == 14 %}selected{% endif %}>14秒</option>
+                                <option value="15" {% if shot.duration == 15 %}selected{% endif %}>15秒</option>
+                            </select>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <label class="text-gray-400 text-xs">分辨率：</label>
+                            <select class="resolution-select bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-xs focus:border-blue-400 focus:outline-none cursor-pointer"
+                                    data-field="resolution"
+                                    data-shot-id="{{ shot.id }}">
+                                <option value="480p" {% if shot.resolution == '480p' %}selected{% endif %}>480p</option>
+                                <option value="720p" {% if shot.resolution == '720p' or not shot.resolution %}selected{% endif %}>720p</option>
+                            </select>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <label class="text-gray-400 text-xs">比例：</label>
+                            <select class="aspect-ratio-select bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-xs focus:border-blue-400 focus:outline-none cursor-pointer"
+                                    data-field="aspectRatio"
+                                    data-shot-id="{{ shot.id }}">
+                                <option value="16:9" {% if shot.aspectRatio == '16:9' or not shot.aspectRatio %}selected{% endif %}>16:9</option>
+                                <option value="4:3" {% if shot.aspectRatio == '4:3' %}selected{% endif %}>4:3</option>
+                                <option value="1:1" {% if shot.aspectRatio == '1:1' %}selected{% endif %}>1:1</option>
+                                <option value="3:4" {% if shot.aspectRatio == '3:4' %}selected{% endif %}>3:4</option>
+                                <option value="9:16" {% if shot.aspectRatio == '9:16' %}selected{% endif %}>9:16</option>
+                                <option value="21:9" {% if shot.aspectRatio == '21:9' %}selected{% endif %}>21:9</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <!-- 剧情 -->
                     <div class="shot-field flex items-start gap-2">
-                        <label class="text-gray-400 text-sm whitespace-nowrap pt-2">剧情：</label>
-                        <div class="flex-1 relative">
-                            <!-- 可编辑区域 -->
-                            <div class="description-editor min-h-[80px] bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-white focus:border-blue-400 focus:outline-none text-sm leading-relaxed"
+                        <label class="text-gray-400 text-sm whitespace-nowrap pt-1.5">剧情：</label>
+                        <div class="flex-1 relative min-w-0">
+                            <div class="description-editor min-h-[60px] bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-white focus:border-blue-400 focus:outline-none text-sm leading-relaxed"
                                  contenteditable="true"
                                  data-field="description"
                                  data-shot-id="{{ shot.id }}"
-                                 data-start-time="{{ shot.startTime|default:0 }}"
-                                 data-end-time="{{ shot.endTime|default:shot.duration|default:5 }}"
                                  data-shot-type="{{ shot.shotType|default:'中景' }}"
                                  data-description="{{ shot.description|default:'' }}"
                                  data-sound-effect="{{ shot.soundEffect|default:'' }}"
                                  placeholder="输入分镜内容..."></div>
-                            <!-- 保存状态指示 -->
                             <div class="save-indicator hidden absolute top-2 right-2 text-xs px-2 py-0.5 rounded"></div>
                         </div>
                     </div>
                 </div>
-            </div>
-
-            <!-- 操作按钮 -->
-            <div class="flex items-center gap-2">
-                {% if shot.generationStatus == 0 and episode.status == 2 %}
-                <button class="generate-btn px-4 py-2 rounded-lg bg-white/5 hover:bg-white/10 transition-colors text-sm flex items-center gap-2"
-                        data-shot-id="{{ shot.id }}">
-                    <i data-lucide="play" class="w-4 h-4"></i>生成
-                </button>
-                {% endif %}
-                {% if shot.generationStatus == 1 %}
-                <span class="generating-timer px-4 py-2 rounded-lg bg-blue-500/20 text-blue-300 text-sm flex items-center gap-2"
-                      data-start-time="{{ shot.generationStartTime }}">
-                    <i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i>生成中 0秒
-                </span>
-                {% endif %}
-                {% if shot.generationStatus == 2 %}
-                <a href="{{ shot.videoUrl }}" target="_blank"
-                   class="px-4 py-2 rounded-lg bg-emerald-500/20 text-emerald-300 hover:bg-emerald-500/30 transition-colors text-sm flex items-center gap-2">
-                    <i data-lucide="play-circle" class="w-4 h-4"></i>预览
-                </a>
-                {% if shot.generationDuration %}
-                <span class="px-3 py-2 rounded-lg bg-white/5 text-white/60 text-xs flex items-center gap-1">
-                    <i data-lucide="clock" class="w-3 h-3"></i>
-                    {% if shot.generationDuration >= 60 %}
-                    {{ shot.generationDuration|div:60 }}分{{ shot.generationDuration|modulo:60 }}秒
-                    {% else %}
-                    {{ shot.generationDuration }}秒
-                    {% endif %}
-                </span>
-                {% endif %}
-                <button class="regenerate-btn px-4 py-2 rounded-lg bg-white/5 hover:bg-white/10 transition-colors text-sm flex items-center gap-2"
-                        data-shot-id="{{ shot.id }}">
-                    <i data-lucide="refresh-cw" class="w-4 h-4"></i>重新生成
-                </button>
-                <button class="approve-btn px-4 py-2 rounded-lg bg-white/5 hover:bg-white/10 transition-colors text-sm flex items-center gap-2"
-                        data-shot-id="{{ shot.id }}">
-                    <i data-lucide="check" class="w-4 h-4"></i>通过
-                </button>
-                {% endif %}
-                {% if shot.generationStatus == 3 %}
-                <span class="px-3 py-2 rounded-lg bg-red-500/20 text-red-300 text-sm flex items-center gap-2" title="{{ shot.generationError|default:'' }}">
-                    <i data-lucide="alert-circle" class="w-4 h-4"></i>生成失败
-                </span>
-                {% if shot.generationError %}
-                <span class="text-xs text-red-400/80 max-w-xs truncate" title="{{ shot.generationError }}">{{ shot.generationError|truncatechars:50 }}</span>
-                {% endif %}
-                <button class="regenerate-btn px-4 py-2 rounded-lg bg-orange-500/20 text-orange-300 hover:bg-orange-500/30 transition-colors text-sm flex items-center gap-2"
-                        data-shot-id="{{ shot.id }}">
-                    <i data-lucide="refresh-cw" class="w-4 h-4"></i>重新生成
-                </button>
-                {% endif %}
             </div>
         </div>
     </div>
@@ -953,7 +1165,7 @@ function startShotGenerationPolling() {
     console.log('启动视频生成状态轮询');
     pollingIntervalId = setInterval(async () => {
         try {
-            const response = await fetch(`/api/v1/episodes/${episodeId}/progress/`);
+            const response = await fetch(`/api/v1/episodes/${episodeId}/progress`);
             const data = await response.json();
 
             if (data.shots) {
@@ -1014,7 +1226,7 @@ async function checkShotsParsingStatus() {
     if (episodeStatus !== 1) return;
 
     try {
-        const response = await fetch(`/api/v1/episodes/${episodeId}/progress/`);
+        const response = await fetch(`/api/v1/episodes/${episodeId}/progress`);
         const result = await response.json();
         const data = result.data || result;
 
@@ -1799,6 +2011,129 @@ function bindPropRollback() {
     });
 }
 
+// Video History
+let currentVideoHistoryShotId = null;
+let currentVideoHistoryShotNum = null;
+
+async function showVideoHistory(shotId, shotNum) {
+    currentVideoHistoryShotId = shotId;
+    currentVideoHistoryShotNum = shotNum;
+    document.getElementById('videoHistoryShotNum').textContent = shotNum;
+    const container = document.getElementById('videoHistoryList');
+
+    // 显示加载状态
+    container.innerHTML = '<div class="col-span-2 text-center py-8 text-white/40"><i data-lucide="loader-2" class="w-6 h-6 animate-spin inline"></i> 加载中...</div>';
+    openFormModal('videoHistoryModal');
+    lucide.createIcons();
+
+    try {
+        const response = await fetch(`/api/v1/shots/${shotId}/video-history`);
+        const data = await response.json();
+
+        if (data.code !== 200 || !data.data || data.data.length === 0) {
+            container.innerHTML = '<div class="col-span-2 text-center py-8 text-white/40">暂无历史版本</div>';
+            return;
+        }
+
+        const assets = data.data;
+        container.innerHTML = assets.map(asset => `
+            <div class="glass-card p-4 ${asset.isActive ? 'ring-2 ring-emerald-500/50' : ''}">
+                <div class="w-full aspect-video rounded-lg bg-white/5 mb-3 overflow-hidden flex items-center justify-center">
+                    ${asset.thumbnailUrl ? `
+                        <img src="${asset.thumbnailUrl}" class="w-full h-full object-cover" alt="视频缩略图">
+                    ` : asset.videoUrl ? `
+                        <video src="${asset.videoUrl}" class="w-full h-full object-cover"></video>
+                    ` : `
+                        <i data-lucide="video" class="w-8 h-8 text-white/20"></i>
+                    `}
+                </div>
+                <div class="flex items-center justify-between mb-2">
+                    <span class="text-sm font-medium text-white">版本 ${asset.version || '-'}</span>
+                    ${asset.isActive ? '<span class="text-xs text-emerald-400 bg-emerald-500/20 px-2 py-0.5 rounded">当前版本</span>' : ''}
+                </div>
+                <p class="text-xs text-white/40 mb-3">${asset.createdAt ? new Date(asset.createdAt).toLocaleString('zh-CN') : '-'}</p>
+                <div class="flex gap-2">
+                    ${asset.videoUrl ? `
+                        <a href="${asset.videoUrl}" target="_blank"
+                           class="flex-1 px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 transition-colors text-xs text-center text-white/70">
+                            <i data-lucide="play-circle" class="w-3 h-3 inline mr-1"></i>预览
+                        </a>
+                    ` : ''}
+                    ${!asset.isActive ? `
+                        <button class="video-rollback-btn flex-1 px-3 py-1.5 rounded-lg bg-blue-500/20 text-blue-300 hover:bg-blue-500/30 transition-colors text-xs"
+                                data-shot-id="${shotId}" data-asset-id="${asset.id}">
+                            <i data-lucide="undo-2" class="w-3 h-3 inline mr-1"></i>回滚
+                        </button>
+                    ` : ''}
+                </div>
+            </div>
+        `).join('');
+        lucide.createIcons();
+        bindVideoRollback();
+    } catch (e) {
+        container.innerHTML = '<div class="col-span-2 text-center py-8 text-red-400">加载失败: ' + e.message + '</div>';
+    }
+}
+
+function bindVideoRollback() {
+    document.querySelectorAll('.video-rollback-btn').forEach(btn => {
+        btn.addEventListener('click', async function() {
+            if (!confirm('确定要回滚到此版本吗？')) return;
+
+            const shotId = this.dataset.shotId;
+            const assetId = this.dataset.assetId;
+
+            this.disabled = true;
+            this.innerHTML = '<i data-lucide="loader-2" class="w-3 h-3 inline mr-1 animate-spin"></i>回滚中...';
+
+            try {
+                const response = await fetch(`/api/v1/shots/${shotId}/rollback-video/${assetId}`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': getCookie('csrftoken')
+                    }
+                });
+                const data = await response.json();
+                if (data.code === 200) {
+                    alert('回滚成功');
+                    // 关闭弹窗并刷新分镜列表
+                    closeFormModal('videoHistoryModal');
+                    // 刷新分镜数据
+                    location.reload();
+                } else {
+                    alert('回滚失败: ' + (data.message || '未知错误'));
+                    this.disabled = false;
+                    this.innerHTML = '<i data-lucide="undo-2" class="w-3 h-3 inline mr-1"></i>回滚';
+                    lucide.createIcons();
+                }
+            } catch (e) {
+                alert('请求失败: ' + e.message);
+                this.disabled = false;
+                this.innerHTML = '<i data-lucide="undo-2" class="w-3 h-3 inline mr-1"></i>回滚';
+                lucide.createIcons();
+            }
+        });
+    });
+}
+
+// 绑定视频历史按钮点击事件
+function bindVideoHistoryButtons() {
+    document.querySelectorAll('.video-history-btn').forEach(btn => {
+        btn.addEventListener('click', function(e) {
+            e.stopPropagation();
+            const shotId = this.dataset.shotId;
+            // 获取分镜编号
+            const shotCard = this.closest('[data-shot-id]');
+            const shotNum = shotCard ? shotCard.querySelector('.text-lg')?.textContent : shotId;
+            showVideoHistory(shotId, shotNum);
+        });
+    });
+}
+
+// 初始化时绑定
+bindVideoHistoryButtons();
+
 // Edit Script Modal
 const editModal = document.getElementById('editScriptModal');
 const editBtn = document.getElementById('editScriptBtn');
@@ -1927,7 +2262,7 @@ async function pollParseResult() {
         console.log(`轮询第 ${i+1} 次`);
 
         try {
-            const response = await fetch(`/api/v1/episodes/${episodeId}/progress/`);
+            const response = await fetch(`/api/v1/episodes/${episodeId}/progress`);
             const result = await response.json();
             console.log('进度数据:', result);
 
@@ -2039,6 +2374,28 @@ function stopTimer(button) {
     }
 }
 
+// 更新卡片为生成中状态
+function updateCardToGenerating(card) {
+    // 更新状态标签
+    const statusSpan = card.querySelector('.generation-status');
+    if (statusSpan) {
+        statusSpan.className = 'px-3 py-2 rounded-lg bg-blue-500/20 text-blue-300 text-sm flex items-center gap-2 generation-status';
+        statusSpan.innerHTML = '<i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i>生成中';
+        lucide.createIcons();
+    }
+    // 更新缩略图显示加载状态
+    const thumbContainer = card.querySelector('.w-40.h-24');
+    if (thumbContainer && !thumbContainer.querySelector('.animate-spin')) {
+        thumbContainer.innerHTML = `
+            <div class="text-center">
+                <i data-lucide="loader-2" class="w-8 h-8 text-blue-400 animate-spin mx-auto"></i>
+                <p class="text-xs text-white/50 mt-1">生成中...</p>
+            </div>
+        `;
+        lucide.createIcons();
+    }
+}
+
 // 单个生成
 document.querySelectorAll('.generate-btn').forEach(btn => {
     btn.addEventListener('click', async function() {
@@ -2046,20 +2403,51 @@ document.querySelectorAll('.generate-btn').forEach(btn => {
         this.disabled = true;
         startTimer(this);
 
+        // 立即更新 UI 为生成中状态，不等后端返回
+        const card = this.closest('.shot-card');
+        if (card) {
+            card.dataset.status = '1';
+            updateCardToGenerating(card);
+        }
+        // 启动轮询
+        startShotGenerationPolling();
+
         try {
-            // 统一使用 generate-with-references 接口，后端会解析 @{资产名称}
+            // 从 shots 数组中获取参考图 URL
+            const shotData = shots.find(s => s.id == shotId);
+            const referenceUrls = [];
+            if (shotData) {
+                // 提取场景图片
+                if (shotData.sceneId) {
+                    const scene = seriesScenes.find(s => s.id == shotData.sceneId);
+                    if (scene && scene.activeAssetUrl) {
+                        referenceUrls.push(scene.activeAssetUrl);
+                    }
+                }
+                // 提取角色图片
+                if (shotData.characters) {
+                    shotData.characters.forEach(char => {
+                        if (char.assetUrl) referenceUrls.push(char.assetUrl);
+                    });
+                }
+                // 提取道具图片
+                if (shotData.props) {
+                    shotData.props.forEach(prop => {
+                        if (prop.assetUrl) referenceUrls.push(prop.assetUrl);
+                    });
+                }
+            }
+
             const response = await fetch(`/api/v1/shots/${shotId}/generate-with-references/`, {
                 method: 'POST',
-                headers: { 'X-CSRFToken': getCookie('csrftoken') }
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': getCookie('csrftoken')
+                },
+                body: JSON.stringify({ referenceUrls: referenceUrls })
             });
             const data = await response.json();
-            if (data.success || data.code === 200) {
-                // 更新卡片状态
-                const card = this.closest('.shot-card');
-                if (card) card.dataset.status = '1';
-                // 启动轮询
-                startShotGenerationPolling();
-            } else {
+            if (!(data.success || data.code === 200)) {
                 stopTimer(this);
                 alert('生成失败: ' + (data.error || data.message));
                 this.disabled = false;
@@ -2083,19 +2471,51 @@ document.querySelectorAll('.regenerate-btn').forEach(btn => {
         this.disabled = true;
         startTimer(this);
 
+        // 立即更新 UI 为生成中状态，不等后端返回
+        const card = this.closest('.shot-card');
+        if (card) {
+            card.dataset.status = '1';
+            updateCardToGenerating(card);
+        }
+        // 启动轮询
+        startShotGenerationPolling();
+
         try {
+            // 从 shots 数组中获取参考图 URL
+            const shotData = shots.find(s => s.id == shotId);
+            const referenceUrls = [];
+            if (shotData) {
+                // 提取场景图片
+                if (shotData.sceneId) {
+                    const scene = seriesScenes.find(s => s.id == shotData.sceneId);
+                    if (scene && scene.activeAssetUrl) {
+                        referenceUrls.push(scene.activeAssetUrl);
+                    }
+                }
+                // 提取角色图片
+                if (shotData.characters) {
+                    shotData.characters.forEach(char => {
+                        if (char.assetUrl) referenceUrls.push(char.assetUrl);
+                    });
+                }
+                // 提取道具图片
+                if (shotData.props) {
+                    shotData.props.forEach(prop => {
+                        if (prop.assetUrl) referenceUrls.push(prop.assetUrl);
+                    });
+                }
+            }
+
             const response = await fetch(`/api/v1/shots/${shotId}/generate-with-references/`, {
                 method: 'POST',
-                headers: { 'X-CSRFToken': getCookie('csrftoken') }
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': getCookie('csrftoken')
+                },
+                body: JSON.stringify({ referenceUrls: referenceUrls })
             });
             const data = await response.json();
-            if (data.success || data.code === 200) {
-                // 更新卡片状态
-                const card = this.closest('.shot-card');
-                if (card) card.dataset.status = '1';
-                // 启动轮询
-                startShotGenerationPolling();
-            } else {
+            if (!(data.success || data.code === 200)) {
                 stopTimer(this);
                 alert('生成失败: ' + (data.error || data.message));
                 this.disabled = false;
@@ -2706,6 +3126,20 @@ function bindAssetSelectionEvents() {
         cb.addEventListener('change', updateSelectedCount);
     });
 
+    // 解析模式选择交互
+    document.querySelectorAll('.parse-mode-option').forEach(option => {
+        option.addEventListener('click', function() {
+            // 移除所有选中样式
+            document.querySelectorAll('.parse-mode-option').forEach(o => {
+                o.classList.remove('border-blue-500', 'bg-blue-500/10');
+            });
+            // 添加当前选中样式
+            this.classList.add('border-blue-500', 'bg-blue-500/10');
+        });
+    });
+    // 初始化默认选中样式
+    document.querySelector('.parse-mode-option[data-mode="default"]')?.classList.add('border-blue-500', 'bg-blue-500/10');
+
     // 生成选中资产
     document.getElementById('generateSelectedBtn')?.addEventListener('click', async function() {
         // 取消可能存在的弹窗显示定时器
@@ -2758,6 +3192,10 @@ function bindAssetSelectionEvents() {
         this.innerHTML = '<i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i> 提交中...';
         lucide.createIcons();
 
+        // 获取选中的解析模式
+        const parseMode = document.querySelector('input[name="parseMode"]:checked')?.value || 'default';
+        console.log('解析模式:', parseMode);
+
         try {
             const response = await fetch(`/api/v1/episodes/${episodeId}/generate-assets/`, {
                 method: 'POST',
@@ -2773,7 +3211,8 @@ function bindAssetSelectionEvents() {
                     unselectedSceneIds: unselectedSceneIds,
                     unselectedPropIds: unselectedPropIds,
                     unselectedSceneNames: unselectedSceneNames,
-                    unselectedPropNames: unselectedPropNames
+                    unselectedPropNames: unselectedPropNames,
+                    parseMode: parseMode
                 })
             });
 
@@ -2824,7 +3263,7 @@ async function pollShotParsing() {
     console.log('开始轮询分镜解析状态...');
     shotParsingIntervalId = setInterval(async () => {
         try {
-            const response = await fetch(`/api/v1/episodes/${episodeId}/progress/`);
+            const response = await fetch(`/api/v1/episodes/${episodeId}/progress`);
             const result = await response.json();
             const data = result.data || result;
 
@@ -2860,7 +3299,7 @@ function updateSelectedCount() {
 document.addEventListener('DOMContentLoaded', async function() {
     // 始终先检查后端状态
     try {
-        const response = await fetch(`/api/v1/episodes/${episodeId}/progress/`);
+        const response = await fetch(`/api/v1/episodes/${episodeId}/progress`);
         const result = await response.json();
         const data = result.data || result;
 
@@ -3016,8 +3455,6 @@ function showSaveIndicator(shotId, status) {
 // 解析合并的分镜文本格式
 function parseShotText(text) {
     const result = {
-        startTime: null,
-        endTime: null,
         shotType: null,
         description: null,
         soundEffect: null
@@ -3025,29 +3462,49 @@ function parseShotText(text) {
 
     if (!text) return result;
 
-    // 解析时间【00:XX-00:YY】
-    const timeMatch = text.match(/时间【(\d+):(\d+)-(\d+):(\d+)】/);
-    if (timeMatch) {
-        result.startTime = parseInt(timeMatch[2]);  // 秒数
-        result.endTime = parseInt(timeMatch[4]);    // 秒数
-    }
-
     // 解析镜头【XXX】
     const shotTypeMatch = text.match(/镜头【(.+?)】/);
     if (shotTypeMatch) {
         result.shotType = shotTypeMatch[1];
     }
 
-    // 解析剧情【XXX】（可能跨多行，贪婪匹配到最后一个】）
-    const descMatch = text.match(/剧情【([\s\S]+?)】(?=\n音效|$)/);
-    if (descMatch) {
-        result.description = descMatch[1].trim();
-    }
-
     // 解析音效【XXX】
-    const soundMatch = text.match(/音效【(.+?)】/);
+    // 音效【】后面的独立文本追加到 soundEffect 字段（用 】 分隔，显示时会正确处理）
+    let afterSoundContent = null;
+    const soundMatch = text.match(/音效【(.+?)】(.*)$/s);
     if (soundMatch) {
         result.soundEffect = soundMatch[1];
+        afterSoundContent = soundMatch[2].trim();
+        // 独立文本追加到 soundEffect（用 】 作为分隔标记）
+        if (afterSoundContent) {
+            result.soundEffect = result.soundEffect + '】' + afterSoundContent;
+        }
+    }
+
+    // 解析剧情【XXX】
+    // 策略：先找到剧情【的位置，然后找到对应的结束】
+    const dramaStart = text.indexOf('剧情【');
+    if (dramaStart !== -1) {
+        let depth = 0;
+        let dramaEnd = -1;
+        for (let i = dramaStart + 3; i < text.length; i++) {
+            if (text[i] === '【') depth++;
+            else if (text[i] === '】') {
+                if (depth === 0) {
+                    dramaEnd = i;
+                    break;
+                }
+                depth--;
+            }
+        }
+        if (dramaEnd !== -1) {
+            result.description = text.substring(dramaStart + 3, dramaEnd).trim();
+        }
+    }
+
+    // 如果没有解析到任何格式，把整个文本当作剧情
+    if (!result.description && !result.shotType && !result.soundEffect) {
+        result.description = text.trim();
     }
 
     return result;
@@ -3060,19 +3517,19 @@ async function saveShotInline(shotId) {
 
     const descriptionEditor = card.querySelector('[data-field="description"]');
     const sceneEditor = card.querySelector('[data-field="scene"]');
+    const durationSelect = card.querySelector('.duration-select');
+    const resolutionSelect = card.querySelector('.resolution-select');
+    const aspectRatioSelect = card.querySelector('.aspect-ratio-select');
 
     const fullText = extractDescriptionText(descriptionEditor);
     const sceneText = extractDescriptionText(sceneEditor);
 
-    // 解析合并的文本格式
-    const parsed = parseShotText(fullText);
-
+    // 不再解析，直接保存完整文本到 description 字段
     const data = {
-        startTime: parsed.startTime,
-        endTime: parsed.endTime,
-        shotType: parsed.shotType,
-        description: parsed.description,
-        soundEffect: parsed.soundEffect,
+        duration: durationSelect ? parseInt(durationSelect.value) : null,
+        resolution: resolutionSelect ? resolutionSelect.value : null,
+        aspectRatio: aspectRatioSelect ? aspectRatioSelect.value : null,
+        description: fullText,  // 保存完整文本，不拆分
         sceneName: sceneText
     };
 
@@ -3113,7 +3570,20 @@ function extractDescriptionText(editor) {
     // 将资产容器替换为 @{名称} 格式
     clone.querySelectorAll('[data-asset-name]').forEach(wrapper => {
         const name = wrapper.dataset.assetName;
-        const text = document.createTextNode(`@{${name}}`);
+
+        // 检查前一个兄弟节点是否是文本节点，且以该名称结尾
+        const prevNode = wrapper.previousSibling;
+        if (prevNode && prevNode.nodeType === Node.TEXT_NODE) {
+            const text = prevNode.textContent;
+            if (text.endsWith(name)) {
+                // 删除前面的名称，只保留 @{名称}
+                prevNode.textContent = text.slice(0, -name.length);
+            }
+        }
+
+        // 直接替换为纯文本名称，不再添加 @{} 格式
+        // 这样保存的就是原始名称，渲染时会自动添加缩略图
+        const text = document.createTextNode(name);
         wrapper.replaceWith(text);
     });
 
@@ -3490,12 +3960,31 @@ function insertAssetThumb(editor, asset) {
 function renderDescriptionWithThumbs(editor, rawText) {
     if (!rawText) return;
 
-    // 解析 @名称 格式
-    const parts = rawText.split(/(@[\u4e00-\u9fa5\w]+)/g);
+    // 解析 @{名称} 格式（存储格式）和 @名称 格式（兼容旧数据）
+    const parts = rawText.split(/(@\{[^}]+\}|@[\u4e00-\u9fa5\w]+)/g);
 
     let html = '';
     parts.forEach(part => {
-        if (part.startsWith('@')) {
+        // 匹配 @{名称} 格式
+        if (part.startsWith('@{') && part.endsWith('}')) {
+            const name = part.substring(2, part.length - 1);
+            const asset = assetNameMap[name];
+            if (asset) {
+                html += `<span class="inline-flex items-center gap-1 whitespace-nowrap" contenteditable="false"
+                            data-asset-id="${asset.id}" data-asset-type="${asset.type}"
+                            data-asset-name="${asset.name}" data-asset-url="${asset.imageUrl}">
+                            <img class="inline-asset-thumb w-5 h-5 rounded align-middle border-2 ${assetTypeConfig[asset.type].borderColor}"
+                                src="${asset.imageUrl}" alt="${asset.name}"
+                                title="${assetTypeConfig[asset.type].label}: ${asset.name}">
+                            <span class="${assetTypeConfig[asset.type].bgColor} px-1.5 py-0.5 rounded text-xs text-white">${asset.name}</span>
+                        </span>`;
+            } else {
+                // 找不到对应资产，只显示名称
+                html += name;
+            }
+        }
+        // 兼容 @名称 格式（旧数据）
+        else if (part.startsWith('@') && !part.startsWith('@{')) {
             const name = part.substring(1);
             const asset = assetNameMap[name];
             if (asset) {
@@ -3520,11 +4009,29 @@ function renderDescriptionWithThumbs(editor, rawText) {
 
 // 渲染描述文本，自动识别资产名称并在后面追加缩略图
 function renderDescriptionWithAutoAssets(editor) {
-    const startTime = editor.dataset.startTime || '0';
-    const endTime = editor.dataset.endTime || '5';
-    const shotType = editor.dataset.shotType || '中景';
-    const description = editor.dataset.description || '';
+    let description = editor.dataset.description || '';
+
+    // 如果 description 为空，检查是否有 shotType 和 soundEffect 字段（LLM 解析的结果）
+    // 这种情况下需要组合显示
+    const shotType = editor.dataset.shotType || '';
     const soundEffect = editor.dataset.soundEffect || '';
+
+    // 如果 description 已包含格式标记，说明是用户手动编辑的，直接显示
+    // 如果 description 为空但有 shotType/soundEffect，说明是 LLM 解析结果，需要组合
+    if (!description.includes('镜头【') && !description.includes('剧情【') && !description.includes('音效【')) {
+        // 没有格式标记，可能是 LLM 解析的结果，需要组合
+        if (!description && (shotType || soundEffect)) {
+            let html = '';
+            if (shotType) {
+                html += `镜头【${shotType}】\n`;
+            }
+            html += `剧情【】`;
+            if (soundEffect) {
+                html += `\n音效【${soundEffect}】`;
+            }
+            description = html;
+        }
+    }
 
     // 收集所有资产名称，按名称长度降序排列（优先匹配长名称）
     const allAssets = [
@@ -3533,35 +4040,38 @@ function renderDescriptionWithAutoAssets(editor) {
         ...availableAssets.prop.map(a => ({...a, typeLabel: '道具'}))
     ].sort((a, b) => b.name.length - a.name.length);
 
-    // 只对剧情部分进行资产名称识别，在后面追加缩略图
-    let processedDescription = description;
-    allAssets.forEach(asset => {
-        if (asset.name && asset.imageUrl) {
-            // 创建缩略图HTML（追加在原文字后面）
-            const thumbHtml = `<span class="inline-flex items-center gap-1 whitespace-nowrap" contenteditable="false"
-                            data-asset-id="${asset.id}" data-asset-type="${asset.type}"
-                            data-asset-name="${asset.name}" data-asset-url="${asset.imageUrl}">
-                            <img class="inline-asset-thumb w-5 h-5 rounded align-middle border-2 ${assetTypeConfig[asset.type].borderColor}"
-                                src="${asset.imageUrl}" alt="${asset.name}"
-                                title="${assetTypeConfig[asset.type].label}: ${asset.name}">
-                            <span class="${assetTypeConfig[asset.type].bgColor} px-1.5 py-0.5 rounded text-xs text-white">${asset.name}</span>
-                        </span>`;
+    // 辅助函数：生成缩略图HTML
+    function createThumbHtml(asset) {
+        return `<span class="inline-flex items-center gap-1 whitespace-nowrap" contenteditable="false"
+                        data-asset-id="${asset.id}" data-asset-type="${asset.type}"
+                        data-asset-name="${asset.name}" data-asset-url="${asset.imageUrl}">
+                        <img class="inline-asset-thumb w-5 h-5 rounded align-middle border-2 ${assetTypeConfig[asset.type].borderColor}"
+                            src="${asset.imageUrl}" alt="${asset.name}"
+                            title="${assetTypeConfig[asset.type].label}: ${asset.name}">
+                        <span class="${assetTypeConfig[asset.type].bgColor} px-1.5 py-0.5 rounded text-xs text-white">${asset.name}</span>
+                    </span>`;
+    }
 
-            // 在资产名称后面追加缩略图（保留原文字）
+    // 先处理 @{名称} 格式：替换为 名称+缩略图
+    const processedFromMention = new Set();
+    let processedDescription = description.replace(/@\{([^}]+)\}/g, (match, name) => {
+        const asset = allAssets.find(a => a.name === name);
+        if (asset && asset.imageUrl) {
+            processedFromMention.add(name);
+            return name + createThumbHtml(asset);
+        }
+        return name;
+    });
+
+    // 对剩余文本进行资产名称识别，在后面追加缩略图
+    allAssets.forEach(asset => {
+        if (asset.name && asset.imageUrl && !processedFromMention.has(asset.name)) {
             const regex = new RegExp(asset.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g');
-            processedDescription = processedDescription.replace(regex, asset.name + thumbHtml);
+            processedDescription = processedDescription.replace(regex, asset.name + createThumbHtml(asset));
         }
     });
 
-    // 构建完整HTML
-    let html = `时间【00:${String(startTime).padStart(2, '0')}-00:${String(endTime).padStart(2, '0')}】\n`;
-    html += `镜头【${shotType}】\n`;
-    html += `剧情【${processedDescription}】`;
-    if (soundEffect) {
-        html += `\n音效【${soundEffect}】`;
-    }
-
-    editor.innerHTML = html;
+    editor.innerHTML = processedDescription;
 }
 
 // 渲染场景输入框，自动识别场景资产
@@ -3572,10 +4082,30 @@ function renderSceneWithAutoAssets(editor) {
         return;
     }
 
-    // 只在场景资产中查找匹配
+    // 先处理 @{名称} 格式，转换为名称+缩略图
     let processedScene = sceneName;
+    const processedFromMention = new Set();
+
+    processedScene = processedScene.replace(/@\{([^}]+)\}/g, (match, name) => {
+        const asset = availableAssets.scene.find(a => a.name === name);
+        if (asset && asset.imageUrl) {
+            processedFromMention.add(name);
+            const thumbHtml = `<span class="inline-flex items-center gap-1 whitespace-nowrap" contenteditable="false"
+                            data-asset-id="${asset.id}" data-asset-type="scene"
+                            data-asset-name="${asset.name}" data-asset-url="${asset.imageUrl}">
+                            <img class="inline-asset-thumb w-5 h-5 rounded align-middle border-2 ${assetTypeConfig.scene.borderColor}"
+                                src="${asset.imageUrl}" alt="${asset.name}"
+                                title="场景: ${asset.name}">
+                            <span class="${assetTypeConfig.scene.bgColor} px-1.5 py-0.5 rounded text-xs text-white">${asset.name}</span>
+                        </span>`;
+            return name + thumbHtml;
+        }
+        return name;
+    });
+
+    // 对剩余文本进行资产名称识别（排除已处理的）
     availableAssets.scene.forEach(asset => {
-        if (asset.name && asset.imageUrl) {
+        if (asset.name && asset.imageUrl && !processedFromMention.has(asset.name)) {
             const thumbHtml = `<span class="inline-flex items-center gap-1 whitespace-nowrap" contenteditable="false"
                             data-asset-id="${asset.id}" data-asset-type="scene"
                             data-asset-name="${asset.name}" data-asset-url="${asset.imageUrl}">
@@ -3636,13 +4166,411 @@ function initInlineEditing() {
             // 失焦保存
             sceneEditor.addEventListener('blur', () => debouncedSave(shotId));
         }
+
+        // 时长下拉框
+        const durationSelect = card.querySelector('.duration-select');
+        if (durationSelect) {
+            durationSelect.addEventListener('change', () => {
+                // 立即保存
+                saveShotInline(shotId);
+            });
+        }
+
+        // 分辨率下拉框
+        const resolutionSelect = card.querySelector('.resolution-select');
+        if (resolutionSelect) {
+            resolutionSelect.addEventListener('change', () => {
+                saveShotInline(shotId);
+            });
+        }
+
+        // 比例下拉框
+        const aspectRatioSelect = card.querySelector('.aspect-ratio-select');
+        if (aspectRatioSelect) {
+            aspectRatioSelect.addEventListener('change', () => {
+                saveShotInline(shotId);
+            });
+        }
+
+        // 分镜名称输入框
+        const shotNameInput = card.querySelector('.shot-name-input');
+        if (shotNameInput) {
+            // 设置初始显示值
+            const shotName = shotNameInput.dataset.shotName;
+            const shotNumber = shotNameInput.dataset.shotNumber;
+            if (shotName && shotName.trim()) {
+                shotNameInput.value = shotName;
+                shotNameInput.dataset.isDefault = 'false';
+            } else {
+                shotNameInput.value = `分镜${shotNumber}`;
+                shotNameInput.dataset.isDefault = 'true';
+            }
+
+            shotNameInput.addEventListener('focus', function() {
+                // 记录原始值
+                this.dataset.originalValue = this.value;
+                this.dataset.originalIsDefault = this.dataset.isDefault;
+            });
+            shotNameInput.addEventListener('blur', function() {
+                const shotNumber = this.dataset.shotNumber;
+                const defaultName = `分镜${shotNumber}`;
+                let newName = this.value.trim();
+
+                // 如果名称为空，恢复默认名称
+                if (!newName) {
+                    newName = null;
+                    this.value = defaultName;
+                    this.dataset.isDefault = 'true';
+                } else if (newName === defaultName) {
+                    // 如果名称等于默认名称，设置为null（使用默认）
+                    newName = null;
+                    this.dataset.isDefault = 'true';
+                } else {
+                    // 自定义名称
+                    this.dataset.isDefault = 'false';
+                }
+
+                // 只有值改变了才保存
+                if (this.dataset.originalValue !== this.value || this.dataset.originalIsDefault !== this.dataset.isDefault) {
+                    saveShotName(shotId, newName, shotNumber);
+                }
+            });
+            shotNameInput.addEventListener('keydown', function(e) {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    this.blur();
+                }
+            });
+        }
     });
+
+    // 初始化拖拽排序
+    initDragAndDrop();
+}
+
+// 保存分镜名称
+async function saveShotName(shotId, shotName, shotNumber) {
+    try {
+        const response = await fetch(`/api/v1/shots/${shotId}/`, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': getCookie('csrftoken')
+            },
+            body: JSON.stringify({ shotName: shotName })
+        });
+        const result = await response.json();
+        if (result.code !== 200 && !result.success) {
+            console.error('保存分镜名称失败:', result.message);
+            // 恢复默认名称
+            const input = document.querySelector(`.shot-name-input[data-shot-id="${shotId}"]`);
+            if (input) {
+                input.value = `分镜${shotNumber}`;
+            }
+        }
+    } catch (error) {
+        console.error('保存分镜名称失败:', error);
+    }
+}
+
+// 初始化拖拽排序
+function initDragAndDrop() {
+    const shotList = document.getElementById('shotList');
+    if (!shotList) return;
+
+    const cards = shotList.querySelectorAll('.shot-card');
+    let draggedCard = null;
+
+    cards.forEach(card => {
+        const handle = card.querySelector('.drag-handle');
+        if (!handle) return;
+
+        // 拖拽开始 - 只有点击手柄才能拖拽
+        card.addEventListener('dragstart', function(e) {
+            // 检查是否从手柄触发
+            if (!e.target.classList.contains('drag-handle') && !e.target.closest('.drag-handle')) {
+                e.preventDefault();
+                return;
+            }
+            draggedCard = this;
+            this.classList.add('dragging');
+            e.dataTransfer.effectAllowed = 'move';
+            e.dataTransfer.setData('text/plain', this.dataset.shotId);
+        });
+
+        // 拖拽结束
+        card.addEventListener('dragend', function() {
+            this.classList.remove('dragging');
+            document.querySelectorAll('.shot-card').forEach(c => c.classList.remove('drag-over'));
+            draggedCard = null;
+
+            // 保存新顺序
+            saveShotOrder();
+        });
+
+        // 拖拽经过
+        card.addEventListener('dragover', function(e) {
+            e.preventDefault();
+            e.dataTransfer.dropEffect = 'move';
+
+            if (draggedCard && draggedCard !== this) {
+                const rect = this.getBoundingClientRect();
+                const midY = rect.top + rect.height / 2;
+
+                if (e.clientY < midY) {
+                    this.classList.add('drag-over');
+                    this.parentNode.insertBefore(draggedCard, this);
+                } else {
+                    this.classList.remove('drag-over');
+                    this.parentNode.insertBefore(draggedCard, this.nextSibling);
+                }
+            }
+        });
+
+        // 拖拽离开
+        card.addEventListener('dragleave', function() {
+            this.classList.remove('drag-over');
+        });
+
+        // 设置卡片可拖拽
+        card.setAttribute('draggable', 'true');
+    });
+}
+
+// 保存分镜顺序
+async function saveShotOrder() {
+    const shotList = document.getElementById('shotList');
+    if (!shotList) {
+        console.error('shotList not found');
+        return;
+    }
+
+    const cards = shotList.querySelectorAll('.shot-card');
+    const shotIds = Array.from(cards).map(card => parseInt(card.dataset.shotId));
+
+    console.log('Saving shot order:', { episodeId, shotIds });
+
+    try {
+        const response = await fetch(`/api/v1/shots/episode/${episodeId}/reorder`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': getCookie('csrftoken')
+            },
+            body: JSON.stringify({ shotIds: shotIds })
+        });
+        const result = await response.json();
+        console.log('Reorder response:', result);
+        if (result.code === 200 || result.success) {
+            console.log('Shot order saved successfully');
+            // 更新序号和默认名称显示
+            cards.forEach((card, index) => {
+                const nameInput = card.querySelector('.shot-name-input');
+                if (nameInput) {
+                    const shotNumber = index + 1;
+                    nameInput.dataset.shotNumber = shotNumber;
+                    // 只有当前是默认名称时才更新
+                    if (nameInput.dataset.isDefault === 'true') {
+                        nameInput.value = `分镜${shotNumber}`;
+                    }
+                }
+            });
+        }
+    } catch (error) {
+        console.error('保存顺序失败:', error);
+    }
 }
 
 // 页面加载时初始化
 document.addEventListener('DOMContentLoaded', function() {
     initInlineEditing();
+    initShotManagement();
 });
+
+// 初始化分镜管理（添加/删除）
+function initShotManagement() {
+    // 添加分镜按钮
+    const addBtn = document.getElementById('addShotBtn');
+    if (addBtn) {
+        addBtn.addEventListener('click', addShot);
+    }
+
+    // 确认添加分镜按钮
+    const confirmBtn = document.getElementById('confirmAddShotBtn');
+    if (confirmBtn) {
+        confirmBtn.addEventListener('click', confirmAddShot);
+    }
+
+    // 弹窗关闭按钮
+    document.querySelectorAll('.close-modal-btn').forEach(btn => {
+        btn.addEventListener('click', function() {
+            const modalId = this.dataset.modal;
+            if (modalId) {
+                document.getElementById(modalId).classList.add('hidden');
+            }
+        });
+    });
+
+    // 删除分镜按钮
+    document.querySelectorAll('.delete-shot-btn').forEach(btn => {
+        btn.addEventListener('click', function(e) {
+            e.preventDefault();
+            const shotId = this.dataset.shotId;
+            const shotNumber = this.dataset.shotNumber;
+            if (confirm(`确定要删除分镜 ${shotNumber} 吗？`)) {
+                deleteShot(shotId, this.closest('.shot-card'));
+            }
+        });
+    });
+}
+
+// 添加分镜 - 打开弹窗
+function addShot() {
+    // 打开弹窗
+    document.getElementById('addShotModal').classList.remove('hidden');
+
+    // 清空表单
+    document.getElementById('addShotName').value = '';
+    document.getElementById('addShotSceneEditor').innerHTML = '';
+    document.getElementById('addShotDescEditor').innerHTML = '';
+    document.getElementById('addShotDuration').value = '8';
+
+    // 初始化@提及功能
+    const sceneEditor = document.getElementById('addShotSceneEditor');
+    const descEditor = document.getElementById('addShotDescEditor');
+
+    // 移除旧的监听器并重新初始化
+    try {
+        initDescriptionMention(sceneEditor);
+        initDescriptionMention(descEditor);
+    } catch (e) {
+        console.error('初始化@提及失败:', e);
+    }
+
+    lucide.createIcons();
+}
+
+// 确认添加分镜
+async function confirmAddShot() {
+    const btn = document.getElementById('confirmAddShotBtn');
+    const originalText = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = '<i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i>添加中...';
+    lucide.createIcons();
+
+    const shotName = document.getElementById('addShotName').value.trim();
+    const sceneEditor = document.getElementById('addShotSceneEditor');
+    const descEditor = document.getElementById('addShotDescEditor');
+
+    // 验证必填项
+    if (!shotName) {
+        alert('请输入分镜名称');
+        btn.disabled = false;
+        btn.innerHTML = originalText;
+        lucide.createIcons();
+        return;
+    }
+
+    // 提取场景和描述文本
+    const sceneText = extractDescriptionText(sceneEditor);
+    const descText = extractDescriptionText(descEditor);
+
+    // 不再解析，直接保存完整文本到 description
+    const data = {
+        shotName: shotName,
+        sceneName: sceneText,
+        duration: parseInt(document.getElementById('addShotDuration').value),
+        resolution: document.getElementById('addShotResolution').value,
+        aspectRatio: document.getElementById('addShotAspectRatio').value,
+        description: descText  // 直接保存完整文本，不解析
+    };
+
+    try {
+        const response = await fetch(`/api/v1/shots/episode/${episodeId}/create`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': getCookie('csrftoken')
+            },
+            body: JSON.stringify(data)
+        });
+
+        const result = await response.json();
+        if (result.success || result.code === 200) {
+            // 提取并保存提及的资产
+            const mentionedAssets = extractMentionedAssets(descEditor);
+            if (mentionedAssets.length > 0 && result.data && result.data.id) {
+                await saveMentionedAssets(result.data.id, descEditor);
+            }
+
+            // 关闭弹窗并刷新页面
+            document.getElementById('addShotModal').classList.add('hidden');
+            location.reload();
+        } else {
+            alert('添加失败: ' + (result.message || '未知错误'));
+        }
+    } catch (error) {
+        console.error('添加分镜失败:', error);
+        alert('添加失败，请稍后重试');
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = originalText;
+        lucide.createIcons();
+    }
+}
+
+// 删除分镜
+async function deleteShot(shotId, cardElement) {
+    try {
+        const response = await fetch(`/api/v1/shots/${shotId}/delete`, {
+            method: 'DELETE',
+            headers: {
+                'X-CSRFToken': getCookie('csrftoken')
+            }
+        });
+
+        const result = await response.json();
+        if (result.success || result.code === 200) {
+            // 移除卡片（动画）
+            cardElement.style.opacity = '0';
+            cardElement.style.transform = 'translateX(-100%)';
+            cardElement.style.transition = 'all 0.3s ease';
+
+            setTimeout(() => {
+                cardElement.remove();
+                // 更新剩余分镜的编号显示
+                updateShotNumbers();
+            }, 300);
+        } else {
+            alert('删除失败: ' + (result.message || '未知错误'));
+        }
+    } catch (error) {
+        console.error('删除分镜失败:', error);
+        alert('删除失败，请稍后重试');
+    }
+}
+
+// 更新分镜编号显示
+function updateShotNumbers() {
+    const cards = document.querySelectorAll('.shot-card');
+    cards.forEach((card, index) => {
+        const shotNumber = index + 1;
+        // 更新分镜名输入框的默认值
+        const nameInput = card.querySelector('.shot-name-input');
+        if (nameInput) {
+            nameInput.dataset.shotNumber = shotNumber;
+            // 如果是默认名称，更新显示
+            if (nameInput.dataset.isDefault === 'true') {
+                nameInput.value = `分镜${shotNumber}`;
+            }
+        }
+        // 更新删除按钮的编号
+        const deleteBtn = card.querySelector('.delete-shot-btn');
+        if (deleteBtn) {
+            deleteBtn.dataset.shotNumber = shotNumber;
+        }
+    });
+}
 
 function getCookie(name) {
     let cookieValue = null;

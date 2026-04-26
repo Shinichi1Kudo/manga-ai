@@ -36,6 +36,16 @@ public interface ScriptParseService {
     ScriptParseResult parseShots(String scriptText, Long seriesId, Map<String, Long> sceneCodeToIdMap);
 
     /**
+     * 只解析分镜（支持解析模式）
+     * @param scriptText 剧本文本
+     * @param seriesId 系列ID
+     * @param sceneCodeToIdMap 场景编码到ID的映射
+     * @param parseMode 解析模式：default/detailed
+     * @return 解析结果（只包含shots）
+     */
+    ScriptParseResult parseShots(String scriptText, Long seriesId, Map<String, Long> sceneCodeToIdMap, String parseMode);
+
+    /**
      * 获取已知角色列表（用于提示LLM）
      * @param seriesId 系列ID
      * @return 角色名称列表

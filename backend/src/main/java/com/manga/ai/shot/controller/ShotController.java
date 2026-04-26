@@ -6,6 +6,7 @@ import com.manga.ai.shot.dto.ShotDetailVO;
 import com.manga.ai.shot.dto.ShotReferenceUpdateRequest;
 import com.manga.ai.shot.dto.ShotReviewRequest;
 import com.manga.ai.shot.dto.ShotUpdateRequest;
+import com.manga.ai.shot.dto.ShotVideoAssetVO;
 import com.manga.ai.shot.service.ShotService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -117,9 +118,75 @@ public class ShotController {
      * 带参考图生成视频
      */
     @PostMapping("/{shotId}/generate-with-references")
-    public Result<Void> generateVideoWithReferences(@PathVariable Long shotId) {
-        log.info("带参考图生成视频: shotId={}", shotId);
-        shotService.generateVideoWithReferences(shotId);
+    public Result<Void> generateVideoWithReferences(@PathVariable Long shotId, @RequestBody(required = false) java.util.Map<String, Object> body) {
+        java.util.List<String> referenceUrls = null;
+        if (body != null && body.get("referenceUrls") != null) {
+            referenceUrls = (java.util.List<String>) body.get("referenceUrls");
+        }
+        log.info("带参考图生成视频: shotId={}, referenceUrls={}", shotId, referenceUrls);
+        shotService.generateVideoWithReferences(shotId, referenceUrls);
+        return Result.success();
+    }
+
+    /**
+     * 获取分镜视频版本历史
+     */
+    @GetMapping("/{shotId}/video-history")
+    public Result<List<ShotVideoAssetVO>> getVideoHistory(@PathVariable Long shotId) {
+        List<ShotVideoAssetVO> history = shotService.getVideoHistory(shotId);
+        return Result.success(history);
+    }
+
+    /**
+     * 回滚到指定视频版本
+     */
+    @PostMapping("/{shotId}/rollback-video/{assetId}")
+    public Result<Void> rollbackVideo(@PathVariable Long shotId, @PathVariable Long assetId) {
+        log.info("回滚视频版本: shotId={}, assetId={}", shotId, assetId);
+        shotService.rollbackToVersion(shotId, assetId);
+        return Result.success();
+    }
+
+    /**
+     * 创建分镜
+     */
+    @PostMapping("/episode/{episodeId}/create")
+    public Result<ShotDetailVO> createShot(
+            @PathVariable Long episodeId,
+            @RequestBody(required = false) ShotUpdateRequest request) {
+        log.info("创建分镜: episodeId={}", episodeId);
+        ShotDetailVO shot = shotService.createShot(episodeId, request);
+        return Result.success(shot);
+    }
+
+    /**
+     * 删除分镜
+     */
+    @DeleteMapping("/{shotId}")
+    public Result<Void> deleteShot(@PathVariable Long shotId) {
+        log.info("删除分镜: shotId={}", shotId);
+        shotService.deleteShot(shotId);
+        return Result.success();
+    }
+
+    /**
+     * 重新排序分镜
+     */
+    @PostMapping("/episode/{episodeId}/reorder")
+    public Result<Void> reorderShots(
+            @PathVariable Long episodeId,
+            @RequestBody java.util.Map<String, Object> body) {
+        List<?> rawIds = (List<?>) body.get("shotIds");
+        List<Long> shotIds = rawIds.stream()
+                .map(id -> {
+                    if (id instanceof Number) {
+                        return ((Number) id).longValue();
+                    }
+                    return Long.parseLong(id.toString());
+                })
+                .collect(java.util.stream.Collectors.toList());
+        log.info("重新排序分镜: episodeId={}, shotIds={}", episodeId, shotIds);
+        shotService.reorderShots(episodeId, shotIds);
         return Result.success();
     }
 }

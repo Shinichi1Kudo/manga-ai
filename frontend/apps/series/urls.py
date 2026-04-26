@@ -136,4 +136,19 @@ urlpatterns = [
 
     # 带参考图生成视频
     path('api/v1/shots/<int:shot_id>/generate-with-references/', views.shot_generate_with_references, name='shot_generate_with_references'),
+
+    # 视频版本历史
+    path('api/v1/shots/<int:shot_id>/video-history', views.shot_video_history, name='shot_video_history'),
+
+    # 视频版本回滚
+    path('api/v1/shots/<int:shot_id>/rollback-video/<int:asset_id>', views.shot_video_rollback, name='shot_video_rollback'),
+
+    # 创建分镜
+    path('api/v1/shots/episode/<int:episode_id>/create', views.shot_create, name='shot_create'),
+
+    # 删除分镜
+    path('api/v1/shots/<int:shot_id>/delete', views.shot_delete, name='shot_delete'),
+
+    # 重新排序分镜
+    path('api/v1/shots/episode/<int:episode_id>/reorder', views.shot_reorder, name='shot_reorder'),
 ]

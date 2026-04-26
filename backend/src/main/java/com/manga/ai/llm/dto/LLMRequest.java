@@ -29,9 +29,9 @@ public class LLMRequest implements Serializable {
     private Double temperature = 0.7;
 
     /**
-     * 最大输出token数
+     * 最大输出token数（详细版分镜需要更大输出空间）
      */
-    private Integer maxTokens = 4096;
+    private Integer maxTokens = 20000;
 
     @Data
     public static class Message implements Serializable {

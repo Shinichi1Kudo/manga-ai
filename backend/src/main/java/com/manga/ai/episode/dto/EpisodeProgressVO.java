@@ -3,6 +3,7 @@ package com.manga.ai.episode.dto;
 import lombok.Data;
 
 import java.io.Serializable;
+import java.util.List;
 
 /**
  * 剧集进度VO
@@ -21,6 +22,16 @@ public class EpisodeProgressVO implements Serializable {
     private Integer progress;  // 百分比
     private Boolean assetsReady;  // 资产解析完成，等待用户选择
     private Boolean shotsParsing;  // 正在解析分镜（资产已确认）
+    private List<ShotProgress> shots;  // 分镜进度列表
+
+    /**
+     * 分镜进度
+     */
+    @Data
+    public static class ShotProgress implements Serializable {
+        private Long id;
+        private Integer generationStatus;
+    }
 
     public String getStatusDesc() {
         if (status == null) return "";

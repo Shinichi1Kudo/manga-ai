@@ -49,6 +49,7 @@ def series_init(request):
         series_name = request.POST.get('series_name', '').strip()
         outline = request.POST.get('outline', '').strip()
         background = request.POST.get('background', '').strip()
+        series_style = request.POST.get('series_style', '').strip()
         characters_json = request.POST.get('characters_json', '').strip()
 
         # 构建表单数据，用于验证失败时回填
@@ -56,6 +57,7 @@ def series_init(request):
             'series_name': series_name,
             'outline': outline,
             'background': background,
+            'series_style': series_style,
             'characters_json': characters_json,
         }
 
@@ -65,6 +67,9 @@ def series_init(request):
             return render(request, 'series/series_init.html', {'form_data': form_data})
         if not outline:
             messages.error(request, '请输入剧本大纲')
+            return render(request, 'series/series_init.html', {'form_data': form_data})
+        if not series_style:
+            messages.error(request, '请选择系列风格')
             return render(request, 'series/series_init.html', {'form_data': form_data})
         if not characters_json:
             messages.error(request, '请至少添加一个角色')
@@ -76,6 +81,7 @@ def series_init(request):
                 'seriesName': series_name,
                 'outline': outline,
                 'background': background,
+                'seriesStyle': series_style,
                 'charactersJson': characters_json,
             })
             # 创建成功后跳转首页，显示提示消息
@@ -359,7 +365,7 @@ def episode_create(request, series_id):
 
             messages.success(request, f'第{episode_number}集创建成功，正在解析剧本...')
             # 重定向到详情页，带上参数表示需要显示资产选择弹窗
-            return redirect(f'/series/{series_id}/episodes/{episode_id}/?show_asset_picker=1')
+            return redirect(f'/{series_id}/episodes/{episode_id}/?show_asset_picker=1')
         except BackendAPIError as e:
             messages.error(request, f'创建剧集失败: {e.message}')
             return render(request, 'episode/episode_create.html', {
@@ -810,7 +816,8 @@ def episode_generate_assets(request, episode_id):
             'unselectedPropIds': data.get('unselectedPropIds', []),
             'unselectedSceneNames': data.get('unselectedSceneNames', []),
             'unselectedPropNames': data.get('unselectedPropNames', []),
-            'quality': data.get('quality', '2k')
+            'quality': data.get('quality', '2k'),
+            'parseMode': data.get('parseMode', 'default')
         })
         return JsonResponse({'code': 200, 'success': True})
     except BackendAPIError as e:
@@ -821,12 +828,19 @@ def episode_generate_assets(request, episode_id):
 
 @csrf_exempt
 @require_http_methods(["GET"])
+@csrf_exempt
+@require_http_methods(["GET", "PUT"])
 def shot_references(request, shot_id):
-    """获取分镜参考图列表"""
+    """获取或更新分镜参考图列表"""
     client = BackendClient()
     try:
-        result = client.get(f'/v1/shots/{shot_id}/references')
-        return JsonResponse({'code': 200, 'data': result})
+        if request.method == 'GET':
+            result = client.get(f'/v1/shots/{shot_id}/references')
+            return JsonResponse({'code': 200, 'data': result})
+        elif request.method == 'PUT':
+            data = json.loads(request.body)
+            client.put(f'/v1/shots/{shot_id}/references', data)
+            return JsonResponse({'code': 200, 'success': True})
     except BackendAPIError as e:
         return JsonResponse({'code': 400, 'message': e.message}, status=400)
 
@@ -863,6 +877,68 @@ def shot_generate_with_references(request, shot_id):
     client = BackendClient()
     try:
         client.post(f'/v1/shots/{shot_id}/generate-with-references')
+        return JsonResponse({'code': 200, 'success': True})
+    except BackendAPIError as e:
+        return JsonResponse({'code': 400, 'message': e.message}, status=400)
+
+
+@csrf_exempt
+@require_http_methods(["GET"])
+def shot_video_history(request, shot_id):
+    """获取分镜视频版本历史"""
+    client = BackendClient()
+    try:
+        data = client.get(f'/v1/shots/{shot_id}/video-history')
+        return JsonResponse({'code': 200, 'data': data, 'success': True})
+    except BackendAPIError as e:
+        return JsonResponse({'code': 400, 'message': e.message}, status=400)
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def shot_video_rollback(request, shot_id, asset_id):
+    """回滚到指定视频版本"""
+    client = BackendClient()
+    try:
+        client.post(f'/v1/shots/{shot_id}/rollback-video/{asset_id}')
+        return JsonResponse({'code': 200, 'success': True})
+    except BackendAPIError as e:
+        return JsonResponse({'code': 400, 'message': e.message}, status=400)
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def shot_create(request, episode_id):
+    """创建分镜"""
+    client = BackendClient()
+    try:
+        data = json.loads(request.body) if request.body else {}
+        result = client.post(f'/v1/shots/episode/{episode_id}/create', data=data)
+        return JsonResponse({'code': 200, 'data': result, 'success': True})
+    except BackendAPIError as e:
+        return JsonResponse({'code': 400, 'message': e.message}, status=400)
+
+
+@csrf_exempt
+@require_http_methods(["DELETE"])
+def shot_delete(request, shot_id):
+    """删除分镜"""
+    client = BackendClient()
+    try:
+        client.delete(f'/v1/shots/{shot_id}')
+        return JsonResponse({'code': 200, 'success': True})
+    except BackendAPIError as e:
+        return JsonResponse({'code': 400, 'message': e.message}, status=400)
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def shot_reorder(request, episode_id):
+    """重新排序分镜"""
+    client = BackendClient()
+    try:
+        data = json.loads(request.body)
+        client.post(f'/v1/shots/episode/{episode_id}/reorder', data)
         return JsonResponse({'code': 200, 'success': True})
     except BackendAPIError as e:
         return JsonResponse({'code': 400, 'message': e.message}, status=400)

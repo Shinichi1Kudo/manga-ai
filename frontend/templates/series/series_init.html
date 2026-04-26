@@ -72,6 +72,32 @@
                           placeholder="时代背景、世界观、科技水平、社会结构...">{{ form_data.background|default:'' }}</textarea>
             </div>
 
+            <!-- Series Style -->
+            <div>
+                <label class="block text-sm font-medium text-white/70 mb-3">
+                    <i data-lucide="palette" class="w-4 h-4 inline mr-2"></i>系列风格 <span class="text-red-400">*</span>
+                </label>
+                <div class="flex gap-3">
+                    <select name="series_style" required class="input-modern flex-1">
+                        <option value="">请选择系列整体风格</option>
+                        <option value="3d_anime" {% if form_data.series_style == '3d_anime' %}selected{% endif %}>超精细3D动漫</option>
+                        <option value="realistic" {% if form_data.series_style == 'realistic' %}selected{% endif %}>真人风格</option>
+                        <option value="anime_jp" {% if form_data.series_style == 'anime_jp' %}selected{% endif %}>日系动漫</option>
+                        <option value="cartoon_us" {% if form_data.series_style == 'cartoon_us' %}selected{% endif %}>美式卡通</option>
+                        <option value="watercolor" {% if form_data.series_style == 'watercolor' %}selected{% endif %}>水彩插画</option>
+                        <option value="oil_painting" {% if form_data.series_style == 'oil_painting' %}selected{% endif %}>油画风格</option>
+                        <option value="cyberpunk" {% if form_data.series_style == 'cyberpunk' %}selected{% endif %}>赛博朋克</option>
+                        <option value="chinese_style" {% if form_data.series_style == 'chinese_style' %}selected{% endif %}>古风国漫</option>
+                        <option value="pixel_art" {% if form_data.series_style == 'pixel_art' %}selected{% endif %}>像素风格</option>
+                        <option value="chibi" {% if form_data.series_style == 'chibi' %}selected{% endif %}>Q版卡通</option>
+                    </select>
+                    <button type="button" class="px-4 py-2 rounded-xl bg-white/10 hover:bg-white/20 transition-colors text-sm" onclick="openStylePreview(event)">
+                        <i data-lucide="eye" class="w-4 h-4"></i>
+                    </button>
+                </div>
+                <p class="text-xs text-white/40 mt-2">选择系列的整体视觉风格，角色和场景将统一使用此风格生成</p>
+            </div>
+
             <!-- Character Cards Container -->
             <div>
                 <div class="flex items-center justify-between mb-3">

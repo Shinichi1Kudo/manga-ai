@@ -30,6 +30,11 @@ public class Shot implements Serializable {
     private Integer shotNumber;
 
     /**
+     * 分镜名称（用户自定义，如"开场"、"追逐戏"）
+     */
+    private String shotName;
+
+    /**
      * 场景ID
      */
     private Long sceneId;
@@ -73,6 +78,16 @@ public class Shot implements Serializable {
      * 时长(秒), 最大15秒
      */
     private Integer duration;
+
+    /**
+     * 视频分辨率: 480p, 720p
+     */
+    private String resolution;
+
+    /**
+     * 视频比例: 16:9, 4:3, 1:1, 3:4, 9:16, 21:9
+     */
+    private String aspectRatio;
 
     /**
      * 音效描述

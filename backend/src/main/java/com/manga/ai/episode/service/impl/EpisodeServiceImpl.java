@@ -193,6 +193,19 @@ public class EpisodeServiceImpl implements EpisodeService {
         }
 
         try {
+            // 从 parsedScript 获取解析模式
+            String parseMode = "default";
+            try {
+                JSONObject parsedJson = JSON.parseObject(episode.getParsedScript());
+                if (parsedJson != null) {
+                    parseMode = parsedJson.getString("parseMode");
+                    if (parseMode == null) parseMode = "default";
+                }
+            } catch (Exception e) {
+                log.warn("获取解析模式失败，使用默认模式: episodeId={}", episodeId);
+            }
+            log.info("分镜解析模式: episodeId={}, parseMode={}", episodeId, parseMode);
+
             // 标记资产已确认，正在解析分镜
             try {
                 JSONObject parsedJson = JSON.parseObject(episode.getParsedScript());
@@ -220,38 +233,13 @@ public class EpisodeServiceImpl implements EpisodeService {
                 sceneCodeToIdMap.put(scene.getSceneCode(), scene.getId());
             }
 
-            // 解析分镜
-            ScriptParseResult result = scriptParseService.parseShots(episode.getScriptText(), episode.getSeriesId(), sceneCodeToIdMap);
+            // 解析分镜（传递解析模式）
+            ScriptParseResult result = scriptParseService.parseShots(episode.getScriptText(), episode.getSeriesId(), sceneCodeToIdMap, parseMode);
 
             if ("success".equals(result.getStatus()) && result.getShots() != null && !result.getShots().isEmpty()) {
-                // 保存分镜结果
+                // 保存分镜结果（包含状态更新，在同一事务中）
                 saveShotsResult(episode, result);
-
-                // 更新剧集统计
-                int totalDuration = 0;
-                for (ScriptParseResult.ShotInfo shot : result.getShots()) {
-                    totalDuration += shot.getDuration() != null ? shot.getDuration() : 5;
-                }
-                episode.setTotalShots(result.getShots().size());
-                episode.setTotalDuration(totalDuration);
-
-                // 清除assetsConfirmed标记
-                try {
-                    JSONObject parsedJson = JSON.parseObject(episode.getParsedScript());
-                    if (parsedJson != null) {
-                        parsedJson.remove("assetsConfirmed");
-                        episode.setParsedScript(parsedJson.toJSONString());
-                    }
-                } catch (Exception e) {
-                    log.warn("清除assetsConfirmed标记失败: episodeId={}", episodeId);
-                }
-
-                // 分镜解析完成，更新状态为待审核
-                episode.setStatus(EpisodeStatus.PENDING_REVIEW.getCode());
-                episode.setUpdatedAt(LocalDateTime.now());
-                episodeMapper.updateById(episode);
-
-                log.info("分镜解析完成: episodeId={}, shots={}, 状态更新为待审核", episodeId, result.getShots().size());
+                log.info("分镜解析完成: episodeId={}, shots={}", episodeId, result.getShots().size());
             } else {
                 log.error("分镜解析失败: episodeId={}, error={}", episodeId, result.getErrorMessage());
                 // 分镜解析失败，清除assetsConfirmed标记，保持解析中状态让用户可以重试
@@ -364,7 +352,7 @@ public class EpisodeServiceImpl implements EpisodeService {
     }
 
     /**
-     * 保存分镜结果
+     * 保存分镜结果（包含剧集状态更新，确保原子性）
      */
     @Transactional(rollbackFor = Exception.class)
     public void saveShotsResult(Episode episode, ScriptParseResult result) {
@@ -406,7 +394,6 @@ public class EpisodeServiceImpl implements EpisodeService {
                 Shot shot = new Shot();
                 shot.setEpisodeId(episode.getId());
                 shot.setShotNumber(shotInfo.getShotNumber());
-                shot.setDescription(shotInfo.getDescription());
                 shot.setShotType(shotInfo.getShotType());
                 shot.setStartTime(shotInfo.getStartTime());
                 shot.setEndTime(shotInfo.getEndTime());
@@ -426,6 +413,32 @@ public class EpisodeServiceImpl implements EpisodeService {
                 shot.setStatus(ShotStatus.PENDING_REVIEW.getCode());
                 shot.setCreatedAt(LocalDateTime.now());
                 shot.setUpdatedAt(LocalDateTime.now());
+
+                // 构建完整的格式化描述文本
+                StringBuilder fullDescription = new StringBuilder();
+
+                // 时间
+                int startTime = shotInfo.getStartTime() != null ? shotInfo.getStartTime() : 0;
+                int duration = shot.getDuration() != null ? shot.getDuration() : 5;
+                int endTime = startTime + duration;
+                fullDescription.append("时间【").append(formatShotTime(startTime)).append("-").append(formatShotTime(endTime)).append("】\n");
+
+                // 镜头
+                if (shotInfo.getShotType() != null && !shotInfo.getShotType().isEmpty()) {
+                    fullDescription.append("镜头【").append(shotInfo.getShotType()).append("】\n");
+                }
+
+                // 剧情
+                if (shotInfo.getDescription() != null && !shotInfo.getDescription().isEmpty()) {
+                    fullDescription.append("剧情【").append(shotInfo.getDescription()).append("】\n");
+                }
+
+                // 音效
+                if (shotInfo.getSoundEffect() != null && !shotInfo.getSoundEffect().isEmpty()) {
+                    fullDescription.append("音效【").append(shotInfo.getSoundEffect()).append("】");
+                }
+
+                shot.setDescription(fullDescription.toString().trim());
 
                 if (shotInfo.getSceneCode() != null && sceneCodeToIdMap.containsKey(shotInfo.getSceneCode())) {
                     shot.setSceneId(sceneCodeToIdMap.get(shotInfo.getSceneCode()));
@@ -475,6 +488,32 @@ public class EpisodeServiceImpl implements EpisodeService {
                 log.info("创建分镜: shotId={}, shotNumber={}", shot.getId(), shot.getShotNumber());
             }
         }
+
+        // 更新剧集统计和状态（在同一事务中）
+        int totalDuration = 0;
+        for (ScriptParseResult.ShotInfo shot : result.getShots()) {
+            totalDuration += shot.getDuration() != null ? shot.getDuration() : 5;
+        }
+        episode.setTotalShots(result.getShots().size());
+        episode.setTotalDuration(totalDuration);
+
+        // 清除assetsConfirmed标记
+        try {
+            JSONObject parsedJson = JSON.parseObject(episode.getParsedScript());
+            if (parsedJson != null) {
+                parsedJson.remove("assetsConfirmed");
+                episode.setParsedScript(parsedJson.toJSONString());
+            }
+        } catch (Exception e) {
+            log.warn("清除assetsConfirmed标记失败: episodeId={}", episode.getId());
+        }
+
+        // 分镜解析完成，更新状态为待审核
+        episode.setStatus(EpisodeStatus.PENDING_REVIEW.getCode());
+        episode.setUpdatedAt(LocalDateTime.now());
+        episodeMapper.updateById(episode);
+
+        log.info("分镜保存完成，剧集状态更新为待审核: episodeId={}, shots={}", episode.getId(), result.getShots().size());
     }
 
     /**
@@ -755,6 +794,17 @@ public class EpisodeServiceImpl implements EpisodeService {
         }
         vo.setCompletedShots(completed);
         vo.setFailedShots(failed);
+
+        // 添加分镜进度列表
+        List<EpisodeProgressVO.ShotProgress> shotProgressList = shots.stream()
+                .map(shot -> {
+                    EpisodeProgressVO.ShotProgress sp = new EpisodeProgressVO.ShotProgress();
+                    sp.setId(shot.getId());
+                    sp.setGenerationStatus(shot.getGenerationStatus());
+                    return sp;
+                })
+                .collect(Collectors.toList());
+        vo.setShots(shotProgressList);
 
         if (episode.getTotalShots() != null && episode.getTotalShots() > 0) {
             vo.setProgress(completed * 100 / episode.getTotalShots());
@@ -1105,15 +1155,17 @@ public class EpisodeServiceImpl implements EpisodeService {
         }
 
         // 标记资产已确认，正在解析分镜
-        // 更新 parsedScript，添加 assetsConfirmed 标记
+        // 更新 parsedScript，添加 assetsConfirmed 标记和解析模式
         try {
             JSONObject parsedJson = JSON.parseObject(episode.getParsedScript());
             if (parsedJson != null) {
                 parsedJson.put("assetsConfirmed", true);
+                // 保存解析模式
+                parsedJson.put("parseMode", request.getParseMode() != null ? request.getParseMode() : "default");
                 episode.setParsedScript(parsedJson.toJSONString());
                 episode.setUpdatedAt(LocalDateTime.now());
                 episodeMapper.updateById(episode);
-                log.info("标记资产已确认: episodeId={}", episodeId);
+                log.info("标记资产已确认: episodeId={}, parseMode={}", episodeId, request.getParseMode());
             }
         } catch (Exception e) {
             log.error("更新资产确认状态失败: episodeId={}", episodeId, e);
@@ -1278,5 +1330,14 @@ public class EpisodeServiceImpl implements EpisodeService {
         parseShots(episodeId);
 
         log.info("批量生成资产任务已全部提交: episodeId={}", episodeId);
+    }
+
+    /**
+     * 格式化分镜时间（秒转为 MM:SS 格式）
+     */
+    private String formatShotTime(int seconds) {
+        int minutes = seconds / 60;
+        int secs = seconds % 60;
+        return String.format("%02d:%02d", minutes, secs);
     }
 }

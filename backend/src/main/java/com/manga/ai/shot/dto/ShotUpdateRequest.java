@@ -33,6 +33,16 @@ public class ShotUpdateRequest implements Serializable {
     private Integer duration;
 
     /**
+     * 视频分辨率: 480p, 720p
+     */
+    private String resolution;
+
+    /**
+     * 视频比例: 16:9, 4:3, 1:1, 3:4, 9:16, 21:9
+     */
+    private String aspectRatio;
+
+    /**
      * 镜头类型（中景/特写/全景等）
      */
     private String shotType;
@@ -51,6 +61,11 @@ public class ShotUpdateRequest implements Serializable {
      * 音效描述
      */
     private String soundEffect;
+
+    /**
+     * 分镜名称
+     */
+    private String shotName;
 
     /**
      * 场景名称

@@ -73,4 +73,10 @@ public class SeriesInitRequest implements Serializable {
      * 清晰度: standard / hd / ultra
      */
     private String quality = "hd";
+
+    /**
+     * 系列风格: 3d_anime, realistic, anime_jp, cartoon_us, watercolor, oil_painting, cyberpunk, chinese_style, pixel_art, chibi
+     */
+    @NotBlank(message = "系列风格不能为空")
+    private String seriesStyle;
 }

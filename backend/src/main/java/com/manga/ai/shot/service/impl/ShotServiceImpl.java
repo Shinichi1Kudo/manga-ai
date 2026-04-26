@@ -24,15 +24,20 @@ import com.manga.ai.shot.dto.ReferenceImageDTO;
 import com.manga.ai.shot.dto.ShotDetailVO;
 import com.manga.ai.shot.dto.ShotReviewRequest;
 import com.manga.ai.shot.dto.ShotUpdateRequest;
+import com.manga.ai.shot.dto.ShotVideoAssetVO;
 import com.manga.ai.shot.entity.Shot;
 import com.manga.ai.shot.entity.ShotCharacter;
 import com.manga.ai.shot.entity.ShotProp;
 import com.manga.ai.shot.entity.ShotReferenceImage;
+import com.manga.ai.shot.entity.ShotVideoAsset;
+import com.manga.ai.shot.entity.ShotVideoAssetMetadata;
 import com.manga.ai.shot.entity.VideoMetadata;
 import com.manga.ai.shot.mapper.ShotCharacterMapper;
 import com.manga.ai.shot.mapper.ShotMapper;
 import com.manga.ai.shot.mapper.ShotPropMapper;
 import com.manga.ai.shot.mapper.ShotReferenceImageMapper;
+import com.manga.ai.shot.mapper.ShotVideoAssetMapper;
+import com.manga.ai.shot.mapper.ShotVideoAssetMetadataMapper;
 import com.manga.ai.shot.mapper.VideoMetadataMapper;
 import com.manga.ai.shot.service.ShotService;
 import com.manga.ai.video.dto.SeedanceRequest;
@@ -41,6 +46,7 @@ import com.manga.ai.video.service.SeedanceService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.BeanUtils;
+import org.springframework.context.annotation.Lazy;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -59,7 +65,6 @@ import java.util.stream.Collectors;
  */
 @Slf4j
 @Service
-@RequiredArgsConstructor
 public class ShotServiceImpl implements ShotService {
 
     private final ShotMapper shotMapper;
@@ -75,6 +80,85 @@ public class ShotServiceImpl implements ShotService {
     private final VideoMetadataMapper videoMetadataMapper;
     private final SeedanceService seedanceService;
     private final ShotReferenceImageMapper shotReferenceImageMapper;
+    private final ShotVideoAssetMapper shotVideoAssetMapper;
+    private final ShotVideoAssetMetadataMapper shotVideoAssetMetadataMapper;
+
+    // 自注入代理，用于正确调用 @Async 方法
+    private final ShotService self;
+
+    public ShotServiceImpl(ShotMapper shotMapper,
+                          ShotCharacterMapper shotCharacterMapper,
+                          ShotPropMapper shotPropMapper,
+                          SceneMapper sceneMapper,
+                          SceneAssetMapper sceneAssetMapper,
+                          RoleMapper roleMapper,
+                          RoleAssetMapper roleAssetMapper,
+                          PropAssetMapper propAssetMapper,
+                          PropMapper propMapper,
+                          EpisodeMapper episodeMapper,
+                          VideoMetadataMapper videoMetadataMapper,
+                          SeedanceService seedanceService,
+                          ShotReferenceImageMapper shotReferenceImageMapper,
+                          ShotVideoAssetMapper shotVideoAssetMapper,
+                          ShotVideoAssetMetadataMapper shotVideoAssetMetadataMapper,
+                          @Lazy ShotService self) {
+        this.shotMapper = shotMapper;
+        this.shotCharacterMapper = shotCharacterMapper;
+        this.shotPropMapper = shotPropMapper;
+        this.sceneMapper = sceneMapper;
+        this.sceneAssetMapper = sceneAssetMapper;
+        this.roleMapper = roleMapper;
+        this.roleAssetMapper = roleAssetMapper;
+        this.propAssetMapper = propAssetMapper;
+        this.propMapper = propMapper;
+        this.episodeMapper = episodeMapper;
+        this.videoMetadataMapper = videoMetadataMapper;
+        this.seedanceService = seedanceService;
+        this.shotReferenceImageMapper = shotReferenceImageMapper;
+        this.shotVideoAssetMapper = shotVideoAssetMapper;
+        this.shotVideoAssetMetadataMapper = shotVideoAssetMetadataMapper;
+        this.self = self;
+    }
+
+    /**
+     * 根据分辨率和比例计算视频尺寸
+     * @param resolution 分辨率: 480p, 720p
+     * @param aspectRatio 比例: 16:9, 4:3, 1:1, 3:4, 9:16, 21:9
+     * @return [width, height]
+     */
+    private int[] calculateVideoSize(String resolution, String aspectRatio) {
+        // 默认值
+        int width = 1280;
+        int height = 720;
+
+        if (resolution == null) resolution = "720p";
+        if (aspectRatio == null) aspectRatio = "16:9";
+
+        // 分辨率映射
+        if ("480p".equals(resolution)) {
+            switch (aspectRatio) {
+                case "16:9": width = 864; height = 480; break;
+                case "4:3":  width = 736; height = 544; break;
+                case "1:1":  width = 640; height = 640; break;
+                case "3:4":  width = 544; height = 736; break;
+                case "9:16": width = 480; height = 864; break;
+                case "21:9": width = 960; height = 416; break;
+                default:     width = 864; height = 480; break;
+            }
+        } else { // 720p
+            switch (aspectRatio) {
+                case "16:9": width = 1280; height = 720; break;
+                case "4:3":  width = 1112; height = 834; break;
+                case "1:1":  width = 960;  height = 960; break;
+                case "3:4":  width = 834;  height = 1112; break;
+                case "9:16": width = 720;  height = 1280; break;
+                case "21:9": width = 1470; height = 630; break;
+                default:     width = 1280; height = 720; break;
+            }
+        }
+
+        return new int[]{width, height};
+    }
 
     @Override
     public ShotDetailVO getShotDetail(Long shotId) {
@@ -195,6 +279,12 @@ public class ShotServiceImpl implements ShotService {
         if (request.getDuration() != null) {
             shot.setDuration(Math.min(request.getDuration(), 15));  // 最大15秒
         }
+        if (request.getResolution() != null) {
+            shot.setResolution(request.getResolution());
+        }
+        if (request.getAspectRatio() != null) {
+            shot.setAspectRatio(request.getAspectRatio());
+        }
         if (request.getShotType() != null) {
             shot.setShotType(request.getShotType());
         }
@@ -206,6 +296,9 @@ public class ShotServiceImpl implements ShotService {
         }
         if (request.getSoundEffect() != null) {
             shot.setSoundEffect(request.getSoundEffect());
+        }
+        if (request.getShotName() != null) {
+            shot.setShotName(request.getShotName());
         }
         if (request.getSceneName() != null) {
             shot.setSceneName(request.getSceneName());
@@ -262,10 +355,11 @@ public class ShotServiceImpl implements ShotService {
         shotMapper.updateById(shot);
         log.info("已更新分镜状态为生成中: shotId={}", shotId);
 
-        // 异步执行视频生成
-        doGenerateVideo(shotId);
+        // 通过代理异步执行视频生成（确保真正的异步）
+        self.doGenerateVideo(shotId);
     }
 
+    @Override
     @Async("videoGenerateExecutor")
     public void doGenerateVideo(Long shotId) {
         log.info("异步执行视频生成: shotId={}", shotId);
@@ -289,6 +383,11 @@ public class ShotServiceImpl implements ShotService {
             request.setDuration(shot.getDuration() != null ? shot.getDuration() : 5);
             request.setShotId(shotId);
 
+            // 设置视频尺寸
+            int[] size = calculateVideoSize(shot.getResolution(), shot.getAspectRatio());
+            request.setWidth(size[0]);
+            request.setHeight(size[1]);
+
             // 调用Seedance生成视频
             SeedanceResponse response = seedanceService.generateVideo(request);
 
@@ -304,14 +403,29 @@ public class ShotServiceImpl implements ShotService {
                 // 保存元数据
                 saveVideoMetadata(shot, prompt, response);
 
+                // 保存视频版本资产
+                saveVideoAsset(shot, prompt, response, null);
+
                 log.info("视频生成完成: shotId={}", shotId);
             } else {
-                throw new RuntimeException("视频生成失败: " + response.getErrorMessage());
+                String errorMsg = response.getErrorMessage();
+                log.error("视频生成失败: shotId={}, status={}, errorMessage={}", shotId, response.getStatus(), errorMsg);
+                throw new RuntimeException("视频生成失败: " + (errorMsg != null ? errorMsg : "状态-" + response.getStatus()));
             }
         } catch (Exception e) {
             log.error("视频生成异常: shotId={}", shotId, e);
             shot.setGenerationStatus(ShotGenerationStatus.FAILED.getCode());
-            shot.setGenerationError(e.getMessage());
+            // 提取关键错误信息，转换为用户友好的提示
+            String errorMsg = e.getMessage();
+            if (errorMsg != null && errorMsg.contains("ModelNotOpen")) {
+                shot.setGenerationError("模型未开通，请在火山引擎控制台开通 Seedance 2.0 模型");
+            } else if (errorMsg != null && errorMsg.contains("SensitiveContent")) {
+                shot.setGenerationError("内容审核未通过，请修改分镜描述后重试");
+            } else if (errorMsg != null && errorMsg.contains("copyright")) {
+                shot.setGenerationError("内容审核未通过，请修改分镜描述后重试");
+            } else {
+                shot.setGenerationError("视频生成失败，请稍后重试");
+            }
             shot.setUpdatedAt(LocalDateTime.now());
             shotMapper.updateById(shot);
         }
@@ -375,6 +489,11 @@ public class ShotServiceImpl implements ShotService {
      * 保存视频元数据
      */
     private void saveVideoMetadata(Shot shot, String prompt, SeedanceResponse response) {
+        // 先删除旧的元数据记录（重新生成的情况）
+        LambdaQueryWrapper<VideoMetadata> deleteWrapper = new LambdaQueryWrapper<>();
+        deleteWrapper.eq(VideoMetadata::getShotId, shot.getId());
+        videoMetadataMapper.delete(deleteWrapper);
+
         VideoMetadata metadata = new VideoMetadata();
         metadata.setShotId(shot.getId());
         metadata.setPrompt(prompt);
@@ -674,30 +793,32 @@ public class ShotServiceImpl implements ShotService {
     }
 
     @Override
-    public void generateVideoWithReferences(Long shotId) {
-        log.info("开始生成视频(带参考图): shotId={}", shotId);
+    public void generateVideoWithReferences(Long shotId, List<String> referenceUrls) {
+        log.info("开始生成视频(带参考图): shotId={}, referenceUrls={}", shotId, referenceUrls);
 
-        // 同步更新状态为生成中，确保状态立即持久化
-        Shot shot = shotMapper.selectById(shotId);
-        if (shot == null) {
-            log.error("分镜不存在: shotId={}", shotId);
+        // 使用 UPDATE 语句直接更新状态，避免先查询再更新的两次数据库操作
+        LambdaUpdateWrapper<Shot> updateWrapper = new LambdaUpdateWrapper<>();
+        updateWrapper.eq(Shot::getId, shotId)
+                .set(Shot::getGenerationStatus, ShotGenerationStatus.GENERATING.getCode())
+                .set(Shot::getGenerationError, null)
+                .set(Shot::getGenerationStartTime, LocalDateTime.now())
+                .set(Shot::getUpdatedAt, LocalDateTime.now());
+        int updated = shotMapper.update(null, updateWrapper);
+
+        if (updated == 0) {
+            log.error("分镜不存在或更新失败: shotId={}", shotId);
             return;
         }
-
-        shot.setGenerationStatus(ShotGenerationStatus.GENERATING.getCode());
-        shot.setGenerationError(null);
-        shot.setGenerationStartTime(LocalDateTime.now());
-        shot.setUpdatedAt(LocalDateTime.now());
-        shotMapper.updateById(shot);
         log.info("已更新分镜状态为生成中: shotId={}", shotId);
 
-        // 异步执行视频生成
-        doGenerateVideoWithReferences(shotId);
+        // 通过代理异步执行视频生成（确保真正的异步）
+        self.doGenerateVideoWithReferences(shotId, referenceUrls);
     }
 
+    @Override
     @Async("videoGenerateExecutor")
-    public void doGenerateVideoWithReferences(Long shotId) {
-        log.info("异步执行视频生成: shotId={}", shotId);
+    public void doGenerateVideoWithReferences(Long shotId, List<String> referenceUrls) {
+        log.info("异步执行视频生成: shotId={}, referenceUrls={}", shotId, referenceUrls);
         long startTime = System.currentTimeMillis();
 
         Shot shot = shotMapper.selectById(shotId);
@@ -712,21 +833,47 @@ public class ShotServiceImpl implements ShotService {
             Episode episode = episodeMapper.selectById(shot.getEpisodeId());
             Long seriesId = episode != null ? episode.getSeriesId() : null;
 
-            // 构建提示词和参考图
+            // 构建提示词
             PromptWithReferences result = buildPromptFromSceneAndDescription(shot, seriesId);
-
             log.info("构建的提示词: {}", result.getPrompt());
-            log.info("原始参考图数量: {}", result.getReferenceImages().size());
 
-            // 去重：基于图片URL去重
+            // 构建参考图列表
             List<AssetReference> references = new ArrayList<>();
-            Set<String> seenUrls = new HashSet<>();
-            for (AssetReference ref : result.getReferenceImages()) {
-                if (ref.getImageUrl() != null && !seenUrls.contains(ref.getImageUrl())) {
-                    seenUrls.add(ref.getImageUrl());
-                    references.add(ref);
+
+            // 优先使用前端传入的参考图 URL
+            if (referenceUrls != null && !referenceUrls.isEmpty()) {
+                log.info("使用前端传入的参考图: {} 张", referenceUrls.size());
+                for (String url : referenceUrls) {
+                    if (url != null && !url.isEmpty()) {
+                        AssetReference ref = new AssetReference();
+                        ref.setImageUrl(url);
+                        ref.setType("frontend");
+                        ref.setName("用户选择");
+                        references.add(ref);
+                    }
+                }
+            } else {
+                // 如果前端没有传入，从数据库获取用户选择的参考图
+                references = getReferenceImagesFromDB(shotId);
+                log.info("从 shot_reference_image 表获取参考图数量: {}", references.size());
+
+                // 如果用户没有选择参考图，才使用自动匹配的参考图
+                if (references.isEmpty()) {
+                    log.info("用户未选择参考图，使用自动匹配的参考图");
+                    references = result.getReferenceImages();
                 }
             }
+
+            // 去重：基于图片URL去重
+            List<AssetReference> dedupedReferences = new ArrayList<>();
+            Set<String> seenUrls = new HashSet<>();
+            for (AssetReference ref : references) {
+                if (ref.getImageUrl() != null && !seenUrls.contains(ref.getImageUrl())) {
+                    seenUrls.add(ref.getImageUrl());
+                    dedupedReferences.add(ref);
+                }
+            }
+            references = dedupedReferences;
             log.info("去重后参考图数量: {}", references.size());
 
             // 参考图数量限制检查（最多9张）
@@ -743,6 +890,11 @@ public class ShotServiceImpl implements ShotService {
             request.setPrompt(result.getPrompt());
             request.setDuration(shot.getDuration() != null ? shot.getDuration() : 5);
             request.setShotId(shotId);
+
+            // 设置视频尺寸
+            int[] size = calculateVideoSize(shot.getResolution(), shot.getAspectRatio());
+            request.setWidth(size[0]);
+            request.setHeight(size[1]);
 
             // 构建参考图列表
             if (!references.isEmpty()) {
@@ -781,21 +933,30 @@ public class ShotServiceImpl implements ShotService {
                 // 保存元数据
                 saveVideoMetadata(shot, result.getPrompt(), response);
 
+                // 保存视频版本资产
+                saveVideoAsset(shot, result.getPrompt(), response, referenceUrls);
+
                 log.info("视频生成完成(带参考图): shotId={}, 耗时: {}分{}秒", shotId, durationSeconds / 60, durationSeconds % 60);
             } else {
-                throw new RuntimeException("视频生成失败: " + response.getErrorMessage());
+                String errorMsg = response.getErrorMessage();
+                log.error("视频生成失败(带参考图): shotId={}, status={}, errorMessage={}", shotId, response.getStatus(), errorMsg);
+                throw new RuntimeException("视频生成失败: " + (errorMsg != null ? errorMsg : "状态-" + response.getStatus()));
             }
         } catch (Exception e) {
             log.error("视频生成异常(带参考图): shotId={}", shotId, e);
             shot.setGenerationStatus(ShotGenerationStatus.FAILED.getCode());
-            // 提取关键错误信息
+            // 提取关键错误信息，转换为用户友好的提示
             String errorMsg = e.getMessage();
             if (errorMsg != null && errorMsg.contains("ModelNotOpen")) {
-                shot.setGenerationError("模型未开通，请在火山引擎控制台开通 doubao-seedance-2-0-260128 模型");
-            } else if (errorMsg != null && errorMsg.length() > 200) {
-                shot.setGenerationError(errorMsg.substring(0, 200));
+                shot.setGenerationError("模型未开通，请在火山引擎控制台开通 Seedance 2.0 模型");
+            } else if (errorMsg != null && errorMsg.contains("SensitiveContent")) {
+                shot.setGenerationError("内容审核未通过，请修改分镜描述后重试（避免戏剧化镜头语言）");
+            } else if (errorMsg != null && errorMsg.contains("copyright")) {
+                shot.setGenerationError("内容审核未通过，请修改分镜描述后重试（避免标志性镜头描述）");
+            } else if (errorMsg != null && errorMsg.contains("超时")) {
+                shot.setGenerationError("视频生成超时，请稍后重试或减少视频时长");
             } else {
-                shot.setGenerationError(errorMsg);
+                shot.setGenerationError("视频生成失败，请稍后重试");
             }
             shot.setUpdatedAt(LocalDateTime.now());
             shotMapper.updateById(shot);
@@ -1051,24 +1212,37 @@ public class ShotServiceImpl implements ShotService {
     }
 
     /**
-     * 根据名称查找资产
+     * 根据名称查找资产（支持模糊匹配场景名称）
      */
     private AssetReference findAssetByName(String name, Long seriesId) {
         log.info("查找资产: name={}, seriesId={}", name, seriesId);
 
-        // 1. 查找场景
+        // 1. 查找场景（支持模糊匹配）
         if (seriesId != null) {
             LambdaQueryWrapper<Scene> sceneWrapper = new LambdaQueryWrapper<>();
             sceneWrapper.eq(Scene::getSeriesId, seriesId)
-                    .eq(Scene::getSceneName, name);
-            Scene scene = sceneMapper.selectOne(sceneWrapper);
-            if (scene != null) {
-                SceneAsset asset = getActiveSceneAsset(scene.getId());
+                    .like(Scene::getSceneName, name);  // 使用 LIKE 匹配
+            List<Scene> scenes = sceneMapper.selectList(sceneWrapper);
+
+            // 优先精确匹配，其次模糊匹配
+            Scene matchedScene = null;
+            for (Scene scene : scenes) {
+                if (scene.getSceneName().equals(name)) {
+                    matchedScene = scene;
+                    break;
+                }
+                if (name.contains(scene.getSceneName()) || scene.getSceneName().contains(name)) {
+                    matchedScene = scene;
+                }
+            }
+
+            if (matchedScene != null) {
+                SceneAsset asset = getActiveSceneAsset(matchedScene.getId());
                 if (asset != null && asset.getFilePath() != null) {
-                    log.info("找到场景资产: name={}, url={}", name, asset.getFilePath());
+                    log.info("找到场景资产: name={}, sceneName={}, url={}", name, matchedScene.getSceneName(), asset.getFilePath());
                     AssetReference ref = new AssetReference();
                     ref.setType("scene");
-                    ref.setName(name);
+                    ref.setName(matchedScene.getSceneName());
                     ref.setImageUrl(asset.getFilePath());
                     return ref;
                 }
@@ -1187,6 +1361,27 @@ public class ShotServiceImpl implements ShotService {
     }
 
     /**
+     * 从 shot_reference_image 表获取用户选择的参考图
+     */
+    private List<AssetReference> getReferenceImagesFromDB(Long shotId) {
+        LambdaQueryWrapper<ShotReferenceImage> wrapper = new LambdaQueryWrapper<>();
+        wrapper.eq(ShotReferenceImage::getShotId, shotId)
+                .orderByAsc(ShotReferenceImage::getDisplayOrder);
+        List<ShotReferenceImage> images = shotReferenceImageMapper.selectList(wrapper);
+
+        List<AssetReference> references = new ArrayList<>();
+        for (ShotReferenceImage image : images) {
+            AssetReference ref = new AssetReference();
+            ref.setType(image.getImageType());
+            ref.setName(image.getReferenceName());
+            ref.setImageUrl(image.getImageUrl());
+            references.add(ref);
+            log.info("用户选择参考图: type={}, name={}, url={}", image.getImageType(), image.getReferenceName(), image.getImageUrl());
+        }
+        return references;
+    }
+
+    /**
      * 转换为 ReferenceImageDTO
      */
     private ReferenceImageDTO convertToReferenceImageDTO(ShotReferenceImage entity) {
@@ -1199,5 +1394,256 @@ public class ShotServiceImpl implements ShotService {
         dto.setDisplayOrder(entity.getDisplayOrder());
         dto.setIsUserAdded(entity.getIsUserAdded() != null && entity.getIsUserAdded() == 1);
         return dto;
+    }
+
+    @Override
+    public List<ShotVideoAssetVO> getVideoHistory(Long shotId) {
+        List<ShotVideoAsset> assets = shotVideoAssetMapper.selectByShotId(shotId);
+        return assets.stream().map(this::convertToVideoAssetVO).collect(Collectors.toList());
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void rollbackToVersion(Long shotId, Long assetId) {
+        Shot shot = shotMapper.selectById(shotId);
+        if (shot == null) {
+            throw new BusinessException("分镜不存在");
+        }
+
+        ShotVideoAsset targetAsset = shotVideoAssetMapper.selectById(assetId);
+        if (targetAsset == null || !targetAsset.getShotId().equals(shotId)) {
+            throw new BusinessException("视频资产不存在或不属于该分镜");
+        }
+
+        // 先将该分镜所有视频版本设为非激活
+        shotVideoAssetMapper.deactivateAllByShotId(shotId);
+
+        // 激活目标版本
+        targetAsset.setIsActive(1);
+        targetAsset.setUpdatedAt(LocalDateTime.now());
+        shotVideoAssetMapper.updateById(targetAsset);
+
+        // 更新 Shot 表的 videoUrl 和 thumbnailUrl（兼容旧逻辑）
+        shot.setVideoUrl(targetAsset.getVideoUrl());
+        shot.setThumbnailUrl(targetAsset.getThumbnailUrl());
+        shot.setUpdatedAt(LocalDateTime.now());
+        shotMapper.updateById(shot);
+
+        log.info("回滚视频版本: shotId={}, assetId={}, version={}", shotId, assetId, targetAsset.getVersion());
+    }
+
+    /**
+     * 保存视频版本资产
+     */
+    private void saveVideoAsset(Shot shot, String prompt, SeedanceResponse response, List<String> referenceUrls) {
+        // 先将该分镜所有视频版本设为非激活
+        shotVideoAssetMapper.deactivateAllByShotId(shot.getId());
+
+        // 获取当前最大版本号
+        Integer maxVersion = shotVideoAssetMapper.selectMaxVersion(shot.getId());
+        int newVersion = (maxVersion != null ? maxVersion : 0) + 1;
+
+        // 创建新的视频资产
+        ShotVideoAsset videoAsset = new ShotVideoAsset();
+        videoAsset.setShotId(shot.getId());
+        videoAsset.setVersion(newVersion);
+        videoAsset.setVideoUrl(response.getVideoUrl());
+        videoAsset.setThumbnailUrl(response.getThumbnailUrl());
+        videoAsset.setIsActive(1);
+        videoAsset.setCreatedAt(LocalDateTime.now());
+        videoAsset.setUpdatedAt(LocalDateTime.now());
+        shotVideoAssetMapper.insert(videoAsset);
+
+        // 保存元数据
+        ShotVideoAssetMetadata metadata = new ShotVideoAssetMetadata();
+        metadata.setShotVideoAssetId(videoAsset.getId());
+        metadata.setModel("seedance-2.0");
+        metadata.setPrompt(prompt);
+        if (referenceUrls != null && !referenceUrls.isEmpty()) {
+            metadata.setReferenceUrls(String.join(",", referenceUrls));
+        }
+        metadata.setCreatedAt(LocalDateTime.now());
+        shotVideoAssetMetadataMapper.insert(metadata);
+
+        log.info("保存视频版本资产: shotId={}, version={}, assetId={}", shot.getId(), newVersion, videoAsset.getId());
+    }
+
+    /**
+     * 转换为 ShotVideoAssetVO
+     */
+    private ShotVideoAssetVO convertToVideoAssetVO(ShotVideoAsset asset) {
+        ShotVideoAssetVO vo = new ShotVideoAssetVO();
+        vo.setId(asset.getId());
+        vo.setShotId(asset.getShotId());
+        vo.setVersion(asset.getVersion());
+        vo.setVideoUrl(asset.getVideoUrl());
+        vo.setThumbnailUrl(asset.getThumbnailUrl());
+        vo.setIsActive(asset.getIsActive() != null && asset.getIsActive() == 1);
+        vo.setCreatedAt(asset.getCreatedAt());
+
+        // 获取元数据
+        LambdaQueryWrapper<ShotVideoAssetMetadata> wrapper = new LambdaQueryWrapper<>();
+        wrapper.eq(ShotVideoAssetMetadata::getShotVideoAssetId, asset.getId());
+        ShotVideoAssetMetadata metadata = shotVideoAssetMetadataMapper.selectOne(wrapper);
+        if (metadata != null) {
+            vo.setModel(metadata.getModel());
+            vo.setPrompt(metadata.getPrompt());
+        }
+
+        return vo;
+    }
+
+    @Override
+    @Transactional
+    public ShotDetailVO createShot(Long episodeId, ShotUpdateRequest request) {
+        log.info("创建分镜: episodeId={}, request={}", episodeId, request);
+
+        // 检查剧集是否存在
+        Episode episode = episodeMapper.selectById(episodeId);
+        if (episode == null) {
+            throw new BusinessException("剧集不存在");
+        }
+
+        // 自动计算分镜编号（添加到末尾）
+        LambdaQueryWrapper<Shot> wrapper = new LambdaQueryWrapper<>();
+        wrapper.eq(Shot::getEpisodeId, episodeId)
+               .orderByDesc(Shot::getShotNumber)
+               .last("LIMIT 1");
+        Shot lastShot = shotMapper.selectOne(wrapper);
+        int shotNumber = (lastShot != null && lastShot.getShotNumber() != null)
+                    ? lastShot.getShotNumber() + 1
+                    : 1;
+
+        // 创建新分镜
+        Shot shot = new Shot();
+        shot.setEpisodeId(episodeId);
+        shot.setShotNumber(shotNumber);
+        shot.setStartTime(0);
+        shot.setEndTime(5);
+        shot.setDuration(5);
+        shot.setGenerationStatus(ShotGenerationStatus.PENDING.getCode());
+        shot.setStatus(ShotStatus.PENDING_REVIEW.getCode());
+        shot.setCreatedAt(LocalDateTime.now());
+        shot.setUpdatedAt(LocalDateTime.now());
+
+        // 填充请求数据
+        if (request != null) {
+            if (request.getShotName() != null && !request.getShotName().trim().isEmpty()) {
+                shot.setShotName(request.getShotName().trim());
+            }
+            if (request.getSceneName() != null) {
+                shot.setSceneName(request.getSceneName());
+            }
+            if (request.getDescription() != null) {
+                shot.setDescription(request.getDescription());
+            }
+            if (request.getDuration() != null) {
+                shot.setDuration(Math.min(request.getDuration(), 15));
+                shot.setEndTime(shot.getDuration());
+            }
+            if (request.getShotType() != null) {
+                shot.setShotType(request.getShotType());
+            }
+            if (request.getSoundEffect() != null) {
+                shot.setSoundEffect(request.getSoundEffect());
+            }
+            if (request.getCameraAngle() != null) {
+                shot.setCameraAngle(request.getCameraAngle());
+            }
+            if (request.getCameraMovement() != null) {
+                shot.setCameraMovement(request.getCameraMovement());
+            }
+        }
+
+        shotMapper.insert(shot);
+        log.info("分镜创建成功: shotId={}, shotNumber={}", shot.getId(), shotNumber);
+
+        return getShotDetail(shot.getId());
+    }
+
+    @Override
+    @Transactional
+    public void deleteShot(Long shotId) {
+        log.info("删除分镜: shotId={}", shotId);
+
+        Shot shot = shotMapper.selectById(shotId);
+        if (shot == null) {
+            throw new BusinessException("分镜不存在");
+        }
+
+        Long episodeId = shot.getEpisodeId();
+        Integer deletedNumber = shot.getShotNumber();
+
+        // 删除分镜（逻辑删除）
+        shotMapper.deleteById(shotId);
+
+        // 删除相关的角色关联
+        LambdaQueryWrapper<ShotCharacter> charWrapper = new LambdaQueryWrapper<>();
+        charWrapper.eq(ShotCharacter::getShotId, shotId);
+        shotCharacterMapper.delete(charWrapper);
+
+        // 删除相关的道具关联
+        LambdaQueryWrapper<ShotProp> propWrapper = new LambdaQueryWrapper<>();
+        propWrapper.eq(ShotProp::getShotId, shotId);
+        shotPropMapper.delete(propWrapper);
+
+        // 删除相关的参考图
+        LambdaQueryWrapper<ShotReferenceImage> refWrapper = new LambdaQueryWrapper<>();
+        refWrapper.eq(ShotReferenceImage::getShotId, shotId);
+        shotReferenceImageMapper.delete(refWrapper);
+
+        // 批量删除视频资产及其元数据
+        LambdaQueryWrapper<ShotVideoAsset> videoWrapper = new LambdaQueryWrapper<>();
+        videoWrapper.eq(ShotVideoAsset::getShotId, shotId).select(ShotVideoAsset::getId);
+        List<Long> videoAssetIds = shotVideoAssetMapper.selectList(videoWrapper)
+                .stream().map(ShotVideoAsset::getId).collect(Collectors.toList());
+
+        if (!videoAssetIds.isEmpty()) {
+            // 批量删除元数据
+            LambdaQueryWrapper<ShotVideoAssetMetadata> metaWrapper = new LambdaQueryWrapper<>();
+            metaWrapper.in(ShotVideoAssetMetadata::getShotVideoAssetId, videoAssetIds);
+            shotVideoAssetMetadataMapper.delete(metaWrapper);
+            // 批量删除视频资产
+            LambdaQueryWrapper<ShotVideoAsset> deleteVideoWrapper = new LambdaQueryWrapper<>();
+            deleteVideoWrapper.in(ShotVideoAsset::getId, videoAssetIds);
+            shotVideoAssetMapper.delete(deleteVideoWrapper);
+        }
+
+        // 调整后面分镜的编号（-1）
+        if (deletedNumber != null) {
+            shotMapper.decrementShotNumbers(episodeId, deletedNumber);
+        }
+
+        log.info("分镜删除成功: shotId={}", shotId);
+    }
+
+    @Override
+    @Transactional
+    public void reorderShots(Long episodeId, List<Long> shotIds) {
+        log.info("重新排序分镜开始: episodeId={}, shotIds={}", episodeId, shotIds);
+
+        // 验证所有分镜都属于该剧集
+        for (Long shotId : shotIds) {
+            Shot shot = shotMapper.selectById(shotId);
+            if (shot == null || !episodeId.equals(shot.getEpisodeId())) {
+                throw new BusinessException("分镜不存在或不属于该剧集: " + shotId);
+            }
+        }
+
+        // 按新顺序更新分镜编号
+        for (int i = 0; i < shotIds.size(); i++) {
+            Long shotId = shotIds.get(i);
+            int newNumber = i + 1;
+
+            // 使用 LambdaUpdateWrapper 只更新 shotNumber 字段
+            LambdaUpdateWrapper<Shot> updateWrapper = new LambdaUpdateWrapper<>();
+            updateWrapper.eq(Shot::getId, shotId)
+                        .set(Shot::getShotNumber, newNumber)
+                        .set(Shot::getUpdatedAt, LocalDateTime.now());
+            int updated = shotMapper.update(null, updateWrapper);
+            log.info("更新分镜编号: shotId={}, newNumber={}, updated={}", shotId, newNumber, updated);
+        }
+
+        log.info("分镜排序完成: episodeId={}", episodeId);
     }
 }

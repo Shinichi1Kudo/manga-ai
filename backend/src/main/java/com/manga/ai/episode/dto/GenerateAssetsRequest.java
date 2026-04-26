@@ -56,4 +56,9 @@ public class GenerateAssetsRequest implements Serializable {
      * 可选：统一设置清晰度
      */
     private String quality;
+
+    /**
+     * 分镜解析模式：default-默认版, detailed-详细版
+     */
+    private String parseMode;
 }

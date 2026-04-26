@@ -18,6 +18,7 @@ public class ShotDetailVO implements Serializable {
     private Long id;
     private Long episodeId;
     private Integer shotNumber;
+    private String shotName;
     private Long sceneId;
     private String sceneName;
     private String description;
@@ -27,6 +28,8 @@ public class ShotDetailVO implements Serializable {
     private Integer startTime;
     private Integer endTime;
     private Integer duration;
+    private String resolution;
+    private String aspectRatio;
     private String soundEffect;
     private String charactersJson;
     private String propsJson;
