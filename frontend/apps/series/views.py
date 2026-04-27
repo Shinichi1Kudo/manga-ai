@@ -188,6 +188,7 @@ def series_update(request, series_id):
         data = json.loads(request.body)
         client.put(f'/v1/series/{series_id}', {
             'seriesName': data.get('seriesName'),
+            'seriesStyle': data.get('seriesStyle'),
             'outline': data.get('outline'),
             'background': data.get('background'),
         })

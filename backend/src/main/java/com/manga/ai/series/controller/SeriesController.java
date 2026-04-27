@@ -87,7 +87,11 @@ public class SeriesController {
         String seriesName = request.get("seriesName");
         String outline = request.get("outline");
         String background = request.get("background");
-        String styleKeywords = request.get("styleKeywords");
+        // 优先使用 seriesStyle，兼容旧格式 styleKeywords
+        String styleKeywords = request.get("seriesStyle");
+        if (styleKeywords == null || styleKeywords.isEmpty()) {
+            styleKeywords = request.get("styleKeywords");
+        }
         seriesService.updateSeries(id, seriesName, outline, background, styleKeywords);
         return Result.success();
     }

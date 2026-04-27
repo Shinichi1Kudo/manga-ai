@@ -491,6 +491,11 @@ public class PropServiceImpl implements PropService {
      * 构建道具生成提示词（强调透明背景）
      */
     private String buildPropPrompt(Prop prop, String styleKeywords) {
+        // 获取系列信息，用于获取背景设定和剧本大纲
+        Series series = seriesMapper.selectById(prop.getSeriesId());
+        String background = series != null ? series.getBackground() : null;
+        String outline = series != null ? series.getOutline() : null;
+
         StringBuilder prompt = new StringBuilder();
 
         // 道具主体
@@ -501,6 +506,23 @@ public class PropServiceImpl implements PropService {
         // 道具描述
         if (prop.getDescription() != null && !prop.getDescription().isEmpty()) {
             prompt.append(prop.getDescription());
+            prompt.append(", ");
+        }
+
+        // 背景设定/世界观（用于理解道具的背景）
+        if (background != null && !background.isEmpty()) {
+            prompt.append("World setting: ");
+            prompt.append(background);
+            prompt.append(", ");
+        }
+
+        // 剧本大纲（用于理解故事背景）
+        if (outline != null && !outline.isEmpty()) {
+            prompt.append("Story context: ");
+            prompt.append(outline.substring(0, Math.min(200, outline.length()))); // 限制长度避免过长
+            if (outline.length() > 200) {
+                prompt.append("...");
+            }
             prompt.append(", ");
         }
 
@@ -528,7 +550,7 @@ public class PropServiceImpl implements PropService {
             prompt.append(", ");
         }
 
-        // 风格关键词
+        // 风格关键词（确保使用系列风格）
         if (styleKeywords != null && !styleKeywords.isEmpty()) {
             prompt.append(styleKeywords);
             prompt.append(", ");

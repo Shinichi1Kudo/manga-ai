@@ -499,6 +499,11 @@ public class SceneServiceImpl implements SceneService {
      * 构建场景生成提示词
      */
     private String buildScenePrompt(Scene scene, String styleKeywords) {
+        // 获取系列信息，用于获取背景设定和剧本大纲
+        Series series = seriesMapper.selectById(scene.getSeriesId());
+        String background = series != null ? series.getBackground() : null;
+        String outline = series != null ? series.getOutline() : null;
+
         StringBuilder prompt = new StringBuilder();
 
         // 场景类型和环境
@@ -509,6 +514,23 @@ public class SceneServiceImpl implements SceneService {
         // 场景描述
         if (scene.getDescription() != null && !scene.getDescription().isEmpty()) {
             prompt.append(scene.getDescription());
+            prompt.append(", ");
+        }
+
+        // 背景设定/世界观
+        if (background != null && !background.isEmpty()) {
+            prompt.append("World setting: ");
+            prompt.append(background);
+            prompt.append(", ");
+        }
+
+        // 剧本大纲（用于理解故事背景）
+        if (outline != null && !outline.isEmpty()) {
+            prompt.append("Story context: ");
+            prompt.append(outline.substring(0, Math.min(200, outline.length()))); // 限制长度避免过长
+            if (outline.length() > 200) {
+                prompt.append("...");
+            }
             prompt.append(", ");
         }
 
@@ -536,7 +558,7 @@ public class SceneServiceImpl implements SceneService {
             prompt.append(", ");
         }
 
-        // 风格关键词
+        // 风格关键词（确保使用系列风格）
         if (styleKeywords != null && !styleKeywords.isEmpty()) {
             prompt.append(styleKeywords);
             prompt.append(", ");

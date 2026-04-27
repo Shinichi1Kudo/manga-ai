@@ -364,7 +364,8 @@ public class SeriesServiceImpl implements SeriesService {
         if (background != null) {
             series.setBackground(background);
         }
-        if (styleKeywords != null) {
+        // 只有当 styleKeywords 非空时才更新，避免空字符串覆盖原有值
+        if (styleKeywords != null && !styleKeywords.trim().isEmpty()) {
             series.setStyleKeywords(styleKeywords);
         }
         series.setUpdatedAt(LocalDateTime.now());

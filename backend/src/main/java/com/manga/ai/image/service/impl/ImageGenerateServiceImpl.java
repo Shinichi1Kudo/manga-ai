@@ -169,9 +169,9 @@ public class ImageGenerateServiceImpl implements ImageGenerateService {
             // 如果有参考图，添加image参数（图生图）
             if (request.getReferenceImageUrl() != null && !request.getReferenceImageUrl().isEmpty()) {
                 requestBody.put("image", request.getReferenceImageUrl());
-                // 图生图的强度参数，控制保留原特征的程度
-                // 0.35 是换装场景的最佳值，能保留肤质和人物特征，同时改变服装
-                requestBody.put("strength", 0.35);
+                // 图生图的强度参数，控制对参考图的改变程度
+                // 0.85 在换装场景下能保留人物面部特征，同时有足够自由度改变服装
+                requestBody.put("strength", 0.85);
             }
 
             HttpHeaders headers = new HttpHeaders();
@@ -419,26 +419,15 @@ public class ImageGenerateServiceImpl implements ImageGenerateService {
     private String buildClothingChangePrompt(ImageGenerateRequest request) {
         StringBuilder prompt = new StringBuilder();
 
-        // 强调保持参考图的所有特征和风格
-        prompt.append("Keep EXACTLY the same person from the reference image. ");
-        prompt.append("Same face, same age, same gender, same body type, same ethnicity, same art style. ");
-        prompt.append("Do NOT change the person's appearance, age, or art style. ");
-        prompt.append("Maintain the exact same visual style as the reference image. ");
+        // 保持人物面部特征和风格，但允许改变服装
+        prompt.append("Keep the same person's face, age, gender, body type, ethnicity, and art style from the reference image. ");
+        prompt.append("Do NOT change the person's face or body proportions. ");
 
-        // 新布局要求
-        prompt.append("STRICT LAYOUT in ONE image: ");
-        prompt.append("LEFT 1/3: HUGE face close-up portrait showing detailed facial features. ");
-        prompt.append("RIGHT 2/3: Full body three-view showing front, side, and back views. ");
-
-        // 关键：强调一致性
-        prompt.append("CRITICAL CONSISTENCY: The face close-up and all body views MUST show the SAME EXACT character. ");
-        prompt.append("SAME facial features, SAME clothing color, SAME hair color, SAME skin tone. ");
-        prompt.append("The face in close-up MUST be IDENTICAL to the face on body views. ");
+        // 关键：强调面部一致性
+        prompt.append("CRITICAL CONSISTENCY: All views MUST show the SAME character with identical facial features, hair color, and skin tone. ");
 
         // 强调保持肤质
-        prompt.append("IMPORTANT: Maintain perfect smooth skin texture from the reference image. ");
-        prompt.append("Keep the same skin quality, no degradation, no roughness, no blemishes. ");
-        prompt.append("Smooth, clear, flawless skin complexion throughout. ");
+        prompt.append("IMPORTANT: Maintain smooth skin texture. ");
 
         // 强调完整全身照 - 必须显示脚
         prompt.append("CRITICAL: Full body views MUST show COMPLETE body from head to FEET. ");
@@ -447,9 +436,13 @@ public class ImageGenerateServiceImpl implements ImageGenerateService {
         // 强制白色背景
         prompt.append("MUST have PURE WHITE BACKGROUND (#FFFFFF). NO colored background, NO gradient background. ");
 
-        // 新服装描述
+        // 新服装描述 - 优先使用clothingPrompt，如果没有则使用clothingName
         if (request.getClothingPrompt() != null && !request.getClothingPrompt().trim().isEmpty()) {
-            prompt.append("Only change the outfit to: ").append(request.getClothingPrompt()).append(". ");
+            prompt.append("IMPORTANT: Change the outfit to: ").append(request.getClothingPrompt()).append(". ");
+            prompt.append("The character MUST wear the new outfit described above, NOT the outfit from the reference image. ");
+        } else if (request.getClothingName() != null && !request.getClothingName().trim().isEmpty()) {
+            prompt.append("IMPORTANT: Change the outfit to: ").append(request.getClothingName()).append(" style. ");
+            prompt.append("The character MUST wear the new outfit described above, NOT the outfit from the reference image. ");
         }
 
         // 风格关键词
@@ -1225,6 +1218,9 @@ public class ImageGenerateServiceImpl implements ImageGenerateService {
             String userPrompt = request.getOriginalPrompt();
             if (userPrompt == null || userPrompt.trim().isEmpty()) {
                 userPrompt = request.getCustomPrompt();
+            }
+            if (userPrompt == null || userPrompt.trim().isEmpty()) {
+                userPrompt = request.getClothingPrompt();
             }
             if (userPrompt == null || userPrompt.trim().isEmpty()) {
                 userPrompt = role.getCustomPrompt();

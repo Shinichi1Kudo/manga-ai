@@ -37,6 +37,10 @@
         </div>
         <div class="space-y-2 mt-3">
             <div>
+                <span class="text-white/40 text-xs">系列风格</span>
+                <p class="text-white/70 text-sm leading-relaxed" id="styleKeywordsDisplay" data-style-keywords="{{ series.styleKeywords|default:'' }}">{{ series.styleKeywords|default:"未设置" }}</p>
+            </div>
+            <div>
                 <span class="text-white/40 text-xs">剧本大纲</span>
                 <p class="text-white/70 text-sm leading-relaxed" id="outlineDisplay">{{ series.outline|default:"暂无剧本大纲" }}</p>
             </div>
@@ -546,6 +550,23 @@
                 <input type="text" id="editSeriesName" class="input-modern" value="{{ series.seriesName }}">
             </div>
             <div>
+                <label class="block text-sm text-white/60 mb-2">系列风格</label>
+                <select id="editSeriesStyle" class="input-modern">
+                    <option value="">请选择系列整体风格</option>
+                    <option value="3d_anime" {% if series.styleKeywords == '3d_anime' %}selected{% endif %}>超精细3D动漫</option>
+                    <option value="realistic" {% if series.styleKeywords == 'realistic' %}selected{% endif %}>真人风格</option>
+                    <option value="anime_jp" {% if series.styleKeywords == 'anime_jp' %}selected{% endif %}>日系动漫</option>
+                    <option value="cartoon_us" {% if series.styleKeywords == 'cartoon_us' %}selected{% endif %}>美式卡通</option>
+                    <option value="watercolor" {% if series.styleKeywords == 'watercolor' %}selected{% endif %}>水彩插画</option>
+                    <option value="oil_painting" {% if series.styleKeywords == 'oil_painting' %}selected{% endif %}>油画风格</option>
+                    <option value="cyberpunk" {% if series.styleKeywords == 'cyberpunk' %}selected{% endif %}>赛博朋克</option>
+                    <option value="chinese_style" {% if series.styleKeywords == 'chinese_style' %}selected{% endif %}>古风国漫</option>
+                    <option value="pixel_art" {% if series.styleKeywords == 'pixel_art' %}selected{% endif %}>像素风格</option>
+                    <option value="chibi" {% if series.styleKeywords == 'chibi' %}selected{% endif %}>Q版卡通</option>
+                </select>
+                <p class="text-xs text-white/40 mt-1">选择系列的整体视觉风格，将影响后续角色和场景的生成</p>
+            </div>
+            <div>
                 <label class="block text-sm text-white/60 mb-2">剧本大纲</label>
                 <textarea id="editSeriesOutline" class="input-modern" rows="4" placeholder="输入剧本大纲...">{{ series.outline|default:"" }}</textarea>
             </div>
@@ -929,6 +950,34 @@ const STYLE_PRESETS = {
     'pixel_art': 'pixel art style, retro game aesthetic, 8-bit, nostalgic, blocky pixels',
     'chibi': 'chibi style, cute, deformed, big head small body, kawaii, adorable'
 };
+
+// 风格名称映射（中文）
+const STYLE_NAMES = {
+    '3d_anime': '超精细3D动漫',
+    'realistic': '真人风格',
+    'anime_jp': '日系动漫',
+    'cartoon_us': '美式卡通',
+    'watercolor': '水彩插画',
+    'oil_painting': '油画风格',
+    'cyberpunk': '赛博朋克',
+    'chinese_style': '古风国漫',
+    'pixel_art': '像素风格',
+    'chibi': 'Q版卡通'
+};
+
+// 页面加载时初始化风格名称显示
+(function initStyleDisplay() {
+    const styleKeywordsDisplay = document.getElementById('styleKeywordsDisplay');
+    if (styleKeywordsDisplay) {
+        // 从 data 属性读取原始值
+        const currentStyle = styleKeywordsDisplay.dataset.styleKeywords;
+        if (currentStyle && currentStyle.trim() !== '') {
+            styleKeywordsDisplay.textContent = STYLE_NAMES[currentStyle] || currentStyle;
+        } else {
+            styleKeywordsDisplay.textContent = '未设置';
+        }
+    }
+})();
 
 // 人物精细三视图默认提示词
 const DETAILED_THREE_VIEW_PROMPT = `一张高精度，干净极简的角色设定板/人物三视图参考页，纯白背景，整体像游戏角色建模设定图，时装人物设定sheet、角色turnaround board，排版整齐清晰，信息分区明确，写实高级质感，统一光线、统一人物一致性。
@@ -2988,6 +3037,7 @@ function closeEditSeriesModal() {
 
 function submitEditSeries() {
     const seriesName = document.getElementById('editSeriesName').value.trim();
+    const seriesStyle = document.getElementById('editSeriesStyle').value;
     const outline = document.getElementById('editSeriesOutline').value.trim();
     const background = document.getElementById('editSeriesBackground').value.trim();
 
@@ -2996,23 +3046,37 @@ function submitEditSeries() {
         return;
     }
 
+    // 构建请求数据，只包含非空的字段
+    const requestData = {
+        seriesName: seriesName
+    };
+    if (seriesStyle && seriesStyle.trim() !== '') {
+        requestData.seriesStyle = seriesStyle;
+    }
+    if (outline !== undefined) {
+        requestData.outline = outline;
+    }
+    if (background !== undefined) {
+        requestData.background = background;
+    }
+
     fetch(`/{{ series_id }}/update/`, {
         method: 'PUT',
         headers: {
             'X-CSRFToken': getCookie('csrftoken'),
             'Content-Type': 'application/json'
         },
-        body: JSON.stringify({
-            seriesName: seriesName,
-            outline: outline,
-            background: background
-        })
+        body: JSON.stringify(requestData)
     })
     .then(response => response.json())
     .then(data => {
         if (data.success) {
             // 更新页面显示
             document.getElementById('seriesNameDisplay').textContent = seriesName;
+            // 只更新有值的情况，否则显示原值
+            if (seriesStyle && seriesStyle.trim() !== '') {
+                document.getElementById('styleKeywordsDisplay').textContent = STYLE_NAMES[seriesStyle] || seriesStyle;
+            }
             document.getElementById('outlineDisplay').textContent = outline || '暂无剧本大纲';
             document.getElementById('backgroundDisplay').textContent = background || '暂无背景介绍';
             closeEditSeriesModal();

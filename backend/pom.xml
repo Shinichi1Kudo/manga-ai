@@ -15,7 +15,7 @@
     <artifactId>manga-ai</artifactId>
     <version>1.0.0-SNAPSHOT</version>
     <name>manga-ai</name>
-    <description>AI 智能漫剧制作系统 - 系列初始化阶段</description>
+    <description>AI 智能短剧制作系统 - 系列初始化阶段</description>
 
     <properties>
         <java.version>17</java.version>
