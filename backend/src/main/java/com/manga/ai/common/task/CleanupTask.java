@@ -4,6 +4,10 @@ import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.manga.ai.common.enums.EpisodeStatus;
 import com.manga.ai.episode.entity.Episode;
 import com.manga.ai.episode.mapper.EpisodeMapper;
+import com.manga.ai.prop.entity.Prop;
+import com.manga.ai.prop.mapper.PropMapper;
+import com.manga.ai.scene.entity.Scene;
+import com.manga.ai.scene.mapper.SceneMapper;
 import com.manga.ai.series.mapper.SeriesMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -22,6 +26,8 @@ public class CleanupTask {
 
     private final SeriesMapper seriesMapper;
     private final EpisodeMapper episodeMapper;
+    private final SceneMapper sceneMapper;
+    private final PropMapper propMapper;
 
     /**
      * 每天凌晨3点清理过期的回收站系列
@@ -59,6 +65,41 @@ public class CleanupTask {
             }
         } catch (Exception e) {
             log.error("清理卡住的解析任务失败", e);
+        }
+    }
+
+    /**
+     * 每分钟检查一次卡在生成中的场景和道具
+     * 如果生成中状态超过8分钟，自动逻辑删除
+     */
+    @Scheduled(fixedRate = 60000)
+    public void cleanupStuckGeneratingAssets() {
+        LocalDateTime timeout = LocalDateTime.now().minusMinutes(8);
+        try {
+            // 清理卡住的场景（status=0 生成中，超过8分钟）
+            LambdaUpdateWrapper<Scene> sceneWrapper = new LambdaUpdateWrapper<>();
+            sceneWrapper.eq(Scene::getStatus, 0)
+                    .lt(Scene::getUpdatedAt, timeout)
+                    .set(Scene::getIsDeleted, 1);
+            int deletedScenes = sceneMapper.update(null, sceneWrapper);
+            if (deletedScenes > 0) {
+                log.info("已自动删除 {} 个卡在生成中超过8分钟的场景", deletedScenes);
+            }
+        } catch (Exception e) {
+            log.error("清理卡住的场景失败", e);
+        }
+        try {
+            // 清理卡住的道具（status=0 生成中，超过8分钟）
+            LambdaUpdateWrapper<Prop> propWrapper = new LambdaUpdateWrapper<>();
+            propWrapper.eq(Prop::getStatus, 0)
+                    .lt(Prop::getUpdatedAt, timeout)
+                    .set(Prop::getIsDeleted, 1);
+            int deletedProps = propMapper.update(null, propWrapper);
+            if (deletedProps > 0) {
+                log.info("已自动删除 {} 个卡在生成中超过8分钟的道具", deletedProps);
+            }
+        } catch (Exception e) {
+            log.error("清理卡住的道具失败", e);
         }
     }
 }

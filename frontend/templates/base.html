@@ -735,6 +735,24 @@
             }
             return cookieValue;
         }
+
+        // JWT Token - 从Django session注入
+        const AUTH_TOKEN = '{{ request.session.token|escapejs }}';
+
+        // 全局fetch拦截器：自动给 /api/v1/ 请求加 Authorization header
+        const _originalFetch = window.fetch;
+        window.fetch = function(...args) {
+            const [input, init = {}] = args;
+            const url = typeof input === 'string' ? input : input.url;
+            if (url && url.startsWith('/api/v1/') && AUTH_TOKEN) {
+                init.headers = {
+                    ...init.headers,
+                    'Authorization': `Bearer ${AUTH_TOKEN}`
+                };
+                args = [input, init];
+            }
+            return _originalFetch.apply(this, args);
+        };
     </script>
 
     {% block extra_js %}{% endblock %}
