@@ -25,14 +25,16 @@ public interface EpisodeService {
     /**
      * 异步解析剧本（只解析场景和道具）
      * @param episodeId 剧集ID
+     * @param userId 用户ID（用于返还积分）
      */
-    void parseScript(Long episodeId);
+    void parseScript(Long episodeId, Long userId);
 
     /**
      * 异步解析分镜
      * @param episodeId 剧集ID
+     * @param userId 用户ID（用于返还积分）
      */
-    void parseShots(Long episodeId);
+    void parseShots(Long episodeId, Long userId);
 
     /**
      * 获取剧集详情
@@ -79,6 +81,7 @@ public interface EpisodeService {
      * 批量生成选中资产的图片
      * @param episodeId 剧集ID
      * @param request 生成请求（包含选中的场景和道具ID）
+     * @param userId 用户ID（用于返还积分）
      */
-    void generateSelectedAssets(Long episodeId, GenerateAssetsRequest request);
+    void generateSelectedAssets(Long episodeId, GenerateAssetsRequest request, Long userId);
 }

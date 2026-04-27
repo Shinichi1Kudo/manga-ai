@@ -133,8 +133,8 @@ public class EpisodeServiceImpl implements EpisodeService {
 
     @Override
     @Async("llmExecutor")
-    public void parseScript(Long episodeId) {
-        log.info("开始解析剧本资产（仅场景和道具）: episodeId={}", episodeId);
+    public void parseScript(Long episodeId, Long userId) {
+        log.info("开始解析剧本资产（仅场景和道具）: episodeId={}, userId={}", episodeId, userId);
 
         Episode episode = episodeMapper.selectById(episodeId);
         if (episode == null) {
@@ -142,14 +142,7 @@ public class EpisodeServiceImpl implements EpisodeService {
             return;
         }
 
-        // 扣除积分
-        Long userId = UserContextHolder.getUserId();
         int requiredCredits = CreditConstants.CREDITS_PER_SCRIPT_PARSE;
-        if (userId != null) {
-            userService.deductCredits(userId, requiredCredits, CreditUsageType.SCRIPT_PARSE.getCode(),
-                    "剧本解析-资产解析", episodeId, "EPISODE");
-            log.info("剧本解析扣费: userId={}, credits={}", userId, requiredCredits);
-        }
 
         try {
             // 更新状态为解析中
@@ -208,8 +201,8 @@ public class EpisodeServiceImpl implements EpisodeService {
 
     @Override
     @Async("llmExecutor")
-    public void parseShots(Long episodeId) {
-        log.info("开始解析分镜: episodeId={}", episodeId);
+    public void parseShots(Long episodeId, Long userId) {
+        log.info("开始解析分镜: episodeId={}, userId={}", episodeId, userId);
 
         Episode episode = episodeMapper.selectById(episodeId);
         if (episode == null) {
@@ -217,14 +210,7 @@ public class EpisodeServiceImpl implements EpisodeService {
             return;
         }
 
-        // 扣除积分
-        Long userId = UserContextHolder.getUserId();
         int requiredCredits = CreditConstants.CREDITS_PER_SCRIPT_PARSE;
-        if (userId != null) {
-            userService.deductCredits(userId, requiredCredits, CreditUsageType.SCRIPT_PARSE.getCode(),
-                    "剧本解析-分镜解析", episodeId, "EPISODE");
-            log.info("分镜解析扣费: userId={}, credits={}", userId, requiredCredits);
-        }
 
         try {
             // 从 parsedScript 获取解析模式
@@ -1187,9 +1173,9 @@ public class EpisodeServiceImpl implements EpisodeService {
 
     @Override
     @Async("llmExecutor")
-    public void generateSelectedAssets(Long episodeId, GenerateAssetsRequest request) {
-        log.info("开始批量生成资产: episodeId={}, sceneIds={}, propIds={}, newSceneNames={}, newPropNames={}",
-                episodeId, request.getSceneIds(), request.getPropIds(),
+    public void generateSelectedAssets(Long episodeId, GenerateAssetsRequest request, Long userId) {
+        log.info("开始批量生成资产: episodeId={}, userId={}, sceneIds={}, propIds={}, newSceneNames={}, newPropNames={}",
+                episodeId, userId, request.getSceneIds(), request.getPropIds(),
                 request.getNewSceneNames(), request.getNewPropNames());
 
         Episode episode = episodeMapper.selectById(episodeId);
@@ -1370,8 +1356,8 @@ public class EpisodeServiceImpl implements EpisodeService {
         }
 
         // 异步触发分镜解析
-        log.info("触发分镜解析: episodeId={}", episodeId);
-        parseShots(episodeId);
+        log.info("触发分镜解析: episodeId={}, userId={}", episodeId, userId);
+        parseShots(episodeId, userId);
 
         log.info("批量生成资产任务已全部提交: episodeId={}", episodeId);
     }

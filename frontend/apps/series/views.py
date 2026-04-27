@@ -962,10 +962,7 @@ def contact_image(request):
 
 def credit_records(request):
     """积分记录页面"""
-    credits = request.session.get('credits', 0)
-    return render(request, 'credits/credit_records.html', {
-        'credits': credits,
-    })
+    return render(request, 'credits/credit_records.html')
 
 
 def credit_records_api(request):
@@ -988,6 +985,11 @@ def user_info_api(request):
     client = get_client(request)
     try:
         result = client.get('/v1/user/info')
-        return JsonResponse({'code': 200, 'data': result})
+        response = JsonResponse({'code': 200, 'data': result})
+        # 禁止缓存
+        response['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+        response['Pragma'] = 'no-cache'
+        response['Expires'] = '0'
+        return response
     except BackendAPIError as e:
         return JsonResponse({'code': 400, 'message': e.message}, status=400)

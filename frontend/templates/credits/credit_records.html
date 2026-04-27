@@ -14,7 +14,7 @@
         </div>
         <div class="px-4 py-2 rounded-xl bg-white/5 border border-white/10 flex items-center gap-2">
             <i data-lucide="coins" class="w-5 h-5 text-yellow-400"></i>
-            <span class="font-medium">{{ credits|default:0 }} 积分</span>
+            <span class="font-medium"><span id="pageCredits">0</span> 积分</span>
         </div>
     </div>
 
@@ -55,6 +55,28 @@
 <script>
 let currentPage = 1;
 const pageSize = 20;
+
+// 加载用户积分
+function loadUserCredits() {
+    fetch('/api/user/info/')
+        .then(res => res.json())
+        .then(data => {
+            console.log('用户信息返回:', data);
+            if (data.code === 200 && data.data) {
+                // 更新页面内的积分显示
+                const pageCreditsEl = document.getElementById('pageCredits');
+                if (pageCreditsEl) {
+                    pageCreditsEl.textContent = data.data.credits || 0;
+                }
+                // 同时更新导航栏的积分显示
+                const navCreditsEl = document.getElementById('userCredits');
+                if (navCreditsEl) {
+                    navCreditsEl.textContent = data.data.credits || 0;
+                }
+            }
+        })
+        .catch(err => console.log('获取积分失败:', err));
+}
 
 function loadRecords(page = 1) {
     currentPage = page;
@@ -175,6 +197,7 @@ function renderPagination(total, currentPage, pageSize) {
 }
 
 // Initial load
+loadUserCredits();
 loadRecords(1);
 </script>
 {% endblock %}

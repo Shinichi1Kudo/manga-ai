@@ -86,6 +86,22 @@
     transition: opacity 0.3s;
     z-index: 10;
 }
+
+/* 弹窗动画 */
+@keyframes scaleIn {
+    from {
+        opacity: 0;
+        transform: scale(0.9);
+    }
+    to {
+        opacity: 1;
+        transform: scale(1);
+    }
+}
+
+.animate-scale-in {
+    animation: scaleIn 0.2s ease-out forwards;
+}
 </style>
 {% endblock %}
 
@@ -152,8 +168,10 @@
             <button id="editScriptBtn" class="px-4 py-2 rounded-lg bg-white/5 hover:bg-white/10 transition-colors text-sm flex items-center gap-2">
                 <i data-lucide="edit" class="w-4 h-4"></i>编辑剧本
             </button>
-            <button id="reparseBtn" class="px-4 py-2 rounded-lg bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 transition-all text-sm flex items-center gap-2">
+            <button id="reparseBtn" class="px-4 py-2 rounded-lg bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 transition-all text-sm flex items-center gap-2" title="警告：将清除所有已解析的分镜，包括已生成视频的分镜">
                 <i data-lucide="refresh-cw" class="w-4 h-4"></i>重新解析
+                <span class="flex items-center gap-1 text-yellow-300 text-xs"><i data-lucide="coins" class="w-3 h-3"></i>2</span>
+                <i data-lucide="alert-triangle" class="w-3.5 h-3.5 text-orange-300"></i>
             </button>
             {% endif %}
         </div>
@@ -168,8 +186,8 @@
             <p class="text-red-300 font-medium">剧本解析失败</p>
             <p class="text-red-400/80 text-sm mt-1">{{ episode.errorMessage }}</p>
         </div>
-        <button onclick="document.getElementById('reparseBtn').click()" class="px-3 py-1.5 rounded-lg bg-red-500/30 hover:bg-red-500/50 text-red-300 text-sm transition-colors">
-            重新解析
+        <button onclick="document.getElementById('reparseBtn').click()" class="px-3 py-1.5 rounded-lg bg-red-500/30 hover:bg-red-500/50 text-red-300 text-sm transition-colors flex items-center gap-1">
+            重新解析<span class="flex items-center gap-0.5 text-yellow-300"><i data-lucide="coins" class="w-3 h-3"></i>2</span>
         </button>
     </div>
     {% endif %}
@@ -192,6 +210,38 @@
             <button id="cancelEditBtn" class="px-5 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 transition-all">取消</button>
             <button id="saveScriptBtn" class="px-5 py-2.5 rounded-xl bg-gradient-to-r from-blue-500 to-cyan-500 hover:from-blue-600 hover:to-cyan-600 transition-all font-medium">保存剧本</button>
         </div>
+        </div>
+    </div>
+</div>
+
+<!-- 重新解析确认弹窗 -->
+<div id="reparseConfirmModal" class="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 hidden">
+    <div class="flex items-center justify-center min-h-full p-4">
+        <div class="glass-card p-6 w-full max-w-md relative animate-scale-in">
+            <div class="text-center mb-6">
+                <div class="w-16 h-16 mx-auto mb-4 rounded-full bg-orange-500/20 flex items-center justify-center">
+                    <i data-lucide="alert-triangle" class="w-8 h-8 text-orange-400"></i>
+                </div>
+                <h3 class="text-xl font-semibold text-white mb-2">确认重新解析？</h3>
+                <p class="text-white/60 text-sm">此操作将清除所有已解析的分镜数据</p>
+            </div>
+            <div class="bg-red-500/10 border border-red-500/30 rounded-xl p-4 mb-6">
+                <div class="flex items-start gap-3">
+                    <i data-lucide="alert-circle" class="w-5 h-5 text-red-400 flex-shrink-0 mt-0.5"></i>
+                    <div class="text-sm">
+                        <p class="text-red-300 font-medium mb-1">警告</p>
+                        <p class="text-red-300/80">所有已解析的分镜将被清除，包括已生成视频的分镜！此操作不可撤销。</p>
+                    </div>
+                </div>
+            </div>
+            <div class="flex gap-3">
+                <button id="cancelReparseBtn" class="flex-1 px-5 py-3 rounded-xl bg-white/5 hover:bg-white/10 transition-all font-medium">
+                    取消
+                </button>
+                <button id="confirmReparseBtn" class="flex-1 px-5 py-3 rounded-xl bg-gradient-to-r from-red-500 to-orange-500 hover:from-red-600 hover:to-orange-600 transition-all font-medium">
+                    确认重新解析
+                </button>
+            </div>
         </div>
     </div>
 </div>
@@ -775,12 +825,16 @@
                     已选择 <span id="selectedCount" class="text-blue-400 font-medium">0</span> 个资产
                 </p>
                 <div class="flex gap-3">
+                    <button id="cancelAssetModalBtn" class="px-5 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 transition-all">
+                        取消
+                    </button>
                     <button id="skipGenerationBtn" class="px-5 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 transition-all">
                         稍后生成
                     </button>
                     <button id="generateSelectedBtn" class="px-5 py-2.5 rounded-xl bg-gradient-to-r from-blue-500 to-cyan-500 hover:from-blue-600 hover:to-cyan-600 transition-all font-medium flex items-center gap-2">
                         <i data-lucide="sparkles" class="w-4 h-4"></i>
                         生成选中资产
+                        <span class="flex items-center gap-1 text-yellow-300 text-sm"><i data-lucide="coins" class="w-3.5 h-3.5"></i><span id="generateCredits">0</span></span>
                     </button>
                 </div>
             </div>
@@ -2220,16 +2274,31 @@ saveScriptBtn?.addEventListener('click', async () => {
 });
 
 // Re-parse Script
-document.getElementById('reparseBtn')?.addEventListener('click', async function() {
-    if (!confirm('确定要重新解析剧本吗？这将清除现有的分镜数据。')) return;
+document.getElementById('reparseBtn')?.addEventListener('click', function() {
+    // 显示确认弹窗
+    document.getElementById('reparseConfirmModal').classList.remove('hidden');
+    lucide.createIcons();
+});
+
+// 取消重新解析
+document.getElementById('cancelReparseBtn')?.addEventListener('click', function() {
+    document.getElementById('reparseConfirmModal').classList.add('hidden');
+});
+
+// 确认重新解析
+document.getElementById('confirmReparseBtn')?.addEventListener('click', async function() {
+    const reparseBtn = document.getElementById('reparseBtn');
+
+    // 关闭确认弹窗
+    document.getElementById('reparseConfirmModal').classList.add('hidden');
 
     // 清除之前的弹窗标志，允许重新显示
     clearAssetModalFlag();
     // 清除分镜解析标记
     localStorage.removeItem(`shotParsing_${episodeId}`);
 
-    this.disabled = true;
-    this.innerHTML = '<i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i>解析中...';
+    reparseBtn.disabled = true;
+    reparseBtn.innerHTML = '<i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i>解析中...';
     lucide.createIcons();
 
     // 隐藏之前的错误提示
@@ -2245,6 +2314,17 @@ document.getElementById('reparseBtn')?.addEventListener('click', async function(
         const data = await response.json();
         console.log('解析请求响应:', data);
         if (data.code === 200) {
+            // 解析成功后刷新积分显示
+            fetch('/api/user/info/')
+                .then(res => res.json())
+                .then(userData => {
+                    if (userData.code === 200 && userData.data) {
+                        const creditsEl = document.getElementById('userCredits');
+                        if (creditsEl) {
+                            creditsEl.textContent = userData.data.credits || 0;
+                        }
+                    }
+                });
             // 等待几秒后刷新页面，让后端有时间更新状态
             setTimeout(() => {
                 // 添加参数表示需要显示资产选择弹窗
@@ -2252,16 +2332,23 @@ document.getElementById('reparseBtn')?.addEventListener('click', async function(
             }, 3000);
         } else {
             alert('解析失败: ' + (data.message || '未知错误'));
-            this.disabled = false;
-            this.innerHTML = '<i data-lucide="refresh-cw" class="w-4 h-4"></i>重新解析';
+            reparseBtn.disabled = false;
+            reparseBtn.innerHTML = '<i data-lucide="refresh-cw" class="w-4 h-4"></i>重新解析<span class="flex items-center gap-1 text-yellow-300 text-xs"><i data-lucide="coins" class="w-3 h-3"></i>2</span><i data-lucide="alert-triangle" class="w-3.5 h-3.5 text-orange-300"></i>';
             lucide.createIcons();
         }
     } catch (e) {
         console.error('解析请求失败:', e);
         alert('请求失败: ' + e.message);
-        this.disabled = false;
-        this.innerHTML = '<i data-lucide="refresh-cw" class="w-4 h-4"></i>重新解析';
+        reparseBtn.disabled = false;
+        reparseBtn.innerHTML = '<i data-lucide="refresh-cw" class="w-4 h-4"></i>重新解析<span class="flex items-center gap-1 text-yellow-300 text-xs"><i data-lucide="coins" class="w-3 h-3"></i>2</span><i data-lucide="alert-triangle" class="w-3.5 h-3.5 text-orange-300"></i>';
         lucide.createIcons();
+    }
+});
+
+// 点击背景关闭确认弹窗
+document.getElementById('reparseConfirmModal')?.addEventListener('click', function(e) {
+    if (e.target === this) {
+        this.classList.add('hidden');
     }
 });
 
@@ -3203,8 +3290,18 @@ function renderAssetList(data) {
 
 // 绑定资产选择事件
 function bindAssetSelectionEvents() {
-    // 关闭弹窗
+    // 关闭弹窗（右上角X按钮）
     document.getElementById('closeAssetModal')?.addEventListener('click', function() {
+        // 取消可能存在的弹窗显示定时器
+        if (window.assetModalTimeoutId) {
+            clearTimeout(window.assetModalTimeoutId);
+            window.assetModalTimeoutId = null;
+        }
+        closeFormModal('assetSelectionModal');
+    });
+
+    // 取消按钮
+    document.getElementById('cancelAssetModalBtn')?.addEventListener('click', function() {
         // 取消可能存在的弹窗显示定时器
         if (window.assetModalTimeoutId) {
             clearTimeout(window.assetModalTimeoutId);
@@ -3438,6 +3535,11 @@ async function pollShotParsing() {
 function updateSelectedCount() {
     const count = document.querySelectorAll('.asset-checkbox:checked:not(:disabled)').length;
     document.getElementById('selectedCount').textContent = count;
+    // 更新积分显示（每个资产6积分）
+    const creditsEl = document.getElementById('generateCredits');
+    if (creditsEl) {
+        creditsEl.textContent = count * 6;
+    }
 }
 
 // 页面加载时检查是否需要显示资产选择弹窗

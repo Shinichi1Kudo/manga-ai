@@ -43,7 +43,6 @@ def login_view(request):
                     request.session['user_id'] = user_data.get('id')
                     request.session['email'] = user_data.get('email')
                     request.session['nickname'] = user_data.get('nickname')
-                    request.session['credits'] = user_data.get('credits', 0)
                     messages.success(request, '登录成功')
                     # 登录后跳转到原始请求页面
                     next_url = request.session.pop('next', '/')
@@ -100,7 +99,6 @@ def register_view(request):
                     request.session['user_id'] = user_data.get('id')
                     request.session['email'] = user_data.get('email')
                     request.session['nickname'] = user_data.get('nickname')
-                    request.session['credits'] = user_data.get('credits', 0)
                     messages.success(request, '注册成功，已赠送10积分')
                     return redirect('/')
                 else:

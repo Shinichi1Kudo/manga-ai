@@ -1,5 +1,7 @@
 package com.manga.ai.episode.controller;
 
+import com.manga.ai.common.constants.CreditConstants;
+import com.manga.ai.common.enums.CreditUsageType;
 import com.manga.ai.common.result.Result;
 import com.manga.ai.episode.dto.EpisodeCreateRequest;
 import com.manga.ai.episode.dto.EpisodeDetailVO;
@@ -8,6 +10,8 @@ import com.manga.ai.episode.dto.EpisodeScriptUpdateRequest;
 import com.manga.ai.episode.dto.GenerateAssetsRequest;
 import com.manga.ai.episode.dto.ParsedAssetsVO;
 import com.manga.ai.episode.service.EpisodeService;
+import com.manga.ai.user.service.UserService;
+import com.manga.ai.user.service.impl.UserServiceImpl.UserContextHolder;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.*;
@@ -24,6 +28,7 @@ import java.util.List;
 public class EpisodeController {
 
     private final EpisodeService episodeService;
+    private final UserService userService;
 
     /**
      * 创建剧集
@@ -41,7 +46,14 @@ public class EpisodeController {
     @PostMapping("/{episodeId}/parse")
     public Result<Void> parseScript(@PathVariable Long episodeId) {
         log.info("解析剧本资产: episodeId={}", episodeId);
-        episodeService.parseScript(episodeId);
+        // 在调用异步方法前获取用户ID并扣费
+        Long userId = UserContextHolder.getUserId();
+        if (userId != null) {
+            userService.deductCredits(userId, CreditConstants.CREDITS_PER_SCRIPT_PARSE,
+                    CreditUsageType.SCRIPT_PARSE.getCode(), "剧本解析-资产解析", episodeId, "EPISODE");
+            log.info("剧本解析扣费: userId={}, credits={}", userId, CreditConstants.CREDITS_PER_SCRIPT_PARSE);
+        }
+        episodeService.parseScript(episodeId, userId);
         return Result.success();
     }
 
@@ -51,7 +63,14 @@ public class EpisodeController {
     @PostMapping("/{episodeId}/parse-shots")
     public Result<Void> parseShots(@PathVariable Long episodeId) {
         log.info("解析分镜: episodeId={}", episodeId);
-        episodeService.parseShots(episodeId);
+        // 在调用异步方法前获取用户ID并扣费
+        Long userId = UserContextHolder.getUserId();
+        if (userId != null) {
+            userService.deductCredits(userId, CreditConstants.CREDITS_PER_SCRIPT_PARSE,
+                    CreditUsageType.SCRIPT_PARSE.getCode(), "剧本解析-分镜解析", episodeId, "EPISODE");
+            log.info("分镜解析扣费: userId={}, credits={}", userId, CreditConstants.CREDITS_PER_SCRIPT_PARSE);
+        }
+        episodeService.parseShots(episodeId, userId);
         return Result.success();
     }
 
@@ -122,7 +141,14 @@ public class EpisodeController {
             @RequestBody GenerateAssetsRequest request) {
         log.info("批量生成资产: episodeId={}, sceneIds={}, propIds={}",
                 episodeId, request.getSceneIds(), request.getPropIds());
-        episodeService.generateSelectedAssets(episodeId, request);
+        // 获取用户ID并扣除分镜解析费用
+        Long userId = UserContextHolder.getUserId();
+        if (userId != null) {
+            userService.deductCredits(userId, CreditConstants.CREDITS_PER_SCRIPT_PARSE,
+                    CreditUsageType.SCRIPT_PARSE.getCode(), "剧本解析-分镜解析", episodeId, "EPISODE");
+            log.info("分镜解析扣费: userId={}, credits={}", userId, CreditConstants.CREDITS_PER_SCRIPT_PARSE);
+        }
+        episodeService.generateSelectedAssets(episodeId, request, userId);
         return Result.success();
     }
 }
