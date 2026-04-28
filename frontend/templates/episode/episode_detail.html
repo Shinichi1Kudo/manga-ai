@@ -4370,17 +4370,11 @@ function renderDescriptionWithAutoAssets(editor) {
     });
 
     // 对剩余文本进行资产名称识别，在后面追加缩略图
-    // 每个资产名称只追加一次缩略图，避免重复
-    const autoMatched = new Set();
+    // 每次出现都追加缩略图
     allAssets.forEach(asset => {
-        if (asset.name && asset.imageUrl && !processedFromMention.has(asset.name) && !autoMatched.has(asset.name)) {
+        if (asset.name && asset.imageUrl && !processedFromMention.has(asset.name)) {
             const regex = new RegExp(asset.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g');
-            // 只替换第一次出现，避免同一名称多处追加缩略图
-            let replaced = false;
             processedDescription = processedDescription.replace(regex, (match) => {
-                if (replaced) return match; // 后续出现保持原样
-                replaced = true;
-                autoMatched.add(asset.name);
                 // 自动匹配：原文已有名称，只追加缩略图+彩色标签
                 return match + createThumbHtml(asset);
             });
