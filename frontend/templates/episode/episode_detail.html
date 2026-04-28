@@ -3722,8 +3722,15 @@ async function initAvailableAssets() {
     });
 }
 
-// 初始化资产（异步）
-initAvailableAssets();
+// 初始化资产（异步）并等待完成后再初始化编辑功能
+let assetsInitialized = false;
+initAvailableAssets().then(() => {
+    assetsInitialized = true;
+    // 资产加载完成后，重新渲染所有描述编辑器
+    document.querySelectorAll('.description-editor').forEach(editor => {
+        renderDescriptionWithAutoAssets(editor);
+    });
+});
 
 // 防抖保存器
 const saveDebouncers = {};
