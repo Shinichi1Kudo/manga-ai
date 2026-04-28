@@ -1,5 +1,6 @@
 package com.manga.ai.common.config;
 
+import com.manga.ai.user.service.TokenService;
 import com.manga.ai.user.service.impl.UserServiceImpl.UserContextHolder;
 import com.manga.ai.user.util.JwtUtil;
 import jakarta.servlet.http.HttpServletRequest;
@@ -18,6 +19,7 @@ import org.springframework.web.servlet.HandlerInterceptor;
 public class AuthInterceptor implements HandlerInterceptor {
 
     private final JwtUtil jwtUtil;
+    private final TokenService tokenService;
 
     @Override
     public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) throws Exception {
@@ -30,9 +32,21 @@ public class AuthInterceptor implements HandlerInterceptor {
         if (token != null && token.startsWith("Bearer ")) {
             token = token.substring(7);
             if (jwtUtil.validateToken(token)) {
-                Long userId = jwtUtil.getUserId(token);
-                UserContextHolder.setUserId(userId);
-                log.debug("用户认证成功: userId={}", userId);
+                // JWT签名验证通过后，再检查Redis中是否存在该token
+                try {
+                    if (tokenService.validateTokenInRedis(token)) {
+                        Long userId = jwtUtil.getUserId(token);
+                        UserContextHolder.setUserId(userId);
+                        log.debug("用户认证成功: userId={}", userId);
+                    } else {
+                        log.warn("Token在Redis中不存在，可能已过期或已登出");
+                    }
+                } catch (Exception e) {
+                    // Redis不可用时降级为纯JWT验证
+                    log.error("Redis连接异常，降级为纯JWT验证", e);
+                    Long userId = jwtUtil.getUserId(token);
+                    UserContextHolder.setUserId(userId);
+                }
             }
         }
 

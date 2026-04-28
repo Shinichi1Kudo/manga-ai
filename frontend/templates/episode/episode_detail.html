@@ -455,7 +455,10 @@
             {% if role.clothings and role.clothings|length > 0 %}
             <div class="mt-2 flex flex-wrap gap-1 justify-center">
                 {% for clothing in role.clothings %}
-                <div class="w-6 h-6 rounded bg-white/10 overflow-hidden" title="{{ clothing.clothingName }}">
+                <div class="w-6 h-6 rounded bg-white/10 overflow-hidden cursor-pointer hover:ring-1 hover:ring-white/50 transition-all clothing-thumb {% if clothing.assetUrl == role.assetUrl %}ring-1 ring-blue-400{% endif %}"
+                     title="{{ clothing.clothingName }}"
+                     data-clothing-url="{{ clothing.assetUrl }}"
+                     onclick="switchRoleClothing(this)">
                     {% if clothing.assetUrl %}
                     <img src="{{ clothing.assetUrl }}" class="w-full h-full object-cover" alt="{{ clothing.clothingName }}">
                     {% else %}
@@ -708,6 +711,16 @@
             <!-- 动态填充 -->
         </div>
         </div>
+    </div>
+</div>
+
+<!-- Asset Preview Modal (大图预览) -->
+<div id="assetPreviewModal" class="fixed inset-0 bg-black/80 backdrop-blur-sm z-[60] hidden flex items-center justify-center p-4" onclick="closeAssetPreview(event)">
+    <div class="relative max-w-4xl max-h-[90vh]" onclick="event.stopPropagation()">
+        <button class="absolute -top-3 -right-3 w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center transition-colors z-10" onclick="closeAssetPreview()">
+            <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+        <img id="assetPreviewImage" src="" class="max-w-full max-h-[85vh] rounded-lg object-contain">
     </div>
 </div>
 
@@ -1055,6 +1068,11 @@
                             data-shot-id="{{ shot.id }}">
                         <i data-lucide="history" class="w-3.5 h-3.5"></i>历史
                     </button>
+                    <button class="download-shot-btn w-full px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 transition-colors text-xs flex items-center justify-center gap-1.5 text-white/70"
+                            data-shot-id="{{ shot.id }}"
+                            data-filename="{{ series.seriesName }}_第{{ episode.episodeNumber }}集{% if episode.episodeName %}{{ episode.episodeName }}{% endif %}_{{ shot.shotName|default:'分镜' }}{{ shot.shotNumber }}">
+                        <i data-lucide="download" class="w-3.5 h-3.5"></i>下载
+                    </button>
                     {% endif %}
                     {% if shot.generationStatus == 3 %}
                     <span class="w-full px-3 py-1.5 rounded-lg bg-red-500/20 text-red-300 text-xs flex items-center justify-center gap-1.5">
@@ -1251,28 +1269,33 @@ function startShotGenerationPolling() {
     pollingIntervalId = setInterval(async () => {
         try {
             const response = await fetch(`/api/v1/episodes/${episodeId}/progress`);
-            const data = await response.json();
+            const result = await response.json();
+            const data = result.data || result;
 
             if (data.shots) {
                 let stillGenerating = false;
                 let hasChanges = false;
 
                 data.shots.forEach(shot => {
-                    // 检查页面上的分镜卡片
+                    // 直接从API返回判断是否有正在生成的，不依赖页面DOM状态
+                    if (shot.generationStatus === 1) {
+                        stillGenerating = true;
+                    }
+
+                    // 检查页面上的分镜卡片，检测状态变化
                     const card = document.querySelector(`.shot-card[data-shot-id="${shot.id}"]`);
                     if (card) {
                         const currentStatus = parseInt(card.dataset.status);
                         const newStatus = shot.generationStatus;
 
-                        // 如果状态从生成中变为其他状态
+                        // 如果状态从生成中变为其他状态（完成或失败）
                         if (currentStatus === 1 && newStatus !== 1) {
                             hasChanges = true;
                             console.log(`分镜 ${shot.id} 状态变化: ${currentStatus} -> ${newStatus}`);
                         }
 
-                        if (newStatus === 1) {
-                            stillGenerating = true;
-                        }
+                        // 同步更新卡片的data-status
+                        card.dataset.status = String(newStatus);
                     }
                 });
 
@@ -1301,6 +1324,18 @@ function startShotGenerationPolling() {
 if (generating > 0) {
     console.log(`检测到 ${generating} 个视频正在生成中，启动轮询...`);
     startShotGenerationPolling();
+} else {
+    // 即使模板数据中没有生成中的，也检查后端实时状态（防止页面刷新后状态不同步）
+    fetch(`/api/v1/episodes/${episodeId}/progress`)
+        .then(res => res.json())
+        .then(result => {
+            const data = result.data || result;
+            if (data.shots && data.shots.some(s => s.generationStatus === 1)) {
+                console.log('后端检测到生成中的分镜，启动轮询');
+                startShotGenerationPolling();
+            }
+        })
+        .catch(() => {});
 }
 
 // 无论是否有生成中的视频，都尝试启动计时器（处理页面刷新的情况）
@@ -1855,7 +1890,7 @@ function showSceneHistory(name, assets) {
                             <p class="text-xs text-blue-400 mt-2">生成中</p>
                         </div>
                     ` : asset.filePath ? `
-                        <img src="${asset.filePath}" class="w-full h-full object-cover">
+                        <img src="${asset.filePath}" class="w-full h-full object-cover cursor-pointer" onclick="openAssetPreview(this.src)">
                     ` : `
                         <i data-lucide="image" class="w-8 h-8 text-white/20"></i>
                     `}
@@ -1875,6 +1910,44 @@ function showSceneHistory(name, assets) {
         bindSceneRollback();
     }
     openFormModal('sceneHistoryModal');
+}
+
+// 角色服装切换
+function switchRoleClothing(thumbEl) {
+    const clothingUrl = thumbEl.dataset.clothingUrl;
+    if (!clothingUrl) return;
+    const roleCard = thumbEl.closest('[data-role-id]');
+    if (!roleCard) return;
+    const mainImg = roleCard.querySelector('.role-preview-btn img');
+    const previewBtn = roleCard.querySelector('.role-preview-btn');
+    if (mainImg) {
+        mainImg.src = clothingUrl;
+        mainImg.style.opacity = '0.7';
+        setTimeout(() => { mainImg.style.opacity = '1'; }, 150);
+    }
+    // 同步更新 data-role-url，确保点击大图预览时用最新图片
+    if (previewBtn) {
+        previewBtn.dataset.roleUrl = clothingUrl;
+    }
+    // 更新选中状态
+    roleCard.querySelectorAll('.clothing-thumb').forEach(el => {
+        el.classList.remove('ring-1', 'ring-blue-400');
+    });
+    thumbEl.classList.add('ring-1', 'ring-blue-400');
+}
+
+// 资产大图预览
+function openAssetPreview(src) {
+    const img = document.getElementById('assetPreviewImage');
+    img.src = src;
+    document.getElementById('assetPreviewModal').classList.remove('hidden');
+    lucide.createIcons();
+}
+
+function closeAssetPreview(event) {
+    if (event && event.target !== event.currentTarget) return;
+    document.getElementById('assetPreviewModal').classList.add('hidden');
+    document.getElementById('assetPreviewImage').src = '';
 }
 
 function bindSceneRollback() {
@@ -2004,9 +2077,9 @@ function showPropHistory(name, assets) {
                             <p class="text-xs text-blue-400 mt-2">生成中</p>
                         </div>
                     ` : asset.filePath ? `
-                        <img src="${asset.filePath}" class="w-full h-full object-cover">
+                        <img src="${asset.filePath}" class="w-full h-full object-cover cursor-pointer" onclick="openAssetPreview(this.src)">
                     ` : asset.transparentPath ? `
-                        <img src="${asset.transparentPath}" class="w-full h-full object-contain">
+                        <img src="${asset.transparentPath}" class="w-full h-full object-contain cursor-pointer" onclick="openAssetPreview(this.src)">
                     ` : `
                         <i data-lucide="box" class="w-8 h-8 text-white/20"></i>
                     `}
@@ -2292,8 +2365,6 @@ document.getElementById('confirmReparseBtn')?.addEventListener('click', async fu
     // 关闭确认弹窗
     document.getElementById('reparseConfirmModal').classList.add('hidden');
 
-    // 清除之前的弹窗标志，允许重新显示
-    clearAssetModalFlag();
     // 清除分镜解析标记
     localStorage.removeItem(`shotParsing_${episodeId}`);
 
@@ -2325,11 +2396,8 @@ document.getElementById('confirmReparseBtn')?.addEventListener('click', async fu
                         }
                     }
                 });
-            // 等待几秒后刷新页面，让后端有时间更新状态
-            setTimeout(() => {
-                // 添加参数表示需要显示资产选择弹窗
-                window.location.href = window.location.pathname + '?show_asset_picker=1';
-            }, 3000);
+            // 启动轮询，等待资产解析完成后自动弹窗
+            pollParseResult();
         } else {
             alert('解析失败: ' + (data.message || '未知错误'));
             reparseBtn.disabled = false;
@@ -2353,23 +2421,7 @@ document.getElementById('reparseConfirmModal')?.addEventListener('click', functi
 });
 
 // 轮询检查解析结果
-// 使用 localStorage 防止重复弹窗（跨页面刷新）
-function getAssetModalKey() {
-    return `assetModalShown_${episodeId}`;
-}
-
-function isAssetModalShown() {
-    return localStorage.getItem(getAssetModalKey()) === 'true';
-}
-
-function setAssetModalShown() {
-    localStorage.setItem(getAssetModalKey(), 'true');
-}
-
-function clearAssetModalFlag() {
-    localStorage.removeItem(getAssetModalKey());
-}
-
+// 使用后端 assetsConfirmed 字段判断用户是否已确认资产选择，避免重复弹窗
 async function pollParseResult() {
     console.log('开始轮询解析结果...');
     const maxAttempts = 60; // 最多等待60秒
@@ -2407,20 +2459,17 @@ async function pollParseResult() {
                     return;
                 }
                 // 如果资产解析完成（assetsReady=true）且未确认，显示资产选择弹窗
-                else if (status === 1 && data.assetsReady && !isAssetModalShown()) {
+                else if (status === 1 && data.assetsReady && !data.assetsConfirmed) {
                     console.log('资产解析完成，显示资产选择弹窗');
-                    setAssetModalShown(); // 标记已显示
                     await showAssetSelectionModal();
                     return;
                 } else if (status === 2) {
-                    // 分镜解析完成，清除标志并刷新页面
+                    // 分镜解析完成，刷新页面
                     console.log('分镜解析完成');
-                    clearAssetModalFlag();
                     location.reload();
                     return;
                 } else if (status === 0) {
                     // 解析失败（回到待解析状态）
-                    clearAssetModalFlag();
                     alert('剧本解析失败，请检查剧本格式后重新解析。');
                     location.reload();
                     return;
@@ -2515,15 +2564,16 @@ function updateCardToGenerating(card) {
 }
 
 // 计算并显示积分消耗
-function calculateCredits(resolution, duration) {
+function calculateCredits(resolution, duration, videoModel) {
     const durationSec = duration || 5;
+    const isVipModel = videoModel === 'seedance-2.0' || videoModel === 'doubao-seedance-2-0-260128';
     let creditsPerSecond;
     if (resolution === '480p') {
-        creditsPerSecond = 12;
+        creditsPerSecond = isVipModel ? 15 : 12;
     } else if (resolution === '1080p') {
-        creditsPerSecond = 50;  // 4K (1080p) - 仅VIP模型
+        creditsPerSecond = 69;  // 1080p 仅 VIP 模型
     } else {
-        creditsPerSecond = 23;  // 720p
+        creditsPerSecond = isVipModel ? 32 : 25;
     }
     return creditsPerSecond * durationSec;
 }
@@ -2562,12 +2612,14 @@ function updateResolutionOptions(card, videoModel) {
 function updateShotCreditDisplay(card) {
     const durationSelect = card.querySelector('.duration-select');
     const resolutionSelect = card.querySelector('.resolution-select');
+    const modelSelect = card.querySelector('.video-model-select');
     const generateBtn = card.querySelector('.generate-btn');
     const regenerateBtn = card.querySelector('.regenerate-btn');
 
     const duration = durationSelect ? parseInt(durationSelect.value) : 5;
     const resolution = resolutionSelect ? resolutionSelect.value : '720p';
-    const credits = calculateCredits(resolution, duration);
+    const videoModel = modelSelect ? modelSelect.value : 'seedance-2.0-fast';
+    const credits = calculateCredits(resolution, duration, videoModel);
 
     // 更新生成按钮
     if (generateBtn) {
@@ -2596,7 +2648,10 @@ function updateShotCreditDisplay(card) {
 document.querySelectorAll('.generate-btn').forEach(btn => {
     const duration = parseInt(btn.dataset.duration) || 5;
     const resolution = btn.dataset.resolution || '720p';
-    const credits = calculateCredits(resolution, duration);
+    const card = btn.closest('.shot-card');
+    const modelSelect = card ? card.querySelector('.video-model-select') : null;
+    const videoModel = modelSelect ? modelSelect.value : 'seedance-2.0-fast';
+    const credits = calculateCredits(resolution, duration, videoModel);
     const creditSpan = btn.querySelector('.credit-cost');
     if (creditSpan) {
         creditSpan.innerHTML = `<i data-lucide="coins" class="w-3 h-3 text-yellow-400 inline-block"></i>${credits}`;
@@ -2616,7 +2671,10 @@ document.querySelectorAll('.shot-card').forEach(card => {
 document.querySelectorAll('.regenerate-btn').forEach(btn => {
     const duration = parseInt(btn.dataset.duration) || 5;
     const resolution = btn.dataset.resolution || '720p';
-    const credits = calculateCredits(resolution, duration);
+    const card = btn.closest('.shot-card');
+    const modelSelect = card ? card.querySelector('.video-model-select') : null;
+    const videoModel = modelSelect ? modelSelect.value : 'seedance-2.0-fast';
+    const credits = calculateCredits(resolution, duration, videoModel);
     const creditSpan = btn.querySelector('.credit-cost');
     if (creditSpan) {
         creditSpan.innerHTML = `<i data-lucide="coins" class="w-3 h-3 text-yellow-400 inline-block"></i>${credits}`;
@@ -2679,7 +2737,7 @@ document.querySelectorAll('.generate-btn').forEach(btn => {
                 stopTimer(this);
                 alert('生成失败: ' + (data.error || data.message));
                 this.disabled = false;
-                const credits = calculateCredits(this.dataset.resolution, this.dataset.duration);
+                const credits = calculateCredits(this.dataset.resolution, this.dataset.duration, this.closest('.shot-card')?.querySelector('.video-model-select')?.value);
                 this.innerHTML = '<i data-lucide="play" class="w-4 h-4"></i>生成<span class="credit-cost text-white/80 text-xs ml-1"><i data-lucide="coins" class="w-3 h-3 text-yellow-400 inline-block"></i>' + credits + '</span>';
                 lucide.createIcons();
             }
@@ -2687,7 +2745,7 @@ document.querySelectorAll('.generate-btn').forEach(btn => {
             stopTimer(this);
             alert('请求失败: ' + e.message);
             this.disabled = false;
-            const credits = calculateCredits(this.dataset.resolution, this.dataset.duration);
+            const credits = calculateCredits(this.dataset.resolution, this.dataset.duration, this.closest('.shot-card')?.querySelector('.video-model-select')?.value);
             this.innerHTML = '<i data-lucide="play" class="w-4 h-4"></i>生成<span class="credit-cost text-white/80 text-xs ml-1"><i data-lucide="coins" class="w-3 h-3 text-yellow-400 inline-block"></i>' + credits + '</span>';
             lucide.createIcons();
         }
@@ -2749,7 +2807,7 @@ document.querySelectorAll('.regenerate-btn').forEach(btn => {
                 stopTimer(this);
                 alert('生成失败: ' + (data.error || data.message));
                 this.disabled = false;
-                const credits = calculateCredits(this.dataset.resolution, this.dataset.duration);
+                const credits = calculateCredits(this.dataset.resolution, this.dataset.duration, this.closest('.shot-card')?.querySelector('.video-model-select')?.value);
                 this.innerHTML = '<i data-lucide="refresh-cw" class="w-4 h-4"></i>重新生成<span class="credit-cost text-white/50 text-xs ml-1"><i data-lucide="coins" class="w-3 h-3 text-yellow-400 inline-block"></i>' + credits + '</span>';
                 lucide.createIcons();
             }
@@ -2757,7 +2815,7 @@ document.querySelectorAll('.regenerate-btn').forEach(btn => {
             stopTimer(this);
             alert('请求失败: ' + e.message);
             this.disabled = false;
-            const credits = calculateCredits(this.dataset.resolution, this.dataset.duration);
+            const credits = calculateCredits(this.dataset.resolution, this.dataset.duration, this.closest('.shot-card')?.querySelector('.video-model-select')?.value);
             this.innerHTML = '<i data-lucide="refresh-cw" class="w-4 h-4"></i>重新生成<span class="credit-cost text-white/50 text-xs ml-1"><i data-lucide="coins" class="w-3 h-3 text-yellow-400 inline-block"></i>' + credits + '</span>';
             lucide.createIcons();
         }
@@ -3559,10 +3617,9 @@ document.addEventListener('DOMContentLoaded', async function() {
             pollShotParsing();
             return;
         }
-        // assetsReady=true 表示资产解析完成，等待用户选择
-        else if (data.status === 1 && data.assetsReady && !isAssetModalShown()) {
+        // assetsReady=true 且 assetsConfirmed=false 表示资产解析完成但用户还没确认，需要弹窗
+        else if (data.status === 1 && data.assetsReady && !data.assetsConfirmed) {
             console.log('检测到资产已解析，显示选择弹窗...');
-            setAssetModalShown();
             await showAssetSelectionModal();
             return;
         } else if (data.status === 2) {
@@ -3571,31 +3628,6 @@ document.addEventListener('DOMContentLoaded', async function() {
         }
     } catch (e) {
         console.error('检查状态失败:', e);
-    }
-
-    // 检查URL参数，优先显示资产选择弹窗
-    const urlParams = new URLSearchParams(window.location.search);
-    if (urlParams.get('show_asset_picker') === '1') {
-        console.log('检测到show_asset_picker参数，显示资产选择弹窗');
-        // 立即标记弹窗已显示，防止pollParseResult重复触发
-        setAssetModalShown();
-        // 等待一小段时间让页面完全加载
-        window.assetModalTimeoutId = setTimeout(async () => {
-            // 检查弹窗是否已被用户关闭（通过检查按钮状态）
-            const modal = document.getElementById('assetSelectionModal');
-            if (modal && modal.classList.contains('hidden')) {
-                console.log('弹窗已关闭，跳过显示');
-                return;
-            }
-            await showAssetSelectionModal();
-        }, 500);
-        return;
-    }
-
-    // 如果已经显示过弹窗（localStorage有记录），不再显示
-    if (isAssetModalShown()) {
-        console.log('弹窗已显示过，跳过');
-        return;
     }
 
     // 如果状态是解析中且资产未准备好，启动资产解析轮询
@@ -3817,22 +3849,10 @@ function extractDescriptionText(editor) {
     const clone = editor.cloneNode(true);
 
     // 将资产容器替换为 @{名称} 格式
+    // 不截断前面的文本——用户输入了什么就保留什么
     clone.querySelectorAll('[data-asset-name]').forEach(wrapper => {
         const name = wrapper.dataset.assetName;
-
-        // 检查前一个兄弟节点是否是文本节点，且以该名称结尾
-        const prevNode = wrapper.previousSibling;
-        if (prevNode && prevNode.nodeType === Node.TEXT_NODE) {
-            const text = prevNode.textContent;
-            if (text.endsWith(name)) {
-                // 删除前面的名称，只保留 @{名称}
-                prevNode.textContent = text.slice(0, -name.length);
-            }
-        }
-
-        // 直接替换为纯文本名称，不再添加 @{} 格式
-        // 这样保存的就是原始名称，渲染时会自动添加缩略图
-        const text = document.createTextNode(name);
+        const text = document.createTextNode('@{' + name + '}');
         wrapper.replaceWith(text);
     });
 
@@ -4183,7 +4203,7 @@ function insertAssetThumb(editor, asset) {
     thumb.alt = asset.name;
     thumb.title = `${assetTypeConfig[asset.type].label}: ${asset.name}`;
 
-    // 创建名称标签
+    // 创建彩色名称标签
     const nameSpan = document.createElement('span');
     nameSpan.className = `${assetTypeConfig[asset.type].bgColor} px-1.5 py-0.5 rounded text-xs text-white`;
     nameSpan.textContent = asset.name;
@@ -4219,6 +4239,7 @@ function renderDescriptionWithThumbs(editor, rawText) {
             const name = part.substring(2, part.length - 1);
             const asset = assetNameMap[name];
             if (asset) {
+                // 只显示缩略图+彩色标签（名称在标签里已有，不加纯文本前缀）
                 html += `<span class="inline-flex items-center gap-1 whitespace-nowrap" contenteditable="false"
                             data-asset-id="${asset.id}" data-asset-type="${asset.type}"
                             data-asset-name="${asset.name}" data-asset-url="${asset.imageUrl}">
@@ -4289,7 +4310,7 @@ function renderDescriptionWithAutoAssets(editor) {
         ...availableAssets.prop.map(a => ({...a, typeLabel: '道具'}))
     ].sort((a, b) => b.name.length - a.name.length);
 
-    // 辅助函数：生成缩略图HTML
+    // 辅助函数：生成缩略图+彩色标签HTML
     function createThumbHtml(asset) {
         return `<span class="inline-flex items-center gap-1 whitespace-nowrap" contenteditable="false"
                         data-asset-id="${asset.id}" data-asset-type="${asset.type}"
@@ -4301,22 +4322,32 @@ function renderDescriptionWithAutoAssets(editor) {
                     </span>`;
     }
 
-    // 先处理 @{名称} 格式：替换为 名称+缩略图
+    // 先处理 @{名称} 格式：替换为缩略图+彩色标签（不加纯文本名称，避免重复）
     const processedFromMention = new Set();
     let processedDescription = description.replace(/@\{([^}]+)\}/g, (match, name) => {
         const asset = allAssets.find(a => a.name === name);
         if (asset && asset.imageUrl) {
             processedFromMention.add(name);
-            return name + createThumbHtml(asset);
+            return createThumbHtml(asset);
         }
         return name;
     });
 
     // 对剩余文本进行资产名称识别，在后面追加缩略图
+    // 每个资产名称只追加一次缩略图，避免重复
+    const autoMatched = new Set();
     allAssets.forEach(asset => {
-        if (asset.name && asset.imageUrl && !processedFromMention.has(asset.name)) {
+        if (asset.name && asset.imageUrl && !processedFromMention.has(asset.name) && !autoMatched.has(asset.name)) {
             const regex = new RegExp(asset.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g');
-            processedDescription = processedDescription.replace(regex, asset.name + createThumbHtml(asset));
+            // 只替换第一次出现，避免同一名称多处追加缩略图
+            let replaced = false;
+            processedDescription = processedDescription.replace(regex, (match) => {
+                if (replaced) return match; // 后续出现保持原样
+                replaced = true;
+                autoMatched.add(asset.name);
+                // 自动匹配：原文已有名称，只追加缩略图+彩色标签
+                return match + createThumbHtml(asset);
+            });
         }
     });
 
@@ -4672,6 +4703,21 @@ function initShotManagement() {
             if (modalId) {
                 document.getElementById(modalId).classList.add('hidden');
             }
+        });
+    });
+
+    // 下载分镜视频按钮
+    document.querySelectorAll('.download-shot-btn').forEach(btn => {
+        btn.addEventListener('click', function() {
+            const shotId = this.dataset.shotId;
+            const filename = (this.dataset.filename || '分镜') + '.mp4';
+            const url = `/api/v1/shots/${shotId}/download/?filename=${encodeURIComponent(filename)}`;
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
         });
     });
 

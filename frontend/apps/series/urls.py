@@ -56,6 +56,9 @@ urlpatterns = [
     # 剧集详情/分镜审核
     path('<int:series_id>/episodes/<int:episode_id>/', views.episode_detail, name='episode_detail'),
 
+    # 删除剧集
+    path('api/v1/episodes/<int:episode_id>/delete/', views.episode_delete, name='episode_delete'),
+
     # 剧集进度API
     path('api/episodes/<int:episode_id>/progress/', views.episode_progress, name='episode_progress'),
     path('api/v1/episodes/<int:episode_id>/progress/', views.episode_progress, name='episode_progress_v1'),
@@ -119,6 +122,9 @@ urlpatterns = [
     # 批量生成视频
     path('api/episodes/<int:episode_id>/generate/', views.episode_generate_videos, name='episode_generate'),
     path('api/v1/episodes/<int:episode_id>/generate/', views.episode_generate_videos, name='episode_generate_v1'),
+
+    # 下载分镜视频
+    path('api/v1/shots/<int:shot_id>/download/', views.shot_download_video, name='shot_download'),
 
     # 审核分镜
     path('api/shots/<int:shot_id>/review/', views.shot_review, name='shot_review'),

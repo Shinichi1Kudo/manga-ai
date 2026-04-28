@@ -387,6 +387,20 @@ def episode_create(request, series_id):
     })
 
 
+@csrf_exempt
+@require_http_methods(["DELETE"])
+def episode_delete(request, episode_id):
+    """API: 删除剧集"""
+    client = get_client(request)
+    try:
+        client.delete(f'/v1/episodes/{episode_id}')
+        return JsonResponse({'success': True})
+    except BackendAPIError as e:
+        return JsonResponse({'success': False, 'error': e.message}, status=400)
+    except Exception as e:
+        return JsonResponse({'success': False, 'error': str(e)}, status=500)
+
+
 def episode_detail(request, series_id, episode_id):
     """剧集详情/分镜审核页面"""
     client = get_client(request)
@@ -498,6 +512,53 @@ def episode_generate_videos(request, episode_id):
         return JsonResponse({'success': True})
     except BackendAPIError as e:
         return JsonResponse({'success': False, 'error': e.message}, status=400)
+
+
+@csrf_exempt
+@require_http_methods(["GET"])
+def shot_download_video(request, shot_id):
+    """API: 下载分镜视频（代理，解决跨域问题）"""
+    import requests as req_lib
+    from urllib.parse import unquote, quote
+    import logging
+    logger = logging.getLogger(__name__)
+    client = get_client(request)
+    try:
+        shot = client.get(f'/v1/shots/{shot_id}')
+        video_url = shot.get('videoUrl') or shot.get('video_url')
+        logger.info(f"下载分镜视频 shot_id={shot_id}, video_url={video_url}")
+        if not video_url:
+            return JsonResponse({'success': False, 'error': '该分镜没有视频'}, status=404)
+
+        # 通过后端获取视频URL，再用Django代理下载
+        resp = req_lib.get(video_url, stream=True, timeout=300, allow_redirects=True)
+        resp.raise_for_status()
+        content_type = resp.headers.get('Content-Type', 'video/mp4')
+        logger.info(f"OSS响应 status={resp.status_code}, content_type={content_type}, content_length={resp.headers.get('Content-Length')}")
+
+        # 使用前端传来的文件名，格式：系列名_第X集剧集名_分镜名.mp4
+        filename = unquote(request.GET.get('filename', f'shot_{shot_id}.mp4'))
+        # RFC 5987: filename* 需要URL编码的中文
+        encoded_filename = quote(filename)
+
+        from django.http import StreamingHttpResponse
+        response = StreamingHttpResponse(
+            resp.iter_content(chunk_size=8192),
+            content_type=content_type
+        )
+        # 同时提供 filename 和 filename* 确保兼容性
+        response['Content-Disposition'] = f"attachment; filename=\"{shot_id}.mp4\"; filename*=UTF-8''{encoded_filename}"
+        content_length = resp.headers.get('Content-Length')
+        if content_length:
+            response['Content-Length'] = content_length
+        logger.info(f"下载响应准备完成, filename={filename}")
+        return response
+    except BackendAPIError as e:
+        logger.error(f"下载分镜视频失败(BackendAPIError): {e.message}")
+        return JsonResponse({'success': False, 'error': e.message}, status=400)
+    except Exception as e:
+        logger.error(f"下载分镜视频失败(Exception): {e}", exc_info=True)
+        return JsonResponse({'success': False, 'error': str(e)}, status=500)
 
 
 @csrf_exempt
@@ -833,8 +894,6 @@ def episode_generate_assets(request, episode_id):
 
 # ========== 分镜参考图相关接口 ==========
 
-@csrf_exempt
-@require_http_methods(["GET"])
 @csrf_exempt
 @require_http_methods(["GET", "PUT"])
 def shot_references(request, shot_id):

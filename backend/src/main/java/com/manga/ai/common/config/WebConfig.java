@@ -45,7 +45,9 @@ public class WebConfig implements WebMvcConfigurer {
         registry.addInterceptor(authInterceptor)
                 .addPathPatterns("/**")
                 .excludePathPatterns(
-                        "/v1/auth/**",  // 认证相关接口
+                        "/v1/auth/login",
+                        "/v1/auth/register",
+                        "/v1/auth/send-code",
                         "/error",
                         "/static/**"
                 );

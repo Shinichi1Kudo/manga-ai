@@ -787,6 +787,7 @@ public class EpisodeServiceImpl implements EpisodeService {
         // 检查资产是否解析完成（等待用户选择）
         // 如果 assetsConfirmed=true，说明用户已确认，正在解析分镜
         boolean assetsReady = false;
+        boolean assetsConfirmed = false;
         boolean shotsParsing = false;
         if (EpisodeStatus.PARSING.getCode().equals(episode.getStatus())) {
             String parsedScript = episode.getParsedScript();
@@ -795,6 +796,7 @@ public class EpisodeServiceImpl implements EpisodeService {
                     JSONObject json = JSON.parseObject(parsedScript);
                     // 如果 assetsConfirmed=true，说明用户已确认，正在解析分镜
                     if (json.getBooleanValue("assetsConfirmed")) {
+                        assetsConfirmed = true;
                         shotsParsing = true;
                     }
                     // 如果有 scenes 和 props 且没有 error，说明资产解析完成
@@ -807,6 +809,7 @@ public class EpisodeServiceImpl implements EpisodeService {
             }
         }
         vo.setAssetsReady(assetsReady);
+        vo.setAssetsConfirmed(assetsConfirmed);
         vo.setShotsParsing(shotsParsing);
 
         // 统计已完成和失败的分镜数
@@ -1325,11 +1328,11 @@ public class EpisodeServiceImpl implements EpisodeService {
                 if (existingAsset != null) {
                     // 已有资产，重新生成（版本+1）
                     log.info("提交场景重新生成任务: sceneId={}", sceneId);
-                    sceneService.regenerateSceneAssetWithCredit(sceneId, null, null, request.getQuality());
+                    sceneService.regenerateSceneAssetWithCredit(sceneId, null, null, request.getQuality(), userId);
                 } else {
                     // 无资产，首次生成
                     log.info("提交场景首次生成任务: sceneId={}", sceneId);
-                    sceneService.generateSceneAssetsWithCredit(sceneId);
+                    sceneService.generateSceneAssetsWithCredit(sceneId, userId);
                 }
         }
 
@@ -1348,10 +1351,10 @@ public class EpisodeServiceImpl implements EpisodeService {
 
             if (existingPropAsset != null) {
                 log.info("提交道具重新生成任务: propId={}", propId);
-                propService.regeneratePropAssetWithCredit(propId, null, request.getQuality());
+                propService.regeneratePropAssetWithCredit(propId, null, request.getQuality(), userId);
             } else {
                 log.info("提交道具首次生成任务: propId={}", propId);
-                propService.generatePropAssetsWithCredit(propId);
+                propService.generatePropAssetsWithCredit(propId, userId);
             }
         }
 

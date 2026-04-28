@@ -1,0 +1,1 @@
+ALTER TABLE shot_video_asset ADD COLUMN generation_duration INT DEFAULT NULL COMMENT '生成耗时（秒）';

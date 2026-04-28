@@ -84,6 +84,11 @@ DATABASES = {
     }
 }
 
+# Session 配置 - 使用Django默认SQLite存储，2小时过期
+SESSION_COOKIE_AGE = 7200  # 2小时过期
+SESSION_COOKIE_HTTPONLY = True
+SESSION_COOKIE_SAMESITE = 'Lax'
+
 # 后端 API 配置
 BACKEND_API_URL = os.environ.get('BACKEND_API_URL', 'http://localhost:8081/api')
 BACKEND_API_TIMEOUT = int(os.environ.get('BACKEND_API_TIMEOUT', 30))

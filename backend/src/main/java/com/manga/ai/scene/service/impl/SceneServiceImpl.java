@@ -184,8 +184,8 @@ public class SceneServiceImpl implements SceneService {
     }
 
     @Override
-    public void generateSceneAssetsWithCredit(Long sceneId) {
-        log.info("生成场景资产（含积分扣费）: sceneId={}", sceneId);
+    public void generateSceneAssetsWithCredit(Long sceneId, Long userId) {
+        log.info("生成场景资产（含积分扣费）: sceneId={}, userId={}", sceneId, userId);
 
         Scene scene = sceneMapper.selectById(sceneId);
         if (scene == null) {
@@ -194,7 +194,9 @@ public class SceneServiceImpl implements SceneService {
 
         // 扣除积分（场景生成1张图）
         int requiredCredits = CreditConstants.CREDITS_PER_IMAGE;
-        Long userId = UserContextHolder.getUserId();
+        if (userId == null) {
+            userId = UserContextHolder.getUserId();
+        }
         if (userId == null) {
             throw new BusinessException("用户未登录");
         }
@@ -361,7 +363,7 @@ public class SceneServiceImpl implements SceneService {
     }
 
     @Override
-    public void regenerateSceneAssetWithCredit(Long sceneId, String customPrompt, String aspectRatio, String quality) {
+    public void regenerateSceneAssetWithCredit(Long sceneId, String customPrompt, String aspectRatio, String quality, Long userId) {
         log.info("重新生成场景资产（含积分扣费）: sceneId={}, aspectRatio={}, quality={}", sceneId, aspectRatio, quality);
 
         Scene scene = sceneMapper.selectById(sceneId);
@@ -376,7 +378,9 @@ public class SceneServiceImpl implements SceneService {
 
         // 扣除积分（场景生成1张图）
         int requiredCredits = CreditConstants.CREDITS_PER_IMAGE;
-        Long userId = UserContextHolder.getUserId();
+        if (userId == null) {
+            userId = UserContextHolder.getUserId();
+        }
         if (userId == null) {
             throw new BusinessException("用户未登录");
         }

@@ -113,6 +113,17 @@ def register_view(request):
 
 def logout_view(request):
     """退出登录"""
+    token = request.session.get('token')
+    # 调用后端logout API，删除Redis中的token
+    if token:
+        try:
+            requests.post(
+                get_api_url('/v1/auth/logout'),
+                headers={'Authorization': f'Bearer {token}'},
+                timeout=5
+            )
+        except Exception:
+            pass
     request.session.flush()
     messages.success(request, '已退出登录')
     return redirect('/auth/login/')

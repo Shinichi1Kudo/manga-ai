@@ -1,14 +1,15 @@
 """
 中间件
 """
-from django.urls import reverse
 from django.shortcuts import redirect
+from api.backend_client import BackendAPIError
 
 
 class LoginRequiredMiddleware:
     """
     登录验证中间件
     未登录用户访问需要认证的页面时，重定向到登录页面
+    后端返回401时自动清除session并重定向到登录页
     """
 
     def __init__(self, get_response):
@@ -40,3 +41,10 @@ class LoginRequiredMiddleware:
 
         response = self.get_response(request)
         return response
+
+    def process_exception(self, request, exception):
+        """统一处理视图抛出的异常"""
+        if isinstance(exception, BackendAPIError) and exception.status_code == 401:
+            request.session.flush()
+            return redirect('/auth/login/')
+        return None

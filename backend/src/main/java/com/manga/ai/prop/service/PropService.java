@@ -32,8 +32,9 @@ public interface PropService {
      * 生成道具资产（含积分扣费）
      * 同步扣费后异步生成
      * @param propId 道具ID
+     * @param userId 用户ID（可为null，为null时从上下文获取）
      */
-    void generatePropAssetsWithCredit(Long propId);
+    void generatePropAssetsWithCredit(Long propId, Long userId);
 
     /**
      * 重新生成道具图片
@@ -49,8 +50,9 @@ public interface PropService {
      * @param propId 道具ID
      * @param customPrompt 自定义提示词（可为null）
      * @param quality 清晰度（可为null，使用原值）
+     * @param userId 用户ID（可为null，为null时从上下文获取）
      */
-    void regeneratePropAssetWithCredit(Long propId, String customPrompt, String quality);
+    void regeneratePropAssetWithCredit(Long propId, String customPrompt, String quality, Long userId);
 
     /**
      * 审核道具

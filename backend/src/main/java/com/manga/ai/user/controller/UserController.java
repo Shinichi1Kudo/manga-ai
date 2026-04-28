@@ -2,7 +2,9 @@ package com.manga.ai.user.controller;
 
 import com.manga.ai.common.dto.Result;
 import com.manga.ai.user.dto.*;
+import com.manga.ai.user.service.TokenService;
 import com.manga.ai.user.service.UserService;
+import com.manga.ai.user.service.impl.UserServiceImpl.UserContextHolder;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -18,6 +20,7 @@ import org.springframework.web.bind.annotation.*;
 public class UserController {
 
     private final UserService userService;
+    private final TokenService tokenService;
 
     /**
      * 发送验证码
@@ -67,10 +70,15 @@ public class UserController {
     }
 
     /**
-     * 退出登录（前端清除 Token 即可）
+     * 退出登录
      */
     @PostMapping("/auth/logout")
-    public Result<Void> logout() {
+    public Result<Void> logout(@RequestHeader(value = "Authorization", required = false) String authHeader) {
+        if (authHeader != null && authHeader.startsWith("Bearer ")) {
+            String token = authHeader.substring(7);
+            tokenService.removeToken(token);
+            log.info("用户退出登录，token已从Redis删除");
+        }
         return Result.success();
     }
 }

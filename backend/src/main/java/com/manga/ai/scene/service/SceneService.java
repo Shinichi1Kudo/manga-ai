@@ -32,8 +32,9 @@ public interface SceneService {
      * 生成场景资产（含积分扣费）
      * 同步扣费后异步生成
      * @param sceneId 场景ID
+     * @param userId 用户ID（可为null，为null时从上下文获取）
      */
-    void generateSceneAssetsWithCredit(Long sceneId);
+    void generateSceneAssetsWithCredit(Long sceneId, Long userId);
 
     /**
      * 重新生成场景图片
@@ -51,8 +52,9 @@ public interface SceneService {
      * @param customPrompt 自定义提示词（可为null）
      * @param aspectRatio 图片比例（可为null，使用原值）
      * @param quality 清晰度（可为null，使用原值）
+     * @param userId 用户ID（可为null，为null时从上下文获取）
      */
-    void regenerateSceneAssetWithCredit(Long sceneId, String customPrompt, String aspectRatio, String quality);
+    void regenerateSceneAssetWithCredit(Long sceneId, String customPrompt, String aspectRatio, String quality, Long userId);
 
     /**
      * 审核场景

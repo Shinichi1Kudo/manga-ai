@@ -44,6 +44,11 @@ public class ShotVideoAsset implements Serializable {
     private Integer isActive;
 
     /**
+     * 生成耗时（秒）
+     */
+    private Integer generationDuration;
+
+    /**
      * 创建时间
      */
     @TableField(fill = FieldFill.INSERT)

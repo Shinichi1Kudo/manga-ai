@@ -95,6 +95,10 @@
                    class="px-4 py-2 rounded-lg bg-white/5 hover:bg-white/10 transition-colors text-sm flex items-center gap-2">
                     <i data-lucide="eye" class="w-4 h-4"></i>查看详情
                 </a>
+                <button class="px-4 py-2 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-400 transition-colors text-sm flex items-center gap-2"
+                        onclick="deleteEpisode({{ episode.id }}, '第{{ episode.episodeNumber }}集')">
+                    <i data-lucide="trash-2" class="w-4 h-4"></i>删除
+                </button>
             </div>
         </div>
     </div>
@@ -124,5 +128,23 @@
     document.getElementById('completedCount').textContent = completed;
     document.getElementById('producingCount').textContent = producing;
     document.getElementById('totalShots').textContent = totalShots;
+
+    // 删除剧集
+    function deleteEpisode(episodeId, episodeName) {
+        if (!confirm(`确定要删除「${episodeName}」吗？此操作不可恢复。`)) return;
+        fetch(`/api/v1/episodes/${episodeId}/delete/`, {
+            method: 'DELETE',
+            headers: {'X-CSRFToken': document.cookie.match(/csrftoken=([^;]+)/)?.[1] || ''}
+        })
+        .then(res => res.json())
+        .then(data => {
+            if (data.success) {
+                location.reload();
+            } else {
+                alert('删除失败: ' + (data.error || '未知错误'));
+            }
+        })
+        .catch(err => alert('网络错误: ' + err.message));
+    }
 </script>
 {% endblock %}

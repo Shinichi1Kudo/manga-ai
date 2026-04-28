@@ -11,6 +11,7 @@ import com.manga.ai.user.mapper.UserMapper;
 import com.manga.ai.user.service.CreditRecordService;
 import com.manga.ai.user.service.UserService;
 import com.manga.ai.user.util.JwtUtil;
+import com.manga.ai.user.service.TokenService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
@@ -33,6 +34,7 @@ public class UserServiceImpl implements UserService {
     private final UserMapper userMapper;
     private final EmailVerificationMapper emailVerificationMapper;
     private final JwtUtil jwtUtil;
+    private final TokenService tokenService;
     private final BCryptPasswordEncoder passwordEncoder = new BCryptPasswordEncoder();
 
     @Autowired(required = false)
@@ -48,10 +50,11 @@ public class UserServiceImpl implements UserService {
     // 验证码有效期（分钟）
     private static final int CODE_EXPIRE_MINUTES = 10;
 
-    public UserServiceImpl(UserMapper userMapper, EmailVerificationMapper emailVerificationMapper, JwtUtil jwtUtil) {
+    public UserServiceImpl(UserMapper userMapper, EmailVerificationMapper emailVerificationMapper, JwtUtil jwtUtil, TokenService tokenService) {
         this.userMapper = userMapper;
         this.emailVerificationMapper = emailVerificationMapper;
         this.jwtUtil = jwtUtil;
+        this.tokenService = tokenService;
     }
 
     @Override
@@ -141,6 +144,9 @@ public class UserServiceImpl implements UserService {
         // 生成 Token
         String token = jwtUtil.generateToken(user.getId(), user.getEmail());
 
+        // 存入Redis
+        tokenService.storeToken(token, user.getId());
+
         return convertToVO(user, token);
     }
 
@@ -170,6 +176,9 @@ public class UserServiceImpl implements UserService {
 
         // 生成 Token
         String token = jwtUtil.generateToken(user.getId(), user.getEmail());
+
+        // 存入Redis
+        tokenService.storeToken(token, user.getId());
 
         log.info("用户登录成功: userId={}, email={}", user.getId(), email);
 

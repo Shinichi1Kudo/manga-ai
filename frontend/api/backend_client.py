@@ -28,6 +28,12 @@ class BackendClient:
         return f"{self.base_url.rstrip('/')}{endpoint}"
 
     def _handle_response(self, response: requests.Response) -> Any:
+        if response.status_code == 401:
+            raise BackendAPIError(
+                status_code=401,
+                message='Token已失效，请重新登录',
+                data={'code': 401}
+            )
         if response.status_code >= 400:
             error_data = response.json() if response.content else {}
             raise BackendAPIError(

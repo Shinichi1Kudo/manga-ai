@@ -185,8 +185,8 @@ public class PropServiceImpl implements PropService {
     }
 
     @Override
-    public void generatePropAssetsWithCredit(Long propId) {
-        log.info("生成道具资产（含积分扣费）: propId={}", propId);
+    public void generatePropAssetsWithCredit(Long propId, Long userId) {
+        log.info("生成道具资产（含积分扣费）: propId={}, userId={}", propId, userId);
 
         Prop prop = propMapper.selectById(propId);
         if (prop == null) {
@@ -195,7 +195,9 @@ public class PropServiceImpl implements PropService {
 
         // 扣除积分（道具生成1张图）
         int requiredCredits = CreditConstants.CREDITS_PER_IMAGE;
-        Long userId = UserContextHolder.getUserId();
+        if (userId == null) {
+            userId = UserContextHolder.getUserId();
+        }
         if (userId == null) {
             throw new BusinessException("用户未登录");
         }
@@ -353,7 +355,7 @@ public class PropServiceImpl implements PropService {
     }
 
     @Override
-    public void regeneratePropAssetWithCredit(Long propId, String customPrompt, String quality) {
+    public void regeneratePropAssetWithCredit(Long propId, String customPrompt, String quality, Long userId) {
         log.info("重新生成道具资产（含积分扣费）: propId={}, quality={}", propId, quality);
 
         Prop prop = propMapper.selectById(propId);
@@ -368,7 +370,9 @@ public class PropServiceImpl implements PropService {
 
         // 扣除积分（道具生成1张图）
         int requiredCredits = CreditConstants.CREDITS_PER_IMAGE;
-        Long userId = UserContextHolder.getUserId();
+        if (userId == null) {
+            userId = UserContextHolder.getUserId();
+        }
         if (userId == null) {
             throw new BusinessException("用户未登录");
         }

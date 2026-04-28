@@ -410,7 +410,7 @@ public class ShotServiceImpl implements ShotService {
         }
 
         // 计算并扣除积分
-        int requiredCredits = CreditConstants.calculateCredits(shot.getResolution(), shot.getDuration());
+        int requiredCredits = CreditConstants.calculateCredits(shot.getResolution(), shot.getDuration(), shot.getVideoModel());
         Long userId = UserContextHolder.getUserId();
         if (userId == null) {
             throw new BusinessException("用户未登录");
@@ -436,6 +436,7 @@ public class ShotServiceImpl implements ShotService {
     @Async("videoGenerateExecutor")
     public void doGenerateVideo(Long shotId) {
         log.info("异步执行视频生成: shotId={}", shotId);
+        long startTime = System.currentTimeMillis();
 
         Shot shot = shotMapper.selectById(shotId);
         if (shot == null) {
@@ -466,11 +467,16 @@ public class ShotServiceImpl implements ShotService {
             SeedanceResponse response = seedanceService.generateVideo(request);
 
             if ("completed".equals(response.getStatus()) || "succeeded".equals(response.getStatus())) {
+                // 计算生成耗时
+                int durationSeconds = (int) ((System.currentTimeMillis() - startTime) / 1000);
+                log.info("视频生成耗时: {}秒 (约{}分{}秒)", durationSeconds, durationSeconds / 60, durationSeconds % 60);
+
                 // 保存视频URL
                 shot.setVideoUrl(response.getVideoUrl());
                 shot.setThumbnailUrl(response.getThumbnailUrl());
                 shot.setVideoSeed(response.getSeed());
                 shot.setGenerationStatus(ShotGenerationStatus.COMPLETED.getCode());
+                shot.setGenerationDuration(durationSeconds);
                 shot.setDeductedCredits(null); // 成功后清除扣除积分记录
                 shot.setUpdatedAt(LocalDateTime.now());
                 shotMapper.updateById(shot);
@@ -479,7 +485,7 @@ public class ShotServiceImpl implements ShotService {
                 saveVideoMetadata(shot, prompt, response);
 
                 // 保存视频版本资产
-                saveVideoAsset(shot, prompt, response, null);
+                saveVideoAsset(shot, prompt, response, null, durationSeconds);
 
                 log.info("视频生成完成: shotId={}", shotId);
             } else {
@@ -891,7 +897,7 @@ public class ShotServiceImpl implements ShotService {
         }
 
         // 计算并扣除积分
-        int requiredCredits = CreditConstants.calculateCredits(shot.getResolution(), shot.getDuration());
+        int requiredCredits = CreditConstants.calculateCredits(shot.getResolution(), shot.getDuration(), shot.getVideoModel());
         Long userId = UserContextHolder.getUserId();
         if (userId == null) {
             throw new BusinessException("用户未登录");
@@ -964,10 +970,13 @@ public class ShotServiceImpl implements ShotService {
                 references = getReferenceImagesFromDB(shotId);
                 log.info("从 shot_reference_image 表获取参考图数量: {}", references.size());
 
-                // 如果用户没有选择参考图，才使用自动匹配的参考图
-                if (references.isEmpty()) {
-                    log.info("用户未选择参考图，使用自动匹配的参考图");
-                    references = result.getReferenceImages();
+                // 合并自动匹配的参考图（场景图等），确保场景图不丢失
+                List<AssetReference> autoRefs = result.getReferenceImages();
+                if (autoRefs != null && !autoRefs.isEmpty()) {
+                    log.info("自动匹配参考图数量: {}", autoRefs.size());
+                    for (AssetReference autoRef : autoRefs) {
+                        references.add(autoRef);
+                    }
                 }
             }
 
@@ -1043,7 +1052,7 @@ public class ShotServiceImpl implements ShotService {
                 saveVideoMetadata(shot, result.getPrompt(), response);
 
                 // 保存视频版本资产
-                saveVideoAsset(shot, result.getPrompt(), response, referenceUrls);
+                saveVideoAsset(shot, result.getPrompt(), response, referenceUrls, durationSeconds);
 
                 log.info("视频生成完成(带参考图): shotId={}, 耗时: {}分{}秒", shotId, durationSeconds / 60, durationSeconds % 60);
             } else {
@@ -1544,9 +1553,10 @@ public class ShotServiceImpl implements ShotService {
         targetAsset.setUpdatedAt(LocalDateTime.now());
         shotVideoAssetMapper.updateById(targetAsset);
 
-        // 更新 Shot 表的 videoUrl 和 thumbnailUrl（兼容旧逻辑）
+        // 更新 Shot 表的 videoUrl、thumbnailUrl 和 generationDuration（兼容旧逻辑）
         shot.setVideoUrl(targetAsset.getVideoUrl());
         shot.setThumbnailUrl(targetAsset.getThumbnailUrl());
+        shot.setGenerationDuration(targetAsset.getGenerationDuration());
         shot.setUpdatedAt(LocalDateTime.now());
         shotMapper.updateById(shot);
 
@@ -1556,7 +1566,7 @@ public class ShotServiceImpl implements ShotService {
     /**
      * 保存视频版本资产
      */
-    private void saveVideoAsset(Shot shot, String prompt, SeedanceResponse response, List<String> referenceUrls) {
+    private void saveVideoAsset(Shot shot, String prompt, SeedanceResponse response, List<String> referenceUrls, Integer generationDuration) {
         // 先将该分镜所有视频版本设为非激活
         shotVideoAssetMapper.deactivateAllByShotId(shot.getId());
 
@@ -1571,6 +1581,7 @@ public class ShotServiceImpl implements ShotService {
         videoAsset.setVideoUrl(response.getVideoUrl());
         videoAsset.setThumbnailUrl(response.getThumbnailUrl());
         videoAsset.setIsActive(1);
+        videoAsset.setGenerationDuration(generationDuration);
         videoAsset.setCreatedAt(LocalDateTime.now());
         videoAsset.setUpdatedAt(LocalDateTime.now());
         shotVideoAssetMapper.insert(videoAsset);
@@ -1777,8 +1788,9 @@ public class ShotServiceImpl implements ShotService {
 
         int duration = shot.getDuration() != null ? shot.getDuration() : CreditConstants.DEFAULT_DURATION;
         String resolution = shot.getResolution() != null ? shot.getResolution() : "720p";
-        int creditsPerSecond = "480p".equals(resolution) ? CreditConstants.CREDITS_PER_SECOND_480P : CreditConstants.CREDITS_PER_SECOND_720P;
-        int totalCredits = CreditConstants.calculateCredits(resolution, duration);
+        String videoModel = shot.getVideoModel();
+        int creditsPerSecond = CreditConstants.getCreditsPerSecond(resolution, videoModel);
+        int totalCredits = CreditConstants.calculateCredits(resolution, duration, videoModel);
 
         Long userId = UserContextHolder.getUserId();
         Integer currentCredits = userId != null ? userService.getUserCredits(userId) : null;

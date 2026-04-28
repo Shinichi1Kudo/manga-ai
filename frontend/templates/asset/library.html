@@ -634,8 +634,9 @@ function renderAssets(data) {
                     const displayName = role.clothings.length > 1
                         ? `${clothing.clothingName} - ${viewName}`
                         : viewName;
+                    const titleText = role.roleName + ' - ' + clothing.clothingName + ' - ' + viewName;
                     html += `
-                        <div class="view-item" onclick="openPreview('${imgPath}', '${role.roleName} - ${clothing.clothingName} - ${viewName}')">
+                        <div class="view-item" data-preview-src="${imgPath.replace(/&/g,'&amp;').replace(/"/g,'&quot;')}" data-preview-title="${titleText.replace(/&/g,'&amp;').replace(/"/g,'&quot;')}">
                             <img src="${imgPath}" alt="${displayName}" onload="updateImageInfo(this)">
                             <div class="view-info">
                                 <div class="info-row">
@@ -703,7 +704,7 @@ function renderSceneAssets(scenes) {
 
         if (imgPath) {
             html += `
-                <div class="view-item" onclick="openPreview('${imgPath}', '${displayName}')">
+                <div class="view-item" data-preview-src="${imgPath.replace(/&/g,'&amp;').replace(/"/g,'&quot;')}" data-preview-title="${displayName.replace(/&/g,'&amp;').replace(/"/g,'&quot;')}">
                     <img src="${imgPath}" alt="${scene.sceneName}" onload="updateImageInfo(this)">
                     <div class="view-info">
                         <div class="info-row">
@@ -758,7 +759,7 @@ function renderPropAssets(props) {
 
         if (imgPath) {
             html += `
-                <div class="view-item" onclick="openPreview('${imgPath}', '${displayName}')">
+                <div class="view-item" data-preview-src="${imgPath.replace(/&/g,'&amp;').replace(/"/g,'&quot;')}" data-preview-title="${displayName.replace(/&/g,'&amp;').replace(/"/g,'&quot;')}">
                     <img src="${imgPath}" alt="${prop.propName}" onload="updateImageInfo(this)">
                     <div class="view-info">
                         <div class="info-row">
@@ -983,8 +984,14 @@ function renderVideoAssets(data) {
             episode.shots.forEach(shot => {
                 const shotName = shot.shotName || ('分镜 ' + shot.shotNumber);
                 const duration = shot.duration || 5;
+                const titleText = seriesName + ' - ' + episodeName + ' - ' + shotName;
+                // 用 data 属性存储，避免 description 中的换行/引号破坏 onclick
                 html += `
-                    <div class="video-card" onclick="openVideoPreview('${shot.videoUrl}', '${shot.thumbnailUrl || ''}', '${seriesName} - ${episodeName} - ${shotName}', '${(shot.description || '').replace(/'/g, "\\'")}')">
+                    <div class="video-card"
+                         data-video-url="${shot.videoUrl || ''}"
+                         data-thumbnail-url="${shot.thumbnailUrl || ''}"
+                         data-title="${titleText.replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}"
+                         data-description="${(shot.description || '').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'&#10;')}">
                         <div class="video-thumbnail">
                             ${shot.thumbnailUrl
                                 ? `<img src="${shot.thumbnailUrl}" alt="${shotName}">`
@@ -1020,12 +1027,39 @@ function renderVideoAssets(data) {
     initIcons();
 }
 
+// 图片卡片点击委托
+document.addEventListener('click', function(e) {
+    const item = e.target.closest('.view-item');
+    if (!item) return;
+    const src = item.dataset.previewSrc;
+    const title = item.dataset.previewTitle;
+    if (src) {
+        openPreview(src, title || '');
+    }
+});
+
+// 视频卡片点击委托
+document.addEventListener('click', function(e) {
+    const card = e.target.closest('.video-card');
+    if (!card) return;
+    const videoUrl = card.dataset.videoUrl;
+    const thumbnailUrl = card.dataset.thumbnailUrl;
+    const title = card.dataset.title;
+    const description = card.dataset.description;
+    openVideoPreview(videoUrl, thumbnailUrl, title, description);
+});
+
 // 视频预览
 function openVideoPreview(videoUrl, thumbnailUrl, title, description) {
+    if (!videoUrl) {
+        console.error('openVideoPreview: videoUrl 为空');
+        return;
+    }
     document.getElementById('videoPreviewTitle').textContent = title || '视频预览';
     const video = document.getElementById('previewVideo');
+    video.poster = thumbnailUrl || '';
     video.src = videoUrl;
-    video.poster = thumbnailUrl;
+    video.load();
     document.getElementById('videoDownloadBtn').href = videoUrl;
 
     // 显示描述

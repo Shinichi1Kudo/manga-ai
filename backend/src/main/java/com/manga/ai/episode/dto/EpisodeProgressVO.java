@@ -21,6 +21,7 @@ public class EpisodeProgressVO implements Serializable {
     private Integer failedShots;
     private Integer progress;  // 百分比
     private Boolean assetsReady;  // 资产解析完成，等待用户选择
+    private Boolean assetsConfirmed;  // 用户已确认资产选择
     private Boolean shotsParsing;  // 正在解析分镜（资产已确认）
     private List<ShotProgress> shots;  // 分镜进度列表
 
