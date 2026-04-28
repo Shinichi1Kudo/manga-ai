@@ -46,6 +46,8 @@ public class EpisodeDetailVO implements Serializable {
     public static class ShotSummary implements Serializable {
         private Long id;
         private Integer shotNumber;
+        private Long sceneId;
+        private String sceneName;
         private String description;
         private Integer duration;
         private String videoUrl;
@@ -54,6 +56,32 @@ public class EpisodeDetailVO implements Serializable {
         private String generationStatusDesc;
         private Integer status;
         private String statusDesc;
+        private List<CharacterInfo> characters;
+        private List<PropInfo> props;
+
+        /**
+         * 分镜角色信息
+         */
+        @Data
+        public static class CharacterInfo implements Serializable {
+            private Long roleId;
+            private String roleName;
+            private Integer clothingId;
+            private String clothingName;
+            private String assetUrl;
+            private String action;
+            private String expression;
+        }
+
+        /**
+         * 分镜道具信息
+         */
+        @Data
+        public static class PropInfo implements Serializable {
+            private Long propId;
+            private String propName;
+            private String assetUrl;
+        }
     }
 
     /**

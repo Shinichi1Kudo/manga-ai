@@ -4,6 +4,8 @@ import com.alibaba.fastjson2.JSON;
 import com.alibaba.fastjson2.JSONArray;
 import com.alibaba.fastjson2.JSONObject;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.manga.ai.asset.entity.RoleAsset;
+import com.manga.ai.asset.mapper.RoleAssetMapper;
 import com.manga.ai.common.enums.CreditUsageType;
 import com.manga.ai.common.enums.EpisodeStatus;
 import com.manga.ai.common.enums.SceneStatus;
@@ -94,6 +96,7 @@ public class EpisodeServiceImpl implements EpisodeService {
     private final OssService ossService;
     private final UserService userService;
     private final SqlSessionFactory sqlSessionFactory;
+    private final RoleAssetMapper roleAssetMapper;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -1026,6 +1029,113 @@ public class EpisodeServiceImpl implements EpisodeService {
                 case 1: summary.setStatusDesc("已通过"); break;
                 case 2: summary.setStatusDesc("已拒绝"); break;
             }
+        }
+
+        // 获取分镜角色关联
+        LambdaQueryWrapper<ShotCharacter> scWrapper = new LambdaQueryWrapper<>();
+        scWrapper.eq(ShotCharacter::getShotId, shot.getId());
+        List<ShotCharacter> shotCharacters = shotCharacterMapper.selectList(scWrapper);
+
+        if (!shotCharacters.isEmpty()) {
+            // 收集所有角色ID
+            Set<Long> roleIds = shotCharacters.stream()
+                    .map(ShotCharacter::getRoleId)
+                    .collect(Collectors.toSet());
+
+            // 批量查询角色名称
+            Map<Long, String> roleNameMap = new HashMap<>();
+            if (!roleIds.isEmpty()) {
+                List<Role> roles = roleMapper.selectBatchIds(roleIds);
+                for (Role role : roles) {
+                    roleNameMap.put(role.getId(), role.getRoleName());
+                }
+            }
+
+            // 批量查询角色资产（按 clothingId）
+            Map<String, RoleAsset> assetMap = new HashMap<>();
+            if (!roleIds.isEmpty()) {
+                LambdaQueryWrapper<RoleAsset> assetWrapper = new LambdaQueryWrapper<>();
+                assetWrapper.in(RoleAsset::getRoleId, roleIds)
+                        .eq(RoleAsset::getIsActive, 1);
+                List<RoleAsset> assets = roleAssetMapper.selectList(assetWrapper);
+                for (RoleAsset asset : assets) {
+                    String key = asset.getRoleId() + "_" + asset.getClothingId();
+                    assetMap.put(key, asset);
+                }
+            }
+
+            // 构建角色信息列表
+            List<EpisodeDetailVO.ShotSummary.CharacterInfo> characters = new ArrayList<>();
+            for (ShotCharacter sc : shotCharacters) {
+                EpisodeDetailVO.ShotSummary.CharacterInfo charInfo = new EpisodeDetailVO.ShotSummary.CharacterInfo();
+                charInfo.setRoleId(sc.getRoleId());
+                charInfo.setRoleName(roleNameMap.get(sc.getRoleId()));
+                charInfo.setClothingId(sc.getClothingId() != null ? sc.getClothingId() : 1);
+                charInfo.setAction(sc.getCharacterAction());
+                charInfo.setExpression(sc.getCharacterExpression());
+
+                // 根据 clothingId 获取资产图片
+                Integer clothingId = sc.getClothingId() != null ? sc.getClothingId() : 1;
+                String key = sc.getRoleId() + "_" + clothingId;
+                RoleAsset asset = assetMap.get(key);
+                if (asset != null) {
+                    charInfo.setAssetUrl(ossService.refreshUrl(asset.getFilePath()));
+                    charInfo.setClothingName(asset.getClothingName());
+                }
+
+                characters.add(charInfo);
+            }
+            summary.setCharacters(characters);
+        }
+
+        // 获取分镜道具关联
+        LambdaQueryWrapper<ShotProp> spWrapper = new LambdaQueryWrapper<>();
+        spWrapper.eq(ShotProp::getShotId, shot.getId());
+        List<ShotProp> shotProps = shotPropMapper.selectList(spWrapper);
+
+        if (!shotProps.isEmpty()) {
+            // 收集所有道具ID
+            Set<Long> propIds = shotProps.stream()
+                    .map(ShotProp::getPropId)
+                    .collect(Collectors.toSet());
+
+            // 批量查询道具名称
+            Map<Long, String> propNameMap = new HashMap<>();
+            if (!propIds.isEmpty()) {
+                List<Prop> props = propMapper.selectBatchIds(propIds);
+                for (Prop prop : props) {
+                    propNameMap.put(prop.getId(), prop.getPropName());
+                }
+            }
+
+            // 批量查询道具资产
+            Map<Long, PropAsset> propAssetMap = new HashMap<>();
+            if (!propIds.isEmpty()) {
+                LambdaQueryWrapper<PropAsset> paWrapper = new LambdaQueryWrapper<>();
+                paWrapper.in(PropAsset::getPropId, propIds)
+                        .eq(PropAsset::getIsActive, 1);
+                List<PropAsset> propAssets = propAssetMapper.selectList(paWrapper);
+                for (PropAsset pa : propAssets) {
+                    propAssetMap.put(pa.getPropId(), pa);
+                }
+            }
+
+            // 构建道具信息列表
+            List<EpisodeDetailVO.ShotSummary.PropInfo> props = new ArrayList<>();
+            for (ShotProp sp : shotProps) {
+                EpisodeDetailVO.ShotSummary.PropInfo propInfo = new EpisodeDetailVO.ShotSummary.PropInfo();
+                propInfo.setPropId(sp.getPropId());
+                propInfo.setPropName(propNameMap.get(sp.getPropId()));
+
+                // 获取道具资产图片
+                PropAsset propAsset = propAssetMap.get(sp.getPropId());
+                if (propAsset != null) {
+                    propInfo.setAssetUrl(ossService.refreshUrl(propAsset.getFilePath()));
+                }
+
+                props.add(propInfo);
+            }
+            summary.setProps(props);
         }
 
         return summary;

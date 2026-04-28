@@ -1,5 +1,6 @@
 package com.manga.ai.asset.service;
 
+import com.manga.ai.asset.dto.SeriesRoleAssetsVO;
 import com.manga.ai.asset.entity.RoleAsset;
 import com.manga.ai.common.enums.ViewType;
 
@@ -89,4 +90,11 @@ public interface AssetService {
      * @return Map<roleId, List<RoleAsset>>
      */
     java.util.Map<Long, List<RoleAsset>> getClothingsBySeriesId(Long seriesId);
+
+    /**
+     * 获取系列所有角色的服装资产（包含角色名称）
+     * @param seriesId 系列ID
+     * @return 角色服装资产VO
+     */
+    SeriesRoleAssetsVO getSeriesRoleAssets(Long seriesId);
 }

@@ -2,6 +2,7 @@ package com.manga.ai.asset.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
+import com.manga.ai.asset.dto.SeriesRoleAssetsVO;
 import com.manga.ai.asset.entity.AssetMetadata;
 import com.manga.ai.asset.entity.RoleAsset;
 import com.manga.ai.asset.mapper.AssetMetadataMapper;
@@ -10,6 +11,7 @@ import com.manga.ai.asset.service.AssetService;
 import com.manga.ai.common.enums.AssetStatus;
 import com.manga.ai.common.enums.ViewType;
 import com.manga.ai.common.exception.BusinessException;
+import com.manga.ai.common.service.OssService;
 import com.manga.ai.role.entity.Role;
 import com.manga.ai.role.mapper.RoleMapper;
 import lombok.RequiredArgsConstructor;
@@ -18,6 +20,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -31,6 +34,7 @@ public class AssetServiceImpl implements AssetService {
     private final RoleAssetMapper roleAssetMapper;
     private final AssetMetadataMapper assetMetadataMapper;
     private final RoleMapper roleMapper;
+    private final OssService ossService;
 
     @Override
     public RoleAsset getAssetById(Long assetId) {
@@ -502,5 +506,52 @@ public class AssetServiceImpl implements AssetService {
             log.error("getClothingsBySeriesId 异常: seriesId={}", seriesId, e);
             throw e;
         }
+    }
+
+    @Override
+    public SeriesRoleAssetsVO getSeriesRoleAssets(Long seriesId) {
+        log.info("获取系列角色服装资产: seriesId={}", seriesId);
+
+        SeriesRoleAssetsVO vo = new SeriesRoleAssetsVO();
+        List<SeriesRoleAssetsVO.RoleClothingInfo> roleList = new ArrayList<>();
+
+        // 获取该系列所有角色
+        LambdaQueryWrapper<Role> roleWrapper = new LambdaQueryWrapper<>();
+        roleWrapper.eq(Role::getSeriesId, seriesId)
+                .select(Role::getId, Role::getRoleName);
+        List<Role> roles = roleMapper.selectList(roleWrapper);
+
+        if (roles.isEmpty()) {
+            vo.setRoles(roleList);
+            return vo;
+        }
+
+        // 批量获取所有角色的服装资产
+        java.util.Map<Long, List<RoleAsset>> clothingsMap = getClothingsBySeriesId(seriesId);
+
+        // 构建返回结果
+        for (Role role : roles) {
+            SeriesRoleAssetsVO.RoleClothingInfo roleInfo = new SeriesRoleAssetsVO.RoleClothingInfo();
+            roleInfo.setId(role.getId());
+            roleInfo.setRoleName(role.getRoleName());
+
+            List<RoleAsset> clothings = clothingsMap.getOrDefault(role.getId(), new ArrayList<>());
+            List<SeriesRoleAssetsVO.ClothingAssetInfo> clothingList = new ArrayList<>();
+
+            for (RoleAsset asset : clothings) {
+                SeriesRoleAssetsVO.ClothingAssetInfo clothingInfo = new SeriesRoleAssetsVO.ClothingAssetInfo();
+                clothingInfo.setClothingId(asset.getClothingId());
+                clothingInfo.setClothingName(asset.getClothingName() != null ? asset.getClothingName() : "服装" + asset.getClothingId());
+                clothingInfo.setAssetUrl(ossService.refreshUrl(asset.getFilePath()));
+                clothingList.add(clothingInfo);
+            }
+
+            roleInfo.setClothings(clothingList);
+            roleList.add(roleInfo);
+        }
+
+        vo.setRoles(roleList);
+        log.info("获取系列角色服装资产完成: seriesId={}, 角色数={}", seriesId, roleList.size());
+        return vo;
     }
 }

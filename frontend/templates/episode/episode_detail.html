@@ -3654,8 +3654,8 @@ const assetTypeConfig = {
     prop: { label: '道具', borderColor: 'border-blue-500', bgColor: 'bg-blue-500/20' }
 };
 
-// 初始化可用资产
-function initAvailableAssets() {
+// 初始化可用资产（异步加载角色服装）
+async function initAvailableAssets() {
     console.log('initAvailableAssets called');
     console.log('seriesScenes:', seriesScenes);
     console.log('seriesRoles:', seriesRoles);
@@ -3669,14 +3669,6 @@ function initAvailableAssets() {
         type: 'scene'
     }));
 
-    // 角色资产
-    availableAssets.role = seriesRoles.filter(r => r.assetUrl).map(r => ({
-        id: r.id,
-        name: r.roleName,
-        imageUrl: r.assetUrl,
-        type: 'role'
-    }));
-
     // 道具资产
     availableAssets.prop = seriesProps.filter(p => p.activeAssetUrl || p.transparentUrl).map(p => ({
         id: p.id,
@@ -3684,6 +3676,43 @@ function initAvailableAssets() {
         imageUrl: p.activeAssetUrl || p.transparentUrl,
         type: 'prop'
     }));
+
+    // 角色资产：从后端 API 获取所有服装
+    try {
+        const response = await fetch(`/api/v1/assets/series/${seriesId}/role-assets`);
+        const result = await response.json();
+        if (result.data && result.data.roles) {
+            availableAssets.role = [];
+            for (const role of result.data.roles) {
+                if (role.clothings && role.clothings.length > 0) {
+                    for (const clothing of role.clothings) {
+                        // 服装名称格式：角色名-服装名（默认服装只显示角色名）
+                        const displayName = clothing.clothingName === '默认' || clothing.clothingId === 1
+                            ? role.roleName
+                            : `${role.roleName}-${clothing.clothingName}`;
+                        availableAssets.role.push({
+                            id: role.id,
+                            clothingId: clothing.clothingId,
+                            name: displayName,
+                            displayName: role.roleName,  // 显示名称（不含服装后缀）
+                            imageUrl: clothing.assetUrl,
+                            type: 'role'
+                        });
+                    }
+                }
+            }
+        }
+        console.log('角色服装资产加载完成:', availableAssets.role.length, '个');
+    } catch (e) {
+        console.error('加载角色服装资产失败:', e);
+        // 降级：使用模板传递的角色数据
+        availableAssets.role = seriesRoles.filter(r => r.assetUrl).map(r => ({
+            id: r.id,
+            name: r.roleName,
+            imageUrl: r.assetUrl,
+            type: 'role'
+        }));
+    }
 
     console.log('availableAssets:', availableAssets);
 
@@ -3693,7 +3722,7 @@ function initAvailableAssets() {
     });
 }
 
-// 初始化资产
+// 初始化资产（异步）
 initAvailableAssets();
 
 // 防抖保存器

@@ -1,5 +1,6 @@
 package com.manga.ai.asset.controller;
 
+import com.manga.ai.asset.dto.SeriesRoleAssetsVO;
 import com.manga.ai.asset.entity.RoleAsset;
 import com.manga.ai.asset.service.AssetService;
 import com.manga.ai.common.result.Result;
@@ -67,6 +68,15 @@ public class AssetController {
     @GetMapping("/series/{seriesId}/clothings")
     public Result<Map<Long, List<RoleAsset>>> getClothingsBySeriesId(@PathVariable Long seriesId) {
         Map<Long, List<RoleAsset>> result = assetService.getClothingsBySeriesId(seriesId);
+        return Result.success(result);
+    }
+
+    /**
+     * 获取系列所有角色的服装资产（包含角色名称，用于前端@提及）
+     */
+    @GetMapping("/series/{seriesId}/role-assets")
+    public Result<SeriesRoleAssetsVO> getSeriesRoleAssets(@PathVariable Long seriesId) {
+        SeriesRoleAssetsVO result = assetService.getSeriesRoleAssets(seriesId);
         return Result.success(result);
     }
 
