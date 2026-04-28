@@ -29,6 +29,11 @@ public class LLMRequest implements Serializable {
     private Double temperature = 0.7;
 
     /**
+     * 模型名称（可选，为空则使用默认配置的模型）
+     */
+    private String model;
+
+    /**
      * 最大输出token数（详细版分镜需要更大输出空间）
      */
     private Integer maxTokens = 20000;

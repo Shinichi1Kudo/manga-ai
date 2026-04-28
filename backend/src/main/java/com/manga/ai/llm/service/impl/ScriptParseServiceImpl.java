@@ -98,7 +98,8 @@ public class ScriptParseServiceImpl implements ScriptParseService {
                 String systemPrompt = buildAssetsOnlyPrompt(knownCharacters);
                 String userPrompt = buildUserPrompt(scriptText);
 
-                LLMResponse response = llmService.chat(systemPrompt, userPrompt);
+                // 资产解析使用 glm-5-turbo 模型，避免与分镜解析抢占同一模型的并发限制
+                LLMResponse response = llmService.chat(systemPrompt, userPrompt, "glm-5-turbo");
 
                 if ("success".equals(response.getStatus())) {
                     result = parseLLMResponseAssetsOnly(response.getContent());
@@ -109,7 +110,7 @@ public class ScriptParseServiceImpl implements ScriptParseService {
 
                     if (hasScenes || hasProps) {
                         result.setStatus("success");
-                        log.info("资产解析完成: scenes={}, props={}, 尝试次数={}",
+                        log.info("资产解析完成(glm-5-turbo): scenes={}, props={}, 尝试次数={}",
                                 result.getScenes() != null ? result.getScenes().size() : 0,
                                 result.getProps() != null ? result.getProps().size() : 0,
                                 attempt);
@@ -129,7 +130,9 @@ public class ScriptParseServiceImpl implements ScriptParseService {
             // 如果不是最后一次尝试，等待一段时间再重试
             if (attempt < maxRetries) {
                 try {
-                    long waitTime = 2000 * attempt;
+                    // 429限速时使用更长等待时间
+                    long waitTime = result.getErrorMessage() != null
+                            && result.getErrorMessage().contains("429") ? 5000 * attempt : 2000 * attempt;
                     log.info("等待 {}ms 后重试...", waitTime);
                     Thread.sleep(waitTime);
                 } catch (InterruptedException ie) {
@@ -185,7 +188,9 @@ public class ScriptParseServiceImpl implements ScriptParseService {
             // 如果不是最后一次尝试，等待一段时间再重试
             if (attempt < maxRetries) {
                 try {
-                    long waitTime = 2000 * attempt; // 递增等待时间
+                    // 429限速时使用更长等待时间
+                    long waitTime = result.getErrorMessage() != null
+                            && result.getErrorMessage().contains("429") ? 5000 * attempt : 2000 * attempt;
                     log.info("等待 {}ms 后重试...", waitTime);
                     Thread.sleep(waitTime);
                 } catch (InterruptedException ie) {
@@ -248,7 +253,9 @@ public class ScriptParseServiceImpl implements ScriptParseService {
 
             if (attempt < maxRetries) {
                 try {
-                    long waitTime = 2000 * attempt;
+                    // 429限速时使用更长等待时间
+                    long waitTime = result.getErrorMessage() != null
+                            && result.getErrorMessage().contains("429") ? 5000 * attempt : 2000 * attempt;
                     log.info("等待 {}ms 后重试...", waitTime);
                     Thread.sleep(waitTime);
                 } catch (InterruptedException ie) {

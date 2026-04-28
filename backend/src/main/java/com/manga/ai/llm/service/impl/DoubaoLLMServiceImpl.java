@@ -50,7 +50,10 @@ public class DoubaoLLMServiceImpl implements DoubaoLLMService {
 
         try {
             JSONObject requestBody = new JSONObject();
-            requestBody.put("model", model);
+            // 如果请求指定了模型，使用请求级别的模型；否则使用默认配置
+            String useModel = (request.getModel() != null && !request.getModel().isEmpty()) ? request.getModel() : model;
+            requestBody.put("model", useModel);
+            log.info("使用模型: {} (请求指定: {}, 默认配置: {})", useModel, request.getModel(), model);
 
             // 构建消息列表
             JSONArray messagesArray = new JSONArray();
@@ -117,8 +120,14 @@ public class DoubaoLLMServiceImpl implements DoubaoLLMService {
 
     @Override
     public LLMResponse chat(String systemPrompt, String userPrompt) {
+        return chat(systemPrompt, userPrompt, null);
+    }
+
+    @Override
+    public LLMResponse chat(String systemPrompt, String userPrompt, String model) {
         LLMRequest request = new LLMRequest();
         request.setSystemPrompt(systemPrompt);
+        request.setModel(model);
         List<LLMRequest.Message> messages = new ArrayList<>();
         messages.add(new LLMRequest.Message("user", userPrompt));
         request.setMessages(messages);

@@ -22,4 +22,13 @@ public interface DoubaoLLMService {
      * @return LLM响应
      */
     LLMResponse chat(String systemPrompt, String userPrompt);
+
+    /**
+     * 调用LLM生成回复（使用系统提示词，指定模型）
+     * @param systemPrompt 系统提示词
+     * @param userPrompt 用户提示词
+     * @param model 模型名称（如 glm-5-turbo），为空则使用默认模型
+     * @return LLM响应
+     */
+    LLMResponse chat(String systemPrompt, String userPrompt, String model);
 }

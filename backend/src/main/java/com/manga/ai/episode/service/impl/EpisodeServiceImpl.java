@@ -51,6 +51,9 @@ import com.manga.ai.user.service.impl.UserServiceImpl.UserContextHolder;
 import com.manga.ai.common.service.OssService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.ibatis.session.ExecutorType;
+import org.apache.ibatis.session.SqlSession;
+import org.apache.ibatis.session.SqlSessionFactory;
 import org.springframework.beans.BeanUtils;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
@@ -90,6 +93,7 @@ public class EpisodeServiceImpl implements EpisodeService {
     private final PropService propService;
     private final OssService ossService;
     private final UserService userService;
+    private final SqlSessionFactory sqlSessionFactory;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -258,7 +262,7 @@ public class EpisodeServiceImpl implements EpisodeService {
 
             if ("success".equals(result.getStatus()) && result.getShots() != null && !result.getShots().isEmpty()) {
                 // 保存分镜结果（包含状态更新，在同一事务中）
-                saveShotsResult(episode, result);
+                saveShotsResult(episode, result, sceneCodeToIdMap);
                 log.info("分镜解析完成: episodeId={}, shots={}", episodeId, result.getShots().size());
             } else {
                 // 解析失败，返还积分
@@ -383,20 +387,11 @@ public class EpisodeServiceImpl implements EpisodeService {
 
     /**
      * 保存分镜结果（包含剧集状态更新，确保原子性）
+     * 使用批量插入优化性能
      */
     @Transactional(rollbackFor = Exception.class)
-    public void saveShotsResult(Episode episode, ScriptParseResult result) {
+    public void saveShotsResult(Episode episode, ScriptParseResult result, Map<String, Long> sceneCodeToIdMap) {
         Long seriesId = episode.getSeriesId();
-
-        // 获取场景映射
-        Map<String, Long> sceneCodeToIdMap = new HashMap<>();
-        LambdaQueryWrapper<Scene> sceneWrapper = new LambdaQueryWrapper<>();
-        sceneWrapper.eq(Scene::getSeriesId, seriesId)
-                .select(Scene::getId, Scene::getSceneCode);
-        List<Scene> scenes = sceneMapper.selectList(sceneWrapper);
-        for (Scene scene : scenes) {
-            sceneCodeToIdMap.put(scene.getSceneCode(), scene.getId());
-        }
 
         // 获取道具映射
         Map<String, Long> propNameToIdMap = new HashMap<>();
@@ -418,8 +413,12 @@ public class EpisodeServiceImpl implements EpisodeService {
             roleNameToIdMap.put(role.getRoleName(), role.getId());
         }
 
-        // 保存分镜
-        if (result.getShots() != null) {
+        // 保存分镜 - 批量插入
+        if (result.getShots() != null && !result.getShots().isEmpty()) {
+            // 第一阶段：构建所有Shot对象并批量插入
+            List<Shot> shotList = new ArrayList<>();
+            Map<Integer, ScriptParseResult.ShotInfo> shotNumberToInfoMap = new HashMap<>();
+
             for (ScriptParseResult.ShotInfo shotInfo : result.getShots()) {
                 Shot shot = new Shot();
                 shot.setEpisodeId(episode.getId());
@@ -429,7 +428,7 @@ public class EpisodeServiceImpl implements EpisodeService {
                 shot.setEndTime(shotInfo.getEndTime());
                 shot.setSoundEffect(shotInfo.getSoundEffect());
                 shot.setSceneName(shotInfo.getSceneName());
-                // 计算时长（如果没提供，根据开始和结束时间计算）
+                // 计算时长
                 if (shotInfo.getDuration() != null) {
                     shot.setDuration(shotInfo.getDuration());
                 } else if (shotInfo.getStartTime() != null && shotInfo.getEndTime() != null) {
@@ -446,77 +445,105 @@ public class EpisodeServiceImpl implements EpisodeService {
 
                 // 构建完整的格式化描述文本
                 StringBuilder fullDescription = new StringBuilder();
-
-                // 时间
                 int startTime = shotInfo.getStartTime() != null ? shotInfo.getStartTime() : 0;
                 int duration = shot.getDuration() != null ? shot.getDuration() : 5;
                 int endTime = startTime + duration;
                 fullDescription.append("时间【").append(formatShotTime(startTime)).append("-").append(formatShotTime(endTime)).append("】\n");
-
-                // 镜头
                 if (shotInfo.getShotType() != null && !shotInfo.getShotType().isEmpty()) {
                     fullDescription.append("镜头【").append(shotInfo.getShotType()).append("】\n");
                 }
-
-                // 剧情
                 if (shotInfo.getDescription() != null && !shotInfo.getDescription().isEmpty()) {
                     fullDescription.append("剧情【").append(shotInfo.getDescription()).append("】\n");
                 }
-
-                // 音效
                 if (shotInfo.getSoundEffect() != null && !shotInfo.getSoundEffect().isEmpty()) {
                     fullDescription.append("音效【").append(shotInfo.getSoundEffect()).append("】");
                 }
-
                 shot.setDescription(fullDescription.toString().trim());
 
                 if (shotInfo.getSceneCode() != null && sceneCodeToIdMap.containsKey(shotInfo.getSceneCode())) {
                     shot.setSceneId(sceneCodeToIdMap.get(shotInfo.getSceneCode()));
                 }
-
                 if (shotInfo.getCharacters() != null) {
                     shot.setCharactersJson(JSON.toJSONString(shotInfo.getCharacters()));
                 }
-
                 if (shotInfo.getProps() != null) {
                     shot.setPropsJson(JSON.toJSONString(shotInfo.getProps()));
                 }
 
-                shotMapper.insert(shot);
-
-                // 保存分镜-角色关联
-                if (shotInfo.getCharacters() != null) {
-                    for (ScriptParseResult.CharacterInShot charInfo : shotInfo.getCharacters()) {
-                        Long roleId = roleNameToIdMap.get(charInfo.getRoleName());
-                        if (roleId != null) {
-                            ShotCharacter shotCharacter = new ShotCharacter();
-                            shotCharacter.setShotId(shot.getId());
-                            shotCharacter.setRoleId(roleId);
-                            shotCharacter.setCharacterAction(charInfo.getAction());
-                            shotCharacter.setCharacterExpression(charInfo.getExpression());
-                            shotCharacter.setClothingId(charInfo.getClothingId() != null ? charInfo.getClothingId() : 1);
-                            shotCharacter.setCreatedAt(LocalDateTime.now());
-                            shotCharacterMapper.insert(shotCharacter);
-                        }
-                    }
-                }
-
-                // 保存分镜-道具关联
-                if (shotInfo.getProps() != null) {
-                    for (ScriptParseResult.PropInShot propInfo : shotInfo.getProps()) {
-                        Long propId = propNameToIdMap.get(propInfo.getPropName());
-                        if (propId != null) {
-                            ShotProp shotProp = new ShotProp();
-                            shotProp.setShotId(shot.getId());
-                            shotProp.setPropId(propId);
-                            shotProp.setCreatedAt(LocalDateTime.now());
-                            shotPropMapper.insert(shotProp);
-                        }
-                    }
-                }
-
-                log.info("创建分镜: shotId={}, shotNumber={}", shot.getId(), shot.getShotNumber());
+                shotList.add(shot);
+                shotNumberToInfoMap.put(shotInfo.getShotNumber(), shotInfo);
             }
+
+            // 批量插入（使用JDBC batch模式）
+            try (SqlSession sqlSession = sqlSessionFactory.openSession(ExecutorType.BATCH)) {
+                ShotMapper batchShotMapper = sqlSession.getMapper(ShotMapper.class);
+                ShotCharacterMapper batchScMapper = sqlSession.getMapper(ShotCharacterMapper.class);
+                ShotPropMapper batchSpMapper = sqlSession.getMapper(ShotPropMapper.class);
+
+                // 批量插入Shot
+                for (Shot shot : shotList) {
+                    batchShotMapper.insert(shot);
+                }
+                sqlSession.flushStatements(); // 刷新以获取自增ID
+
+                // 第二阶段：构建并批量插入ShotCharacter和ShotProp
+                List<ShotCharacter> characterList = new ArrayList<>();
+                List<ShotProp> propList = new ArrayList<>();
+
+                for (int i = 0; i < shotList.size(); i++) {
+                    Shot shot = shotList.get(i);
+                    ScriptParseResult.ShotInfo shotInfo = shotNumberToInfoMap.get(shot.getShotNumber());
+
+                    // 保存分镜-角色关联
+                    if (shotInfo != null && shotInfo.getCharacters() != null) {
+                        for (ScriptParseResult.CharacterInShot charInfo : shotInfo.getCharacters()) {
+                            Long roleId = roleNameToIdMap.get(charInfo.getRoleName());
+                            if (roleId != null) {
+                                ShotCharacter shotCharacter = new ShotCharacter();
+                                shotCharacter.setShotId(shot.getId());
+                                shotCharacter.setRoleId(roleId);
+                                shotCharacter.setCharacterAction(charInfo.getAction());
+                                shotCharacter.setCharacterExpression(charInfo.getExpression());
+                                shotCharacter.setClothingId(charInfo.getClothingId() != null ? charInfo.getClothingId() : 1);
+                                shotCharacter.setCreatedAt(LocalDateTime.now());
+                                characterList.add(shotCharacter);
+                            }
+                        }
+                    }
+
+                    // 保存分镜-道具关联
+                    if (shotInfo != null && shotInfo.getProps() != null) {
+                        for (ScriptParseResult.PropInShot propInfo : shotInfo.getProps()) {
+                            Long propId = propNameToIdMap.get(propInfo.getPropName());
+                            if (propId != null) {
+                                ShotProp shotProp = new ShotProp();
+                                shotProp.setShotId(shot.getId());
+                                shotProp.setPropId(propId);
+                                shotProp.setCreatedAt(LocalDateTime.now());
+                                propList.add(shotProp);
+                            }
+                        }
+                    }
+                }
+
+                // 批量插入ShotCharacter
+                for (ShotCharacter sc : characterList) {
+                    batchScMapper.insert(sc);
+                }
+
+                // 批量插入ShotProp
+                for (ShotProp sp : propList) {
+                    batchSpMapper.insert(sp);
+                }
+
+                sqlSession.flushStatements();
+                // 注意：不在这里commit，因为外层方法有@Transactional注解
+                // SqlSession会在Spring事务管理器控制下提交
+                log.info("批量保存分镜结果: {} 个分镜, {} 个角色关联, {} 个道具关联",
+                        shotList.size(), characterList.size(), propList.size());
+            }
+
+            log.info("创建分镜: episodeId={}, shots={}", episode.getId(), shotList.size());
         }
 
         // 更新剧集统计和状态（在同一事务中）
@@ -868,24 +895,29 @@ public class EpisodeServiceImpl implements EpisodeService {
             throw new BusinessException("剧集不存在");
         }
 
-        // 删除关联的分镜
-        LambdaQueryWrapper<Shot> shotWrapper = new LambdaQueryWrapper<>();
-        shotWrapper.eq(Shot::getEpisodeId, episodeId);
-        List<Shot> shots = shotMapper.selectList(shotWrapper);
+        // 删除关联的分镜（批量）
+        LambdaQueryWrapper<Shot> shotIdWrapper = new LambdaQueryWrapper<>();
+        shotIdWrapper.eq(Shot::getEpisodeId, episodeId)
+                .select(Shot::getId);
+        List<Long> shotIds = shotMapper.selectList(shotIdWrapper).stream()
+                .map(Shot::getId)
+                .collect(Collectors.toList());
 
-        for (Shot shot : shots) {
-            // 删除分镜-角色关联
-            LambdaQueryWrapper<ShotCharacter> scWrapper = new LambdaQueryWrapper<>();
-            scWrapper.eq(ShotCharacter::getShotId, shot.getId());
-            shotCharacterMapper.delete(scWrapper);
+        if (!shotIds.isEmpty()) {
+            // 批量删除分镜-角色关联
+            shotCharacterMapper.delete(
+                    new LambdaQueryWrapper<ShotCharacter>()
+                            .in(ShotCharacter::getShotId, shotIds));
 
-            // 删除分镜-道具关联
-            LambdaQueryWrapper<ShotProp> spWrapper = new LambdaQueryWrapper<>();
-            spWrapper.eq(ShotProp::getShotId, shot.getId());
-            shotPropMapper.delete(spWrapper);
+            // 批量删除分镜-道具关联
+            shotPropMapper.delete(
+                    new LambdaQueryWrapper<ShotProp>()
+                            .in(ShotProp::getShotId, shotIds));
 
-            // 删除分镜
-            shotMapper.deleteById(shot.getId());
+            // 批量删除分镜（软删除）
+            shotMapper.delete(
+                    new LambdaQueryWrapper<Shot>()
+                            .eq(Shot::getEpisodeId, episodeId));
         }
 
         // 删除剧集
@@ -919,26 +951,35 @@ public class EpisodeServiceImpl implements EpisodeService {
     private void deleteExistingShots(Long episodeId) {
         log.info("删除已有分镜数据: episodeId={}", episodeId);
 
-        LambdaQueryWrapper<Shot> shotWrapper = new LambdaQueryWrapper<>();
-        shotWrapper.eq(Shot::getEpisodeId, episodeId);
-        List<Shot> shots = shotMapper.selectList(shotWrapper);
+        // 批量获取所有shot的ID列表
+        LambdaQueryWrapper<Shot> shotIdWrapper = new LambdaQueryWrapper<>();
+        shotIdWrapper.eq(Shot::getEpisodeId, episodeId)
+                .select(Shot::getId);
+        List<Long> shotIds = shotMapper.selectList(shotIdWrapper).stream()
+                .map(Shot::getId)
+                .collect(Collectors.toList());
 
-        for (Shot shot : shots) {
-            // 删除分镜-角色关联
-            LambdaQueryWrapper<ShotCharacter> scWrapper = new LambdaQueryWrapper<>();
-            scWrapper.eq(ShotCharacter::getShotId, shot.getId());
-            shotCharacterMapper.delete(scWrapper);
-
-            // 删除分镜-道具关联
-            LambdaQueryWrapper<ShotProp> spWrapper = new LambdaQueryWrapper<>();
-            spWrapper.eq(ShotProp::getShotId, shot.getId());
-            shotPropMapper.delete(spWrapper);
-
-            // 删除分镜
-            shotMapper.deleteById(shot.getId());
+        if (shotIds.isEmpty()) {
+            log.info("没有需要删除的分镜: episodeId={}", episodeId);
+            return;
         }
 
-        log.info("已删除 {} 个分镜", shots.size());
+        // 批量删除分镜-角色关联
+        shotCharacterMapper.delete(
+                new LambdaQueryWrapper<ShotCharacter>()
+                        .in(ShotCharacter::getShotId, shotIds));
+
+        // 批量删除分镜-道具关联
+        shotPropMapper.delete(
+                new LambdaQueryWrapper<ShotProp>()
+                        .in(ShotProp::getShotId, shotIds));
+
+        // 批量删除分镜（软删除，@TableLogic）
+        shotMapper.delete(
+                new LambdaQueryWrapper<Shot>()
+                        .eq(Shot::getEpisodeId, episodeId));
+
+        log.info("已删除 {} 个分镜（批量）", shotIds.size());
     }
 
     private EpisodeDetailVO convertToVO(Episode episode) {
@@ -1286,6 +1327,10 @@ public class EpisodeServiceImpl implements EpisodeService {
             }
         }
 
+        // 异步触发分镜解析（与资产生成并行执行）
+        log.info("触发分镜解析（并行）: episodeId={}, userId={}", episodeId, userId);
+        parseShots(episodeId, userId);
+
         // 更新已存在的场景状态为生成中
         if (request.getSceneIds() != null && !request.getSceneIds().isEmpty()) {
             for (Long sceneId : request.getSceneIds()) {
@@ -1312,7 +1357,7 @@ public class EpisodeServiceImpl implements EpisodeService {
             }
         }
 
-        // 触发场景生成任务
+        // 更新已存在的道具状态为生成中
         for (Long sceneId : allSceneIds) {
             Scene scene = sceneMapper.selectById(sceneId);
             if (scene == null || SceneStatus.LOCKED.getCode().equals(scene.getStatus())) {
@@ -1358,7 +1403,8 @@ public class EpisodeServiceImpl implements EpisodeService {
             }
         }
 
-        // 异步触发分镜解析
+        // 资产生成任务已全部提交后，异步触发分镜解析
+        // 注意：parseShots本身是@Async，调用后立即返回，不会阻塞
         log.info("触发分镜解析: episodeId={}, userId={}", episodeId, userId);
         parseShots(episodeId, userId);
 
