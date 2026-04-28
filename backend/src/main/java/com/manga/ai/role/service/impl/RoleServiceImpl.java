@@ -325,18 +325,18 @@ public class RoleServiceImpl implements RoleService {
         final String modifiedPrompt = request.getModifiedPrompt();
 
         Object[] result = transactionTemplate.execute(status -> {
-            // 1. 先更新角色的自定义提示词（如果有修改）
-            if (modifiedPrompt != null && !modifiedPrompt.trim().isEmpty()) {
+            // 1. 仅当默认服装(clothingId==1)时更新角色级别的提示词
+            // 其他服装的提示词存储在 RoleAsset.clothingPrompt 中
+            if (finalClothingId == 1 && modifiedPrompt != null && !modifiedPrompt.trim().isEmpty()) {
                 Role roleToUpdate = roleMapper.selectById(roleId);
                 if (roleToUpdate != null) {
                     roleToUpdate.setCustomPrompt(modifiedPrompt);
-                    // 同时更新原始提示词
                     if (request.getOriginalPrompt() != null && !request.getOriginalPrompt().trim().isEmpty()) {
                         roleToUpdate.setOriginalPrompt(request.getOriginalPrompt());
                     }
                     roleToUpdate.setUpdatedAt(LocalDateTime.now());
                     roleMapper.updateById(roleToUpdate);
-                    log.info("更新角色提示词: roleId={}, prompt={}, originalPrompt={}", roleId, modifiedPrompt, request.getOriginalPrompt());
+                    log.info("更新默认服装角色提示词: roleId={}, prompt={}", roleId, modifiedPrompt);
                 }
             }
 
@@ -346,17 +346,23 @@ public class RoleServiceImpl implements RoleService {
             Long generatingAssetId = null;
             Long previousActiveAssetId = null;
 
+            // 服装专属提示词：优先使用 modifiedPrompt，如果没有则使用 originalPrompt
+            String clothingPrompt = modifiedPrompt;
+            if (clothingPrompt == null || clothingPrompt.trim().isEmpty()) {
+                clothingPrompt = request.getOriginalPrompt();
+            }
+
             if (isNewClothing) {
                 // 新服装 - 创建新的clothingId
                 nextClothingId = assetService.getNextClothingId(roleId);
                 nextVersion = 1;
-                long[] assetResult = imageGenerateService.createGeneratingAsset(roleId, nextClothingId, clothingName);
+                long[] assetResult = imageGenerateService.createGeneratingAsset(roleId, nextClothingId, clothingName, clothingPrompt);
                 generatingAssetId = assetResult[0];
                 previousActiveAssetId = assetResult[1] > 0 ? assetResult[1] : null;
             } else {
                 // 重新生成现有服装 - 在指定服装上生成新版本
                 nextVersion = imageGenerateService.getNextVersion(roleId, nextClothingId);
-                long[] assetResult = imageGenerateService.createGeneratingAsset(roleId, nextClothingId, null);
+                long[] assetResult = imageGenerateService.createGeneratingAsset(roleId, nextClothingId, null, clothingPrompt);
                 generatingAssetId = assetResult[0];
                 previousActiveAssetId = assetResult[1] > 0 ? assetResult[1] : null;
             }
@@ -460,6 +466,7 @@ public class RoleServiceImpl implements RoleService {
             info.setViewType(asset.getViewType());
             info.setViewName(asset.getFileName());
             info.setClothingId(asset.getClothingId());
+            info.setClothingPrompt(asset.getClothingPrompt());
             info.setVersion(asset.getVersion());
             info.setFilePath(ossService.refreshUrl(asset.getFilePath()));
             info.setTransparentPath(ossService.refreshUrl(asset.getTransparentPath()));

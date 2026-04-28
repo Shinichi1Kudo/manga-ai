@@ -60,6 +60,7 @@ public class RoleDetailVO implements Serializable {
         private String viewType;
         private String viewName;
         private Integer clothingId;
+        private String clothingPrompt;
         private Integer version;
         private String filePath;
         private String transparentPath;

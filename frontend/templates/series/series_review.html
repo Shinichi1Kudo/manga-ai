@@ -164,7 +164,7 @@
                  data-clothing-name="{{ asset.clothingName|default:'' }}"
                  data-is-active="{{ asset.isActive }}"
                  data-status="{{ asset.status }}"
-                 data-prompt="{{ role.customPrompt|default:'' }}"
+                 data-prompt="{{ asset.clothingPrompt|default:'' }}"
                  data-generating="false"
                  onclick="selectClothing(this)">
                 {% if asset.clothingId == 1 %}
@@ -223,7 +223,7 @@
                  data-clothing-name="{{ asset.clothingName|default:'' }}"
                  data-is-active="{{ asset.isActive }}"
                  data-status="{{ asset.status }}"
-                 data-prompt="{{ role.customPrompt|default:'' }}"
+                 data-prompt="{{ asset.clothingPrompt|default:'' }}"
                  data-detailed-view="{{ asset.detailedView|yesno:'true,false' }}"
                  data-generating="{% if asset.status == 0 %}true{% else %}false{% endif %}"
                  onclick="selectClothing(this)">
@@ -326,7 +326,7 @@
                  data-clothing-name="{{ asset.clothingName|default:'' }}"
                  data-is-active="{{ asset.isActive }}"
                  data-status="{{ asset.status }}"
-                 data-prompt="{{ role.customPrompt|default:'' }}"
+                 data-prompt="{{ asset.clothingPrompt|default:'' }}"
                  data-detailed-view="{{ asset.detailedView|yesno:'true,false' }}"
                  data-generating="{% if asset.status == 0 %}true{% else %}false{% endif %}"
                  onclick="selectClothing(this)">
@@ -395,8 +395,8 @@
         <div class="text-xs text-violet-300 mb-1 flex items-center gap-1">
             <i data-lucide="sparkles" class="w-3 h-3"></i>提示词
         </div>
-        <div class="text-sm text-white/80 prompt-display truncate" title="{{ role.originalPrompt|default:role.customPrompt|default:'暂无提示词' }}">
-            {{ role.originalPrompt|default:role.customPrompt|default:'暂无提示词' }}
+        <div class="text-sm text-white/80 prompt-display truncate" title="{{ role.assets.0.clothingPrompt|default:role.originalPrompt|default:role.customPrompt|default:'暂无提示词' }}">
+            {{ role.assets.0.clothingPrompt|default:role.originalPrompt|default:role.customPrompt|default:'暂无提示词' }}
         </div>
     </div>
 </div>
@@ -1274,7 +1274,6 @@ function selectClothing(tab) {
             if (cachedPrompt) {
                 promptDisplay.textContent = cachedPrompt;
                 promptDisplay.title = cachedPrompt;
-                roleCard.dataset.customPrompt = cachedPrompt;
             } else {
                 promptDisplay.textContent = '暂无提示词';
                 promptDisplay.title = '';
@@ -1295,7 +1294,6 @@ function selectClothing(tab) {
                         if (tab.classList.contains('active')) {
                             promptDisplay.textContent = prompt;
                             promptDisplay.title = prompt;
-                            roleCard.dataset.customPrompt = prompt;
                         }
                     } else {
                         tab.dataset.prompt = '';
@@ -1710,10 +1708,10 @@ function submitNewClothing() {
                 `;
                 tabsContainer.appendChild(newTab);
 
-                // 保存用户输入的提示词到 roleCard（用于失败时恢复）
+                // 保存用户输入的提示词（仅用于当前服装标签显示）
                 const roleCard = document.querySelector(`.role-card[data-role-id="${roleId}"]`);
                 if (roleCard && prompt) {
-                    roleCard.dataset.customPrompt = prompt;
+                    // 新服装不覆盖角色级 customPrompt
                     const promptDisplay = roleCard.querySelector('.prompt-display');
                     if (promptDisplay) {
                         promptDisplay.textContent = prompt;
@@ -2122,7 +2120,10 @@ function submitRegenerate() {
                 promptDisplay.textContent = prompt;
                 promptDisplay.title = prompt;
             }
-            roleCard.dataset.customPrompt = prompt;
+            // 仅当默认服装时更新角色级提示词
+            if (clothingId == 1) {
+                roleCard.dataset.customPrompt = prompt;
+            }
             if (currentTab) {
                 currentTab.dataset.prompt = prompt;
             }
@@ -2363,8 +2364,10 @@ function rollbackToVersion(roleId, clothingId, assetId, newVersion, imageUrl) {
                         if (prompt && typeof prompt === 'string') {
                             // 更新缓存
                             tab.dataset.prompt = prompt;
-                            // 更新角色卡片
-                            roleCard.dataset.customPrompt = prompt;
+                            // 仅当默认服装时更新角色卡片提示词
+                            if (clothingId == 1) {
+                                roleCard.dataset.customPrompt = prompt;
+                            }
                             // 更新提示词显示
                             const promptDisplay = roleCard.querySelector('.prompt-display');
                             if (promptDisplay) {
@@ -3246,23 +3249,31 @@ document.querySelectorAll('.clothing-tab[data-generating="true"]').forEach(tab =
     // 设置 clothing-section 的 generating 属性
     clothingSection.dataset.generating = 'true';
 
-    // 获取最新的角色提示词（可能在其他标签页已更新）
-    fetch(`/api/roles/${roleId}/`)
-        .then(res => res.json())
-        .then(data => {
-            if (data.data && data.data.customPrompt) {
-                const newPrompt = data.data.customPrompt;
-                const promptDisplay = roleCard.querySelector('.prompt-display');
-                if (promptDisplay) {
-                    promptDisplay.textContent = newPrompt;
-                    promptDisplay.title = newPrompt;
+    // 获取当前服装的提示词（可能在其他标签页已更新）
+    const assetId = tab.dataset.assetId;
+    if (assetId) {
+        fetch(`/api/${assetId}/prompt/`)
+            .then(res => res.json())
+            .then(data => {
+                let prompt = data.data;
+                if (prompt && typeof prompt === 'object') {
+                    prompt = prompt.message || prompt.error || JSON.stringify(prompt);
                 }
-                roleCard.dataset.customPrompt = newPrompt;
-                tab.dataset.prompt = newPrompt;
-                console.log('更新提示词: ' + newPrompt);
-            }
-        })
-        .catch(err => console.error('获取角色提示词失败:', err));
+                if (prompt && typeof prompt === 'string') {
+                    const promptDisplay = roleCard.querySelector('.prompt-display');
+                    if (promptDisplay) {
+                        promptDisplay.textContent = prompt;
+                        promptDisplay.title = prompt;
+                    }
+                    tab.dataset.prompt = prompt;
+                    // 仅当默认服装时更新角色级提示词
+                    if (clothingId == 1) {
+                        roleCard.dataset.customPrompt = prompt;
+                    }
+                }
+            })
+            .catch(err => console.error('获取提示词失败:', err));
+    }
 
     // 开始轮询
     console.log('恢复生成状态: roleId=' + roleId + ', clothingId=' + clothingId);
@@ -3311,7 +3322,10 @@ document.querySelectorAll('.generating-role').forEach(el => {
                             tab.dataset.prompt = prompt;
                             // 如果这个tab是激活的，更新显示
                             if (tab.classList.contains('active')) {
-                                roleCard.dataset.customPrompt = prompt;
+                                // 仅当默认服装时更新角色级提示词
+                                if (tab.dataset.clothingId == 1) {
+                                    roleCard.dataset.customPrompt = prompt;
+                                }
                                 const promptDisplay = roleCard.querySelector('.prompt-display');
                                 if (promptDisplay) {
                                     promptDisplay.textContent = prompt;
@@ -3446,7 +3460,10 @@ function selectClothingWithoutURL(tab) {
         if (cachedPrompt !== undefined && cachedPrompt) {
             promptDisplay.textContent = cachedPrompt;
             promptDisplay.title = cachedPrompt;
-            roleCard.dataset.customPrompt = cachedPrompt;
+            // 仅当默认服装时更新角色级提示词
+            if (tab.dataset.clothingId == 1) {
+                roleCard.dataset.customPrompt = cachedPrompt;
+            }
         }
     }
 

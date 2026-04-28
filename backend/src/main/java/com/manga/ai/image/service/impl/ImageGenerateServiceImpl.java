@@ -547,7 +547,7 @@ public class ImageGenerateServiceImpl implements ImageGenerateService {
 
         // 创建生成中的资产记录（用于追踪状态），如果还没创建的话
         if (generatingAssetId == null) {
-            long[] result = createGeneratingAssetInternal(role, finalClothingId, clothingName);
+            long[] result = createGeneratingAssetInternal(role, finalClothingId, clothingName, null);
             generatingAssetId = result[0];
             if (previousActiveAssetId == null) {
                 previousActiveAssetId = result[1] > 0 ? result[1] : null;
@@ -688,18 +688,7 @@ public class ImageGenerateServiceImpl implements ImageGenerateService {
             roleAssetMapper.updateById(previousAsset);
             log.info("已恢复之前版本为激活状态: assetId={}, version={}, status={}",
                     previousAsset.getId(), previousAsset.getVersion(), previousAsset.getStatus());
-
-            // 同时恢复角色的 customPrompt
-            String previousPrompt = assetService.getAssetPrompt(previousAsset.getId());
-            if (previousPrompt != null && !previousPrompt.trim().isEmpty()) {
-                Role role = roleMapper.selectById(roleId);
-                if (role != null) {
-                    role.setCustomPrompt(previousPrompt);
-                    role.setUpdatedAt(LocalDateTime.now());
-                    roleMapper.updateById(role);
-                    log.info("已恢复角色提示词: roleId={}, prompt={}", roleId, previousPrompt);
-                }
-            }
+            // 不再更新 role.customPrompt，因为每个服装版本的提示词独立存储在 RoleAsset.clothingPrompt 中
         } else {
             log.warn("未找到可恢复的版本: roleId={}, clothingId={}", roleId, clothingId);
 
@@ -748,7 +737,7 @@ public class ImageGenerateServiceImpl implements ImageGenerateService {
 
         // 如果没有传入 generatingAssetId，创建生成中的资产记录
         if (generatingAssetId == null) {
-            long[] result = createGeneratingAssetInternal(role, finalClothingId, clothingName);
+            long[] result = createGeneratingAssetInternal(role, finalClothingId, clothingName, null);
             generatingAssetId = result[0];
             if (previousActiveAssetId == null) {
                 previousActiveAssetId = result[1] > 0 ? result[1] : null;
@@ -850,7 +839,7 @@ public class ImageGenerateServiceImpl implements ImageGenerateService {
 
         // 如果没有传入 generatingAssetId，创建生成中的资产记录
         if (generatingAssetId == null) {
-            long[] result = createGeneratingAssetInternal(role, finalClothingId, clothingName);
+            long[] result = createGeneratingAssetInternal(role, finalClothingId, clothingName, null);
             generatingAssetId = result[0];
             if (previousActiveAssetId == null) {
                 previousActiveAssetId = result[1] > 0 ? result[1] : null;
@@ -972,7 +961,12 @@ public class ImageGenerateServiceImpl implements ImageGenerateService {
      */
     @Override
     public long[] createGeneratingAsset(Long roleId, Integer clothingId, String clothingName) {
-        log.info("createGeneratingAsset 开始: roleId={}, clothingId={}, clothingName={}", roleId, clothingId, clothingName);
+        return createGeneratingAsset(roleId, clothingId, clothingName, null);
+    }
+
+    @Override
+    public long[] createGeneratingAsset(Long roleId, Integer clothingId, String clothingName, String clothingPrompt) {
+        log.info("createGeneratingAsset 开始: roleId={}, clothingId={}, clothingName={}, clothingPrompt={}", roleId, clothingId, clothingName, clothingPrompt != null ? "provided" : "null");
 
         Role role = roleMapper.selectById(roleId);
         if (role == null) {
@@ -994,7 +988,7 @@ public class ImageGenerateServiceImpl implements ImageGenerateService {
             }
         }
 
-        long[] result = createGeneratingAssetInternal(role, clothingId, clothingName);
+        long[] result = createGeneratingAssetInternal(role, clothingId, clothingName, clothingPrompt);
         log.info("createGeneratingAsset 完成: assetId={}, previousActiveAssetId={}", result[0], result[1]);
         return result;
     }
@@ -1012,8 +1006,8 @@ public class ImageGenerateServiceImpl implements ImageGenerateService {
      * 如果存在失败的版本，复用该版本而不是创建新版本
      * @return [assetId, previousActiveAssetId]
      */
-    private long[] createGeneratingAssetInternal(Role role, Integer clothingId, String clothingName) {
-        log.info("开始创建生成中资产: roleId={}, clothingId={}", role.getId(), clothingId);
+    private long[] createGeneratingAssetInternal(Role role, Integer clothingId, String clothingName, String clothingPrompt) {
+        log.info("开始创建生成中资产: roleId={}, clothingId={}, clothingPrompt={}", role.getId(), clothingId, clothingPrompt != null ? "provided" : "null");
 
         // 先获取当前激活的资产ID（用于失败时恢复）
         Long previousActiveAssetId = null;
@@ -1059,12 +1053,17 @@ public class ImageGenerateServiceImpl implements ImageGenerateService {
             if (clothingName != null && !clothingName.trim().isEmpty()) {
                 failedAsset.setClothingName(clothingName);
             }
+            // 更新服装专属提示词
+            if (clothingPrompt != null && !clothingPrompt.trim().isEmpty()) {
+                failedAsset.setClothingPrompt(clothingPrompt);
+            }
             failedAsset.setUpdatedAt(LocalDateTime.now());
             roleAssetMapper.updateById(failedAsset);
             asset = failedAsset;
 
-            // 更新提示词元数据（如果角色有新的提示词）
-            String newPrompt = role.getCustomPrompt();
+            // 更新提示词元数据（优先使用服装专属提示词，其次使用角色提示词）
+            String newPrompt = clothingPrompt != null && !clothingPrompt.trim().isEmpty()
+                    ? clothingPrompt : role.getCustomPrompt();
             if (newPrompt != null && !newPrompt.trim().isEmpty()) {
                 LambdaQueryWrapper<AssetMetadata> metadataWrapper = new LambdaQueryWrapper<>();
                 metadataWrapper.eq(AssetMetadata::getAssetId, failedAsset.getId());
@@ -1095,6 +1094,7 @@ public class ImageGenerateServiceImpl implements ImageGenerateService {
             asset.setViewType("ALL");
             asset.setClothingId(clothingId);
             asset.setClothingName(clothingId == 1 ? "默认" : clothingName);
+            asset.setClothingPrompt(clothingPrompt);
             asset.setVersion(version);
             asset.setFileName(role.getRoleName() + "_C" + String.format("%02d", clothingId) + "_V" + String.format("%02d", version) + ".png");
             asset.setStatus(AssetStatus.GENERATING.getCode()); // 生成中状态
@@ -1105,15 +1105,17 @@ public class ImageGenerateServiceImpl implements ImageGenerateService {
 
             roleAssetMapper.insert(asset);
 
-            // 创建新资产时，立即保存提示词到metadata
-            if (role.getCustomPrompt() != null && !role.getCustomPrompt().trim().isEmpty()) {
+            // 创建新资产时，立即保存提示词到metadata（优先使用服装专属提示词，其次使用角色提示词）
+            String newAssetPrompt = clothingPrompt != null && !clothingPrompt.trim().isEmpty()
+                    ? clothingPrompt : role.getCustomPrompt();
+            if (newAssetPrompt != null && !newAssetPrompt.trim().isEmpty()) {
                 AssetMetadata newMetadata = new AssetMetadata();
                 newMetadata.setAssetId(asset.getId());
-                newMetadata.setPrompt(role.getCustomPrompt());
-                newMetadata.setUserPrompt(role.getCustomPrompt());
+                newMetadata.setPrompt(newAssetPrompt);
+                newMetadata.setUserPrompt(newAssetPrompt);
                 newMetadata.setCreatedAt(LocalDateTime.now());
                 assetMetadataMapper.insert(newMetadata);
-                log.info("创建新资产的提示词元数据: assetId={}, prompt={}", asset.getId(), role.getCustomPrompt());
+                log.info("创建新资产的提示词元数据: assetId={}, prompt={}", asset.getId(), newAssetPrompt);
             }
         }
 
@@ -1176,6 +1178,18 @@ public class ImageGenerateServiceImpl implements ImageGenerateService {
             asset.setStatus(AssetStatus.PENDING_REVIEW.getCode());
             asset.setValidationPassed(1);
             asset.setUpdatedAt(LocalDateTime.now());
+
+            // 设置服装专属提示词（优先使用clothingPrompt，其次originalPrompt，再次customPrompt）
+            String assetClothingPrompt = request.getClothingPrompt();
+            if (assetClothingPrompt == null || assetClothingPrompt.trim().isEmpty()) {
+                assetClothingPrompt = request.getOriginalPrompt();
+            }
+            if (assetClothingPrompt == null || assetClothingPrompt.trim().isEmpty()) {
+                assetClothingPrompt = request.getCustomPrompt();
+            }
+            if (assetClothingPrompt != null && !assetClothingPrompt.trim().isEmpty()) {
+                asset.setClothingPrompt(assetClothingPrompt);
+            }
 
             // 上传图片到OSS并保存URL（重试3次）
             if (response.getImageUrl() != null) {

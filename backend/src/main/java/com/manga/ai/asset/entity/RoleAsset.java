@@ -44,6 +44,11 @@ public class RoleAsset implements Serializable {
     private String clothingName;
 
     /**
+     * 服装专属提示词
+     */
+    private String clothingPrompt;
+
+    /**
      * 版本号
      */
     private Integer version;

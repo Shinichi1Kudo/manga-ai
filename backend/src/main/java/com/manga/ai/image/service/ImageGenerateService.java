@@ -200,6 +200,16 @@ public interface ImageGenerateService {
     long[] createGeneratingAsset(Long roleId, Integer clothingId, String clothingName);
 
     /**
+     * 创建生成中的资产记录（同步，带服装提示词）
+     * @param roleId 角色ID
+     * @param clothingId 服装ID
+     * @param clothingName 服装名称（可为null）
+     * @param clothingPrompt 服装专属提示词（可为null）
+     * @return [assetId, previousActiveAssetId] 之前激活的资产ID可能为0
+     */
+    long[] createGeneratingAsset(Long roleId, Integer clothingId, String clothingName, String clothingPrompt);
+
+    /**
      * 获取下一个版本号
      * @param roleId 角色ID
      * @param clothingId 服装ID

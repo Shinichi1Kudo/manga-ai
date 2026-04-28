@@ -124,6 +124,7 @@ public class AssetServiceImpl implements AssetService {
         newDefaultAsset.setViewType(currentAsset.getViewType());
         newDefaultAsset.setClothingId(1);  // 设为默认服装
         newDefaultAsset.setClothingName("默认");
+        newDefaultAsset.setClothingPrompt(currentAsset.getClothingPrompt()); // 复制服装专属提示词
         newDefaultAsset.setVersion(newVersion);
         newDefaultAsset.setFileName(currentAsset.getFileName());
         newDefaultAsset.setFilePath(currentAsset.getFilePath());
@@ -246,14 +247,19 @@ public class AssetServiceImpl implements AssetService {
 
         log.info("getClothingsByRoleId: roleId={}, 返回{}个服装", roleId, result.size());
 
-        // 填充 detailedView 字段（来自元数据）
+        // 填充 detailedView 和 clothingPrompt 字段（来自元数据）
         for (RoleAsset asset : result) {
             LambdaQueryWrapper<AssetMetadata> metadataWrapper = new LambdaQueryWrapper<>();
             metadataWrapper.eq(AssetMetadata::getAssetId, asset.getId())
-                    .select(AssetMetadata::getDetailedView);
+                    .select(AssetMetadata::getDetailedView, AssetMetadata::getUserPrompt);
             AssetMetadata metadata = assetMetadataMapper.selectOne(metadataWrapper);
             if (metadata != null) {
                 asset.setDetailedView(metadata.getDetailedView());
+                // 如果 clothingPrompt 为空，从 AssetMetadata 回填
+                if ((asset.getClothingPrompt() == null || asset.getClothingPrompt().trim().isEmpty())
+                        && metadata.getUserPrompt() != null && !metadata.getUserPrompt().trim().isEmpty()) {
+                    asset.setClothingPrompt(metadata.getUserPrompt());
+                }
             }
         }
 
@@ -271,6 +277,13 @@ public class AssetServiceImpl implements AssetService {
 
     @Override
     public String getAssetPrompt(Long assetId) {
+        // 优先从 RoleAsset.clothingPrompt 获取
+        RoleAsset roleAsset = roleAssetMapper.selectById(assetId);
+        if (roleAsset != null && roleAsset.getClothingPrompt() != null && !roleAsset.getClothingPrompt().trim().isEmpty()) {
+            return roleAsset.getClothingPrompt();
+        }
+
+        // 回退到 AssetMetadata
         LambdaQueryWrapper<AssetMetadata> wrapper = new LambdaQueryWrapper<>();
         wrapper.eq(AssetMetadata::getAssetId, assetId)
                 .select(AssetMetadata::getUserPrompt, AssetMetadata::getPrompt);
@@ -306,27 +319,7 @@ public class AssetServiceImpl implements AssetService {
         targetAsset.setIsActive(1);
         roleAssetMapper.updateById(targetAsset);
 
-        // 获取回滚资产的提示词并更新角色的 customPrompt
-        LambdaQueryWrapper<AssetMetadata> metadataWrapper = new LambdaQueryWrapper<>();
-        metadataWrapper.eq(AssetMetadata::getAssetId, assetId)
-                .select(AssetMetadata::getUserPrompt, AssetMetadata::getPrompt);
-        AssetMetadata metadata = assetMetadataMapper.selectOne(metadataWrapper);
-
-        if (metadata != null) {
-            String prompt = metadata.getUserPrompt() != null && !metadata.getUserPrompt().trim().isEmpty()
-                    ? metadata.getUserPrompt()
-                    : metadata.getPrompt();
-
-            if (prompt != null && !prompt.trim().isEmpty()) {
-                Role role = roleMapper.selectById(roleId);
-                if (role != null) {
-                    role.setCustomPrompt(prompt);
-                    role.setUpdatedAt(LocalDateTime.now());
-                    roleMapper.updateById(role);
-                    log.info("回滚时更新角色提示词: roleId={}, prompt={}", roleId, prompt);
-                }
-            }
-        }
+        // 不再更新 role.customPrompt，因为每个服装版本的提示词独立存储在 RoleAsset.clothingPrompt 中
 
         log.info("回滚资产: assetId={}, roleId={}, clothingId={}, version={}",
                 assetId, roleId, clothingId, targetAsset.getVersion());
@@ -363,37 +356,8 @@ public class AssetServiceImpl implements AssetService {
                 .eq(RoleAsset::getClothingId, clothingId);
         int deleted = roleAssetMapper.delete(deleteWrapper);
 
-        // 恢复角色的提示词为默认服装的提示词
-        LambdaQueryWrapper<RoleAsset> defaultAssetWrapper = new LambdaQueryWrapper<>();
-        defaultAssetWrapper.eq(RoleAsset::getRoleId, roleId)
-                .eq(RoleAsset::getClothingId, 1)
-                .eq(RoleAsset::getIsActive, 1)
-                .last("LIMIT 1");
-        RoleAsset defaultAsset = roleAssetMapper.selectOne(defaultAssetWrapper);
-
-        if (defaultAsset != null) {
-            // 获取默认服装的提示词
-            LambdaQueryWrapper<AssetMetadata> metadataWrapper = new LambdaQueryWrapper<>();
-            metadataWrapper.eq(AssetMetadata::getAssetId, defaultAsset.getId())
-                    .select(AssetMetadata::getUserPrompt, AssetMetadata::getPrompt);
-            AssetMetadata metadata = assetMetadataMapper.selectOne(metadataWrapper);
-
-            if (metadata != null) {
-                String prompt = metadata.getUserPrompt() != null && !metadata.getUserPrompt().trim().isEmpty()
-                        ? metadata.getUserPrompt()
-                        : metadata.getPrompt();
-
-                if (prompt != null && !prompt.trim().isEmpty()) {
-                    Role role = roleMapper.selectById(roleId);
-                    if (role != null) {
-                        role.setCustomPrompt(prompt);
-                        role.setUpdatedAt(LocalDateTime.now());
-                        roleMapper.updateById(role);
-                        log.info("删除服装后恢复角色提示词: roleId={}, prompt={}", roleId, prompt);
-                    }
-                }
-            }
-        }
+        // 不再恢复 role.customPrompt，因为每个服装版本的提示词独立存储在 RoleAsset.clothingPrompt 中
+        // 删除非默认服装不影响其他服装的提示词
 
         log.info("删除服装: roleId={}, clothingId={}, 删除资产数量={}", roleId, clothingId, deleted);
     }
@@ -446,7 +410,7 @@ public class AssetServiceImpl implements AssetService {
             if (!assetIds.isEmpty()) {
                 LambdaQueryWrapper<AssetMetadata> metadataWrapper = new LambdaQueryWrapper<>();
                 metadataWrapper.in(AssetMetadata::getAssetId, assetIds)
-                        .select(AssetMetadata::getAssetId, AssetMetadata::getDetailedView);
+                        .select(AssetMetadata::getAssetId, AssetMetadata::getDetailedView, AssetMetadata::getUserPrompt);
                 List<AssetMetadata> metadataList = assetMetadataMapper.selectList(metadataWrapper);
                 for (AssetMetadata metadata : metadataList) {
                     metadataMap.put(metadata.getAssetId(), metadata);
@@ -507,11 +471,16 @@ public class AssetServiceImpl implements AssetService {
                         selectedAsset = versions.get(0);
                     }
 
-                    // 填充 detailedView
+                    // 填充 detailedView 和 clothingPrompt
                     if (selectedAsset != null) {
                         AssetMetadata metadata = metadataMap.get(selectedAsset.getId());
                         if (metadata != null) {
                             selectedAsset.setDetailedView(metadata.getDetailedView());
+                            // 如果 clothingPrompt 为空，从 AssetMetadata 回填
+                            if ((selectedAsset.getClothingPrompt() == null || selectedAsset.getClothingPrompt().trim().isEmpty())
+                                    && metadata.getUserPrompt() != null && !metadata.getUserPrompt().trim().isEmpty()) {
+                                selectedAsset.setClothingPrompt(metadata.getUserPrompt());
+                            }
                         }
                         roleClothings.add(selectedAsset);
                     }
