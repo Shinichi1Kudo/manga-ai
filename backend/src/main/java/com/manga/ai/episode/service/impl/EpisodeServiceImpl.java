@@ -1403,11 +1403,6 @@ public class EpisodeServiceImpl implements EpisodeService {
             }
         }
 
-        // 资产生成任务已全部提交后，异步触发分镜解析
-        // 注意：parseShots本身是@Async，调用后立即返回，不会阻塞
-        log.info("触发分镜解析: episodeId={}, userId={}", episodeId, userId);
-        parseShots(episodeId, userId);
-
         log.info("批量生成资产任务已全部提交: episodeId={}", episodeId);
     }
 
