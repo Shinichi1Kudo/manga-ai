@@ -4580,13 +4580,16 @@ function initDragAndDrop() {
         const handle = card.querySelector('.drag-handle');
         if (!handle) return;
 
-        // 拖拽开始 - 只有点击手柄才能拖拽
+        // 通过 mousedown 控制是否允许拖拽
+        // 点击手柄时才启用 draggable，松开后恢复 false
+        // 这样可以避免 SVG 图标导致 closest() 失效的问题
+        card.setAttribute('draggable', 'false');
+
+        handle.addEventListener('mousedown', function(e) {
+            card.setAttribute('draggable', 'true');
+        });
+
         card.addEventListener('dragstart', function(e) {
-            // 检查是否从手柄触发
-            if (!e.target.classList.contains('drag-handle') && !e.target.closest('.drag-handle')) {
-                e.preventDefault();
-                return;
-            }
             draggedCard = this;
             this.classList.add('dragging');
             e.dataTransfer.effectAllowed = 'move';
@@ -4596,6 +4599,7 @@ function initDragAndDrop() {
         // 拖拽结束
         card.addEventListener('dragend', function() {
             this.classList.remove('dragging');
+            this.setAttribute('draggable', 'false');
             document.querySelectorAll('.shot-card').forEach(c => c.classList.remove('drag-over'));
             draggedCard = null;
 
@@ -4626,9 +4630,6 @@ function initDragAndDrop() {
         card.addEventListener('dragleave', function() {
             this.classList.remove('drag-over');
         });
-
-        // 设置卡片可拖拽
-        card.setAttribute('draggable', 'true');
     });
 }
 
