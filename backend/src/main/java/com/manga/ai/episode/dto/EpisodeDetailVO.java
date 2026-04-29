@@ -56,6 +56,8 @@ public class EpisodeDetailVO implements Serializable {
         private String generationStatusDesc;
         private Integer status;
         private String statusDesc;
+        private Boolean descriptionEdited;
+        private Boolean sceneEdited;
         private List<CharacterInfo> characters;
         private List<PropInfo> props;
 

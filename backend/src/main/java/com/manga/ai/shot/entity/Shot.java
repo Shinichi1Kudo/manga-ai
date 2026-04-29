@@ -181,4 +181,14 @@ public class Shot implements Serializable {
      */
     @TableLogic
     private Integer isDeleted;
+
+    /**
+     * 剧情是否用户编辑过
+     */
+    private Boolean descriptionEdited;
+
+    /**
+     * 场景是否用户编辑过
+     */
+    private Boolean sceneEdited;
 }

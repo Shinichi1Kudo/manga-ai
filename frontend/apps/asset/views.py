@@ -334,3 +334,15 @@ def get_series_video_assets(request, series_id):
         return JsonResponse({'success': False, 'error': e.message}, status=400)
     except Exception as e:
         return JsonResponse({'success': False, 'error': str(e)}, status=500)
+
+
+def get_series_role_assets(request, series_id):
+    """API: 获取系列所有角色的服装资产（用于@提及）"""
+    client = get_client(request)
+    try:
+        data = client.get(f'/v1/assets/series/{series_id}/role-assets')
+        return JsonResponse({'code': 200, 'message': 'success', 'data': data, 'success': True})
+    except BackendAPIError as e:
+        return JsonResponse({'code': 400, 'message': e.message, 'data': None, 'success': False}, status=400)
+    except Exception as e:
+        return JsonResponse({'code': 500, 'message': str(e), 'data': None, 'success': False}, status=500)

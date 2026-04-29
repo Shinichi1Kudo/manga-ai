@@ -327,6 +327,7 @@ public class ShotServiceImpl implements ShotService {
 
         if (request.getDescription() != null) {
             shot.setDescription(request.getDescription());
+            shot.setDescriptionEdited(true);  // 标记用户已编辑剧情
         }
         if (request.getStartTime() != null) {
             shot.setStartTime(request.getStartTime());
@@ -360,6 +361,7 @@ public class ShotServiceImpl implements ShotService {
         }
         if (request.getSceneName() != null) {
             shot.setSceneName(request.getSceneName());
+            shot.setSceneEdited(true);  // 标记用户已编辑场景
         }
         if (request.getUserPrompt() != null) {
             shot.setUserPrompt(request.getUserPrompt());
@@ -608,11 +610,14 @@ public class ShotServiceImpl implements ShotService {
         ShotDetailVO vo = new ShotDetailVO();
         BeanUtils.copyProperties(shot, vo);
 
-        // 获取场景名称
-        if (shot.getSceneId() != null) {
-            Scene scene = sceneMap.get(shot.getSceneId());
-            if (scene != null) {
-                vo.setSceneName(scene.getSceneName());
+        // 不再覆盖 sceneName，保留分镜表中的原始值（可能包含 @{...} 标记）
+        // 如果分镜的 sceneName 为空，才使用场景表的名称
+        if (shot.getSceneName() == null || shot.getSceneName().isEmpty()) {
+            if (shot.getSceneId() != null) {
+                Scene scene = sceneMap.get(shot.getSceneId());
+                if (scene != null) {
+                    vo.setSceneName(scene.getSceneName());
+                }
             }
         }
 

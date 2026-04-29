@@ -448,17 +448,18 @@ def episode_detail(request, series_id, episode_id):
     # 过滤场景：已锁定的全部显示 + 生成中/待审核的全部显示 + 本集关联的未锁定场景
     scenes = []
     for scene in all_scenes:
+        # 添加当前版本号和资产URL (isActive 可能是 1/0 或 true/false)
+        assets = scene.get('assets', [])
+        active_asset = next((a for a in assets if a.get('isActive') == 1 or a.get('isActive') is True), None)
+        scene['activeVersion'] = active_asset.get('version') if active_asset else (len(assets) if assets else None)
+        scene['activeAssetUrl'] = active_asset.get('filePath') if active_asset else None
+
         if scene.get('status') == 3:  # 已锁定
             scenes.append(scene)
         elif scene.get('status') in [0, 1]:  # 生成中或待审核
             scenes.append(scene)
         elif scene.get('id') in episode_scene_ids:  # 本集关联的未锁定场景
             scenes.append(scene)
-        # 添加当前版本号和资产URL (isActive 可能是 1/0 或 true/false)
-        assets = scene.get('assets', [])
-        active_asset = next((a for a in assets if a.get('isActive') == 1 or a.get('isActive') is True), None)
-        scene['activeVersion'] = active_asset.get('version') if active_asset else (len(assets) if assets else None)
-        scene['activeAssetUrl'] = active_asset.get('filePath') if active_asset else None
 
     # 过滤道具：已锁定的全部显示 + 生成中/待审核的全部显示 + 本集关联的未锁定道具
     props = []
@@ -942,7 +943,9 @@ def shot_generate_with_references(request, shot_id):
     """带参考图生成视频"""
     client = get_client(request)
     try:
-        client.post(f'/v1/shots/{shot_id}/generate-with-references')
+        data = json.loads(request.body)
+        reference_urls = data.get('referenceUrls', [])
+        client.post(f'/v1/shots/{shot_id}/generate-with-references', {'referenceUrls': reference_urls})
         return JsonResponse({'code': 200, 'success': True})
     except BackendAPIError as e:
         return JsonResponse({'code': 400, 'message': e.message}, status=400)

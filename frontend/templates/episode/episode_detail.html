@@ -1136,6 +1136,7 @@
                                  data-field="scene"
                                  data-shot-id="{{ shot.id }}"
                                  data-scene-name="{{ shot.sceneName|default:'' }}"
+                                 data-scene-edited="{{ shot.sceneEdited|default:'false' }}"
                                  placeholder="场景描述..."></div>
                         </div>
                     </div>
@@ -1206,6 +1207,7 @@
                                  data-shot-type="{{ shot.shotType|default:'中景' }}"
                                  data-description="{{ shot.description|default:'' }}"
                                  data-sound-effect="{{ shot.soundEffect|default:'' }}"
+                                 data-description-edited="{{ shot.descriptionEdited|default:'false' }}"
                                  placeholder="输入分镜内容..."></div>
                             <div class="save-indicator hidden absolute top-2 right-2 text-xs px-2 py-0.5 rounded"></div>
                         </div>
@@ -1238,11 +1240,6 @@ const episodeStatus = {{ episode.status }};
 
 // 打印道具数据到控制台
 const propsData = {{ props|to_json|default:"[]" }};
-console.log('[DEBUG] 详情页道具数据:', propsData);
-console.log('[DEBUG] 道具数量:', propsData.length);
-propsData.forEach((p, i) => {
-    console.log(`  [${i}] id=${p.id}, name=${p.propName}, status=${p.status}`);
-});
 
 // 统计数据
 const shots = {{ shots|to_json }};
@@ -1262,10 +1259,8 @@ let pollingIntervalId = null;
 function startShotGenerationPolling() {
     // 防止重复启动轮询
     if (pollingIntervalId) {
-        console.log('轮询已在运行中，跳过');
         return;
     }
-    console.log('启动视频生成状态轮询');
     pollingIntervalId = setInterval(async () => {
         try {
             const response = await fetch(`/api/v1/episodes/${episodeId}/progress`);
@@ -1291,7 +1286,7 @@ function startShotGenerationPolling() {
                         // 如果状态从生成中变为其他状态（完成或失败）
                         if (currentStatus === 1 && newStatus !== 1) {
                             hasChanges = true;
-                            console.log(`分镜 ${shot.id} 状态变化: ${currentStatus} -> ${newStatus}`);
+                            // 状态变化处理
                         }
 
                         // 同步更新卡片的data-status
@@ -1301,7 +1296,7 @@ function startShotGenerationPolling() {
 
                 // 如果有状态变化，刷新页面
                 if (hasChanges) {
-                    console.log('检测到状态变化，刷新页面');
+                    // 检测到状态变化，刷新页面
                     clearInterval(pollingIntervalId);
                     pollingIntervalId = null;
                     location.reload();
@@ -1309,7 +1304,7 @@ function startShotGenerationPolling() {
 
                 // 如果没有正在生成的了，停止轮询
                 if (!stillGenerating) {
-                    console.log('所有视频生成完成，停止轮询');
+                    // 所有视频生成完成，停止轮询
                     clearInterval(pollingIntervalId);
                     pollingIntervalId = null;
                 }
@@ -1322,7 +1317,7 @@ function startShotGenerationPolling() {
 
 // 如果有正在生成中的视频，启动轮询
 if (generating > 0) {
-    console.log(`检测到 ${generating} 个视频正在生成中，启动轮询...`);
+    // 检测到生成中的分镜，启动轮询
     startShotGenerationPolling();
 } else {
     // 即使模板数据中没有生成中的，也检查后端实时状态（防止页面刷新后状态不同步）
@@ -1331,7 +1326,7 @@ if (generating > 0) {
         .then(result => {
             const data = result.data || result;
             if (data.shots && data.shots.some(s => s.generationStatus === 1)) {
-                console.log('后端检测到生成中的分镜，启动轮询');
+                // 后端检测到生成中的分镜，启动轮询
                 startShotGenerationPolling();
             }
         })
@@ -2699,29 +2694,30 @@ document.querySelectorAll('.generate-btn').forEach(btn => {
         startShotGenerationPolling();
 
         try {
-            // 从 shots 数组中获取参考图 URL
-            const shotData = shots.find(s => s.id == shotId);
+            // 从编辑器中提取参考图 URL（用户选择的资产）
             const referenceUrls = [];
-            if (shotData) {
-                // 提取场景图片
-                if (shotData.sceneId) {
-                    const scene = seriesScenes.find(s => s.id == shotData.sceneId);
-                    if (scene && scene.activeAssetUrl) {
-                        referenceUrls.push(scene.activeAssetUrl);
+            const card = this.closest('.shot-card');
+
+            // 从场景编辑器提取
+            const sceneEditor = card.querySelector('[data-field="scene"]');
+            if (sceneEditor) {
+                sceneEditor.querySelectorAll('[data-asset-url]').forEach(el => {
+                    const url = el.dataset.assetUrl;
+                    if (url && !referenceUrls.includes(url)) {
+                        referenceUrls.push(url);
                     }
-                }
-                // 提取角色图片
-                if (shotData.characters) {
-                    shotData.characters.forEach(char => {
-                        if (char.assetUrl) referenceUrls.push(char.assetUrl);
-                    });
-                }
-                // 提取道具图片
-                if (shotData.props) {
-                    shotData.props.forEach(prop => {
-                        if (prop.assetUrl) referenceUrls.push(prop.assetUrl);
-                    });
-                }
+                });
+            }
+
+            // 从剧情编辑器提取
+            const descEditor = card.querySelector('[data-field="description"]');
+            if (descEditor) {
+                descEditor.querySelectorAll('[data-asset-url]').forEach(el => {
+                    const url = el.dataset.assetUrl;
+                    if (url && !referenceUrls.includes(url)) {
+                        referenceUrls.push(url);
+                    }
+                });
             }
 
             const response = await fetch(`/api/v1/shots/${shotId}/generate-with-references/`, {
@@ -2769,29 +2765,30 @@ document.querySelectorAll('.regenerate-btn').forEach(btn => {
         startShotGenerationPolling();
 
         try {
-            // 从 shots 数组中获取参考图 URL
-            const shotData = shots.find(s => s.id == shotId);
+            // 从编辑器中提取参考图 URL（用户选择的资产）
             const referenceUrls = [];
-            if (shotData) {
-                // 提取场景图片
-                if (shotData.sceneId) {
-                    const scene = seriesScenes.find(s => s.id == shotData.sceneId);
-                    if (scene && scene.activeAssetUrl) {
-                        referenceUrls.push(scene.activeAssetUrl);
+            const card = this.closest('.shot-card');
+
+            // 从场景编辑器提取
+            const sceneEditor = card.querySelector('[data-field="scene"]');
+            if (sceneEditor) {
+                sceneEditor.querySelectorAll('[data-asset-url]').forEach(el => {
+                    const url = el.dataset.assetUrl;
+                    if (url && !referenceUrls.includes(url)) {
+                        referenceUrls.push(url);
                     }
-                }
-                // 提取角色图片
-                if (shotData.characters) {
-                    shotData.characters.forEach(char => {
-                        if (char.assetUrl) referenceUrls.push(char.assetUrl);
-                    });
-                }
-                // 提取道具图片
-                if (shotData.props) {
-                    shotData.props.forEach(prop => {
-                        if (prop.assetUrl) referenceUrls.push(prop.assetUrl);
-                    });
-                }
+                });
+            }
+
+            // 从剧情编辑器提取
+            const descEditor = card.querySelector('[data-field="description"]');
+            if (descEditor) {
+                descEditor.querySelectorAll('[data-asset-url]').forEach(el => {
+                    const url = el.dataset.assetUrl;
+                    if (url && !referenceUrls.includes(url)) {
+                        referenceUrls.push(url);
+                    }
+                });
             }
 
             const response = await fetch(`/api/v1/shots/${shotId}/generate-with-references/`, {
@@ -3466,6 +3463,13 @@ function bindAssetSelectionEvents() {
         const newSceneNames = selectedScenes.filter(cb => !hasValidId(cb)).map(cb => cb.dataset.name);
         const newPropNames = selectedProps.filter(cb => !hasValidId(cb)).map(cb => cb.dataset.name);
 
+        // 检查是否没有选择任何资产
+        if (sceneIds.length === 0 && propIds.length === 0 && newSceneNames.length === 0 && newPropNames.length === 0) {
+            if (!confirm('您没有选择任何资产，是否继续解析分镜？\n\n提示：不选择资产将不会生成场景和道具的图片，但分镜仍会正常解析。')) {
+                return;
+            }
+        }
+
         // 未选中的资产：只收集已存在的ID（用于删除）
         const unselectedSceneIds = [...document.querySelectorAll('.scene-checkbox:not(:checked):not(:disabled)')]
             .filter(hasValidId).map(cb => parseInt(cb.dataset.id));
@@ -3497,7 +3501,7 @@ function bindAssetSelectionEvents() {
         console.log('解析模式:', parseMode);
 
         try {
-            const response = await fetch(`/api/v1/episodes/${episodeId}/generate-assets/`, {
+            const response = await fetchWithAuth(`/api/v1/episodes/${episodeId}/generate-assets/`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -3527,7 +3531,9 @@ function bindAssetSelectionEvents() {
                 alert('提交失败: ' + (result.message || '未知错误'));
             }
         } catch (e) {
-            alert('请求失败: ' + e.message);
+            if (e.message !== 'Session expired') {
+                alert('请求失败: ' + e.message);
+            }
         }
 
         this.disabled = false;
@@ -3656,11 +3662,6 @@ const assetTypeConfig = {
 
 // 初始化可用资产（异步加载角色服装）
 async function initAvailableAssets() {
-    console.log('initAvailableAssets called');
-    console.log('seriesScenes:', seriesScenes);
-    console.log('seriesRoles:', seriesRoles);
-    console.log('seriesProps:', seriesProps);
-
     // 场景资产
     availableAssets.scene = seriesScenes.filter(s => s.activeAssetUrl).map(s => ({
         id: s.id,
@@ -3679,7 +3680,7 @@ async function initAvailableAssets() {
 
     // 角色资产：从后端 API 获取所有服装
     try {
-        const response = await fetch(`/api/v1/assets/series/${seriesId}/role-assets`);
+        const response = await fetch(`/api/series/${seriesId}/role-assets/`);
         const result = await response.json();
         if (result.data && result.data.roles) {
             availableAssets.role = [];
@@ -3702,7 +3703,7 @@ async function initAvailableAssets() {
                 }
             }
         }
-        console.log('角色服装资产加载完成:', availableAssets.role.length, '个');
+        // 角色服装资产加载完成
     } catch (e) {
         console.error('加载角色服装资产失败:', e);
         // 降级：使用模板传递的角色数据
@@ -3714,7 +3715,7 @@ async function initAvailableAssets() {
         }));
     }
 
-    console.log('availableAssets:', availableAssets);
+    // availableAssets 初始化完成
 
     // 构建名称映射
     [...availableAssets.scene, ...availableAssets.role, ...availableAssets.prop].forEach(a => {
@@ -3726,9 +3727,12 @@ async function initAvailableAssets() {
 let assetsInitialized = false;
 initAvailableAssets().then(() => {
     assetsInitialized = true;
-    // 资产加载完成后，重新渲染所有描述编辑器
+    // 资产加载完成后，重新渲染所有描述编辑器和场景编辑器
     document.querySelectorAll('.description-editor').forEach(editor => {
         renderDescriptionWithAutoAssets(editor);
+    });
+    document.querySelectorAll('.scene-editor').forEach(editor => {
+        renderSceneWithAutoAssets(editor);
     });
 });
 
@@ -3957,9 +3961,6 @@ function initDescriptionMention(editor) {
     let mentionStartIndex = -1;
     let savedRange = null;  // 保存选区
 
-    console.log('initDescriptionMention called, dropdown:', dropdown);
-    console.log('editor:', editor);
-
     // 保存选区（在编辑器获得焦点时）
     editor.addEventListener('focus', function() {
         const selection = window.getSelection();
@@ -3977,10 +3978,10 @@ function initDescriptionMention(editor) {
     });
 
     editor.addEventListener('input', function(e) {
-        console.log('INPUT EVENT FIRED');
+        // INPUT EVENT FIRED
         const selection = window.getSelection();
         if (!selection.rangeCount) {
-            console.log('No selection range');
+            // No selection range
             dropdown.classList.add('hidden');
             return;
         }
@@ -3989,7 +3990,7 @@ function initDescriptionMention(editor) {
 
         // 确保光标在文本节点中
         if (range.startContainer.nodeType !== Node.TEXT_NODE) {
-            console.log('Not in text node, nodeType:', range.startContainer.nodeType);
+            // Not in text node
             dropdown.classList.add('hidden');
             return;
         }
@@ -3999,7 +4000,7 @@ function initDescriptionMention(editor) {
 
         // 获取整个编辑器的文本
         const fullText = editor.textContent;
-        console.log('input event, fullText:', fullText, 'cursorPos in node:', cursorPos);
+        // input event processed
 
         // 获取光标前的文本
         let textBeforeCursor = '';
@@ -4024,7 +4025,7 @@ function initDescriptionMention(editor) {
             }
         }
 
-        console.log('textBeforeCursor:', textBeforeCursor, 'atIndex:', atIndex);
+        // textBeforeCursor processed
 
         if (atIndex === -1) {
             dropdown.classList.add('hidden');
@@ -4043,12 +4044,12 @@ function initDescriptionMention(editor) {
         mentionStartIndex = atIndex;
         const searchTerm = afterAt.toLowerCase();
 
-        console.log('searchTerm:', searchTerm, 'availableAssets:', availableAssets);
+        // searchTerm processed
 
-        // 过滤资产
+        // 过滤资产（角色优先，然后场景，最后道具）
         const allAssets = [
-            ...availableAssets.scene.map(a => ({...a, typeLabel: '场景'})),
             ...availableAssets.role.map(a => ({...a, typeLabel: '角色'})),
+            ...availableAssets.scene.map(a => ({...a, typeLabel: '场景'})),
             ...availableAssets.prop.map(a => ({...a, typeLabel: '道具'}))
         ];
 
@@ -4061,8 +4062,8 @@ function initDescriptionMention(editor) {
             return;
         }
 
-        // 渲染下拉列表
-        dropdown.innerHTML = filtered.slice(0, 8).map(asset => `
+        // 渲染下拉列表（显示全部，通过滚动查看）
+        dropdown.innerHTML = filtered.map(asset => `
             <div class="mention-item flex items-center gap-3 px-3 py-2 hover:bg-white/10 cursor-pointer transition-colors"
                  data-id="${asset.id}" data-type="${asset.type}" data-name="${asset.name}" data-url="${asset.imageUrl}">
                 <img src="${asset.imageUrl}" class="w-10 h-10 rounded-lg object-cover flex-shrink-0 border-2 ${assetTypeConfig[asset.type].borderColor}">
@@ -4107,7 +4108,7 @@ function initDescriptionMention(editor) {
                 const name = this.dataset.name;
                 const url = this.dataset.url;
 
-                console.log('Asset selected:', { id, type, name, url });
+                // Asset selected
 
                 // 恢复编辑器焦点和选区
                 editor.focus();
@@ -4121,12 +4122,12 @@ function initDescriptionMention(editor) {
                 }
 
                 if (!selection.rangeCount) {
-                    console.log('No range after restore');
+                    // No range after restore
                     return;
                 }
 
                 const r = selection.getRangeAt(0);
-                console.log('Range restored:', r.startContainer, r.startOffset);
+                // Range restored
 
                 if (r.startContainer.nodeType === Node.TEXT_NODE) {
                     const node = r.startContainer;
@@ -4146,7 +4147,7 @@ function initDescriptionMention(editor) {
                         }
                     }
 
-                    console.log('atIndex:', atIndex, 'textBeforeCursor:', textBeforeCursor);
+                    // atIndex processed
 
                     if (atIndex !== -1) {
                         // 删除@及搜索文本
@@ -4313,19 +4314,17 @@ function renderDescriptionWithThumbs(editor, rawText) {
     editor.innerHTML = html;
 }
 
-// 渲染描述文本，自动识别资产名称并在后面追加缩略图
+// 渲染描述文本
 function renderDescriptionWithAutoAssets(editor) {
     let description = editor.dataset.description || '';
-
-    // 如果 description 为空，检查是否有 shotType 和 soundEffect 字段（LLM 解析的结果）
-    // 这种情况下需要组合显示
     const shotType = editor.dataset.shotType || '';
     const soundEffect = editor.dataset.soundEffect || '';
+    // 判断是否用户编辑过（值为 '1', 'true', 'True' 表示已编辑）
+    const descEdited = editor.dataset.descriptionEdited;
+    const isUserEdited = descEdited === '1' || descEdited === 'true' || descEdited === 'True';
 
-    // 如果 description 已包含格式标记，说明是用户手动编辑的，直接显示
-    // 如果 description 为空但有 shotType/soundEffect，说明是 LLM 解析结果，需要组合
+    // 如果没有格式标记且 description 为空，组合 shotType 和 soundEffect
     if (!description.includes('镜头【') && !description.includes('剧情【') && !description.includes('音效【')) {
-        // 没有格式标记，可能是 LLM 解析的结果，需要组合
         if (!description && (shotType || soundEffect)) {
             let html = '';
             if (shotType) {
@@ -4339,14 +4338,14 @@ function renderDescriptionWithAutoAssets(editor) {
         }
     }
 
-    // 收集所有资产名称，按名称长度降序排列（优先匹配长名称）
+    let processedDescription = description;
+
     const allAssets = [
         ...availableAssets.scene.map(a => ({...a, typeLabel: '场景'})),
         ...availableAssets.role.map(a => ({...a, typeLabel: '角色'})),
         ...availableAssets.prop.map(a => ({...a, typeLabel: '道具'}))
-    ].sort((a, b) => b.name.length - a.name.length);
+    ];
 
-    // 辅助函数：生成缩略图+彩色标签HTML
     function createThumbHtml(asset) {
         return `<span class="inline-flex items-center gap-1 whitespace-nowrap" contenteditable="false"
                         data-asset-id="${asset.id}" data-asset-type="${asset.type}"
@@ -4358,93 +4357,115 @@ function renderDescriptionWithAutoAssets(editor) {
                     </span>`;
     }
 
-    // 先处理 @{名称} 格式：替换为缩略图+彩色标签（不加纯文本名称，避免重复）
-    const processedFromMention = new Set();
-    let processedDescription = description.replace(/@\{([^}]+)\}/g, (match, name) => {
-        const asset = allAssets.find(a => a.name === name);
-        if (asset && asset.imageUrl) {
-            processedFromMention.add(name);
-            return createThumbHtml(asset);
-        }
-        return name;
-    });
+    if (isUserEdited) {
+        // 用户编辑过：将 @{名称} 转换为缩略图显示（只显示缩略图）
+        processedDescription = description.replace(/@\{([^}]+)\}/g, (match, name) => {
+            const asset = allAssets.find(a => a.name === name);
+            if (asset && asset.imageUrl) {
+                return createThumbHtml(asset);  // 只返回缩略图
+            }
+            return '';  // 没找到资产时不显示
+        });
+    } else {
+        // 用户未编辑：去掉 @{名称} 标记，然后检查是否有完全匹配的资产名
+        processedDescription = description.replace(/@\{([^}]+)\}/g, '$1');
 
-    // 对剩余文本进行资产名称识别，在后面追加缩略图
-    // 每次出现都追加缩略图
-    allAssets.forEach(asset => {
-        if (asset.name && asset.imageUrl && !processedFromMention.has(asset.name)) {
-            const regex = new RegExp(asset.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g');
-            processedDescription = processedDescription.replace(regex, (match) => {
-                // 自动匹配：原文已有名称，只追加缩略图+彩色标签
-                return match + createThumbHtml(asset);
-            });
+        // 检查文本中是否有完全匹配的资产名（场景、角色、道具）
+        // 在名称后面加缩略图
+        for (const asset of allAssets) {
+            if (asset.name && processedDescription.includes(asset.name)) {
+                // 检查这个名称对应的资产
+                const sameNameAssets = allAssets.filter(a => a.name === asset.name);
+
+                let targetAsset = null;
+                if (sameNameAssets.length === 1) {
+                    // 只有一个同名资产，直接使用
+                    targetAsset = sameNameAssets[0];
+                } else if (sameNameAssets.length > 1) {
+                    // 多个同名资产（如角色有多个服装），优先使用名称为"默认"的服装
+                    targetAsset = sameNameAssets.find(a => a.clothingName === '默认') || sameNameAssets[0];
+                }
+
+                if (targetAsset && targetAsset.imageUrl) {
+                    // 在名称后面加缩略图（替换所有出现）
+                    const regex = new RegExp(asset.name, 'g');
+                    processedDescription = processedDescription.replace(regex, asset.name + createThumbHtml(targetAsset));
+                }
+            }
         }
-    });
+    }
 
     editor.innerHTML = processedDescription;
 }
 
-// 渲染场景输入框，自动识别场景资产
+// 渲染场景输入框
 function renderSceneWithAutoAssets(editor) {
     const sceneName = editor.dataset.sceneName || '';
+    // 判断是否用户编辑过（值为 '1', 'true', 'True' 表示已编辑）
+    const sceneEdited = editor.dataset.sceneEdited;
+    const isUserEdited = sceneEdited === '1' || sceneEdited === 'true' || sceneEdited === 'True';
+
     if (!sceneName) {
         editor.innerHTML = '';
         return;
     }
 
-    // 先处理 @{名称} 格式，转换为名称+缩略图
     let processedScene = sceneName;
-    const processedFromMention = new Set();
 
-    processedScene = processedScene.replace(/@\{([^}]+)\}/g, (match, name) => {
-        const asset = availableAssets.scene.find(a => a.name === name);
-        if (asset && asset.imageUrl) {
-            processedFromMention.add(name);
-            const thumbHtml = `<span class="inline-flex items-center gap-1 whitespace-nowrap" contenteditable="false"
-                            data-asset-id="${asset.id}" data-asset-type="scene"
-                            data-asset-name="${asset.name}" data-asset-url="${asset.imageUrl}">
-                            <img class="inline-asset-thumb w-5 h-5 rounded align-middle border-2 ${assetTypeConfig.scene.borderColor}"
-                                src="${asset.imageUrl}" alt="${asset.name}"
-                                title="场景: ${asset.name}">
-                            <span class="${assetTypeConfig.scene.bgColor} px-1.5 py-0.5 rounded text-xs text-white">${asset.name}</span>
-                        </span>`;
-            return name + thumbHtml;
+    if (isUserEdited) {
+        // 用户编辑过：将 @{名称} 转换为缩略图显示（只显示缩略图，不加名称前缀）
+        processedScene = sceneName.replace(/@\{([^}]+)\}/g, (match, name) => {
+            const asset = availableAssets.scene.find(a => a.name === name);
+            if (asset && asset.imageUrl) {
+                const thumbHtml = `<span class="inline-flex items-center gap-1 whitespace-nowrap" contenteditable="false"
+                                data-asset-id="${asset.id}" data-asset-type="scene"
+                                data-asset-name="${asset.name}" data-asset-url="${asset.imageUrl}">
+                                <img class="inline-asset-thumb w-5 h-5 rounded align-middle border-2 ${assetTypeConfig.scene.borderColor}"
+                                    src="${asset.imageUrl}" alt="${asset.name}"
+                                    title="场景: ${asset.name}">
+                                <span class="${assetTypeConfig.scene.bgColor} px-1.5 py-0.5 rounded text-xs text-white">${asset.name}</span>
+                            </span>`;
+                return thumbHtml;  // 只返回缩略图
+            }
+            return '';  // 没找到资产时不显示
+        });
+    } else {
+        // 用户未编辑：检查场景名称是否完全匹配某个资产
+        // 完全匹配时在名称后面加缩略图
+        const exactMatches = availableAssets.scene.filter(a => a.name === sceneName);
+        if (exactMatches.length >= 1) {
+            // 如果有多个同名资产，使用第一个；否则使用唯一匹配的
+            const asset = exactMatches[0];
+            if (asset.imageUrl) {
+                const thumbHtml = `<span class="inline-flex items-center gap-1 whitespace-nowrap" contenteditable="false"
+                                data-asset-id="${asset.id}" data-asset-type="scene"
+                                data-asset-name="${asset.name}" data-asset-url="${asset.imageUrl}">
+                                <img class="inline-asset-thumb w-5 h-5 rounded align-middle border-2 ${assetTypeConfig.scene.borderColor}"
+                                    src="${asset.imageUrl}" alt="${asset.name}"
+                                    title="场景: ${asset.name}">
+                                <span class="${assetTypeConfig.scene.bgColor} px-1.5 py-0.5 rounded text-xs text-white">${asset.name}</span>
+                            </span>`;
+                processedScene = sceneName + thumbHtml;  // 名称后面加缩略图
+            }
         }
-        return name;
-    });
-
-    // 对剩余文本进行资产名称识别（排除已处理的）
-    availableAssets.scene.forEach(asset => {
-        if (asset.name && asset.imageUrl && !processedFromMention.has(asset.name)) {
-            const thumbHtml = `<span class="inline-flex items-center gap-1 whitespace-nowrap" contenteditable="false"
-                            data-asset-id="${asset.id}" data-asset-type="scene"
-                            data-asset-name="${asset.name}" data-asset-url="${asset.imageUrl}">
-                            <img class="inline-asset-thumb w-5 h-5 rounded align-middle border-2 ${assetTypeConfig.scene.borderColor}"
-                                src="${asset.imageUrl}" alt="${asset.name}"
-                                title="场景: ${asset.name}">
-                            <span class="${assetTypeConfig.scene.bgColor} px-1.5 py-0.5 rounded text-xs text-white">${asset.name}</span>
-                        </span>`;
-
-            const regex = new RegExp(asset.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g');
-            processedScene = processedScene.replace(regex, asset.name + thumbHtml);
-        }
-    });
+        // 不匹配时，保持原样（纯文本）
+    }
 
     editor.innerHTML = processedScene;
 }
 
 // 初始化内联编辑
 function initInlineEditing() {
-    console.log('initInlineEditing called');
+    // initInlineEditing called
     const cards = document.querySelectorAll('.shot-card');
-    console.log('Found shot cards:', cards.length);
+    // Found shot cards
 
     cards.forEach(card => {
         const shotId = card.dataset.shotId;
 
         // 剧情编辑器
         const descEditor = card.querySelector('.description-editor');
-        console.log('descEditor for shot', shotId, ':', descEditor);
+        // descEditor processed
 
         if (descEditor) {
             // 渲染内容，自动识别资产
@@ -4926,6 +4947,31 @@ function getCookie(name) {
         }
     }
     return cookieValue;
+}
+
+/**
+ * 封装fetch请求，自动处理session过期
+ * 如果收到重定向（302）或HTML响应，自动跳转到登录页
+ */
+async function fetchWithAuth(url, options = {}) {
+    const response = await fetch(url, options);
+
+    // 检查是否被重定向到登录页（session过期）
+    if (response.redirected || response.status === 302) {
+        alert('登录已过期，请重新登录');
+        window.location.href = '/auth/login/';
+        throw new Error('Session expired');
+    }
+
+    // 检查响应类型，如果是HTML说明session过期
+    const contentType = response.headers.get('content-type');
+    if (contentType && contentType.includes('text/html')) {
+        alert('登录已过期，请重新登录');
+        window.location.href = '/auth/login/';
+        throw new Error('Session expired');
+    }
+
+    return response;
 }
 </script>
 {% endblock %}

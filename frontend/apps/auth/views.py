@@ -31,7 +31,7 @@ def login_view(request):
             response = requests.post(
                 get_api_url('/v1/auth/login'),
                 json={'email': email, 'password': password},
-                timeout=10
+                timeout=30
             )
 
             if response.status_code == 200:
@@ -87,7 +87,7 @@ def register_view(request):
                     'password': password,
                     'nickname': nickname or email.split('@')[0]
                 },
-                timeout=10
+                timeout=30
             )
 
             if response.status_code == 200:
@@ -143,7 +143,7 @@ def send_code_api(request):
         response = requests.post(
             get_api_url('/v1/auth/send-code'),
             json={'email': email, 'type': code_type},
-            timeout=10
+            timeout=30
         )
 
         if response.status_code == 200:
