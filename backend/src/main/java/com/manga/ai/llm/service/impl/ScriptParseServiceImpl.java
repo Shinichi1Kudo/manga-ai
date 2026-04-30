@@ -287,11 +287,24 @@ public class ScriptParseServiceImpl implements ScriptParseService {
         prompt.append("4. **环境氛围**：光线、色调、动态元素（雨、烟、光斑等）\n");
         prompt.append("5. **声音元素**：环境音、角色台词、特殊音效\n\n");
 
-        prompt.append("### 镜头精简原则\n");
-        prompt.append("- **合并相似镜头**：同一场景、同一角色的连续动作尽量合并为一个分镜\n");
-        prompt.append("- **减少切换频率**：每个分镜应承载完整的叙事单元\n");
-        prompt.append("- **时长优先**：单个镜头优先使用 8-15 秒，充分展现动作和情感\n");
-        prompt.append("- **最短时长**：单个镜头不少于 5 秒，除非是特写强调或转场\n\n");
+        prompt.append("### 分镜拆分原则（非常重要）\n");
+        prompt.append("- **按场景拆分**：剧本中的每个场景（如【场景一】【场景二】）必须拆分为独立的分镜\n");
+        prompt.append("- **按动作拆分**：同一场景内，角色的不同动作或情绪变化应拆分为不同分镜\n");
+        prompt.append("- **按对白拆分**：重要的对白和台词应单独成镜，不要合并\n");
+        prompt.append("- **时长范围**：单个镜头 5-12 秒，重要对白场景可延长至 15 秒\n");
+        prompt.append("- **保留完整性**：每个分镜应承载完整的叙事单元\n\n");
+
+        prompt.append("### 剧情描述要求（非常重要）\n");
+        prompt.append("剧情描述必须**完整保留原始剧本内容**，包含：\n");
+        prompt.append("- **角色的完整台词**：不要简化或省略对白，用引号标注\n");
+        prompt.append("- **内心独白**：保留角色的内心想法（如：沈清棠（内心独白）：\"...\"）\n");
+        prompt.append("- **角色的动作和表情**：详细描述动作细节\n");
+        prompt.append("- **环境变化、光线、氛围**：场景的视觉元素\n");
+        prompt.append("- **场景转换和过渡**：明确标注场景变化\n\n");
+        prompt.append("**示例格式**：\n");
+        prompt.append("萧凛冷笑一声，上前一步，用剑鞘挑起红盖头。他声音低沉危险地说：\"丞相府好大的手笔，竟舍得把嫡女送来我这修罗场。\" 他的眼神冰冷，剑尖直指床上那抹红色身影。\n\n");
+        prompt.append("**错误示例**（太简略）：\n");
+        prompt.append("萧凛挑起盖头质问沈清棠。\n\n");
 
         prompt.append("## 镜头类型与运镜\n");
         prompt.append("### 景别\n");
@@ -327,19 +340,9 @@ public class ScriptParseServiceImpl implements ScriptParseService {
         prompt.append("- **动态元素**：环境中的运动物体\n");
         prompt.append("  例：\"雨刮器疯狂摆动\"、\"血迹与雨水混成一片\"、\"光斑在脸上跳跃\"\n\n");
 
-        prompt.append("### 描述示例（参考风格）\n");
-        prompt.append("镜头1｜车内主观视角\n");
-        prompt.append("雨刮器疯狂摆动，挡风玻璃上血迹与雨水混成一片。车外，两只丧尸正以狂暴的姿态猛扑引擎盖，口中低吼伴随尖锐、断续的神经性嘶叫。\n\n");
-
-        prompt.append("镜头2｜中景·林骁猛打方向盘\n");
-        prompt.append("林骁咬紧牙关，手臂肌肉绷紧，猛地向右急转！他脸上有擦伤，眼神锐利却透着疲惫。\n\n");
-
-        prompt.append("镜头3｜低角度外拍·撞飞丧尸\n");
-        prompt.append("越野车咆哮冲出，前保险杠狠狠撞上第一只丧尸的胸腔——它竟在撞击瞬间张开双臂试图抱住引擎盖，指爪刮出刺耳金属声！冲击力将它掀飞，脊椎在空中扭曲成S形。\n\n");
-
         prompt.append("## 时长说明\n");
-        prompt.append("- duration: 该分镜的时长（秒），范围 4-15 秒\n");
-        prompt.append("- 建议：普通分镜 8-10 秒，重要场景 10-15 秒，转场或特写 4-6 秒\n\n");
+        prompt.append("- duration: 该分镜的时长（秒），范围 5-15 秒\n");
+        prompt.append("- 建议：普通分镜 6-10 秒，重要对白场景 10-15 秒，转场或特写 5-6 秒\n\n");
 
         if (!knownCharacters.isEmpty()) {
             prompt.append("## 已知角色列表\n");
@@ -373,7 +376,7 @@ public class ScriptParseServiceImpl implements ScriptParseService {
         prompt.append("      \"cameraAngle\": \"平视\",\n");
         prompt.append("      \"cameraMovement\": \"推镜头\",\n");
         prompt.append("      \"shotType\": \"中景·角色名动作描述\",\n");
-        prompt.append("      \"description\": \"详细的视觉描述，包含场景环境、人物动作、表情细节、光影氛围。要求：眼神描写具体、表情细节丰富、肢体语言精确、动态元素明确。\",\n");
+        prompt.append("      \"description\": \"完整的剧情描述，包含角色台词（用引号标注）、内心独白、动作、表情、环境变化等，不要简化\",\n");
         prompt.append("      \"soundEffect\": \"音效描述，如：引擎轰鸣声、雨声、角色喊叫等\",\n");
         prompt.append("      \"characters\": [\n");
         prompt.append("        {\n");
@@ -398,12 +401,14 @@ public class ScriptParseServiceImpl implements ScriptParseService {
         prompt.append("```\n\n");
 
         prompt.append("## 关键注意事项\n");
-        prompt.append("1. **描述要具体**：避免模糊的描述，使用具体的视觉细节\n");
-        prompt.append("2. **情感要到位**：每个角色必须有清晰的情感状态和表情描写\n");
-        prompt.append("3. **动作要有力**：动作描述要有力度感和方向感\n");
-        prompt.append("4. **环境要生动**：加入动态元素让画面活起来\n");
-        prompt.append("5. **镜头要精简**：优先使用长镜头（8-15秒），减少不必要的切换\n");
-        prompt.append("6. **保持连贯性**：相邻分镜之间要有逻辑衔接\n");
+        prompt.append("1. **保留所有对白**：角色的台词必须完整保留，不要简化或省略\n");
+        prompt.append("2. **保留内心独白**：角色的内心想法也要保留\n");
+        prompt.append("3. **按场景拆分**：剧本中的每个【场景X】都应拆分为独立分镜\n");
+        prompt.append("4. **描述要具体**：使用具体的视觉细节，避免模糊描述\n");
+        prompt.append("5. **情感要到位**：每个角色必须有清晰的情感状态和表情描写\n");
+        prompt.append("6. **动作要有力**：动作描述要有力度感和方向感\n");
+        prompt.append("7. **环境要生动**：加入动态元素让画面活起来\n");
+        prompt.append("8. **保持连贯性**：相邻分镜之间要有逻辑衔接\n");
 
         return prompt.toString();
     }
