@@ -22,6 +22,11 @@ public class UserVO implements Serializable {
     private LocalDateTime lastLoginAt;
 
     /**
+     * 头像URL
+     */
+    private String avatar;
+
+    /**
      * JWT Token（登录/注册时返回）
      */
     private String token;

@@ -13,6 +13,7 @@ import com.manga.ai.common.enums.RoleStatus;
 import com.manga.ai.common.enums.SeriesStatus;
 import com.manga.ai.common.enums.ViewType;
 import com.manga.ai.common.exception.BusinessException;
+import com.manga.ai.common.service.OssService;
 import com.manga.ai.image.dto.ImageGenerateRequest;
 import com.manga.ai.image.dto.ImageGenerateResponse;
 import com.manga.ai.image.service.ImageGenerateService;
@@ -75,6 +76,7 @@ public class SeriesServiceImpl implements SeriesService {
     private final EpisodeMapper episodeMapper;
     private final ShotMapper shotMapper;
     private final ShotVideoAssetMapper shotVideoAssetMapper;
+    private final OssService ossService;
 
     // 自注入，用于调用 @Async 方法（解决 Spring 代理问题）
     private SeriesService self;
@@ -90,7 +92,8 @@ public class SeriesServiceImpl implements SeriesService {
                              @Lazy SeriesService self,
                              EpisodeMapper episodeMapper,
                              ShotMapper shotMapper,
-                             ShotVideoAssetMapper shotVideoAssetMapper) {
+                             ShotVideoAssetMapper shotVideoAssetMapper,
+                             OssService ossService) {
         this.seriesMapper = seriesMapper;
         this.roleMapper = roleMapper;
         this.roleAssetMapper = roleAssetMapper;
@@ -102,6 +105,7 @@ public class SeriesServiceImpl implements SeriesService {
         this.episodeMapper = episodeMapper;
         this.shotMapper = shotMapper;
         this.shotVideoAssetMapper = shotVideoAssetMapper;
+        this.ossService = ossService;
     }
 
     @Value("${storage.project-path:./storage/projects}")
@@ -617,11 +621,28 @@ public class SeriesServiceImpl implements SeriesService {
             asset.setCreatedAt(LocalDateTime.now());
             asset.setUpdatedAt(LocalDateTime.now());
 
-            // 保存图片URL
+            // 上传图片到OSS并保存URL（重试3次）
             if (response.getImageUrl() != null) {
-                asset.setFilePath(response.getImageUrl());
-                asset.setThumbnailPath(response.getImageUrl());
-                asset.setTransparentPath(response.getImageUrl());
+                String ossUrl = null;
+                for (int retry = 0; retry < 3 && ossUrl == null; retry++) {
+                    ossUrl = ossService.uploadImageFromUrl(response.getImageUrl(), "characters");
+                    if (ossUrl == null && retry < 2) {
+                        log.warn("OSS上传失败，第{}次重试...", retry + 2);
+                        try { Thread.sleep(1000); } catch (InterruptedException e) { Thread.currentThread().interrupt(); }
+                    }
+                }
+                if (ossUrl != null) {
+                    asset.setFilePath(ossUrl);
+                    asset.setThumbnailPath(ossUrl);
+                    asset.setTransparentPath(ossUrl);
+                    log.info("图片已上传到OSS: {}", ossUrl.substring(0, Math.min(80, ossUrl.length())));
+                } else {
+                    // OSS上传失败，使用原始临时URL（可能会过期）
+                    log.warn("OSS上传失败，使用原始临时URL: roleId={}", role.getId());
+                    asset.setFilePath(response.getImageUrl());
+                    asset.setThumbnailPath(response.getImageUrl());
+                    asset.setTransparentPath(response.getImageUrl());
+                }
             }
 
             roleAssetMapper.insert(asset);

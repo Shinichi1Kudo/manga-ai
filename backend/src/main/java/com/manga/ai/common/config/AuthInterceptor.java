@@ -32,19 +32,22 @@ public class AuthInterceptor implements HandlerInterceptor {
         if (token != null && token.startsWith("Bearer ")) {
             token = token.substring(7);
             if (jwtUtil.validateToken(token)) {
+                Long userId = jwtUtil.getUserId(token);
+
                 // JWT签名验证通过后，再检查Redis中是否存在该token
                 try {
                     if (tokenService.validateTokenInRedis(token)) {
-                        Long userId = jwtUtil.getUserId(token);
                         UserContextHolder.setUserId(userId);
                         log.debug("用户认证成功: userId={}", userId);
                     } else {
-                        log.warn("Token在Redis中不存在，可能已过期或已登出");
+                        // Redis中不存在token，可能是Redis重启或token过期
+                        // 降级为纯JWT验证（JWT有效期内仍然信任）
+                        log.warn("Token在Redis中不存在，降级为纯JWT验证: userId={}", userId);
+                        UserContextHolder.setUserId(userId);
                     }
                 } catch (Exception e) {
                     // Redis不可用时降级为纯JWT验证
-                    log.error("Redis连接异常，降级为纯JWT验证", e);
-                    Long userId = jwtUtil.getUserId(token);
+                    log.error("Redis连接异常，降级为纯JWT验证: userId={}", userId, e);
                     UserContextHolder.setUserId(userId);
                 }
             }

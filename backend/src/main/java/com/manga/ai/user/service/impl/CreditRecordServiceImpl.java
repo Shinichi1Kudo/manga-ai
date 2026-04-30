@@ -88,6 +88,26 @@ public class CreditRecordServiceImpl implements CreditRecordService {
     }
 
     @Override
+    public void recordReward(Long userId, int amount, String usageType, String description) {
+        CreditRecord record = new CreditRecord();
+        record.setUserId(userId);
+        record.setAmount(amount); // 奖励为正数
+        record.setType(CreditTransactionType.REWARD.getCode());
+        record.setUsageType(usageType);
+        record.setDescription(description);
+        record.setCreatedAt(LocalDateTime.now());
+
+        // 获取当前余额
+        User user = userMapper.selectById(userId);
+        if (user != null) {
+            record.setBalanceAfter(user.getCredits());
+        }
+
+        creditRecordMapper.insert(record);
+        log.info("记录积分奖励: userId={}, amount={}, description={}", userId, amount, description);
+    }
+
+    @Override
     public PageResult<CreditRecordVO> getCreditRecords(Long userId, Integer page, Integer pageSize, String type) {
         Page<CreditRecord> pageParam = new Page<>(page, pageSize);
         LambdaQueryWrapper<CreditRecord> wrapper = new LambdaQueryWrapper<>();

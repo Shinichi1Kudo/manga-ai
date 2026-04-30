@@ -12,9 +12,16 @@
             </a>
             <h1 class="text-2xl font-bold">积分记录</h1>
         </div>
-        <div class="px-4 py-2 rounded-xl bg-white/5 border border-white/10 flex items-center gap-2">
-            <i data-lucide="coins" class="w-5 h-5 text-yellow-400"></i>
-            <span class="font-medium"><span id="pageCredits">0</span> 积分</span>
+        <div class="flex items-center gap-4">
+            <!-- 兑换码入口 -->
+            <button onclick="showRedeemModal()" class="px-4 py-2 rounded-xl bg-gradient-to-r from-violet-600/20 to-blue-600/20 border border-violet-500/30 hover:from-violet-600/30 hover:to-blue-600/30 transition-all font-medium text-sm flex items-center gap-2">
+                <i data-lucide="gift" class="w-4 h-4"></i>
+                兑换码
+            </button>
+            <div class="px-4 py-2 rounded-xl bg-white/5 border border-white/10 flex items-center gap-2">
+                <i data-lucide="coins" class="w-5 h-5 text-yellow-400"></i>
+                <span class="font-medium"><span id="pageCredits">0</span> 积分</span>
+            </div>
         </div>
     </div>
 
@@ -28,6 +35,36 @@
 
     <!-- Pagination -->
     <div id="pagination" class="flex justify-center items-center gap-4 mt-8"></div>
+</div>
+
+<!-- 兑换码弹窗 -->
+<div id="redeemModal" class="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 hidden items-center justify-center" onclick="if(event.target === this) closeRedeemModal()">
+    <div class="bg-[#1a1a2e] border border-white/10 rounded-2xl p-8 max-w-md w-full mx-4" onclick="event.stopPropagation()">
+        <div class="text-center">
+            <div class="w-16 h-16 rounded-full bg-gradient-to-br from-violet-500 to-blue-500 flex items-center justify-center mx-auto mb-4 shadow-lg shadow-violet-500/30">
+                <i data-lucide="gift" class="w-8 h-8"></i>
+            </div>
+            <h3 class="text-2xl font-bold mb-2">兑换积分</h3>
+            <p class="text-white/50 mb-6">输入兑换码获取积分</p>
+
+            <div class="mb-6">
+                <input type="text" id="redeemCodeInput"
+                       class="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl focus:outline-none focus:border-violet-500 transition-colors text-center text-lg tracking-wider"
+                       placeholder="请输入兑换码"
+                       maxlength="32">
+                <p id="redeemError" class="text-red-400 text-sm mt-2 hidden"></p>
+            </div>
+
+            <div class="flex gap-3 justify-center">
+                <button onclick="closeRedeemModal()" class="px-6 py-2.5 rounded-xl bg-white/10 hover:bg-white/15 transition-colors font-medium">
+                    取消
+                </button>
+                <button onclick="submitRedeem()" id="redeemBtn" class="px-6 py-2.5 rounded-xl bg-gradient-to-r from-violet-600 to-blue-600 hover:from-violet-500 hover:to-blue-500 transition-colors font-medium">
+                    兑换
+                </button>
+            </div>
+        </div>
+    </div>
 </div>
 
 <style>
@@ -47,6 +84,9 @@
     }
     .amount-refund {
         color: #34d399;
+    }
+    .amount-reward {
+        color: #a78bfa;
     }
 </style>
 {% endblock %}
@@ -87,11 +127,25 @@ function loadRecords(page = 1) {
             renderRecords(data.data.records || []);
             renderPagination(data.data.total || 0, data.data.current || 1, data.data.size || pageSize);
         } else {
-            document.getElementById('recordsList').innerHTML = `
-                <div class="glass-card p-8 text-center">
-                    <p class="text-white/50">${data.message || '加载失败'}</p>
-                </div>
-            `;
+            // 如果是未登录，显示登录提示
+            if (data.message === '请先登录' || data.message === 'Token已失效，请重新登录') {
+                document.getElementById('recordsList').innerHTML = `
+                    <div class="glass-card p-8 text-center">
+                        <i data-lucide="log-in" class="w-12 h-12 mx-auto mb-4 text-white/20"></i>
+                        <p class="text-white/50 mb-4">${data.message}</p>
+                        <a href="/auth/login/" class="px-6 py-3 bg-gradient-to-r from-violet-600 to-blue-600 hover:from-violet-500 hover:to-blue-500 rounded-xl font-medium transition-all inline-block">
+                            前往登录
+                        </a>
+                    </div>
+                `;
+                lucide.createIcons();
+            } else {
+                document.getElementById('recordsList').innerHTML = `
+                    <div class="glass-card p-8 text-center">
+                        <p class="text-white/50">${data.message || '加载失败'}</p>
+                    </div>
+                `;
+            }
         }
     })
     .catch(err => {
@@ -118,7 +172,9 @@ function renderRecords(records) {
 
     let html = records.map(record => {
         const isDeduct = record.amount < 0;
-        const amountClass = isDeduct ? 'amount-deduct' : 'amount-refund';
+        const isReward = record.type === 'reward';
+        let amountClass = isDeduct ? 'amount-deduct' : 'amount-refund';
+        if (isReward) amountClass = 'amount-reward';
         const amountText = isDeduct ? record.amount : '+' + record.amount;
 
         return `
@@ -199,5 +255,100 @@ function renderPagination(total, currentPage, pageSize) {
 // Initial load
 loadUserCredits();
 loadRecords(1);
+
+// ==================== 兑换码功能 ====================
+function showRedeemModal() {
+    const modal = document.getElementById('redeemModal');
+    modal.classList.remove('hidden');
+    modal.classList.add('flex');
+    document.getElementById('redeemCodeInput').value = '';
+    document.getElementById('redeemError').classList.add('hidden');
+    setTimeout(() => document.getElementById('redeemCodeInput').focus(), 100);
+    lucide.createIcons();
+}
+
+function closeRedeemModal() {
+    const modal = document.getElementById('redeemModal');
+    modal.classList.add('hidden');
+    modal.classList.remove('flex');
+}
+
+function submitRedeem() {
+    const code = document.getElementById('redeemCodeInput').value.trim();
+    const errorEl = document.getElementById('redeemError');
+    const btn = document.getElementById('redeemBtn');
+
+    if (!code) {
+        errorEl.textContent = '请输入兑换码';
+        errorEl.classList.remove('hidden');
+        return;
+    }
+
+    btn.disabled = true;
+    btn.innerHTML = '兑换中...';
+
+    fetch('/api/credits/redeem/', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': getCookie('csrftoken')
+        },
+        body: JSON.stringify({ code: code })
+    })
+    .then(res => res.json())
+    .then(data => {
+        if (data.code === 200) {
+            closeRedeemModal();
+            showToast(`兑换成功！获得 ${data.data.credits} 积分`);
+            loadUserCredits();
+            loadRecords(1);
+        } else {
+            errorEl.textContent = data.message || '兑换失败';
+            errorEl.classList.remove('hidden');
+        }
+    })
+    .catch(err => {
+        errorEl.textContent = '网络错误，请重试';
+        errorEl.classList.remove('hidden');
+    })
+    .finally(() => {
+        btn.disabled = false;
+        btn.innerHTML = '兑换';
+    });
+}
+
+function getCookie(name) {
+    let cookieValue = null;
+    if (document.cookie && document.cookie !== '') {
+        const cookies = document.cookie.split(';');
+        for (let i = 0; i < cookies.length; i++) {
+            const cookie = cookies[i].trim();
+            if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                break;
+            }
+        }
+    }
+    return cookieValue;
+}
+
+function showToast(message) {
+    const toast = document.createElement('div');
+    toast.className = 'fixed top-6 left-1/2 -translate-x-1/2 z-[100] px-6 py-3 bg-gradient-to-r from-violet-600 to-blue-600 rounded-xl text-white font-medium shadow-lg shadow-violet-500/30 transition-all duration-300';
+    toast.textContent = message;
+    document.body.appendChild(toast);
+    setTimeout(() => {
+        toast.style.opacity = '0';
+        toast.style.transform = 'translateX(-50%) translateY(-20px)';
+        setTimeout(() => toast.remove(), 300);
+    }, 2500);
+}
+
+// 回车键提交
+document.getElementById('redeemCodeInput')?.addEventListener('keypress', function(e) {
+    if (e.key === 'Enter') {
+        submitRedeem();
+    }
+});
 </script>
 {% endblock %}

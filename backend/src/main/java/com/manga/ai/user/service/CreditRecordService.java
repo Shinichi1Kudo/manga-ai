@@ -65,4 +65,13 @@ public interface CreditRecordService {
      * @return 记录列表
      */
     List<CreditRecordVO> getRecentRecords(Long userId, Integer limit);
+
+    /**
+     * 记录积分奖励
+     * @param userId 用户ID
+     * @param amount 积分数量(正数)
+     * @param usageType 用途类型
+     * @param description 描述
+     */
+    void recordReward(Long userId, int amount, String usageType, String description);
 }

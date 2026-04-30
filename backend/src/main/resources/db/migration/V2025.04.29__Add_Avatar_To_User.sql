@@ -1,0 +1,2 @@
+-- 添加用户头像字段
+ALTER TABLE user ADD COLUMN avatar VARCHAR(500) NULL COMMENT '头像URL';

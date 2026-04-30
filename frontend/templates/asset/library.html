@@ -508,13 +508,13 @@ function loadSeriesAssets(seriesId, assetType = 'role') {
     // 根据资产类型选择不同的API
     let apiUrl;
     if (assetType === 'role') {
-        apiUrl = `/assets/api/series/${seriesId}/assets/`;
+        apiUrl = `/api/series/${seriesId}/assets/`;
     } else if (assetType === 'scene') {
-        apiUrl = `/assets/api/series/${seriesId}/scenes/`;
+        apiUrl = `/api/series/${seriesId}/scenes/`;
     } else if (assetType === 'prop') {
-        apiUrl = `/assets/api/series/${seriesId}/props/`;
+        apiUrl = `/api/series/${seriesId}/props/`;
     } else if (assetType === 'video') {
-        apiUrl = `/assets/api/series/${seriesId}/video-assets/`;
+        apiUrl = `/api/series/${seriesId}/video-assets/`;
     }
 
     fetch(apiUrl)

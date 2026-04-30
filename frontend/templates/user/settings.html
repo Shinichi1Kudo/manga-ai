@@ -1,0 +1,540 @@
+{% extends 'base.html' %}
+
+{% block title %}个人设置 - AI 智能短剧制作系统{% endblock %}
+
+{% block content %}
+<div class="max-w-2xl mx-auto py-8 px-4">
+    <div class="glass-card p-8">
+        <h1 class="text-2xl font-bold mb-8 flex items-center gap-3">
+            <i data-lucide="settings" class="w-6 h-6"></i>
+            个人设置
+        </h1>
+
+        <!-- 头像设置 -->
+        <div class="mb-8">
+            <label class="block text-sm font-medium text-white/70 mb-3">头像</label>
+            <div class="flex items-center gap-6">
+                <div id="avatarPreview" class="w-24 h-24 rounded-full bg-gradient-to-br from-violet-500 to-blue-500 flex items-center justify-center overflow-hidden border-2 border-white/20 relative">
+                    <i data-lucide="user" class="w-12 h-12 text-white/80" id="avatarPlaceholder"></i>
+                    <img id="avatarImg" src="" alt="头像" class="absolute inset-0 w-full h-full object-cover hidden">
+                </div>
+                <div class="flex flex-col gap-2">
+                    <input type="file" id="avatarInput" accept="image/*" class="hidden">
+                    <button onclick="document.getElementById('avatarInput').click()" class="px-4 py-2 bg-white/10 hover:bg-white/20 rounded-lg transition-colors text-sm flex items-center gap-2">
+                        <i data-lucide="image" class="w-4 h-4"></i>
+                        选择图片
+                    </button>
+                    <button onclick="removeAvatar()" id="removeAvatarBtn" class="px-4 py-2 bg-red-500/10 hover:bg-red-500/20 rounded-lg transition-colors text-sm text-red-400 hidden flex items-center gap-2">
+                        <i data-lucide="trash-2" class="w-4 h-4"></i>
+                        移除头像
+                    </button>
+                    <p class="text-xs text-white/50">支持 JPG、PNG 格式，建议正方形图片</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- 昵称设置 -->
+        <div class="mb-8">
+            <label for="nickname" class="block text-sm font-medium text-white/70 mb-3">昵称</label>
+            <div class="relative">
+                <input type="text" id="nickname" value="{{ request.session.nickname|default:'' }}"
+                       class="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl focus:outline-none focus:border-violet-500 transition-colors pr-24"
+                       placeholder="请输入昵称" maxlength="20">
+                <button onclick="checkNickname()" id="checkNicknameBtn"
+                        class="absolute right-2 top-1/2 -translate-y-1/2 px-3 py-1.5 bg-violet-500/20 hover:bg-violet-500/30 rounded-lg text-xs text-violet-300 transition-colors">
+                    检查可用性
+                </button>
+            </div>
+            <p id="nicknameHint" class="text-xs text-white/50 mt-2">1-20个字符，全局唯一</p>
+        </div>
+
+        <!-- 保存按钮 -->
+        <div class="flex gap-4">
+            <button onclick="saveProfile()" id="saveBtn"
+                    class="px-6 py-3 bg-gradient-to-r from-violet-600 to-blue-600 hover:from-violet-500 hover:to-blue-500 rounded-xl font-medium transition-all flex items-center gap-2">
+                <i data-lucide="save" class="w-4 h-4"></i>
+                保存修改
+            </button>
+            <a href="/" class="px-6 py-3 bg-white/10 hover:bg-white/20 rounded-xl font-medium transition-all">
+                返回首页
+            </a>
+        </div>
+    </div>
+
+    <!-- 头像裁剪弹窗 -->
+    <div id="cropModal" class="fixed inset-0 z-50 hidden">
+        <div class="absolute inset-0 bg-black/70" onclick="cancelCrop()"></div>
+        <div class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 glass-card p-6 w-[520px] max-w-[90vw]">
+            <h3 class="text-lg font-bold mb-4">裁剪头像</h3>
+            <div class="relative bg-black/50 rounded-xl overflow-hidden mb-4" id="cropContainer" style="height: 400px;">
+                <!-- 背景图片（半透明） -->
+                <img id="cropImage" src="" alt="裁剪" class="absolute opacity-50" style="cursor: move; max-width: none;">
+                <!-- 裁剪框 -->
+                <div id="cropBox" class="absolute border-4 border-violet-500 rounded-full overflow-hidden shadow-lg shadow-violet-500/30" style="width: 200px; height: 200px; top: 100px; left: 160px; cursor: move;">
+                    <img id="cropBoxImage" src="" alt="" class="absolute" style="max-width: none;">
+                </div>
+                <!-- 裁剪框边角指示器 -->
+                <div class="absolute pointer-events-none border-2 border-white/50 rounded-full" id="cropGuide" style="width: 200px; height: 200px; top: 100px; left: 160px;"></div>
+            </div>
+            <div class="flex items-center justify-between mb-4">
+                <span class="text-sm text-white/70">拖动图片或裁剪框调整位置</span>
+                <div class="flex items-center gap-2">
+                    <span class="text-sm text-white/70">大小:</span>
+                    <input type="range" id="cropSize" min="100" max="300" value="200" class="w-32 accent-violet-500">
+                </div>
+            </div>
+            <div class="flex gap-3 justify-end">
+                <button onclick="cancelCrop()" class="px-4 py-2 bg-white/10 hover:bg-white/20 rounded-lg transition-colors text-sm">取消</button>
+                <button onclick="confirmCrop()" class="px-4 py-2 bg-gradient-to-r from-violet-600 to-blue-600 hover:from-violet-500 hover:to-blue-500 rounded-lg transition-colors text-sm">确认裁剪</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 提示消息 -->
+    <div id="toast" class="fixed top-4 right-4 px-6 py-3 rounded-xl hidden transition-all transform translate-x-full z-50"></div>
+</div>
+
+<script>
+let currentAvatarUrl = '';
+let originalNickname = '{{ request.session.nickname|default:'' }}';
+let nicknameAvailable = true;
+let cropState = { imgX: 0, imgY: 0, boxX: 0, boxY: 0, dragging: null, startX: 0, startY: 0 };
+
+// 页面加载时初始化
+document.addEventListener('DOMContentLoaded', function() {
+    lucide.createIcons();
+    loadCurrentAvatar();
+
+    // 头像选择 -> 打开裁剪弹窗
+    document.getElementById('avatarInput').addEventListener('change', function(e) {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        if (!file.type.startsWith('image/')) {
+            showToast('请选择图片文件', 'error');
+            return;
+        }
+        if (file.size > 5 * 1024 * 1024) {
+            showToast('图片大小不能超过5MB', 'error');
+            return;
+        }
+
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            openCropModal(e.target.result);
+        };
+        reader.readAsDataURL(file);
+    });
+
+    // 裁剪大小滑块
+    document.getElementById('cropSize').addEventListener('input', function() {
+        const size = parseInt(this.value);
+        const box = document.getElementById('cropBox');
+        const guide = document.getElementById('cropGuide');
+        const container = document.getElementById('cropContainer');
+        box.style.width = size + 'px';
+        box.style.height = size + 'px';
+        // 确保裁剪框不超出容器
+        const maxX = container.clientWidth - size;
+        const maxY = container.clientHeight - size;
+        if (parseInt(box.style.left) > maxX) box.style.left = maxX + 'px';
+        if (parseInt(box.style.top) > maxY) box.style.top = maxY + 'px';
+        updateCropBoxImage();
+    });
+
+    // 裁剪框拖动
+    const cropBox = document.getElementById('cropBox');
+    const cropImage = document.getElementById('cropImage');
+
+    cropBox.addEventListener('mousedown', function(e) {
+        e.preventDefault();
+        cropState.dragging = 'box';
+        cropState.startX = e.clientX - parseInt(cropBox.style.left);
+        cropState.startY = e.clientY - parseInt(cropBox.style.top);
+    });
+
+    cropImage.addEventListener('mousedown', function(e) {
+        if (e.target === cropBox || cropBox.contains(e.target)) return;
+        e.preventDefault();
+        cropState.dragging = 'img';
+        cropState.startX = e.clientX - cropState.imgX;
+        cropState.startY = e.clientY - cropState.imgY;
+    });
+
+    document.addEventListener('mousemove', function(e) {
+        if (!cropState.dragging) return;
+        const container = document.getElementById('cropContainer');
+        const box = document.getElementById('cropBox');
+        const size = parseInt(document.getElementById('cropSize').value);
+
+        if (cropState.dragging === 'box') {
+            let x = e.clientX - cropState.startX;
+            let y = e.clientY - cropState.startY;
+            x = Math.max(0, Math.min(container.clientWidth - size, x));
+            y = Math.max(0, Math.min(container.clientHeight - size, y));
+            box.style.left = x + 'px';
+            box.style.top = y + 'px';
+            updateCropBoxImage();
+        } else if (cropState.dragging === 'img') {
+            cropState.imgX = e.clientX - cropState.startX;
+            cropState.imgY = e.clientY - cropState.startY;
+            cropImage.style.left = cropState.imgX + 'px';
+            cropImage.style.top = cropState.imgY + 'px';
+            updateCropBoxImage();
+        }
+    });
+
+    document.addEventListener('mouseup', function() {
+        cropState.dragging = null;
+    });
+
+    // 昵称输入时重置可用性状态
+    document.getElementById('nickname').addEventListener('input', function() {
+        const hint = document.getElementById('nicknameHint');
+        hint.textContent = '1-20个字符，全局唯一';
+        hint.className = 'text-xs text-white/50 mt-2';
+        nicknameAvailable = (this.value.trim() === originalNickname);
+    });
+});
+
+// 加载当前头像
+async function loadCurrentAvatar() {
+    try {
+        const response = await fetch('/api/user/info/');
+        const data = await response.json();
+        if ((data.success || data.code === 200) && data.data && data.data.avatar) {
+            const img = document.getElementById('avatarImg');
+            const placeholder = document.getElementById('avatarPlaceholder');
+            img.src = data.data.avatar;
+            img.classList.remove('hidden');
+            placeholder.classList.add('hidden');
+            currentAvatarUrl = data.data.avatar;
+            document.getElementById('removeAvatarBtn').classList.remove('hidden');
+        }
+    } catch (e) {
+        console.error('加载头像失败:', e);
+    }
+}
+
+// 打开裁剪弹窗
+function openCropModal(src) {
+    const modal = document.getElementById('cropModal');
+    const cropImage = document.getElementById('cropImage');
+    const cropBoxImage = document.getElementById('cropBoxImage');
+    const container = document.getElementById('cropContainer');
+    const box = document.getElementById('cropBox');
+    const guide = document.getElementById('cropGuide');
+
+    modal.classList.remove('hidden');
+
+    cropImage.onload = function() {
+        // 居中显示图片，允许放大以填满容器
+        const cw = container.clientWidth;
+        const ch = container.clientHeight;
+        const iw = cropImage.naturalWidth;
+        const ih = cropImage.naturalHeight;
+        // 图片至少要填满容器的80%
+        const scale = Math.max(Math.min(cw * 0.9 / iw, ch * 0.9 / ih), Math.min(cw / iw, ch / ih));
+        const displayW = iw * scale;
+        const displayH = ih * scale;
+
+        cropImage.style.width = displayW + 'px';
+        cropImage.style.height = displayH + 'px';
+        cropState.imgX = (cw - displayW) / 2;
+        cropState.imgY = (ch - displayH) / 2;
+        cropImage.style.left = cropState.imgX + 'px';
+        cropImage.style.top = cropState.imgY + 'px';
+
+        // 裁剪框居中，大小不超过图片
+        const maxSize = Math.min(displayW, displayH, 200);
+        document.getElementById('cropSize').value = Math.round(maxSize);
+        box.style.width = maxSize + 'px';
+        box.style.height = maxSize + 'px';
+        box.style.left = (cw - maxSize) / 2 + 'px';
+        box.style.top = (ch - maxSize) / 2 + 'px';
+
+        // 同步引导框
+        guide.style.width = maxSize + 'px';
+        guide.style.height = maxSize + 'px';
+        guide.style.left = (cw - maxSize) / 2 + 'px';
+        guide.style.top = (ch - maxSize) / 2 + 'px';
+
+        cropBoxImage.src = src;
+        cropBoxImage.style.width = displayW + 'px';
+        cropBoxImage.style.height = displayH + 'px';
+        updateCropBoxImage();
+    };
+    cropImage.src = src;
+    cropBoxImage.src = src;
+}
+
+// 更新裁剪框内的图片位置
+function updateCropBoxImage() {
+    const box = document.getElementById('cropBox');
+    const cropBoxImage = document.getElementById('cropBoxImage');
+    const guide = document.getElementById('cropGuide');
+    const boxX = parseInt(box.style.left);
+    const boxY = parseInt(box.style.top);
+    cropBoxImage.style.left = (cropState.imgX - boxX) + 'px';
+    cropBoxImage.style.top = (cropState.imgY - boxY) + 'px';
+    // 同步引导框位置
+    guide.style.left = boxX + 'px';
+    guide.style.top = boxY + 'px';
+    guide.style.width = box.style.width;
+    guide.style.height = box.style.height;
+}
+
+// 确认裁剪
+function confirmCrop() {
+    const container = document.getElementById('cropContainer');
+    const cropImage = document.getElementById('cropImage');
+    const box = document.getElementById('cropBox');
+    // 使用裁剪框的实际大小，而不是滑块值
+    const size = parseInt(box.style.width);
+
+    const canvas = document.createElement('canvas');
+    canvas.width = 200;
+    canvas.height = 200;
+    const ctx = canvas.getContext('2d');
+
+    const iw = cropImage.naturalWidth;
+    const ih = cropImage.naturalHeight;
+    const displayW = parseFloat(cropImage.style.width);
+    const displayH = parseFloat(cropImage.style.height);
+    const scale = iw / displayW;
+
+    const boxX = parseInt(box.style.left);
+    const boxY = parseInt(box.style.top);
+
+    const sx = (boxX - cropState.imgX) * scale;
+    const sy = (boxY - cropState.imgY) * scale;
+    const sw = size * scale;
+    const sh = size * scale;
+
+    // 检查参数是否有效
+    if (sw <= 0 || sh <= 0 || sx < 0 || sy < 0) {
+        console.error('裁剪参数无效');
+        showToast('裁剪失败，请重试', 'error');
+        cancelCrop();
+        return;
+    }
+
+    ctx.drawImage(cropImage, sx, sy, sw, sh, 0, 0, 200, 200);
+
+    const dataUrl = canvas.toDataURL('image/png');
+    currentAvatarUrl = dataUrl;
+
+    // 将 canvas 转为 blob 用于上传
+    canvas.toBlob(function(blob) {
+        window._avatarBlob = blob;
+    }, 'image/png');
+
+    // 关闭弹窗
+    document.getElementById('cropModal').classList.add('hidden');
+
+    // 更新页面预览（头像设置区域）
+    const previewContainer = document.getElementById('avatarPreview');
+    previewContainer.innerHTML = '<img id="avatarImg" src="' + dataUrl + '" alt="头像" class="absolute inset-0 w-full h-full object-cover" style="border-radius: 50%;">';
+
+    // 更新导航栏头像预览
+    const navAvatarImg = document.getElementById('navAvatarImg');
+    const navAvatarPlaceholder = document.getElementById('navAvatarPlaceholder');
+    if (navAvatarImg) {
+        navAvatarImg.src = dataUrl;
+        navAvatarImg.classList.remove('hidden');
+    }
+    if (navAvatarPlaceholder) {
+        navAvatarPlaceholder.classList.add('hidden');
+    }
+
+    // 显示移除按钮
+    const removeBtn = document.getElementById('removeAvatarBtn');
+    if (removeBtn) {
+        removeBtn.classList.remove('hidden');
+    }
+
+    showToast('裁剪成功，点击保存修改生效', 'success');
+}
+
+// 取消裁剪
+function cancelCrop() {
+    document.getElementById('cropModal').classList.add('hidden');
+    window._avatarBlob = null;
+}
+
+// 移除头像
+function removeAvatar() {
+    const img = document.getElementById('avatarImg');
+    const placeholder = document.getElementById('avatarPlaceholder');
+    img.src = '';
+    img.classList.add('hidden');
+    placeholder.classList.remove('hidden');
+    document.getElementById('removeAvatarBtn').classList.add('hidden');
+    currentAvatarUrl = '';
+    window._avatarBlob = null;
+    document.getElementById('avatarInput').value = '';
+}
+
+// 检查昵称可用性
+async function checkNickname() {
+    const nickname = document.getElementById('nickname').value.trim();
+    const hint = document.getElementById('nicknameHint');
+    const btn = document.getElementById('checkNicknameBtn');
+
+    if (!nickname) {
+        hint.textContent = '请输入昵称';
+        hint.className = 'text-xs text-red-400 mt-2';
+        return;
+    }
+
+    if (nickname === originalNickname) {
+        hint.textContent = '当前昵称，无需修改';
+        hint.className = 'text-xs text-green-400 mt-2';
+        nicknameAvailable = true;
+        return;
+    }
+
+    btn.textContent = '检查中...';
+    btn.disabled = true;
+
+    try {
+        const response = await fetch('/api/user/check-nickname/?nickname=' + encodeURIComponent(nickname));
+        const data = await response.json();
+        if (data.available) {
+            hint.textContent = '昵称可用';
+            hint.className = 'text-xs text-green-400 mt-2';
+            nicknameAvailable = true;
+        } else {
+            hint.textContent = '该昵称已被使用';
+            hint.className = 'text-xs text-red-400 mt-2';
+            nicknameAvailable = false;
+        }
+    } catch (e) {
+        hint.textContent = '检查失败，请重试';
+        hint.className = 'text-xs text-red-400 mt-2';
+    } finally {
+        btn.textContent = '检查可用性';
+        btn.disabled = false;
+    }
+}
+
+// 保存个人资料
+async function saveProfile() {
+    const nickname = document.getElementById('nickname').value.trim();
+
+    if (!nickname) {
+        showToast('请输入昵称', 'error');
+        return;
+    }
+    if (nickname.length > 20) {
+        showToast('昵称不能超过20个字符', 'error');
+        return;
+    }
+
+    // 昵称改了但没检查可用性
+    if (nickname !== originalNickname && !nicknameAvailable) {
+        showToast('请先检查昵称可用性', 'error');
+        return;
+    }
+
+    const saveBtn = document.getElementById('saveBtn');
+    saveBtn.disabled = true;
+    saveBtn.innerHTML = '<i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i> 保存中...';
+    lucide.createIcons();
+
+    try {
+        let avatarUrl = currentAvatarUrl;
+
+        // 如果有裁剪后的 blob，先上传
+        if (window._avatarBlob) {
+            try {
+                avatarUrl = await uploadAvatar(window._avatarBlob);
+            } catch (uploadError) {
+                console.error('上传失败:', uploadError);
+                // 上传失败时使用 base64 数据
+                showToast('图片上传失败，将使用本地预览', 'error');
+            }
+        }
+
+        // 更新个人资料
+        const response = await fetch('/api/user/profile/', {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': getCookie('csrftoken')
+            },
+            body: JSON.stringify({
+                nickname: nickname,
+                avatar: avatarUrl
+            })
+        });
+
+        const data = await response.json();
+        if (data.success || data.code === 200) {
+            showToast('保存成功', 'success');
+            originalNickname = nickname;
+            nicknameAvailable = true;
+            window._avatarBlob = null;
+            setTimeout(() => location.reload(), 1000);
+        } else {
+            showToast(data.message || '保存失败', 'error');
+        }
+    } catch (e) {
+        showToast('保存失败: ' + e.message, 'error');
+    } finally {
+        saveBtn.disabled = false;
+        saveBtn.innerHTML = '<i data-lucide="save" class="w-4 h-4"></i> 保存修改';
+        lucide.createIcons();
+    }
+}
+
+// 上传头像
+async function uploadAvatar(blob) {
+    const formData = new FormData();
+    // 将 Blob 转换为 File 对象，并指定正确的 MIME 类型
+    const file = new File([blob], 'avatar.png', { type: 'image/png' });
+    formData.append('file', file);
+    formData.append('type', 'avatar');
+
+    const response = await fetch('/api/upload/', {
+        method: 'POST',
+        headers: { 'X-CSRFToken': getCookie('csrftoken') },
+        body: formData
+    });
+
+    const data = await response.json();
+    if (data.success && data.url) {
+        return data.url;
+    }
+    throw new Error(data.message || '上传失败');
+}
+
+// 显示提示消息
+function showToast(message, type) {
+    const toast = document.getElementById('toast');
+    toast.textContent = message;
+    toast.className = 'fixed top-4 right-4 px-6 py-3 rounded-xl transition-all transform z-50';
+    toast.classList.add(type === 'success' ? 'bg-green-500/90' : 'bg-red-500/90', 'text-white');
+    setTimeout(() => toast.classList.remove('translate-x-full'), 10);
+    setTimeout(() => {
+        toast.classList.add('translate-x-full');
+        setTimeout(() => toast.classList.add('hidden'), 300);
+    }, 3000);
+}
+
+function getCookie(name) {
+    let cookieValue = null;
+    if (document.cookie && document.cookie !== '') {
+        const cookies = document.cookie.split(';');
+        for (let i = 0; i < cookies.length; i++) {
+            const cookie = cookies[i].trim();
+            if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                break;
+            }
+        }
+    }
+    return cookieValue;
+}
+</script>
+{% endblock %}

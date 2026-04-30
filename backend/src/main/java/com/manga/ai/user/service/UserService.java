@@ -114,4 +114,20 @@ public interface UserService {
      * @return 是否足够
      */
     boolean hasSufficientCredits(Long userId, int amount);
+
+    /**
+     * 更新用户资料（昵称、头像）
+     * @param userId 用户ID
+     * @param nickname 昵称
+     * @param avatar 头像URL
+     */
+    void updateProfile(Long userId, String nickname, String avatar);
+
+    /**
+     * 检查昵称是否可用
+     * @param nickname 昵称
+     * @param currentUserId 当前用户ID（排除自己）
+     * @return 是否可用
+     */
+    boolean isNicknameAvailable(String nickname, Long currentUserId);
 }

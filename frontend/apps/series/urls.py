@@ -167,6 +167,21 @@ urlpatterns = [
     # 积分记录API
     path('api/credits/records/', views.credit_records_api, name='credit_records_api'),
 
+    # 兑换码API
+    path('api/credits/redeem/', views.credits_redeem, name='credits_redeem'),
+
     # 用户信息API
     path('api/user/info/', views.user_info_api, name='user_info_api'),
+
+    # 用户设置页面
+    path('user/settings/', views.user_settings, name='user_settings'),
+
+    # 更新用户资料API
+    path('api/user/profile/', views.user_profile_update, name='user_profile_update'),
+
+    # 文件上传API
+    path('api/upload/', views.file_upload, name='file_upload'),
+
+    # 检查昵称可用性API
+    path('api/user/check-nickname/', views.user_check_nickname, name='user_check_nickname'),
 ]

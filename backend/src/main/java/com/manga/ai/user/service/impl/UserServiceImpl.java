@@ -267,6 +267,7 @@ public class UserServiceImpl implements UserService {
         vo.setStatus(user.getStatus());
         vo.setCreatedAt(user.getCreatedAt());
         vo.setLastLoginAt(user.getLastLoginAt());
+        vo.setAvatar(user.getAvatar());
         vo.setToken(token);
         return vo;
     }
@@ -352,6 +353,47 @@ public class UserServiceImpl implements UserService {
     public boolean hasSufficientCredits(Long userId, int amount) {
         User user = userMapper.selectById(userId);
         return user != null && user.getCredits() != null && user.getCredits() >= amount;
+    }
+
+    @Override
+    public void updateProfile(Long userId, String nickname, String avatar) {
+        User user = userMapper.selectById(userId);
+        if (user == null) {
+            throw new BusinessException("用户不存在");
+        }
+
+        // 更新昵称
+        if (nickname != null && !nickname.trim().isEmpty()) {
+            user.setNickname(nickname.trim());
+        }
+
+        // 更新头像
+        if (avatar != null) {
+            user.setAvatar(avatar);
+        }
+
+        user.setUpdatedAt(LocalDateTime.now());
+        userMapper.updateById(user);
+
+        log.info("用户资料更新成功: userId={}, nickname={}, avatar={}", userId, nickname, avatar != null ? "已更新" : "未更新");
+    }
+
+    @Override
+    public boolean isNicknameAvailable(String nickname, Long currentUserId) {
+        if (nickname == null || nickname.trim().isEmpty()) {
+            return false;
+        }
+
+        LambdaQueryWrapper<User> wrapper = new LambdaQueryWrapper<>();
+        wrapper.eq(User::getNickname, nickname.trim());
+
+        // 排除当前用户
+        if (currentUserId != null) {
+            wrapper.ne(User::getId, currentUserId);
+        }
+
+        User existingUser = userMapper.selectOne(wrapper);
+        return existingUser == null;
     }
 
     /**

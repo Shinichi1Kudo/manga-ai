@@ -1043,6 +1043,26 @@ def credit_records_api(request):
         return JsonResponse({'code': 400, 'message': e.message}, status=400)
 
 
+@csrf_exempt
+@require_http_methods(["POST"])
+def credits_redeem(request):
+    """兑换积分API"""
+    client = get_client(request)
+    try:
+        data = json.loads(request.body)
+        code = data.get('code', '').strip()
+
+        if not code:
+            return JsonResponse({'code': 400, 'message': '请输入兑换码'}, status=400)
+
+        result = client.post('/v1/credits/redeem', {'code': code})
+        return JsonResponse({'code': 200, 'data': result})
+    except BackendAPIError as e:
+        return JsonResponse({'code': 400, 'message': e.message}, status=400)
+    except Exception as e:
+        return JsonResponse({'code': 500, 'message': str(e)}, status=500)
+
+
 def user_info_api(request):
     """用户信息API"""
     client = get_client(request)
@@ -1056,3 +1076,78 @@ def user_info_api(request):
         return response
     except BackendAPIError as e:
         return JsonResponse({'code': 400, 'message': e.message}, status=400)
+
+
+def user_settings(request):
+    """用户设置页面"""
+    return render(request, 'user/settings.html')
+
+
+@csrf_exempt
+@require_http_methods(["PUT"])
+def user_profile_update(request):
+    """更新用户资料API"""
+    client = get_client(request)
+    try:
+        data = json.loads(request.body)
+        nickname = data.get('nickname')
+        avatar = data.get('avatar')
+
+        result = client.put('/v1/user/profile', {'nickname': nickname, 'avatar': avatar})
+
+        # 更新 session 中的昵称
+        if nickname:
+            request.session['nickname'] = nickname
+
+        return JsonResponse({'code': 200, 'data': result, 'success': True})
+    except BackendAPIError as e:
+        return JsonResponse({'code': 400, 'message': e.message, 'success': False}, status=400)
+    except Exception as e:
+        return JsonResponse({'code': 500, 'message': str(e), 'success': False}, status=500)
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def file_upload(request):
+    """文件上传API"""
+    client = get_client(request)
+    try:
+        file = request.FILES.get('file')
+        if not file:
+            return JsonResponse({'success': False, 'message': '未选择文件'}, status=400)
+
+        # 检查文件类型
+        allowed_types = ['image/jpeg', 'image/png', 'image/gif']
+        if file.content_type not in allowed_types:
+            return JsonResponse({'success': False, 'message': '只支持 JPG、PNG、GIF 格式'}, status=400)
+
+        # 检查文件大小 (最大 5MB)
+        if file.size > 5 * 1024 * 1024:
+            return JsonResponse({'success': False, 'message': '文件大小不能超过5MB'}, status=400)
+
+        # 调用后端上传接口
+        files = {'file': (file.name, file.read(), file.content_type)}
+        result = client.upload('/v1/upload', files)
+
+        return JsonResponse({'success': True, 'url': result.get('url')})
+    except BackendAPIError as e:
+        return JsonResponse({'success': False, 'message': e.message}, status=400)
+    except Exception as e:
+        return JsonResponse({'success': False, 'message': str(e)}, status=500)
+
+
+@require_http_methods(["GET"])
+def user_check_nickname(request):
+    """检查昵称是否可用API"""
+    nickname = request.GET.get('nickname', '').strip()
+    if not nickname:
+        return JsonResponse({'available': False, 'message': '请输入昵称'})
+
+    client = get_client(request)
+    try:
+        result = client.get(f'/v1/user/check-nickname?nickname={nickname}')
+        return JsonResponse(result)
+    except BackendAPIError as e:
+        return JsonResponse({'available': False, 'message': e.message}, status=400)
+    except Exception as e:
+        return JsonResponse({'available': False, 'message': str(e)}, status=500)

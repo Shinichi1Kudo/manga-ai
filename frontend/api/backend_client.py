@@ -103,6 +103,20 @@ class BackendClient:
         )
         return self._handle_response(response)
 
+    def upload(self, endpoint: str, files: Dict) -> Any:
+        """上传文件"""
+        # 上传文件时需要移除 Content-Type，让 requests 自动设置
+        headers = dict(self.session.headers)
+        headers.pop('Content-Type', None)
+
+        response = requests.post(
+            self._build_url(endpoint),
+            files=files,
+            headers=headers,
+            timeout=self.timeout
+        )
+        return self._handle_response(response)
+
 
 class BackendAPIError(Exception):
     """后端 API 错误"""
