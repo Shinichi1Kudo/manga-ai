@@ -624,13 +624,35 @@
                 <textarea id="regeneratePrompt" class="input-modern" rows="4" placeholder="输入新的提示词..."></textarea>
             </div>
             <!-- 人物精细三视图选项 -->
-            <div class="flex items-center gap-3 p-3 rounded-lg bg-violet-500/10 border border-violet-500/20">
-                <input type="checkbox" id="regenerateDetailedView" class="w-5 h-5 rounded accent-violet-500" onchange="toggleRegenerateDetailedView(this)">
-                <label for="regenerateDetailedView" class="text-sm cursor-pointer">
-                    <span class="text-white/80">人物精细三视图（含具体细节）</span>
-                    <span class="text-xs text-white/40 block">勾选后自动选择16:9比例，禁用其他比例和风格选择</span>
+            <div class="p-3 rounded-xl bg-violet-500/10 border border-violet-500/30">
+                <label class="flex items-center gap-3 cursor-pointer">
+                    <input type="checkbox" id="regenerateDetailedView" class="w-5 h-5 rounded accent-violet-500" onchange="toggleRegenerateDetailedView(this)">
+                    <span class="text-sm font-medium text-violet-300">
+                        <i data-lucide="layout-grid" class="w-4 h-4 inline mr-1"></i>人物精细三视图（含具体细节）
+                    </span>
                 </label>
+                <p class="text-xs text-white/40 mt-2 ml-8">勾选后自动使用16:9比例，禁用风格选择，生成包含三视图、头部角度、细节特写的完整角色设定板</p>
             </div>
+
+            <!-- 大头特写+三视图选项 -->
+            <div class="p-3 rounded-xl bg-cyan-500/10 border border-cyan-500/30">
+                <label class="flex items-center gap-3 cursor-pointer">
+                    <input type="checkbox" id="regenerateFaceCloseupView" class="w-5 h-5 rounded accent-cyan-500" onchange="toggleRegenerateFaceCloseupView(this)">
+                    <span class="text-sm font-medium text-cyan-300">
+                        <i data-lucide="user-circle" class="w-4 h-4 inline mr-1"></i>人物三视图（含大头特写）
+                    </span>
+                </label>
+                <p class="text-xs text-white/40 mt-2 ml-8">勾选后生成左边大头特写+右边三视图布局，更好展示面部细节</p>
+            </div>
+
+            <!-- 布局选项警告提示 -->
+            <div id="regenerateLayoutWarning" class="hidden p-3 rounded-xl bg-amber-500/10 border border-amber-500/30">
+                <div class="flex items-start gap-2">
+                    <i data-lucide="alert-triangle" class="w-4 h-4 text-amber-400 mt-0.5 flex-shrink-0"></i>
+                    <p class="text-xs text-amber-300">选择以上布局选项后，后续的<span class="font-medium">角色换装效果可能不完美</span>。如需最佳换装体验，建议不勾选这些选项。</p>
+                </div>
+            </div>
+
             <!-- 图片设置 -->
             <div class="grid grid-cols-3 gap-4">
                 <div>
@@ -1530,6 +1552,12 @@ function showRegenerateModal(roleId, currentPrompt) {
     document.getElementById('regenerateDetailedView').checked = false;
     toggleRegenerateDetailedView(document.getElementById('regenerateDetailedView'));
 
+    // 重置大头特写复选框
+    document.getElementById('regenerateFaceCloseupView').checked = false;
+
+    // 隐藏警告提示
+    document.getElementById('regenerateLayoutWarning').classList.add('hidden');
+
     // 清空参考图选择器（因为没有资产）
     const selector = document.getElementById('regenerateImageSelector');
     selector.innerHTML = '<p class="text-white/40 text-sm col-span-4 text-center">无参考图片，将使用提示词生成</p>';
@@ -1881,6 +1909,16 @@ function regenerateClothing(roleId, clothingId) {
     document.getElementById('regeneratePrompt').value = customPrompt;
     document.getElementById('regenerateReferenceUrl').value = '';
 
+    // 重置精细三视图复选框
+    document.getElementById('regenerateDetailedView').checked = false;
+    toggleRegenerateDetailedView(document.getElementById('regenerateDetailedView'));
+
+    // 重置大头特写复选框
+    document.getElementById('regenerateFaceCloseupView').checked = false;
+
+    // 隐藏警告提示
+    document.getElementById('regenerateLayoutWarning').classList.add('hidden');
+
     // 填充参考图选择器 - 显示所有角色的服装
     const selector = document.getElementById('regenerateImageSelector');
     selector.innerHTML = '';
@@ -1966,6 +2004,7 @@ function submitRegenerate() {
     let prompt = document.getElementById('regeneratePrompt').value.trim();
     const referenceUrl = document.getElementById('regenerateReferenceUrl').value;
     const detailedView = document.getElementById('regenerateDetailedView').checked;
+    const faceCloseupView = document.getElementById('regenerateFaceCloseupView').checked;
 
     // 保存用户原始输入的提示词
     let originalPrompt = prompt;
@@ -1995,8 +2034,8 @@ function submitRegenerate() {
         return;
     }
 
-    // 精细三视图模式下不需要选择风格
-    if (!detailedView && !styleKey) {
+    // 精细三视图模式或大头特写模式下不需要选择风格
+    if (!detailedView && !faceCloseupView && !styleKey) {
         showToast('请选择图片风格', 'error');
         return;
     }
@@ -2108,7 +2147,8 @@ function submitRegenerate() {
             aspectRatio: aspectRatio,
             quality: quality,
             styleKeywords: styleKeywords,
-            detailedView: detailedView
+            detailedView: detailedView,
+            faceCloseupView: faceCloseupView
         })
     })
     .then(response => response.json())
@@ -2917,8 +2957,16 @@ function toggleNewRoleFaceCloseupView(checkbox) {
 function toggleRegenerateDetailedView(checkbox) {
     const aspectSelect = document.getElementById('regenerateAspectRatio');
     const styleSelect = document.getElementById('regenerateStyle');
+    const faceCloseupCheckbox = document.getElementById('regenerateFaceCloseupView');
+    const warningDiv = document.getElementById('regenerateLayoutWarning');
 
     if (checkbox.checked) {
+        // 互斥：取消大头特写选项
+        faceCloseupCheckbox.checked = false;
+
+        // 显示警告提示
+        warningDiv.classList.remove('hidden');
+
         // 自动选择16:9
         aspectSelect.value = '16:9';
         // 禁用其他比例选项
@@ -2935,6 +2983,11 @@ function toggleRegenerateDetailedView(checkbox) {
         styleSelect.style.opacity = '0.6';
         styleSelect.style.cursor = 'not-allowed';
     } else {
+        // 隐藏警告提示（如果另一个选项也没勾选）
+        if (!faceCloseupCheckbox.checked) {
+            warningDiv.classList.add('hidden');
+        }
+
         // 恢复所有比例选项
         aspectSelect.querySelectorAll('option').forEach(opt => {
             opt.disabled = false;
@@ -2948,6 +3001,36 @@ function toggleRegenerateDetailedView(checkbox) {
         styleSelect.value = '';
         styleSelect.style.opacity = '1';
         styleSelect.style.cursor = '';
+    }
+}
+
+// 切换重新生成大头特写+三视图模式
+function toggleRegenerateFaceCloseupView(checkbox) {
+    const detailedViewCheckbox = document.getElementById('regenerateDetailedView');
+    const warningDiv = document.getElementById('regenerateLayoutWarning');
+    const aspectSelect = document.getElementById('regenerateAspectRatio');
+    const styleSelect = document.getElementById('regenerateStyle');
+
+    if (checkbox.checked) {
+        // 互斥：取消精细三视图选项
+        detailedViewCheckbox.checked = false;
+        // 触发精细三视图的取消逻辑，恢复比例和风格选项
+        aspectSelect.querySelectorAll('option').forEach(opt => {
+            opt.disabled = false;
+            opt.style.color = '';
+        });
+        aspectSelect.style.opacity = '1';
+        styleSelect.disabled = false;
+        styleSelect.style.opacity = '1';
+        styleSelect.style.cursor = '';
+
+        // 显示警告提示
+        warningDiv.classList.remove('hidden');
+    } else {
+        // 隐藏警告提示（如果另一个选项也没勾选）
+        if (!detailedViewCheckbox.checked) {
+            warningDiv.classList.add('hidden');
+        }
     }
 }
 

@@ -311,15 +311,28 @@ function confirmCrop() {
     const sw = size * scale;
     const sh = size * scale;
 
-    // 检查参数是否有效
-    if (sw <= 0 || sh <= 0 || sx < 0 || sy < 0) {
-        console.error('裁剪参数无效');
+    // 检查裁剪尺寸是否有效
+    if (sw <= 0 || sh <= 0) {
+        console.error('裁剪尺寸无效:', sw, sh);
         showToast('裁剪失败，请重试', 'error');
         cancelCrop();
         return;
     }
 
-    ctx.drawImage(cropImage, sx, sy, sw, sh, 0, 0, 200, 200);
+    // 调整裁剪区域，确保不超出图片边界
+    let adjustedSx = Math.max(0, sx);
+    let adjustedSy = Math.max(0, sy);
+    let adjustedSw = Math.min(sw, iw - adjustedSx);
+    let adjustedSh = Math.min(sh, ih - adjustedSy);
+
+    if (adjustedSw <= 0 || adjustedSh <= 0) {
+        console.error('调整后裁剪区域无效:', adjustedSw, adjustedSh);
+        showToast('裁剪区域超出图片范围，请调整位置', 'error');
+        cancelCrop();
+        return;
+    }
+
+    ctx.drawImage(cropImage, adjustedSx, adjustedSy, adjustedSw, adjustedSh, 0, 0, 200, 200);
 
     const dataUrl = canvas.toDataURL('image/png');
     currentAvatarUrl = dataUrl;
