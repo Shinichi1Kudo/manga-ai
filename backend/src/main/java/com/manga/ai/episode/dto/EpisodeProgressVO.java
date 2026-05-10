@@ -23,6 +23,8 @@ public class EpisodeProgressVO implements Serializable {
     private Boolean assetsReady;  // 资产解析完成，等待用户选择
     private Boolean assetsConfirmed;  // 用户已确认资产选择
     private Boolean shotsParsing;  // 正在解析分镜（资产已确认）
+    private Boolean shotParseFailed;  // 分镜解析失败，可重新选择资产后重试
+    private String errorMessage;  // 解析失败原因
     private List<ShotProgress> shots;  // 分镜进度列表
 
     /**
@@ -32,6 +34,7 @@ public class EpisodeProgressVO implements Serializable {
     public static class ShotProgress implements Serializable {
         private Long id;
         private Integer generationStatus;
+        private String generationStartTime;
     }
 
     public String getStatusDesc() {

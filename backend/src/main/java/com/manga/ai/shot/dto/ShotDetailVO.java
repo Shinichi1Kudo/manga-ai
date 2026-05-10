@@ -21,6 +21,7 @@ public class ShotDetailVO implements Serializable {
     private String shotName;
     private Long sceneId;
     private String sceneName;
+    private String sceneAssetUrl;  // 场景资产缩略图URL（实时查询）
     private String description;
     private String cameraAngle;
     private String cameraMovement;

@@ -18,6 +18,11 @@ public class ShotUpdateRequest implements Serializable {
     private String description;
 
     /**
+     * 剧情是否由用户主动编辑
+     */
+    private Boolean descriptionEdited;
+
+    /**
      * 开始时间（秒）
      */
     private Integer startTime;
@@ -71,6 +76,11 @@ public class ShotUpdateRequest implements Serializable {
      * 场景名称
      */
     private String sceneName;
+
+    /**
+     * 场景是否由用户主动编辑
+     */
+    private Boolean sceneEdited;
 
     /**
      * 用户修改的提示词

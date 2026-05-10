@@ -28,6 +28,20 @@ public interface ShotVideoAssetMapper extends BaseMapper<ShotVideoAsset> {
     ShotVideoAsset selectActiveByShotId(@Param("shotId") Long shotId);
 
     /**
+     * 批量获取分镜当前激活的视频
+     */
+    @Select({
+            "<script>",
+            "SELECT * FROM shot_video_asset",
+            "WHERE is_active = 1 AND shot_id IN",
+            "<foreach collection='shotIds' item='shotId' open='(' separator=',' close=')'>",
+            "#{shotId}",
+            "</foreach>",
+            "</script>"
+    })
+    List<ShotVideoAsset> selectActiveByShotIds(@Param("shotIds") List<Long> shotIds);
+
+    /**
      * 获取分镜最大版本号
      */
     @Select("SELECT MAX(version) FROM shot_video_asset WHERE shot_id = #{shotId}")

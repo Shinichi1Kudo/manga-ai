@@ -27,5 +27,9 @@ public class SeriesRoleAssetsVO implements Serializable {
         private Integer clothingId;
         private String clothingName;
         private String assetUrl;
+        private Long assetId;
+        private Integer version;
+        private Boolean active;
+        private Boolean defaultClothing;
     }
 }

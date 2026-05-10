@@ -2,10 +2,13 @@ package com.manga.ai.shot.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.manga.ai.asset.entity.RoleAsset;
 import com.manga.ai.asset.mapper.RoleAssetMapper;
 import com.manga.ai.common.constants.CreditConstants;
 import com.manga.ai.common.enums.CreditUsageType;
+import com.manga.ai.common.enums.PropStatus;
 import com.manga.ai.common.enums.ShotGenerationStatus;
 import com.manga.ai.common.enums.ShotStatus;
 import com.manga.ai.common.exception.BusinessException;
@@ -72,6 +75,9 @@ import java.util.stream.Collectors;
 @Slf4j
 @Service
 public class ShotServiceImpl implements ShotService {
+
+    private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+    private static final TypeReference<List<Map<String, Object>>> PROP_JSON_TYPE = new TypeReference<>() {};
 
     private final ShotMapper shotMapper;
     private final ShotCharacterMapper shotCharacterMapper;
@@ -250,6 +256,16 @@ public class ShotServiceImpl implements ShotService {
             sceneMap = scenes.stream().collect(Collectors.toMap(Scene::getId, s -> s));
         }
 
+        // 批量查询场景资产
+        Map<Long, SceneAsset> sceneAssetMap = new HashMap<>();
+        if (!sceneIds.isEmpty()) {
+            LambdaQueryWrapper<SceneAsset> saWrapper = new LambdaQueryWrapper<>();
+            saWrapper.in(SceneAsset::getSceneId, sceneIds)
+                    .eq(SceneAsset::getIsActive, 1);
+            List<SceneAsset> sceneAssets = sceneAssetMapper.selectList(saWrapper);
+            sceneAssetMap = sceneAssets.stream().collect(Collectors.toMap(SceneAsset::getSceneId, a -> a, (a, b) -> a));
+        }
+
         // 批量查询分镜角色
         LambdaQueryWrapper<ShotCharacter> scWrapper = new LambdaQueryWrapper<>();
         scWrapper.in(ShotCharacter::getShotId, shotIds);
@@ -287,39 +303,85 @@ public class ShotServiceImpl implements ShotService {
         spWrapper.in(ShotProp::getShotId, shotIds);
         List<ShotProp> allShotProps = shotPropMapper.selectList(spWrapper);
 
-        // 收集道具ID
-        Set<Long> propIds = allShotProps.stream().map(ShotProp::getPropId).collect(Collectors.toSet());
-
-        // 批量查询道具资产
-        Map<Long, PropAsset> propAssetMap = new HashMap<>();
-        if (!propIds.isEmpty()) {
-            LambdaQueryWrapper<PropAsset> paWrapper = new LambdaQueryWrapper<>();
-            paWrapper.in(PropAsset::getPropId, propIds)
-                    .eq(PropAsset::getIsActive, 1);
-            List<PropAsset> propAssets = propAssetMapper.selectList(paWrapper);
-            propAssetMap = propAssets.stream().collect(Collectors.toMap(PropAsset::getPropId, a -> a, (a, b) -> a));
-        }
-
         // 按shotId分组道具
         Map<Long, List<ShotProp>> propsByShotId = allShotProps.stream()
                 .collect(Collectors.groupingBy(ShotProp::getShotId));
 
+        // 查询该系列所有道具，建立道具名称到资产的映射（用于解析 propsJson）
+        Map<Long, String> propIdToNameMap = new HashMap<>();
+        Map<Long, Prop> propByIdMap = new HashMap<>();
+        Map<String, PropAsset> propNameToAssetMap = new HashMap<>();
+        Map<Long, PropAsset> propAssetMap = new HashMap<>();
+        if (!shots.isEmpty()) {
+            Episode episode = shots.get(0).getEpisodeId() != null
+                    ? episodeMapper.selectById(shots.get(0).getEpisodeId())
+                    : null;
+            Long seriesId = episode != null ? episode.getSeriesId() : null;
+            if (seriesId != null) {
+                // 查询该系列所有道具
+                LambdaQueryWrapper<Prop> propQueryWrapper = new LambdaQueryWrapper<>();
+                propQueryWrapper.eq(Prop::getSeriesId, seriesId);
+                List<Prop> allSeriesProps = propMapper.selectList(propQueryWrapper);
+                for (Prop prop : allSeriesProps) {
+                    if (prop.getId() != null && prop.getPropName() != null) {
+                        propIdToNameMap.put(prop.getId(), prop.getPropName());
+                        propByIdMap.put(prop.getId(), prop);
+                    }
+                }
+
+                // 查询这些道具的资产：锁定道具使用系列激活版本，未锁定道具只使用当前剧集版本。
+                if (!allSeriesProps.isEmpty()) {
+                    List<Long> allPropIds = allSeriesProps.stream().map(Prop::getId).collect(Collectors.toList());
+                    LambdaQueryWrapper<PropAsset> paQueryWrapper = new LambdaQueryWrapper<>();
+                    paQueryWrapper.in(PropAsset::getPropId, allPropIds)
+                            .orderByDesc(PropAsset::getIsActive)
+                            .orderByDesc(PropAsset::getVersion)
+                            .orderByDesc(PropAsset::getId);
+                    List<PropAsset> allPropAssets = propAssetMapper.selectList(paQueryWrapper);
+
+                    Map<Long, List<PropAsset>> assetsByPropId = allPropAssets.stream()
+                            .collect(Collectors.groupingBy(PropAsset::getPropId));
+
+                    // 建立道具名称到资产的映射
+                    for (Prop prop : allSeriesProps) {
+                        PropAsset asset = selectVisiblePropAsset(prop, assetsByPropId.getOrDefault(prop.getId(), List.of()), episodeId);
+                        if (asset != null && prop.getPropName() != null) {
+                            propAssetMap.put(prop.getId(), asset);
+                            propNameToAssetMap.put(prop.getPropName(), asset);
+                        }
+                    }
+                }
+            }
+        }
+
         // 最终的Map
         final Map<Long, Scene> finalSceneMap = sceneMap;
+        final Map<Long, SceneAsset> finalSceneAssetMap = sceneAssetMap;
         final Map<Long, Role> finalRoleMap = roleMap;
         final Map<String, RoleAsset> finalAssetMap = assetMap;
         final Map<Long, PropAsset> finalPropAssetMap = propAssetMap;
         final Map<Long, List<ShotProp>> finalPropsByShotId = propsByShotId;
+        final Map<Long, String> finalPropIdToNameMap = propIdToNameMap;
+        final Map<String, PropAsset> finalPropNameToAssetMap = propNameToAssetMap;
 
         // 组装VO
         return shots.stream()
-                .map(shot -> convertToDetailVOOptimized(shot, finalSceneMap, charactersByShotId.getOrDefault(shot.getId(), List.of()), finalRoleMap, finalAssetMap, finalPropsByShotId.getOrDefault(shot.getId(), List.of()), finalPropAssetMap))
+                .map(shot -> convertToDetailVOOptimized(shot, finalSceneMap, finalSceneAssetMap, charactersByShotId.getOrDefault(shot.getId(), List.of()), finalRoleMap, finalAssetMap, finalPropsByShotId.getOrDefault(shot.getId(), List.of()), finalPropAssetMap, finalPropIdToNameMap, finalPropNameToAssetMap))
                 .collect(Collectors.toList());
     }
 
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void updateShot(Long shotId, ShotUpdateRequest request) {
+        if (request.getShotName() != null && isShotNameOnlyUpdate(request)) {
+            int updated = shotMapper.updateShotName(shotId, normalizeShotName(request.getShotName()));
+            if (updated == 0) {
+                throw new BusinessException("分镜不存在");
+            }
+            log.info("更新分镜名称: shotId={}", shotId);
+            return;
+        }
+
         Shot shot = shotMapper.selectById(shotId);
         if (shot == null) {
             throw new BusinessException("分镜不存在");
@@ -327,7 +389,9 @@ public class ShotServiceImpl implements ShotService {
 
         if (request.getDescription() != null) {
             shot.setDescription(request.getDescription());
-            shot.setDescriptionEdited(true);  // 标记用户已编辑剧情
+        }
+        if (request.getDescriptionEdited() != null) {
+            shot.setDescriptionEdited(request.getDescriptionEdited());
         }
         if (request.getStartTime() != null) {
             shot.setStartTime(request.getStartTime());
@@ -357,11 +421,13 @@ public class ShotServiceImpl implements ShotService {
             shot.setSoundEffect(request.getSoundEffect());
         }
         if (request.getShotName() != null) {
-            shot.setShotName(request.getShotName());
+            shot.setShotName(normalizeShotName(request.getShotName()));
         }
         if (request.getSceneName() != null) {
             shot.setSceneName(request.getSceneName());
-            shot.setSceneEdited(true);  // 标记用户已编辑场景
+        }
+        if (request.getSceneEdited() != null) {
+            shot.setSceneEdited(request.getSceneEdited());
         }
         if (request.getUserPrompt() != null) {
             shot.setUserPrompt(request.getUserPrompt());
@@ -376,6 +442,34 @@ public class ShotServiceImpl implements ShotService {
         shot.setUpdatedAt(LocalDateTime.now());
         shotMapper.updateById(shot);
         log.info("更新分镜: shotId={}", shotId);
+    }
+
+    private boolean isShotNameOnlyUpdate(ShotUpdateRequest request) {
+        return request.getShotName() != null
+                && request.getDescription() == null
+                && request.getDescriptionEdited() == null
+                && request.getStartTime() == null
+                && request.getEndTime() == null
+                && request.getDuration() == null
+                && request.getResolution() == null
+                && request.getAspectRatio() == null
+                && request.getShotType() == null
+                && request.getCameraAngle() == null
+                && request.getCameraMovement() == null
+                && request.getSoundEffect() == null
+                && request.getSceneName() == null
+                && request.getSceneEdited() == null
+                && request.getUserPrompt() == null
+                && request.getGenerationStatus() == null
+                && request.getVideoModel() == null;
+    }
+
+    private String normalizeShotName(String shotName) {
+        if (shotName == null) {
+            return null;
+        }
+        String trimmed = shotName.trim();
+        return trimmed.isEmpty() ? null : trimmed;
     }
 
     @Override
@@ -410,6 +504,10 @@ public class ShotServiceImpl implements ShotService {
             log.error("分镜不存在: shotId={}", shotId);
             throw new BusinessException("分镜不存在");
         }
+        if (ShotGenerationStatus.GENERATING.getCode().equals(shot.getGenerationStatus())) {
+            log.info("分镜视频已在生成中，拒绝重复提交: shotId={}", shotId);
+            throw new BusinessException("分镜正在生成中，请等待当前任务完成");
+        }
 
         // 计算并扣除积分
         int requiredCredits = CreditConstants.calculateCredits(shot.getResolution(), shot.getDuration(), shot.getVideoModel());
@@ -422,12 +520,21 @@ public class ShotServiceImpl implements ShotService {
         log.info("积分扣除成功: userId={}, amount={}, shotId={}", userId, requiredCredits, shotId);
 
         // 记录扣除的积分（用于失败时返还）
-        shot.setDeductedCredits(requiredCredits);
-        shot.setGenerationStatus(ShotGenerationStatus.GENERATING.getCode());
-        shot.setGenerationError(null);
-        shot.setGenerationStartTime(LocalDateTime.now());
-        shot.setUpdatedAt(LocalDateTime.now());
-        shotMapper.updateById(shot);
+        LocalDateTime now = LocalDateTime.now();
+        LambdaUpdateWrapper<Shot> updateWrapper = new LambdaUpdateWrapper<>();
+        updateWrapper.eq(Shot::getId, shotId)
+                .ne(Shot::getGenerationStatus, ShotGenerationStatus.GENERATING.getCode())
+                .set(Shot::getDeductedCredits, requiredCredits)
+                .set(Shot::getGenerationStatus, ShotGenerationStatus.GENERATING.getCode())
+                .set(Shot::getGenerationError, null)
+                .set(Shot::getGenerationStartTime, now)
+                .set(Shot::getUpdatedAt, now);
+        int updated = shotMapper.update(null, updateWrapper);
+        if (updated == 0) {
+            userService.refundCredits(userId, requiredCredits, "视频生成重复提交返还-分镜" + shot.getShotNumber(), shotId, "SHOT");
+            log.info("分镜视频生成重复提交，积分已返还: shotId={}, credits={}", shotId, requiredCredits);
+            throw new BusinessException("分镜正在生成中，请等待当前任务完成");
+        }
         log.info("已更新分镜状态为生成中: shotId={}", shotId);
 
         // 通过代理异步执行视频生成（确保真正的异步）
@@ -605,8 +712,8 @@ public class ShotServiceImpl implements ShotService {
      * 转换为详情VO（优化版，使用预查询的数据）
      */
     private ShotDetailVO convertToDetailVOOptimized(Shot shot, Map<Long, Scene> sceneMap,
-            List<ShotCharacter> shotCharacters, Map<Long, Role> roleMap, Map<String, RoleAsset> assetMap,
-            List<ShotProp> shotProps, Map<Long, PropAsset> propAssetMap) {
+            Map<Long, SceneAsset> sceneAssetMap, List<ShotCharacter> shotCharacters, Map<Long, Role> roleMap, Map<String, RoleAsset> assetMap,
+            List<ShotProp> shotProps, Map<Long, PropAsset> propAssetMap, Map<Long, String> propIdToNameMap, Map<String, PropAsset> propNameToAssetMap) {
         ShotDetailVO vo = new ShotDetailVO();
         BeanUtils.copyProperties(shot, vo);
 
@@ -618,6 +725,14 @@ public class ShotServiceImpl implements ShotService {
                 if (scene != null) {
                     vo.setSceneName(scene.getSceneName());
                 }
+            }
+        }
+
+        // 获取场景资产缩略图
+        if (shot.getSceneId() != null) {
+            SceneAsset sceneAsset = sceneAssetMap.get(shot.getSceneId());
+            if (sceneAsset != null) {
+                vo.setSceneAssetUrl(sceneAsset.getFilePath());
             }
         }
 
@@ -655,6 +770,9 @@ public class ShotServiceImpl implements ShotService {
 
         // 处理道具信息（使用预查询的数据）
         List<ShotDetailVO.PropInfo> props = new ArrayList<>();
+        Set<String> addedPropNames = new HashSet<>();
+
+        // 1. 从 ShotProp 表获取道具
         for (ShotProp sp : shotProps) {
             ShotDetailVO.PropInfo propInfo = new ShotDetailVO.PropInfo();
             propInfo.setPropId(sp.getPropId());
@@ -662,16 +780,52 @@ public class ShotServiceImpl implements ShotService {
             propInfo.setPositionY(sp.getPositionY());
             propInfo.setScale(sp.getScale());
             propInfo.setRotation(sp.getRotation());
+            String propName = propIdToNameMap.get(sp.getPropId());
+            if (propName != null) {
+                propInfo.setPropName(propName);
+                addedPropNames.add(propName);
+            }
 
             // 获取道具资产图片
             PropAsset asset = propAssetMap.get(sp.getPropId());
             if (asset != null) {
-                propInfo.setPropName(asset.getFileName());
+                if (propInfo.getPropName() == null) {
+                    propInfo.setPropName(asset.getFileName());
+                    addedPropNames.add(asset.getFileName());
+                }
                 propInfo.setAssetUrl(asset.getFilePath());
             }
 
             props.add(propInfo);
         }
+
+        // 2. 从 propsJson 解析道具（补充 ShotProp 表中没有的道具）
+        if (shot.getPropsJson() != null && !shot.getPropsJson().isEmpty()) {
+            try {
+                List<Map<String, Object>> propsFromJson = OBJECT_MAPPER.readValue(shot.getPropsJson(), PROP_JSON_TYPE);
+
+                for (Map<String, Object> propData : propsFromJson) {
+                    String propName = (String) propData.get("propName");
+                    if (propName != null && !addedPropNames.contains(propName)) {
+                        ShotDetailVO.PropInfo propInfo = new ShotDetailVO.PropInfo();
+                        propInfo.setPropName(propName);
+
+                        // 从 propNameToAssetMap 查找道具资产
+                        PropAsset propAsset = propNameToAssetMap.get(propName);
+                        if (propAsset != null) {
+                            propInfo.setPropId(propAsset.getPropId());
+                            propInfo.setAssetUrl(propAsset.getFilePath());
+                        }
+
+                        props.add(propInfo);
+                        addedPropNames.add(propName);
+                    }
+                }
+            } catch (Exception e) {
+                log.warn("解析propsJson失败: {}", e.getMessage());
+            }
+        }
+
         vo.setProps(props);
 
         return vo;
@@ -865,7 +1019,7 @@ public class ShotServiceImpl implements ShotService {
         List<ShotProp> shotProps = shotPropMapper.selectList(spWrapper);
 
         for (ShotProp sp : shotProps) {
-            PropAsset propAsset = getActivePropAsset(sp.getPropId());
+        PropAsset propAsset = getActivePropAsset(sp.getPropId(), shot.getEpisodeId());
             if (propAsset != null && propAsset.getFilePath() != null) {
                 // 使用道具文件名或道具ID进行匹配
                 boolean matched = false;
@@ -900,6 +1054,10 @@ public class ShotServiceImpl implements ShotService {
             log.error("分镜不存在: shotId={}", shotId);
             throw new BusinessException("分镜不存在");
         }
+        if (ShotGenerationStatus.GENERATING.getCode().equals(shot.getGenerationStatus())) {
+            log.info("分镜视频已在生成中，拒绝重复提交(带参考图): shotId={}", shotId);
+            throw new BusinessException("分镜正在生成中，请等待当前任务完成");
+        }
 
         // 计算并扣除积分
         int requiredCredits = CreditConstants.calculateCredits(shot.getResolution(), shot.getDuration(), shot.getVideoModel());
@@ -912,20 +1070,21 @@ public class ShotServiceImpl implements ShotService {
         log.info("积分扣除成功: userId={}, amount={}, shotId={}", userId, requiredCredits, shotId);
 
         // 更新状态并记录扣除的积分
+        LocalDateTime now = LocalDateTime.now();
         LambdaUpdateWrapper<Shot> updateWrapper = new LambdaUpdateWrapper<>();
         updateWrapper.eq(Shot::getId, shotId)
+                .ne(Shot::getGenerationStatus, ShotGenerationStatus.GENERATING.getCode())
                 .set(Shot::getGenerationStatus, ShotGenerationStatus.GENERATING.getCode())
                 .set(Shot::getGenerationError, null)
                 .set(Shot::getDeductedCredits, requiredCredits)
-                .set(Shot::getGenerationStartTime, LocalDateTime.now())
-                .set(Shot::getUpdatedAt, LocalDateTime.now());
+                .set(Shot::getGenerationStartTime, now)
+                .set(Shot::getUpdatedAt, now);
         int updated = shotMapper.update(null, updateWrapper);
 
         if (updated == 0) {
-            log.error("分镜更新失败: shotId={}", shotId);
-            // 返还积分
-            userService.refundCredits(userId, requiredCredits, "视频生成失败返还-分镜" + shot.getShotNumber(), shotId, "SHOT");
-            throw new BusinessException("分镜更新失败");
+            userService.refundCredits(userId, requiredCredits, "视频生成重复提交返还-分镜" + shot.getShotNumber(), shotId, "SHOT");
+            log.info("分镜视频生成重复提交，积分已返还(带参考图): shotId={}, credits={}", shotId, requiredCredits);
+            throw new BusinessException("分镜正在生成中，请等待当前任务完成");
         }
         log.info("已更新分镜状态为生成中: shotId={}", shotId);
 
@@ -1111,8 +1270,27 @@ public class ShotServiceImpl implements ShotService {
         // 1. 场景 - 解析 @{资产名称} 并添加参考图
         String sceneName = shot.getSceneName();
         if (sceneName != null && !sceneName.isEmpty()) {
-            String processedSceneName = parseSceneMentions(sceneName, seriesId, references);
+            String processedSceneName = parseSceneMentions(sceneName, seriesId, shot.getEpisodeId(), references);
             promptBuilder.append("场景：").append(processedSceneName);
+        }
+
+        String description = shot.getDescription();
+        if (description != null
+                && description.contains("时间【")
+                && description.contains("镜头【")
+                && description.contains("剧情【")
+                && description.contains("音效【")) {
+            String processedDesc = parseAssetMentionsAndAutoMatch(description, seriesId, shot.getEpisodeId(), references);
+            promptBuilder.append(" ").append(processedDesc);
+            result.setPrompt(promptBuilder.toString());
+            result.setReferenceImages(references);
+            log.info("构建的提示词: {}", result.getPrompt());
+            log.info("参考图数量: {}", references.size());
+            for (int i = 0; i < references.size(); i++) {
+                AssetReference ref = references.get(i);
+                log.info("  [图{}] {} - {}", i + 1, ref.getType(), ref.getName());
+            }
+            return result;
         }
 
         // 2. 时间
@@ -1126,9 +1304,8 @@ public class ShotServiceImpl implements ShotService {
         }
 
         // 4. 剧情 - 解析资产引用
-        String description = shot.getDescription();
         if (description != null && !description.isEmpty()) {
-            String processedDesc = parseAssetMentionsAndAutoMatch(description, seriesId, references);
+            String processedDesc = parseAssetMentionsAndAutoMatch(description, seriesId, shot.getEpisodeId(), references);
             promptBuilder.append(" 剧情【").append(processedDesc).append("】");
         }
 
@@ -1154,7 +1331,7 @@ public class ShotServiceImpl implements ShotService {
     /**
      * 解析场景名称中的 @{资产名称} 并转换为 [图N] 格式
      */
-    private String parseSceneMentions(String sceneName, Long seriesId, List<AssetReference> references) {
+    private String parseSceneMentions(String sceneName, Long seriesId, Long episodeId, List<AssetReference> references) {
         java.util.regex.Pattern pattern = java.util.regex.Pattern.compile("@\\{([^}]+)\\}");
         java.util.regex.Matcher matcher = pattern.matcher(sceneName);
 
@@ -1174,7 +1351,7 @@ public class ShotServiceImpl implements ShotService {
                 continue;
             }
 
-            AssetReference assetRef = findAssetByName(assetName, seriesId);
+            AssetReference assetRef = findAssetByName(assetName, seriesId, episodeId);
             if (assetRef != null) {
                 int imageIndex = references.size() + 1;
                 references.add(assetRef);
@@ -1189,7 +1366,7 @@ public class ShotServiceImpl implements ShotService {
         String processed = result.toString().trim();
         // 如果没有找到 @{} 格式，尝试按场景名称匹配
         if (references.isEmpty() && seriesId != null) {
-            AssetReference sceneRef = findAssetByName(sceneName.trim(), seriesId);
+            AssetReference sceneRef = findAssetByName(sceneName.trim(), seriesId, episodeId);
             if (sceneRef != null) {
                 references.add(sceneRef);
                 // 场景名称不需要替换，保持原样
@@ -1221,7 +1398,7 @@ public class ShotServiceImpl implements ShotService {
      * 解析文本中的 @{资产名称} 并转换为 [图N] 格式
      * 同时自动匹配文本中出现的资产名称
      */
-    private String parseAssetMentionsAndAutoMatch(String text, Long seriesId, List<AssetReference> references) {
+    private String parseAssetMentionsAndAutoMatch(String text, Long seriesId, Long episodeId, List<AssetReference> references) {
         // 先处理 @{资产名称} 格式
         java.util.regex.Pattern pattern = java.util.regex.Pattern.compile("@\\{([^}]+)\\}");
         java.util.regex.Matcher matcher = pattern.matcher(text);
@@ -1243,7 +1420,7 @@ public class ShotServiceImpl implements ShotService {
                 continue;
             }
 
-            AssetReference assetRef = findAssetByName(assetName, seriesId);
+            AssetReference assetRef = findAssetByName(assetName, seriesId, episodeId);
             if (assetRef != null) {
                 int imageIndex = references.size() + 1;
                 references.add(assetRef);
@@ -1258,7 +1435,7 @@ public class ShotServiceImpl implements ShotService {
 
         // 如果没有找到 @{} 格式，尝试自动匹配资产名称
         if (references.isEmpty() && seriesId != null) {
-            processedText = autoMatchAssetsInText(processedText, seriesId, references);
+            processedText = autoMatchAssetsInText(processedText, seriesId, episodeId, references);
         }
 
         return processedText;
@@ -1279,7 +1456,7 @@ public class ShotServiceImpl implements ShotService {
     /**
      * 自动匹配文本中出现的资产名称
      */
-    private String autoMatchAssetsInText(String text, Long seriesId, List<AssetReference> references) {
+    private String autoMatchAssetsInText(String text, Long seriesId, Long episodeId, List<AssetReference> references) {
         // 获取该系列所有资产
         List<AssetReference> allAssets = new ArrayList<>();
 
@@ -1318,7 +1495,7 @@ public class ShotServiceImpl implements ShotService {
         propWrapper.eq(Prop::getSeriesId, seriesId);
         List<Prop> props = propMapper.selectList(propWrapper);
         for (Prop prop : props) {
-            PropAsset asset = getActivePropAsset(prop.getId());
+            PropAsset asset = getActivePropAsset(prop.getId(), episodeId);
             if (asset != null && asset.getFilePath() != null) {
                 AssetReference ref = new AssetReference();
                 ref.setType("prop");
@@ -1350,6 +1527,10 @@ public class ShotServiceImpl implements ShotService {
      * 根据名称查找资产（支持模糊匹配场景名称）
      */
     private AssetReference findAssetByName(String name, Long seriesId) {
+        return findAssetByName(name, seriesId, null);
+    }
+
+    private AssetReference findAssetByName(String name, Long seriesId, Long episodeId) {
         log.info("查找资产: name={}, seriesId={}", name, seriesId);
 
         // 1. 查找场景（支持模糊匹配）
@@ -1412,7 +1593,7 @@ public class ShotServiceImpl implements ShotService {
                     .eq(Prop::getPropName, name);
             Prop prop = propMapper.selectOne(propWrapper);
             if (prop != null) {
-                PropAsset asset = getActivePropAsset(prop.getId());
+                PropAsset asset = getActivePropAsset(prop.getId(), episodeId);
                 if (asset != null && asset.getFilePath() != null) {
                     AssetReference ref = new AssetReference();
                     ref.setType("prop");
@@ -1488,11 +1669,40 @@ public class ShotServiceImpl implements ShotService {
      * 获取道具激活资产
      */
     private PropAsset getActivePropAsset(Long propId) {
+        return getActivePropAsset(propId, null);
+    }
+
+    private PropAsset getActivePropAsset(Long propId, Long episodeId) {
+        Prop prop = propMapper.selectById(propId);
         LambdaQueryWrapper<PropAsset> wrapper = new LambdaQueryWrapper<>();
         wrapper.eq(PropAsset::getPropId, propId)
-                .eq(PropAsset::getIsActive, 1)
-                .last("LIMIT 1");
-        return propAssetMapper.selectOne(wrapper);
+                .orderByDesc(PropAsset::getIsActive)
+                .orderByDesc(PropAsset::getVersion)
+                .orderByDesc(PropAsset::getId);
+        List<PropAsset> assets = propAssetMapper.selectList(wrapper);
+        return selectVisiblePropAsset(prop, assets, episodeId);
+    }
+
+    private PropAsset selectVisiblePropAsset(Prop prop, List<PropAsset> assets, Long episodeId) {
+        if (prop == null || assets == null || assets.isEmpty()) {
+            return null;
+        }
+
+        if (PropStatus.LOCKED.getCode().equals(prop.getStatus())) {
+            return assets.stream()
+                    .filter(asset -> asset.getIsActive() != null && asset.getIsActive() == 1)
+                    .findFirst()
+                    .orElse(assets.get(0));
+        }
+
+        if (episodeId == null) {
+            return null;
+        }
+
+        return assets.stream()
+                .filter(asset -> episodeId.equals(asset.getEpisodeId()))
+                .findFirst()
+                .orElse(null);
     }
 
     /**
@@ -1758,30 +1968,45 @@ public class ShotServiceImpl implements ShotService {
     @Transactional
     public void reorderShots(Long episodeId, List<Long> shotIds) {
         log.info("重新排序分镜开始: episodeId={}, shotIds={}", episodeId, shotIds);
-
-        // 验证所有分镜都属于该剧集
-        for (Long shotId : shotIds) {
-            Shot shot = shotMapper.selectById(shotId);
-            if (shot == null || !episodeId.equals(shot.getEpisodeId())) {
-                throw new BusinessException("分镜不存在或不属于该剧集: " + shotId);
-            }
+        if (shotIds == null || shotIds.isEmpty()) {
+            throw new BusinessException("分镜顺序不能为空");
         }
 
-        // 按新顺序更新分镜编号
+        Set<Long> requestIds = new HashSet<>(shotIds);
+        if (requestIds.size() != shotIds.size()) {
+            throw new BusinessException("分镜顺序包含重复分镜");
+        }
+
+        List<Shot> existingShots = shotMapper.selectOrderFieldsByEpisodeId(episodeId);
+        if (existingShots.size() != shotIds.size()) {
+            throw new BusinessException("分镜数量不一致，请刷新后重试");
+        }
+        Set<Long> existingIds = existingShots.stream().map(Shot::getId).collect(Collectors.toSet());
+        if (!existingIds.equals(requestIds)) {
+            throw new BusinessException("分镜不存在或不属于该剧集");
+        }
+
+        Map<Long, Integer> currentNumberById = existingShots.stream()
+                .collect(Collectors.toMap(Shot::getId, Shot::getShotNumber));
+        List<Shot> changedShots = new ArrayList<>();
         for (int i = 0; i < shotIds.size(); i++) {
             Long shotId = shotIds.get(i);
             int newNumber = i + 1;
-
-            // 使用 LambdaUpdateWrapper 只更新 shotNumber 字段
-            LambdaUpdateWrapper<Shot> updateWrapper = new LambdaUpdateWrapper<>();
-            updateWrapper.eq(Shot::getId, shotId)
-                        .set(Shot::getShotNumber, newNumber)
-                        .set(Shot::getUpdatedAt, LocalDateTime.now());
-            int updated = shotMapper.update(null, updateWrapper);
-            log.info("更新分镜编号: shotId={}, newNumber={}, updated={}", shotId, newNumber, updated);
+            if (!Integer.valueOf(newNumber).equals(currentNumberById.get(shotId))) {
+                Shot shot = new Shot();
+                shot.setId(shotId);
+                shot.setShotNumber(newNumber);
+                changedShots.add(shot);
+            }
         }
 
-        log.info("分镜排序完成: episodeId={}", episodeId);
+        if (changedShots.isEmpty()) {
+            log.info("分镜排序未变化: episodeId={}", episodeId);
+            return;
+        }
+
+        int updated = shotMapper.batchUpdateShotNumbers(episodeId, changedShots);
+        log.info("分镜排序完成: episodeId={}, changed={}, updated={}", episodeId, changedShots.size(), updated);
     }
 
     @Override

@@ -47,7 +47,8 @@ public class CleanupTask {
 
     /**
      * 每30秒检查一次卡住的解析任务
-     * 如果解析中状态超过15分钟，自动变为待审核
+     * 如果解析中状态超过15分钟且已有分镜，自动变为待审核。
+     * 分镜解析失败的剧集需要停留在资产选择重试状态，不能伪装成待审核。
      */
     @Scheduled(fixedRate = 30000)
     public void cleanupStuckParsingEpisodes() {
@@ -56,6 +57,10 @@ public class CleanupTask {
             LambdaUpdateWrapper<Episode> updateWrapper = new LambdaUpdateWrapper<>();
             updateWrapper.eq(Episode::getStatus, EpisodeStatus.PARSING.getCode())
                     .lt(Episode::getUpdatedAt, timeout)
+                    .gt(Episode::getTotalShots, 0)
+                    .and(wrapper -> wrapper.isNull(Episode::getParsedScript)
+                            .or()
+                            .notLike(Episode::getParsedScript, "\"shotParseFailed\":true"))
                     .set(Episode::getStatus, EpisodeStatus.PENDING_REVIEW.getCode())
                     .set(Episode::getUpdatedAt, LocalDateTime.now());
 

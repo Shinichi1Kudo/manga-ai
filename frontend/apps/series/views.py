@@ -3,7 +3,9 @@ from django.http import JsonResponse
 from django.views.decorators.http import require_http_methods
 from django.views.decorators.csrf import csrf_exempt
 from django.contrib import messages
+from concurrent.futures import ThreadPoolExecutor
 import json
+import requests
 
 from api.backend_client import BackendClient, BackendAPIError
 
@@ -12,6 +14,60 @@ def get_client(request):
     """获取带认证Token的BackendClient"""
     token = request.session.get('token')
     return BackendClient(token=token)
+
+
+def _parallel_backend_gets(token, endpoints):
+    """并发请求后端接口，避免页面入口串行等待。"""
+    if not endpoints:
+        return {}
+
+    def fetch(endpoint):
+        return BackendClient(token=token).get(endpoint)
+
+    max_workers = min(len(endpoints), 8)
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        future_map = {
+            executor.submit(fetch, endpoint): name
+            for name, endpoint in endpoints.items()
+        }
+        results = {}
+        for future, name in future_map.items():
+            results[name] = future.result()
+        return results
+
+
+def _build_roles_from_role_assets(role_assets):
+    """把系列角色服装资产接口转换成详情页角色卡片需要的轻量结构。"""
+    roles = []
+    for role in (role_assets or {}).get('roles', []) or []:
+        clothings = []
+        asset_url = None
+        for clothing in role.get('clothings', []) or []:
+            clothing_url = clothing.get('assetUrl')
+            if not asset_url and clothing_url:
+                asset_url = clothing_url
+            clothing_id = clothing.get('clothingId')
+            clothings.append({
+                'id': clothing_id,
+                'clothingId': clothing_id,
+                'clothingName': clothing.get('clothingName') or f'服装{clothing_id or ""}',
+                'assetUrl': clothing_url,
+                'assetId': clothing.get('assetId'),
+                'version': clothing.get('version'),
+                'active': clothing.get('active'),
+                'defaultClothing': clothing.get('defaultClothing') if clothing.get('defaultClothing') is not None else clothing_id == 1,
+                'status': 1,
+            })
+
+        roles.append({
+            'id': role.get('id'),
+            'roleName': role.get('roleName'),
+            'assetUrl': asset_url,
+            'status': 3 if asset_url else 0,
+            'statusDesc': '已锁定' if asset_url else '生成中',
+            'clothings': clothings,
+        })
+    return roles
 
 
 def series_list(request):
@@ -32,19 +88,8 @@ def series_list(request):
         except BackendAPIError as e:
             return JsonResponse({'data': [], 'error': e.message}, status=500)
 
-    # 获取第一页系列，提取处理中的系列ID
-    client = get_client(request)
-    try:
-        result = client.get('/v1/series/list?page=1&pageSize=100')
-        series_list = result.get('list', [])
-        # 只提取状态为"处理中"(status=0)的系列ID
-        processing_ids = [s['id'] for s in series_list if s.get('status') == 0]
-    except BackendAPIError:
-        series_list = []
-        processing_ids = []
-
     return render(request, 'series/series_list.html', {
-        'processing_series_ids': json.dumps(processing_ids),
+        'processing_series_ids': json.dumps([]),
     })
 
 
@@ -403,16 +448,23 @@ def episode_delete(request, episode_id):
 
 def episode_detail(request, series_id, episode_id):
     """剧集详情/分镜审核页面"""
-    client = get_client(request)
+    token = request.session.get('token')
     try:
-        series = client.get(f'/v1/series/{series_id}')
-        episode = client.get(f'/v1/episodes/{episode_id}')
-        shots = client.get(f'/v1/shots/episode/{episode_id}')
+        results = _parallel_backend_gets(token, {
+            'series': f'/v1/series/{series_id}',
+            'episode': f'/v1/episodes/{episode_id}?basic=true',
+            'shots': f'/v1/shots/episode/{episode_id}',
+            'scenes': f'/v1/scenes/series/{series_id}',
+            'props': f'/v1/props/series/{series_id}?episodeId={episode_id}',
+            'role_assets': f'/v1/assets/series/{series_id}/role-assets',
+        })
+        series = results.get('series') or {}
+        episode = results.get('episode') or {}
+        shots = results.get('shots') or []
         # 获取场景和道具资产
-        all_scenes = client.get(f'/v1/scenes/series/{series_id}') or []
-        all_props = client.get(f'/v1/props/series/{series_id}') or []
-        # 从 episode API 获取角色数据（已包含 assetUrl）
-        all_roles = episode.get('roles', []) or []
+        all_scenes = results.get('scenes') or []
+        all_props = results.get('props') or []
+        all_roles = _build_roles_from_role_assets(results.get('role_assets') or {})
     except BackendAPIError as e:
         messages.error(request, f'获取剧集信息失败: {e.message}')
         return redirect('series:episode_list', series_id=series_id)
@@ -453,6 +505,7 @@ def episode_detail(request, series_id, episode_id):
         active_asset = next((a for a in assets if a.get('isActive') == 1 or a.get('isActive') is True), None)
         scene['activeVersion'] = active_asset.get('version') if active_asset else (len(assets) if assets else None)
         scene['activeAssetUrl'] = active_asset.get('filePath') if active_asset else None
+        scene['assetCount'] = len(assets)
 
         if scene.get('status') == 3:  # 已锁定
             scenes.append(scene)
@@ -461,12 +514,12 @@ def episode_detail(request, series_id, episode_id):
         elif scene.get('id') in episode_scene_ids:  # 本集关联的未锁定场景
             scenes.append(scene)
 
-    # 过滤道具：已锁定的全部显示 + 生成中/待审核的全部显示 + 本集关联的未锁定道具
+    # 后端已按当前剧集返回可见道具：已锁定全系列共享，生成中/待审核仅返回本集生成的版本。
     props = []
     for prop in all_props:
         if prop.get('status') == 3:  # 已锁定
             props.append(prop)
-        elif prop.get('status') in [0, 1]:  # 生成中或待审核
+        elif prop.get('status') in [0, 1]:  # 生成中或待审核（仅本集）
             props.append(prop)
         elif prop.get('id') in episode_prop_ids:  # 本集关联的未锁定道具(通过ID)
             props.append(prop)
@@ -478,6 +531,31 @@ def episode_detail(request, series_id, episode_id):
         prop['activeVersion'] = active_asset.get('version') if active_asset else (len(assets) if assets else None)
         prop['activeAssetUrl'] = active_asset.get('filePath') if active_asset else None
         prop['transparentUrl'] = active_asset.get('filePath') if active_asset else None
+        prop['assetCount'] = len(assets)
+
+    mention_scenes = [
+        {
+            'id': scene.get('id'),
+            'sceneName': scene.get('sceneName'),
+            'activeAssetUrl': scene.get('activeAssetUrl'),
+        }
+        for scene in scenes
+        if scene.get('activeAssetUrl')
+    ]
+    mention_props = [
+        {
+            'id': prop.get('id'),
+            'propName': prop.get('propName'),
+            'activeAssetUrl': prop.get('activeAssetUrl'),
+            'transparentUrl': prop.get('transparentUrl'),
+        }
+        for prop in props
+        if prop.get('activeAssetUrl') or prop.get('transparentUrl')
+    ]
+    completed_shots = sum(1 for shot in shots if shot.get('generationStatus') == 2)
+    pending_shots = sum(1 for shot in shots if shot.get('generationStatus') == 0)
+    generating_shots = sum(1 for shot in shots if shot.get('generationStatus') == 1)
+    progress_percent = round(completed_shots / len(shots) * 100) if shots else 0
 
     return render(request, 'episode/episode_detail.html', {
         'series': series,
@@ -486,6 +564,12 @@ def episode_detail(request, series_id, episode_id):
         'scenes': scenes,
         'props': props,
         'roles': all_roles,
+        'mention_scenes': mention_scenes,
+        'mention_props': mention_props,
+        'completed_shots': completed_shots,
+        'pending_shots': pending_shots,
+        'generating_shots': generating_shots,
+        'progress_percent': progress_percent,
         'series_id': series_id,
         'episode_id': episode_id,
     })
@@ -593,6 +677,18 @@ def shot_update(request, shot_id):
         return JsonResponse({'success': False, 'error': 'Invalid JSON'}, status=400)
 
 
+@csrf_exempt
+@require_http_methods(["GET"])
+def shot_list_api(request, episode_id):
+    """获取剧集分镜列表"""
+    client = get_client(request)
+    try:
+        result = client.get(f'/v1/shots/episode/{episode_id}')
+        return JsonResponse({'code': 200, 'data': result})
+    except BackendAPIError as e:
+        return JsonResponse({'code': 400, 'message': e.message}, status=400)
+
+
 def episode_progress(request, episode_id):
     """获取剧集进度 - AJAX接口"""
     client = get_client(request)
@@ -665,6 +761,76 @@ def scene_create(request):
 
 @csrf_exempt
 @require_http_methods(["POST"])
+def scene_upload(request):
+    """上传场景图片并创建/更新场景资产"""
+    client = get_client(request)
+    try:
+        file = request.FILES.get('file')
+        if not file:
+            return JsonResponse({'code': 400, 'message': '请选择要上传的图片'}, status=400)
+
+        allowed_types = ['image/jpeg', 'image/png', 'image/webp']
+        if file.content_type not in allowed_types:
+            return JsonResponse({'code': 400, 'message': '只支持 JPG、PNG、WEBP 格式'}, status=400)
+
+        if file.size > 5 * 1024 * 1024:
+            return JsonResponse({'code': 400, 'message': '图片大小不能超过5MB'}, status=400)
+
+        files = {'file': (file.name, file.read(), file.content_type)}
+        data = {
+            'seriesId': request.POST.get('seriesId'),
+            'sceneName': request.POST.get('sceneName', '').strip(),
+            'aspectRatio': request.POST.get('aspectRatio', '16:9'),
+            'quality': request.POST.get('quality', '2k'),
+        }
+        episode_id = request.POST.get('episodeId')
+        custom_prompt = request.POST.get('customPrompt', '').strip()
+        if episode_id:
+            data['episodeId'] = episode_id
+        if custom_prompt:
+            data['customPrompt'] = custom_prompt
+        result = client.upload('/v1/scenes/upload', files, data=data)
+        return JsonResponse({'code': 200, 'data': result})
+    except BackendAPIError as e:
+        return JsonResponse({'code': 400, 'message': e.message}, status=400)
+    except Exception as e:
+        return JsonResponse({'code': 500, 'message': str(e)}, status=500)
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def scene_asset_upload(request, scene_id):
+    """为已有场景上传图片版本"""
+    client = get_client(request)
+    try:
+        file = request.FILES.get('file')
+        if not file:
+            return JsonResponse({'code': 400, 'message': '请选择要上传的图片'}, status=400)
+
+        allowed_types = ['image/jpeg', 'image/png', 'image/webp']
+        if file.content_type not in allowed_types:
+            return JsonResponse({'code': 400, 'message': '只支持 JPG、PNG、WEBP 格式'}, status=400)
+
+        if file.size > 5 * 1024 * 1024:
+            return JsonResponse({'code': 400, 'message': '图片大小不能超过5MB'}, status=400)
+
+        files = {'file': (file.name, file.read(), file.content_type)}
+        data = {
+            'aspectRatio': request.POST.get('aspectRatio', '16:9'),
+        }
+        custom_prompt = request.POST.get('customPrompt', '').strip()
+        if custom_prompt:
+            data['customPrompt'] = custom_prompt
+        result = client.upload(f'/v1/scenes/{scene_id}/upload', files, data=data)
+        return JsonResponse({'code': 200, 'data': result})
+    except BackendAPIError as e:
+        return JsonResponse({'code': 400, 'message': e.message}, status=400)
+    except Exception as e:
+        return JsonResponse({'code': 500, 'message': str(e)}, status=500)
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
 def prop_create(request):
     """创建道具"""
     client = get_client(request)
@@ -685,6 +851,92 @@ def prop_create(request):
 
 @csrf_exempt
 @require_http_methods(["POST"])
+def prop_upload(request):
+    """上传道具图片并创建/更新道具资产"""
+    client = get_client(request)
+    try:
+        file = request.FILES.get('file')
+        if not file:
+            return JsonResponse({'code': 400, 'message': '请选择要上传的图片'}, status=400)
+
+        allowed_types = ['image/jpeg', 'image/png', 'image/webp']
+        if file.content_type not in allowed_types:
+            return JsonResponse({'code': 400, 'message': '只支持 JPG、PNG、WEBP 格式'}, status=400)
+
+        if file.size > 5 * 1024 * 1024:
+            return JsonResponse({'code': 400, 'message': '图片大小不能超过5MB'}, status=400)
+
+        files = {'file': (file.name, file.read(), file.content_type)}
+        data = {
+            'seriesId': request.POST.get('seriesId'),
+            'propName': request.POST.get('propName', '').strip(),
+            'quality': request.POST.get('quality', '2k'),
+        }
+        episode_id = request.POST.get('episodeId')
+        custom_prompt = request.POST.get('customPrompt', '').strip()
+        if episode_id:
+            data['episodeId'] = episode_id
+        if custom_prompt:
+            data['customPrompt'] = custom_prompt
+        result = client.upload('/v1/props/upload', files, data=data)
+        return JsonResponse({'code': 200, 'data': result})
+    except BackendAPIError as e:
+        return JsonResponse({'code': 400, 'message': e.message}, status=400)
+    except Exception as e:
+        return JsonResponse({'code': 500, 'message': str(e)}, status=500)
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def prop_asset_upload(request, prop_id):
+    """为已有道具上传图片版本"""
+    client = get_client(request)
+    try:
+        file = request.FILES.get('file')
+        if not file:
+            return JsonResponse({'code': 400, 'message': '请选择要上传的图片'}, status=400)
+
+        allowed_types = ['image/jpeg', 'image/png', 'image/webp']
+        if file.content_type not in allowed_types:
+            return JsonResponse({'code': 400, 'message': '只支持 JPG、PNG、WEBP 格式'}, status=400)
+
+        if file.size > 5 * 1024 * 1024:
+            return JsonResponse({'code': 400, 'message': '图片大小不能超过5MB'}, status=400)
+
+        files = {'file': (file.name, file.read(), file.content_type)}
+        data = {}
+        episode_id = request.POST.get('episodeId')
+        custom_prompt = request.POST.get('customPrompt', '').strip()
+        if episode_id:
+            data['episodeId'] = episode_id
+        if custom_prompt:
+            data['customPrompt'] = custom_prompt
+        result = client.upload(f'/v1/props/{prop_id}/upload', files, data=data)
+        return JsonResponse({'code': 200, 'data': result})
+    except BackendAPIError as e:
+        return JsonResponse({'code': 400, 'message': e.message}, status=400)
+    except Exception as e:
+        return JsonResponse({'code': 500, 'message': str(e)}, status=500)
+
+
+@csrf_exempt
+@require_http_methods(["GET"])
+def props_by_series(request, series_id):
+    """获取系列道具列表，用于详情页补齐跨标签状态。"""
+    client = get_client(request)
+    try:
+        episode_id = request.GET.get('episodeId')
+        path = f'/v1/props/series/{series_id}'
+        if episode_id:
+            path = f'{path}?episodeId={episode_id}'
+        result = client.get(path)
+        return JsonResponse({'code': 200, 'data': result})
+    except BackendAPIError as e:
+        return JsonResponse({'code': 400, 'message': e.message}, status=400)
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
 def scene_regenerate(request, scene_id):
     """重新生成场景"""
     client = get_client(request)
@@ -696,6 +948,8 @@ def scene_regenerate(request, scene_id):
             'quality': data.get('quality', '2k'),
         })
         return JsonResponse({'code': 200, 'success': True})
+    except requests.exceptions.ReadTimeout:
+        return JsonResponse({'code': 504, 'message': '后端提交超时，请刷新后查看生成状态'}, status=504)
     except BackendAPIError as e:
         return JsonResponse({'code': 400, 'message': e.message}, status=400)
 
@@ -710,8 +964,11 @@ def prop_regenerate(request, prop_id):
         client.post(f'/v1/props/{prop_id}/regenerate', {
             'customPrompt': data.get('customPrompt'),
             'quality': data.get('quality', '2k'),
+            'episodeId': data.get('episodeId'),
         })
         return JsonResponse({'code': 200, 'success': True})
+    except requests.exceptions.ReadTimeout:
+        return JsonResponse({'code': 504, 'message': '后端提交超时，请刷新后查看生成状态'}, status=504)
     except BackendAPIError as e:
         return JsonResponse({'code': 400, 'message': e.message}, status=400)
 
@@ -738,7 +995,10 @@ def prop_rollback(request, prop_id):
     try:
         data = json.loads(request.body)
         asset_id = data.get('assetId')
-        client.post(f'/v1/props/{prop_id}/rollback', {'assetId': asset_id})
+        payload = {'assetId': asset_id}
+        if data.get('episodeId'):
+            payload['episodeId'] = data.get('episodeId')
+        client.post(f'/v1/props/{prop_id}/rollback', payload)
         return JsonResponse({'code': 200, 'success': True})
     except BackendAPIError as e:
         return JsonResponse({'code': 400, 'message': e.message}, status=400)
@@ -789,7 +1049,10 @@ def prop_lock(request, prop_id):
     """锁定道具"""
     client = get_client(request)
     try:
-        client.post(f'/v1/props/{prop_id}/lock')
+        data = json.loads(request.body) if request.body else {}
+        client.post(f'/v1/props/{prop_id}/lock', {
+            'episodeId': data.get('episodeId'),
+        })
         return JsonResponse({'code': 200, 'success': True})
     except BackendAPIError as e:
         return JsonResponse({'code': 400, 'message': e.message}, status=400)
@@ -833,7 +1096,16 @@ def prop_detail(request, prop_id):
             return JsonResponse({'code': 200, 'success': True})
         else:
             # GET - 获取道具详情
-            result = client.get(f'/v1/props/{prop_id}')
+            episode_id = request.GET.get('episodeId')
+            query = []
+            if episode_id:
+                query.append(f'episodeId={episode_id}')
+            if request.GET.get('includeHistory') == 'true':
+                query.append('includeHistory=true')
+            path = f'/v1/props/{prop_id}'
+            if query:
+                path = f'{path}?{"&".join(query)}'
+            result = client.get(path)
             return JsonResponse({'code': 200, 'data': result})
     except BackendAPIError as e:
         return JsonResponse({'code': 400, 'message': e.message}, status=400)

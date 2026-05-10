@@ -1,9 +1,11 @@
 package com.manga.ai.series.mapper;
 
 import com.baomidou.mybatisplus.core.mapper.BaseMapper;
+import com.manga.ai.series.dto.SeriesDetailVO;
 import com.manga.ai.series.entity.Series;
 import org.apache.ibatis.annotations.Delete;
 import org.apache.ibatis.annotations.Mapper;
+import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
 import org.apache.ibatis.annotations.Update;
 
@@ -15,6 +17,13 @@ import java.util.List;
  */
 @Mapper
 public interface SeriesMapper extends BaseMapper<Series> {
+
+    /**
+     * 首页系列卡片列表：只返回卡片需要的轻量字段和角色数量。
+     */
+    List<SeriesDetailVO> selectSeriesListCards(@Param("userId") Long userId,
+                                               @Param("limit") Integer limit,
+                                               @Param("offset") Integer offset);
 
     /**
      * 查询回收站列表（已删除的系列）

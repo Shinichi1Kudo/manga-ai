@@ -194,36 +194,8 @@ public class SeriesServiceImpl implements SeriesService {
     @Override
     public List<SeriesDetailVO> getSeriesList(Integer page, Integer pageSize) {
         Long userId = UserContextHolder.getUserId();
-        LambdaQueryWrapper<Series> wrapper = new LambdaQueryWrapper<>();
-        if (userId != null) {
-            wrapper.eq(Series::getUserId, userId);
-        }
-        wrapper.orderByDesc(Series::getCreatedAt);
-
-        // 分页查询
         int offset = (page - 1) * pageSize;
-        wrapper.last("LIMIT " + pageSize + " OFFSET " + offset);
-        List<Series> seriesList = seriesMapper.selectList(wrapper);
-
-        // 批量查询所有系列的角色数量，避免 N+1 查询
-        java.util.Map<Long, Integer> roleCountMap = new java.util.HashMap<>();
-        if (!seriesList.isEmpty()) {
-            List<Long> seriesIds = seriesList.stream().map(Series::getId).collect(java.util.stream.Collectors.toList());
-            LambdaQueryWrapper<Role> roleWrapper = new LambdaQueryWrapper<>();
-            roleWrapper.in(Role::getSeriesId, seriesIds);
-            List<Role> allRoles = roleMapper.selectList(roleWrapper);
-
-            // 统计每个系列的角色数量
-            for (Role role : allRoles) {
-                roleCountMap.merge(role.getSeriesId(), 1, Integer::sum);
-            }
-        }
-
-        return seriesList.stream().map(series -> {
-            SeriesDetailVO vo = convertToVO(series);
-            vo.setRoleCount(roleCountMap.getOrDefault(series.getId(), 0));
-            return vo;
-        }).collect(java.util.stream.Collectors.toList());
+        return seriesMapper.selectSeriesListCards(userId, pageSize, offset);
     }
 
     @Override
@@ -838,21 +810,52 @@ public class SeriesServiceImpl implements SeriesService {
                 .orderByAsc(Episode::getEpisodeNumber);
         List<Episode> episodes = episodeMapper.selectList(episodeWrapper);
 
-        // 3. 遍历剧集，获取分镜视频
+        // 3. 批量获取所有剧集分镜，避免按剧集和分镜反复查询
+        List<Long> episodeIds = episodes.stream()
+                .map(Episode::getId)
+                .collect(java.util.stream.Collectors.toList());
+        java.util.Map<Long, List<Shot>> shotsByEpisodeId = new java.util.HashMap<>();
+        java.util.Map<Long, ShotVideoAsset> activeAssetByShotId = new java.util.HashMap<>();
+
+        if (!episodeIds.isEmpty()) {
+            LambdaQueryWrapper<Shot> shotWrapper = new LambdaQueryWrapper<>();
+            shotWrapper.in(Shot::getEpisodeId, episodeIds)
+                    .orderByAsc(Shot::getEpisodeId)
+                    .orderByAsc(Shot::getShotNumber);
+            List<Shot> allShots = shotMapper.selectList(shotWrapper);
+
+            shotsByEpisodeId = allShots.stream()
+                    .collect(java.util.stream.Collectors.groupingBy(
+                            Shot::getEpisodeId,
+                            java.util.LinkedHashMap::new,
+                            java.util.stream.Collectors.toList()
+                    ));
+
+            List<Long> shotIds = allShots.stream()
+                    .map(Shot::getId)
+                    .collect(java.util.stream.Collectors.toList());
+            if (!shotIds.isEmpty()) {
+                List<ShotVideoAsset> activeAssets = shotVideoAssetMapper.selectActiveByShotIds(shotIds);
+                activeAssetByShotId = activeAssets.stream()
+                        .collect(java.util.stream.Collectors.toMap(
+                                ShotVideoAsset::getShotId,
+                                asset -> asset,
+                                (first, second) -> first
+                        ));
+            }
+        }
+
+        // 4. 组装剧集视频资产
         List<EpisodeVideoAssetsVO> episodeVOs = new ArrayList<>();
         for (Episode episode : episodes) {
-            // 获取剧集下所有分镜（@TableLogic会自动过滤已删除的）
-            LambdaQueryWrapper<Shot> shotWrapper = new LambdaQueryWrapper<>();
-            shotWrapper.eq(Shot::getEpisodeId, episode.getId())
-                    .orderByAsc(Shot::getShotNumber);
-            List<Shot> shots = shotMapper.selectList(shotWrapper);
+            List<Shot> shots = shotsByEpisodeId.getOrDefault(episode.getId(), new ArrayList<>());
 
             List<ShotVideoInfoVO> shotVOs = new ArrayList<>();
             int completedCount = 0;
 
             for (Shot shot : shots) {
                 // 优先从 ShotVideoAsset 获取激活视频
-                ShotVideoAsset activeAsset = shotVideoAssetMapper.selectActiveByShotId(shot.getId());
+                ShotVideoAsset activeAsset = activeAssetByShotId.get(shot.getId());
 
                 String videoUrl = null;
                 String thumbnailUrl = null;

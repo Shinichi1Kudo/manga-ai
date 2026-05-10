@@ -43,10 +43,6 @@
 {% endblock %}
 
 {% block extra_js %}
-<!-- SockJS 和 STOMP.js for WebSocket -->
-<script src="https://cdn.jsdelivr.net/npm/sockjs-client@1/dist/sockjs.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/stompjs@2.3.3/lib/stomp.min.js"></script>
-
 <!-- 删除确认弹窗 -->
 <div id="deleteModal" class="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 hidden items-center justify-center">
     <div class="glass-card p-6 max-w-md mx-4 text-center">
@@ -78,6 +74,8 @@ const pageSize = 9;
 let totalSeries = 0;
 let stompClient = null;
 const processingSeries = {{ processing_series_ids|safe }};
+let websocketLoading = false;
+let websocketReady = typeof SockJS !== 'undefined' && typeof Stomp !== 'undefined';
 
 // 从 localStorage 恢复进度
 let seriesProgress = JSON.parse(localStorage.getItem('seriesProgress') || '{}');
@@ -179,12 +177,15 @@ function loadSeries(page) {
         .then(result => {
             if (result.data && result.data.list && result.data.list.length > 0) {
                 totalSeries = result.data.total;
+                syncProcessingSeries(result.data.list);
                 container.innerHTML = result.data.list.map(series => renderSeriesCard(series)).join('');
                 safeCreateIcons();
                 renderPagination(result.data.total, page);
 
                 // 渲染完成后启动进度动画
-                processingSeries.forEach(seriesId => startFakeProgress(seriesId));
+                if (processingSeries.length > 0) {
+                    startProcessingWatch();
+                }
             } else {
                 container.innerHTML = '<div class="glass-card p-8 text-center col-span-full"><p class="text-white/50">暂无系列，点击上方按钮创建</p></div>';
                 document.getElementById('pagination').innerHTML = '';
@@ -193,6 +194,79 @@ function loadSeries(page) {
         .catch(err => {
             container.innerHTML = '<div class="glass-card p-8 text-center col-span-full"><p class="text-red-400">加载失败: ' + err.message + '</p></div>';
         });
+}
+
+function syncProcessingSeries(seriesList) {
+    seriesList.forEach(series => {
+        const seriesId = parseInt(series.id);
+        const index = processingSeries.indexOf(seriesId);
+        if (series.status === 0 && index === -1) {
+            processingSeries.push(seriesId);
+        } else if (series.status !== 0 && index > -1) {
+            processingSeries.splice(index, 1);
+            stopFakeProgress(seriesId);
+            stopPolling(seriesId);
+        }
+    });
+}
+
+function loadScriptOnce(src) {
+    return new Promise((resolve, reject) => {
+        const existing = document.querySelector(`script[src="${src}"]`);
+        if (existing) {
+            existing.addEventListener('load', resolve, { once: true });
+            existing.addEventListener('error', reject, { once: true });
+            if (existing.dataset.loaded === 'true') resolve();
+            return;
+        }
+        const script = document.createElement('script');
+        script.src = src;
+        script.async = true;
+        script.onload = () => {
+            script.dataset.loaded = 'true';
+            resolve();
+        };
+        script.onerror = reject;
+        document.head.appendChild(script);
+    });
+}
+
+function ensureWebSocketLibraries() {
+    if (websocketReady) return Promise.resolve();
+    if (websocketLoading) {
+        return new Promise(resolve => {
+            const timer = setInterval(() => {
+                if (websocketReady || !websocketLoading) {
+                    clearInterval(timer);
+                    resolve();
+                }
+            }, 100);
+        });
+    }
+    websocketLoading = true;
+    return loadScriptOnce('https://cdn.jsdelivr.net/npm/sockjs-client@1/dist/sockjs.min.js')
+        .then(() => loadScriptOnce('https://cdn.jsdelivr.net/npm/stompjs@2.3.3/lib/stomp.min.js'))
+        .then(() => {
+            websocketReady = typeof SockJS !== 'undefined' && typeof Stomp !== 'undefined';
+        })
+        .catch(err => {
+            console.warn('WebSocket 库加载失败，使用轮询兜底:', err);
+        })
+        .finally(() => {
+            websocketLoading = false;
+        });
+}
+
+function startProcessingWatch() {
+    processingSeries.forEach(seriesId => {
+        startFakeProgress(seriesId);
+        startPolling(seriesId);
+    });
+    ensureWebSocketLibraries().then(() => {
+        if (websocketReady) {
+            connectWebSocket();
+        }
+    });
 }
 
 function renderSeriesCard(series) {
@@ -319,6 +393,8 @@ function renderPagination(total, currentPage) {
 // WebSocket 连接
 function connectWebSocket() {
     if (processingSeries.length === 0) return;
+    if (typeof SockJS === 'undefined' || typeof Stomp === 'undefined') return;
+    if (stompClient && stompClient.connected) return;
 
     // WebSocket 连接到后端服务器（端口 8081）
     const socket = new SockJS('http://localhost:8081/api/ws');
@@ -582,18 +658,6 @@ function stopPolling(seriesId) {
 
 document.addEventListener('DOMContentLoaded', function() {
     loadSeries(1);
-
-    // 如果有处理中的系列，连接 WebSocket 并启动模拟进度
-    if (processingSeries.length > 0) {
-        connectWebSocket();
-        // 延迟启动模拟进度，等待卡片渲染完成
-        setTimeout(() => {
-            processingSeries.forEach(seriesId => {
-                startFakeProgress(seriesId);
-                startPolling(seriesId); // 同时启动轮询作为备用
-            });
-        }, 500);
-    }
 });
 
 // 删除相关函数

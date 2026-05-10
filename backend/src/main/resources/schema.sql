@@ -71,6 +71,9 @@ CREATE TABLE IF NOT EXISTS role (
     is_deleted INT DEFAULT 0
 );
 
+CREATE INDEX IF NOT EXISTS idx_series_user_deleted_created ON series(user_id, is_deleted, created_at);
+CREATE INDEX IF NOT EXISTS idx_role_series_deleted ON role(series_id, is_deleted);
+
 -- 角色属性表
 CREATE TABLE IF NOT EXISTS role_attribute (
     id BIGINT AUTO_INCREMENT PRIMARY KEY,
@@ -309,6 +312,7 @@ CREATE TABLE IF NOT EXISTS scene_asset (
 CREATE TABLE IF NOT EXISTS prop_asset (
     id BIGINT AUTO_INCREMENT PRIMARY KEY,
     prop_id BIGINT NOT NULL,
+    episode_id BIGINT,
     asset_type VARCHAR(20),
     view_type VARCHAR(20),
     version INT DEFAULT 1,
@@ -321,6 +325,8 @@ CREATE TABLE IF NOT EXISTS prop_asset (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE INDEX IF NOT EXISTS idx_prop_asset_episode_id ON prop_asset(episode_id);
 
 -- 场景资产元数据表
 CREATE TABLE IF NOT EXISTS scene_asset_metadata (

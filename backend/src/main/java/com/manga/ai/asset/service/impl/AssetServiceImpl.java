@@ -543,6 +543,10 @@ public class AssetServiceImpl implements AssetService {
                 clothingInfo.setClothingId(asset.getClothingId());
                 clothingInfo.setClothingName(asset.getClothingName() != null ? asset.getClothingName() : "服装" + asset.getClothingId());
                 clothingInfo.setAssetUrl(ossService.refreshUrl(asset.getFilePath()));
+                clothingInfo.setAssetId(asset.getId());
+                clothingInfo.setVersion(asset.getVersion());
+                clothingInfo.setActive(asset.getIsActive() != null && asset.getIsActive() == 1);
+                clothingInfo.setDefaultClothing(asset.getClothingId() != null && asset.getClothingId() == 1);
                 clothingList.add(clothingInfo);
             }
 

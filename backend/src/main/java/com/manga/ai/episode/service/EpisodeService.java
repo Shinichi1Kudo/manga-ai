@@ -44,6 +44,13 @@ public interface EpisodeService {
     EpisodeDetailVO getEpisodeDetail(Long episodeId);
 
     /**
+     * 获取剧集基础详情（不附带分镜和角色资产）
+     * @param episodeId 剧集ID
+     * @return 剧集基础详情
+     */
+    EpisodeDetailVO getEpisodeBasicDetail(Long episodeId);
+
+    /**
      * 获取剧集进度
      * @param episodeId 剧集ID
      * @return 进度信息

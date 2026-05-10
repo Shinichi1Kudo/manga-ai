@@ -6,6 +6,7 @@ import com.manga.ai.prop.service.PropService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
 import java.util.Map;
@@ -25,8 +26,10 @@ public class PropController {
      * 获取系列下所有道具
      */
     @GetMapping("/series/{seriesId}")
-    public Result<List<PropDetailVO>> getPropsBySeriesId(@PathVariable Long seriesId) {
-        List<PropDetailVO> props = propService.getPropsBySeriesId(seriesId);
+    public Result<List<PropDetailVO>> getPropsBySeriesId(
+            @PathVariable Long seriesId,
+            @RequestParam(required = false) Long episodeId) {
+        List<PropDetailVO> props = propService.getPropsBySeriesId(seriesId, episodeId);
         return Result.success(props);
     }
 
@@ -34,8 +37,11 @@ public class PropController {
      * 获取道具详情
      */
     @GetMapping("/{propId}")
-    public Result<PropDetailVO> getPropDetail(@PathVariable Long propId) {
-        PropDetailVO detail = propService.getPropDetail(propId);
+    public Result<PropDetailVO> getPropDetail(
+            @PathVariable Long propId,
+            @RequestParam(required = false) Long episodeId,
+            @RequestParam(required = false, defaultValue = "false") boolean includeHistory) {
+        PropDetailVO detail = propService.getPropDetail(propId, episodeId, includeHistory);
         return Result.success(detail);
     }
 
@@ -58,12 +64,48 @@ public class PropController {
     }
 
     /**
+     * 手动上传道具图片
+     */
+    @PostMapping("/upload")
+    public Result<PropDetailVO> uploadPropAsset(
+            @RequestParam Long seriesId,
+            @RequestParam(required = false) Long episodeId,
+            @RequestParam String propName,
+            @RequestParam(required = false) String quality,
+            @RequestParam(required = false) String customPrompt,
+            @RequestParam("file") MultipartFile file) {
+        log.info("上传道具资产: seriesId={}, episodeId={}, propName={}, file={}",
+                seriesId, episodeId, propName, file != null ? file.getOriginalFilename() : null);
+        PropDetailVO detail = propService.uploadPropAsset(seriesId, episodeId, propName, quality, customPrompt, file);
+        return Result.success(detail);
+    }
+
+    /**
+     * 为已有道具上传图片版本
+     */
+    @PostMapping("/{propId}/upload")
+    public Result<PropDetailVO> uploadExistingPropAsset(
+            @PathVariable Long propId,
+            @RequestParam(required = false) Long episodeId,
+            @RequestParam(required = false) String customPrompt,
+            @RequestParam("file") MultipartFile file) {
+        log.info("上传已有道具资产: propId={}, episodeId={}, file={}",
+                propId, episodeId, file != null ? file.getOriginalFilename() : null);
+        PropDetailVO detail = propService.uploadPropAsset(propId, episodeId, customPrompt, file);
+        return Result.success(detail);
+    }
+
+    /**
      * 生成道具资产
      */
     @PostMapping("/{propId}/generate")
-    public Result<Void> generatePropAssets(@PathVariable Long propId) {
-        log.info("生成道具资产: propId={}", propId);
-        propService.generatePropAssetsWithCredit(propId, null);
+    public Result<Void> generatePropAssets(
+            @PathVariable Long propId,
+            @RequestBody(required = false) Map<String, Object> body) {
+        Long episodeId = body != null && body.get("episodeId") != null
+                ? Long.valueOf(body.get("episodeId").toString()) : null;
+        log.info("生成道具资产: propId={}, episodeId={}", propId, episodeId);
+        propService.generatePropAssetsWithCredit(propId, null, episodeId);
         return Result.success();
     }
 
@@ -76,9 +118,11 @@ public class PropController {
             @RequestBody(required = false) Map<String, Object> body) {
         String customPrompt = body != null ? (String) body.get("customPrompt") : null;
         String quality = body != null ? (String) body.get("quality") : null;
-        log.info("重新生成道具资产: propId={}, quality={}, customPrompt={}",
-                propId, quality, customPrompt != null);
-        propService.regeneratePropAssetWithCredit(propId, customPrompt, quality, null);
+        Long episodeId = body != null && body.get("episodeId") != null
+                ? Long.valueOf(body.get("episodeId").toString()) : null;
+        log.info("重新生成道具资产: propId={}, episodeId={}, quality={}, customPrompt={}",
+                propId, episodeId, quality, customPrompt != null);
+        propService.regeneratePropAssetWithCredit(propId, customPrompt, quality, null, episodeId);
         return Result.success();
     }
 
@@ -99,9 +143,13 @@ public class PropController {
      * 锁定道具
      */
     @PostMapping("/{propId}/lock")
-    public Result<Void> lockProp(@PathVariable Long propId) {
-        log.info("锁定道具: propId={}", propId);
-        propService.lockProp(propId);
+    public Result<Void> lockProp(
+            @PathVariable Long propId,
+            @RequestBody(required = false) Map<String, Object> body) {
+        Long episodeId = body != null && body.get("episodeId") != null
+                ? Long.valueOf(body.get("episodeId").toString()) : null;
+        log.info("锁定道具: propId={}, episodeId={}", propId, episodeId);
+        propService.lockProp(propId, episodeId);
         return Result.success();
     }
 
@@ -146,8 +194,9 @@ public class PropController {
             @PathVariable Long propId,
             @RequestBody Map<String, Long> body) {
         Long assetId = body.get("assetId");
-        log.info("回滚道具版本: propId={}, assetId={}", propId, assetId);
-        propService.rollbackToVersion(propId, assetId);
+        Long episodeId = body.get("episodeId");
+        log.info("回滚道具版本: propId={}, assetId={}, episodeId={}", propId, assetId, episodeId);
+        propService.rollbackToVersion(propId, assetId, episodeId);
         return Result.success();
     }
 }

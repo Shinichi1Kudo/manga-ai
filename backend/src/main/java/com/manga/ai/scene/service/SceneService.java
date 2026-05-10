@@ -1,6 +1,7 @@
 package com.manga.ai.scene.service;
 
 import com.manga.ai.scene.dto.SceneDetailVO;
+import org.springframework.web.multipart.MultipartFile;
 import java.util.List;
 
 /**
@@ -99,6 +100,29 @@ public interface SceneService {
      * @return 创建的场景ID
      */
     Long createScene(Long seriesId, Long episodeId, String sceneName, String aspectRatio, String quality, String customPrompt);
+
+    /**
+     * 手动上传场景图片并创建/更新场景资产
+     * @param seriesId 系列ID
+     * @param episodeId 剧集ID
+     * @param sceneName 场景名称
+     * @param aspectRatio 图片比例
+     * @param quality 清晰度
+     * @param customPrompt 自定义说明
+     * @param file 用户上传并裁剪后的图片
+     * @return 场景详情
+     */
+    SceneDetailVO uploadSceneAsset(Long seriesId, Long episodeId, String sceneName, String aspectRatio, String quality, String customPrompt, MultipartFile file);
+
+    /**
+     * 为已有场景手动上传图片资产
+     * @param sceneId 场景ID
+     * @param aspectRatio 图片比例
+     * @param customPrompt 自定义说明
+     * @param file 用户上传并裁剪后的图片
+     * @return 场景详情
+     */
+    SceneDetailVO uploadSceneAsset(Long sceneId, String aspectRatio, String customPrompt, MultipartFile file);
 
     /**
      * 回滚到指定版本

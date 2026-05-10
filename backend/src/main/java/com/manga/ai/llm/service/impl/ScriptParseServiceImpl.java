@@ -174,7 +174,11 @@ public class ScriptParseServiceImpl implements ScriptParseService {
                         log.info("分镜解析完成: shots={}, 尝试次数={}", result.getShots().size(), attempt);
                         return result;
                     } else {
-                        log.warn("分镜解析结果为空，准备重试 (尝试 {}/{})", attempt, maxRetries);
+                        if (isJsonParseFailure(result.getErrorMessage())) {
+                            log.warn("分镜JSON解析失败，立即重试请求模型 (尝试 {}/{}): {}", attempt, maxRetries, result.getErrorMessage());
+                        } else {
+                            log.warn("分镜解析结果为空，准备重试 (尝试 {}/{})", attempt, maxRetries);
+                        }
                     }
                 } else {
                     log.warn("LLM调用失败: {}, 准备重试 (尝试 {}/{})", response.getErrorMessage(), attempt, maxRetries);
@@ -188,6 +192,10 @@ public class ScriptParseServiceImpl implements ScriptParseService {
             // 如果不是最后一次尝试，等待一段时间再重试
             if (attempt < maxRetries) {
                 try {
+                    if (isJsonParseFailure(result.getErrorMessage())) {
+                        continue;
+                    }
+
                     // 429限速时使用更长等待时间
                     long waitTime = result.getErrorMessage() != null
                             && result.getErrorMessage().contains("429") ? 5000 * attempt : 2000 * attempt;
@@ -240,7 +248,11 @@ public class ScriptParseServiceImpl implements ScriptParseService {
                                 result.getShots().size(), parseMode, attempt);
                         return result;
                     } else {
-                        log.warn("分镜解析结果为空，准备重试 (尝试 {}/{})", attempt, maxRetries);
+                        if (isJsonParseFailure(result.getErrorMessage())) {
+                            log.warn("分镜JSON解析失败，立即重试请求模型 (尝试 {}/{}): {}", attempt, maxRetries, result.getErrorMessage());
+                        } else {
+                            log.warn("分镜解析结果为空，准备重试 (尝试 {}/{})", attempt, maxRetries);
+                        }
                     }
                 } else {
                     log.warn("LLM调用失败: {}, 准备重试 (尝试 {}/{})", response.getErrorMessage(), attempt, maxRetries);
@@ -253,6 +265,10 @@ public class ScriptParseServiceImpl implements ScriptParseService {
 
             if (attempt < maxRetries) {
                 try {
+                    if (isJsonParseFailure(result.getErrorMessage())) {
+                        continue;
+                    }
+
                     // 429限速时使用更长等待时间
                     long waitTime = result.getErrorMessage() != null
                             && result.getErrorMessage().contains("429") ? 5000 * attempt : 2000 * attempt;
@@ -364,6 +380,7 @@ public class ScriptParseServiceImpl implements ScriptParseService {
 
         prompt.append("## 输出格式\n");
         prompt.append("请严格按照以下JSON格式输出，不要添加任何其他文字说明：\n");
+        prompt.append("JSON字符串值内部如需出现英文双引号，必须写成 \\\"，不能直接输出未转义的英文双引号；也可优先使用中文引号“”。\n");
         prompt.append("```json\n");
         prompt.append("{\n");
         prompt.append("  \"shots\": [\n");
@@ -376,7 +393,7 @@ public class ScriptParseServiceImpl implements ScriptParseService {
         prompt.append("      \"cameraAngle\": \"平视\",\n");
         prompt.append("      \"cameraMovement\": \"推镜头\",\n");
         prompt.append("      \"shotType\": \"中景·角色名动作描述\",\n");
-        prompt.append("      \"description\": \"完整的剧情描述，包含角色台词（用引号标注）、内心独白、动作、表情、环境变化等，不要简化\",\n");
+        prompt.append("      \"description\": \"完整的剧情描述，包含角色台词、内心独白、动作、表情、环境变化等；台词建议使用中文引号“”，如使用英文双引号必须转义为\\\\\\\"\",\n");
         prompt.append("      \"soundEffect\": \"音效描述，如：引擎轰鸣声、雨声、角色喊叫等\",\n");
         prompt.append("      \"characters\": [\n");
         prompt.append("        {\n");
@@ -434,6 +451,7 @@ public class ScriptParseServiceImpl implements ScriptParseService {
 
         prompt.append("## 输出格式\n");
         prompt.append("请严格按照以下JSON格式输出，不要添加任何其他文字说明：\n");
+        prompt.append("JSON字符串值内部如需出现英文双引号，必须写成 \\\"，不能直接输出未转义的英文双引号；也可优先使用中文引号“”。\n");
         prompt.append("```json\n");
         prompt.append("{\n");
         prompt.append("  \"scenes\": [\n");
@@ -518,6 +536,7 @@ public class ScriptParseServiceImpl implements ScriptParseService {
 
         prompt.append("## 输出格式\n");
         prompt.append("请严格按照以下JSON格式输出，不要添加任何其他文字说明：\n");
+        prompt.append("JSON字符串值内部如需出现英文双引号，必须写成 \\\"，不能直接输出未转义的英文双引号；也可优先使用中文引号“”。\n");
         prompt.append("```json\n");
         prompt.append("{\n");
         prompt.append("  \"shots\": [\n");
@@ -527,7 +546,7 @@ public class ScriptParseServiceImpl implements ScriptParseService {
         prompt.append("      \"sceneName\": \"场景名称\",\n");
         prompt.append("      \"duration\": 10,\n");
         prompt.append("      \"shotType\": \"中景\",\n");
-        prompt.append("      \"description\": \"完整的剧情描述，包含角色台词、动作、表情、环境变化等，不要简化\",\n");
+        prompt.append("      \"description\": \"完整的剧情描述，包含角色台词、动作、表情、环境变化等；台词建议使用中文引号“”，如使用英文双引号必须转义为\\\\\\\"\",\n");
         prompt.append("      \"soundEffect\": \"音效描述\",\n");
         prompt.append("      \"characters\": [\n");
         prompt.append("        {\n");
@@ -660,38 +679,20 @@ public class ScriptParseServiceImpl implements ScriptParseService {
             log.error("原始LLM响应内容(前500字符): {}", content.substring(0, Math.min(500, content.length())));
             result.setStatus("failed");
             result.setErrorMessage("JSON解析失败: " + e.getMessage());
-
-            // 尝试从截断的JSON中提取已完成的shots
-            try {
-                String partialJson = extractPartialShots(content);
-                if (!partialJson.isEmpty()) {
-                    log.info("尝试解析部分JSON...");
-                    JSONObject json = JSON.parseObject(partialJson);
-                    JSONArray shotsArray = json.getJSONArray("shots");
-                    if (shotsArray != null && !shotsArray.isEmpty()) {
-                        List<ScriptParseResult.ShotInfo> shots = new ArrayList<>();
-                        for (int i = 0; i < shotsArray.size(); i++) {
-                            try {
-                                JSONObject shotObj = shotsArray.getJSONObject(i);
-                                ScriptParseResult.ShotInfo shot = parseShotInfo(shotObj);
-                                shots.add(shot);
-                            } catch (Exception ex) {
-                                log.warn("跳过不完整的shot[{}]: {}", i, ex.getMessage());
-                            }
-                        }
-                        if (!shots.isEmpty()) {
-                            result.setShots(shots);
-                            result.setStatus("success");
-                            log.info("从部分JSON中提取了{}个分镜", shots.size());
-                        }
-                    }
-                }
-            } catch (Exception ex) {
-                log.warn("部分JSON解析也失败: {}", ex.getMessage());
-            }
         }
 
         return result;
+    }
+
+    private boolean isJsonParseFailure(String errorMessage) {
+        if (errorMessage == null) {
+            return false;
+        }
+        return errorMessage.contains("JSON解析失败")
+                || errorMessage.contains("无法从LLM响应中提取JSON")
+                || errorMessage.contains("提取的JSON为空")
+                || errorMessage.contains("syntax error")
+                || errorMessage.contains("illegal input");
     }
 
     /**

@@ -28,6 +28,8 @@ public class PropDetailVO implements Serializable {
     private String statusDesc;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
+    private Long activeAssetEpisodeId;
+    private Long latestAssetEpisodeId;
 
     /**
      * 道具资产列表
@@ -50,6 +52,7 @@ public class PropDetailVO implements Serializable {
     @Data
     public static class PropAssetVO implements Serializable {
         private Long id;
+        private Long episodeId;
         private String assetType;
         private String viewType;
         private Integer version;

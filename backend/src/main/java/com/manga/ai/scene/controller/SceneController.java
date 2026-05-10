@@ -6,6 +6,7 @@ import com.manga.ai.scene.service.SceneService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
 import java.util.Map;
@@ -56,6 +57,39 @@ public class SceneController {
 
         Long sceneId = sceneService.createScene(seriesId, episodeId, sceneName, aspectRatio, quality, customPrompt);
         return Result.success(sceneId);
+    }
+
+    /**
+     * 手动上传场景图片
+     */
+    @PostMapping("/upload")
+    public Result<SceneDetailVO> uploadSceneAsset(
+            @RequestParam Long seriesId,
+            @RequestParam(required = false) Long episodeId,
+            @RequestParam String sceneName,
+            @RequestParam(required = false) String aspectRatio,
+            @RequestParam(required = false) String quality,
+            @RequestParam(required = false) String customPrompt,
+            @RequestParam("file") MultipartFile file) {
+        log.info("上传场景资产: seriesId={}, episodeId={}, sceneName={}, aspectRatio={}, file={}",
+                seriesId, episodeId, sceneName, aspectRatio, file != null ? file.getOriginalFilename() : null);
+        SceneDetailVO detail = sceneService.uploadSceneAsset(seriesId, episodeId, sceneName, aspectRatio, quality, customPrompt, file);
+        return Result.success(detail);
+    }
+
+    /**
+     * 为已有场景上传图片版本
+     */
+    @PostMapping("/{sceneId}/upload")
+    public Result<SceneDetailVO> uploadExistingSceneAsset(
+            @PathVariable Long sceneId,
+            @RequestParam(required = false) String aspectRatio,
+            @RequestParam(required = false) String customPrompt,
+            @RequestParam("file") MultipartFile file) {
+        log.info("上传已有场景资产: sceneId={}, aspectRatio={}, file={}",
+                sceneId, aspectRatio, file != null ? file.getOriginalFilename() : null);
+        SceneDetailVO detail = sceneService.uploadSceneAsset(sceneId, aspectRatio, customPrompt, file);
+        return Result.success(detail);
     }
 
     /**

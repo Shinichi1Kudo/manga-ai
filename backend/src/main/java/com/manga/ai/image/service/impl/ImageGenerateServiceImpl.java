@@ -1304,10 +1304,10 @@ public class ImageGenerateServiceImpl implements ImageGenerateService {
 
     @Override
     public ImageGenerateResponse generateSceneImage(ImageGenerateRequest request) {
-        log.info("生成场景图片: prompt={}", request.getCustomPrompt());
+        log.info("生成场景图片: prompt={}, styleKeywords={}", request.getCustomPrompt(), request.getStyleKeywords());
 
         try {
-            String prompt = request.getCustomPrompt();
+            String prompt = buildFinalScenePrompt(request);
             String size = convertAspectRatioToSize(request.getAspectRatio(), request.getQuality());
 
             JSONObject requestBody = new JSONObject();
@@ -1350,10 +1350,10 @@ public class ImageGenerateServiceImpl implements ImageGenerateService {
 
     @Override
     public ImageGenerateResponse generatePropImage(ImageGenerateRequest request) {
-        log.info("生成道具图片: prompt={}", request.getCustomPrompt());
+        log.info("生成道具图片: prompt={}, styleKeywords={}", request.getCustomPrompt(), request.getStyleKeywords());
 
         try {
-            String prompt = request.getCustomPrompt();
+            String prompt = buildFinalPropPrompt(request);
             String size = convertAspectRatioToSize(request.getAspectRatio(), request.getQuality());
 
             JSONObject requestBody = new JSONObject();
@@ -1392,5 +1392,95 @@ public class ImageGenerateServiceImpl implements ImageGenerateService {
             errorResponse.setErrorMessage("生成失败: " + e.getMessage());
             return errorResponse;
         }
+    }
+
+    private String buildFinalScenePrompt(ImageGenerateRequest request) {
+        String prompt = normalizePrompt(request.getCustomPrompt());
+        prompt = appendSeriesStyleGuard(prompt, request.getStyleKeywords());
+        return appendConstraint(prompt,
+                "scene background only, empty scene, no people, no characters, no figures, no humans, no portraits");
+    }
+
+    private String buildFinalPropPrompt(ImageGenerateRequest request) {
+        String prompt = normalizePrompt(request.getCustomPrompt());
+        prompt = appendSeriesStyleGuard(prompt, request.getStyleKeywords());
+        prompt = stripBackgroundCues(prompt).trim();
+        prompt = appendConstraint(prompt, "transparent background, isolated clean cutout, alpha channel style, no background, no backdrop");
+        return appendConstraint(prompt,
+                "single standalone prop only, centered object, product asset view, no hands, no hands holding, no people, no characters, no extra objects, no table, no room, no environment");
+    }
+
+    private String appendSeriesStyleGuard(String prompt, String styleKeywords) {
+        if (!hasText(styleKeywords)) {
+            return prompt;
+        }
+
+        String style = styleKeywords.trim();
+        StringBuilder guard = new StringBuilder();
+        guard.append("strict series visual style: ").append(style);
+        guard.append(", follow this exact series style consistently");
+
+        if (isStylizedAnimationStyle(style) || isStylizedAnimationStyle(prompt)) {
+            guard.append(", ultra-detailed 3D anime render, stylized 3D animation");
+            guard.append(", not live action, not photorealistic, not real person, no photo-real human skin, no 真人, no 写实真人");
+        }
+
+        return appendConstraint(prompt, guard.toString());
+    }
+
+    private String stripBackgroundCues(String prompt) {
+        if (prompt == null) {
+            return "";
+        }
+        return prompt
+                .replaceAll("(?i)pure white seamless background", " ")
+                .replaceAll("(?i)pure white background", " ")
+                .replaceAll("(?i)solid white background", " ")
+                .replaceAll("(?i)white background", " ")
+                .replaceAll("(?i)isolated on white background", " ")
+                .replaceAll("(?i)transparent background", " ")
+                .replaceAll("(?i)solid pale blue or light gray background", " ")
+                .replaceAll("(?i)flat clean background", " ")
+                .replaceAll("(?i)#ffffff", " ")
+                .replace("纯白背景", " ")
+                .replace("白色背景", " ")
+                .replace("浅蓝背景", " ")
+                .replace("浅灰背景", " ")
+                .replace("透明背景", " ");
+    }
+
+    private boolean isStylizedAnimationStyle(String text) {
+        if (text == null) {
+            return false;
+        }
+        String lower = text.toLowerCase();
+        return lower.contains("anime")
+                || lower.contains("cartoon")
+                || lower.contains("animation")
+                || lower.contains("stylized")
+                || lower.contains("3d")
+                || text.contains("动漫")
+                || text.contains("动画")
+                || text.contains("卡通")
+                || text.contains("二次元")
+                || text.contains("3D");
+    }
+
+    private String appendConstraint(String prompt, String constraint) {
+        if (!hasText(prompt)) {
+            return constraint;
+        }
+        if (!hasText(constraint)) {
+            return prompt;
+        }
+        return prompt + ", " + constraint;
+    }
+
+    private String normalizePrompt(String prompt) {
+        return prompt == null ? "" : prompt.trim();
+    }
+
+    private boolean hasText(String value) {
+        return value != null && !value.trim().isEmpty();
     }
 }

@@ -29,8 +29,16 @@ import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
+import org.springframework.web.multipart.MultipartFile;
 
+import javax.imageio.ImageIO;
+import java.awt.image.BufferedImage;
+import java.io.IOException;
 import java.time.LocalDateTime;
+import java.util.Arrays;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.concurrent.Executor;
@@ -43,6 +51,11 @@ import java.util.stream.Collectors;
 @Service
 @RequiredArgsConstructor
 public class PropServiceImpl implements PropService {
+
+    private static final List<String> ALLOWED_UPLOAD_IMAGE_TYPES = Arrays.asList(
+            "image/jpeg", "image/png", "image/webp"
+    );
+    private static final long MAX_UPLOAD_IMAGE_SIZE = 5 * 1024 * 1024;
 
     private final PropMapper propMapper;
     private final PropAssetMapper propAssetMapper;
@@ -58,6 +71,11 @@ public class PropServiceImpl implements PropService {
 
     @Override
     public List<PropDetailVO> getPropsBySeriesId(Long seriesId) {
+        return getPropsBySeriesId(seriesId, null);
+    }
+
+    @Override
+    public List<PropDetailVO> getPropsBySeriesId(Long seriesId, Long episodeId) {
         // 查询所有道具
         LambdaQueryWrapper<Prop> wrapper = new LambdaQueryWrapper<>();
         wrapper.eq(Prop::getSeriesId, seriesId)
@@ -82,23 +100,38 @@ public class PropServiceImpl implements PropService {
 
         // 组装VO
         return props.stream()
-                .map(prop -> convertToVOWithAssets(prop, assetsByPropId.getOrDefault(prop.getId(), List.of())))
+                .map(prop -> convertToVOWithAssets(prop, assetsByPropId.getOrDefault(prop.getId(), List.of()), episodeId))
+                .filter(this::isVisibleInEpisodeScope)
                 .collect(Collectors.toList());
     }
 
     @Override
     public PropDetailVO getPropDetail(Long propId) {
+        return getPropDetail(propId, null);
+    }
+
+    @Override
+    public PropDetailVO getPropDetail(Long propId, Long episodeId) {
+        return getPropDetail(propId, episodeId, false);
+    }
+
+    @Override
+    public PropDetailVO getPropDetail(Long propId, Long episodeId, boolean includeHistory) {
         Prop prop = propMapper.selectById(propId);
         if (prop == null) {
             throw new BusinessException("道具不存在");
         }
-        return convertToVO(prop);
+        return convertToVO(prop, episodeId, includeHistory);
     }
 
     @Override
     @Async("imageGenerateExecutor")
     public void generatePropAssets(Long propId) {
-        log.info("开始生成道具资产: propId={}", propId);
+        generatePropAssets(propId, null);
+    }
+
+    public void generatePropAssets(Long propId, Long episodeId) {
+        log.info("开始生成道具资产: propId={}, episodeId={}", propId, episodeId);
 
         Prop prop = propMapper.selectById(propId);
         if (prop == null) {
@@ -119,23 +152,15 @@ public class PropServiceImpl implements PropService {
             // 构建道具生成提示词（透明背景）
             String prompt = buildPropPrompt(prop, styleKeywords);
 
-            // 创建资产记录
-            PropAsset asset = new PropAsset();
-            asset.setPropId(propId);
-            asset.setAssetType("item");
-            asset.setViewType("main");
-            asset.setVersion(1);
-            asset.setStatus(0); // 生成中
-            asset.setIsActive(1);
-            asset.setCreatedAt(LocalDateTime.now());
-            asset.setUpdatedAt(LocalDateTime.now());
-            propAssetMapper.insert(asset);
+            PropAsset asset = ensureGeneratingPlaceholderAsset(propId, prop.getPropName(), episodeId);
+            int actualVersion = asset.getVersion() != null ? asset.getVersion() : 1;
 
             // 调用图片生成服务
             ImageGenerateRequest request = new ImageGenerateRequest();
             request.setCustomPrompt(prompt);
             request.setAspectRatio("1:1"); // 道具使用正方形比例
             request.setQuality("hd");
+            request.setStyleKeywords(styleKeywords);
 
             long startTime = System.currentTimeMillis();
             ImageGenerateResponse response = imageGenerateService.generatePropImage(request);
@@ -145,12 +170,15 @@ public class PropServiceImpl implements PropService {
                 // 上传到OSS
                 String ossUrl = ossService.uploadImageFromUrl(response.getImageUrl(), "props");
 
+                deactivatePropAssets(propId);
+
                 // 更新资产记录
                 asset.setFilePath(ossUrl);
                 asset.setTransparentPath(ossUrl); // 透明PNG暂用原图
                 asset.setThumbnailPath(ossUrl);
-                asset.setFileName(prop.getPropName() + "_v1.png");
+                asset.setFileName(prop.getPropName() + "_v" + actualVersion + ".png");
                 asset.setStatus(1); // 已完成
+                asset.setIsActive(1);
                 asset.setUpdatedAt(LocalDateTime.now());
                 propAssetMapper.updateById(asset);
 
@@ -186,7 +214,12 @@ public class PropServiceImpl implements PropService {
 
     @Override
     public void generatePropAssetsWithCredit(Long propId, Long userId) {
-        log.info("生成道具资产（含积分扣费）: propId={}, userId={}", propId, userId);
+        generatePropAssetsWithCredit(propId, userId, null);
+    }
+
+    @Override
+    public void generatePropAssetsWithCredit(Long propId, Long userId, Long episodeId) {
+        log.info("生成道具资产（含积分扣费）: propId={}, userId={}, episodeId={}", propId, userId, episodeId);
 
         Prop prop = propMapper.selectById(propId);
         if (prop == null) {
@@ -205,17 +238,26 @@ public class PropServiceImpl implements PropService {
                 "道具创建-" + prop.getPropName(), propId, "PROP");
         log.info("道具生成扣费: userId={}, propId={}, credits={}", userId, propId, requiredCredits);
 
-        // 记录扣除的积分
+        // 记录扣除的积分，并在接口返回前落库生成中状态和占位资产。
         prop.setDeductedCredits(requiredCredits);
+        prop.setStatus(PropStatus.GENERATING.getCode());
+        prop.setUpdatedAt(LocalDateTime.now());
         propMapper.updateById(prop);
+        PropAsset placeholderAsset = ensureGeneratingPlaceholderAsset(propId, prop.getPropName(), episodeId);
+        log.info("道具生成占位资产已就绪: propId={}, episodeId={}, version={}, assetId={}",
+                propId, episodeId, placeholderAsset.getVersion(), placeholderAsset.getId());
 
-        // 异步生成
-        generatePropAssets(propId);
+        // 提交后台生成任务，避免 HTTP 请求线程同步等待火山接口。
+        imageGenerateExecutor.execute(() -> generatePropAssets(propId, episodeId));
     }
 
     @Override
     @Async("imageGenerateExecutor")
     public void regeneratePropAsset(Long propId, String customPrompt, String quality) {
+        regeneratePropAsset(propId, customPrompt, quality, null);
+    }
+
+    public void regeneratePropAsset(Long propId, String customPrompt, String quality, Long episodeId) {
         log.info("重新生成道具资产: propId={}, quality={}, customPrompt={}",
                 propId, quality, customPrompt != null);
 
@@ -261,14 +303,7 @@ public class PropServiceImpl implements PropService {
             String finalAspectRatio = "1:1";
             String finalQuality = prop.getQuality() != null ? prop.getQuality() : "2k";
 
-            // 检查是否已存在占位资产（从createProp同步创建的）
-            LambdaQueryWrapper<PropAsset> placeholderWrapper = new LambdaQueryWrapper<>();
-            placeholderWrapper.eq(PropAsset::getPropId, propId)
-                    .eq(PropAsset::getStatus, 0)
-                    .eq(PropAsset::getIsActive, 0)
-                    .orderByDesc(PropAsset::getVersion)
-                    .last("LIMIT 1");
-            PropAsset asset = propAssetMapper.selectOne(placeholderWrapper);
+            PropAsset asset = findLatestGeneratingPlaceholder(propId, episodeId);
 
             int actualVersion;
             if (asset != null) {
@@ -280,6 +315,7 @@ public class PropServiceImpl implements PropService {
                 actualVersion = nextVersion;
                 asset = new PropAsset();
                 asset.setPropId(propId);
+                asset.setEpisodeId(episodeId);
                 asset.setAssetType("item");
                 asset.setViewType("main");
                 asset.setVersion(actualVersion);
@@ -296,6 +332,7 @@ public class PropServiceImpl implements PropService {
             request.setCustomPrompt(prompt);
             request.setAspectRatio(finalAspectRatio);
             request.setQuality(finalQuality);
+            request.setStyleKeywords(styleKeywords);
 
             long startTime = System.currentTimeMillis();
             ImageGenerateResponse response = imageGenerateService.generatePropImage(request);
@@ -356,7 +393,12 @@ public class PropServiceImpl implements PropService {
 
     @Override
     public void regeneratePropAssetWithCredit(Long propId, String customPrompt, String quality, Long userId) {
-        log.info("重新生成道具资产（含积分扣费）: propId={}, quality={}", propId, quality);
+        regeneratePropAssetWithCredit(propId, customPrompt, quality, userId, null);
+    }
+
+    @Override
+    public void regeneratePropAssetWithCredit(Long propId, String customPrompt, String quality, Long userId, Long episodeId) {
+        log.info("重新生成道具资产（含积分扣费）: propId={}, episodeId={}, quality={}", propId, episodeId, quality);
 
         Prop prop = propMapper.selectById(propId);
         if (prop == null) {
@@ -380,12 +422,23 @@ public class PropServiceImpl implements PropService {
                 "道具重新生成-" + prop.getPropName(), propId, "PROP");
         log.info("道具重新生成扣费: userId={}, propId={}, credits={}", userId, propId, requiredCredits);
 
-        // 记录扣除的积分
+        // 记录扣除的积分，并在接口返回前落库生成中状态和占位资产。
         prop.setDeductedCredits(requiredCredits);
+        prop.setStatus(PropStatus.GENERATING.getCode());
+        if (quality != null && !quality.isEmpty()) {
+            prop.setQuality(quality);
+        }
+        if (customPrompt != null && !customPrompt.trim().isEmpty()) {
+            prop.setCustomPrompt(customPrompt);
+        }
+        prop.setUpdatedAt(LocalDateTime.now());
         propMapper.updateById(prop);
+        PropAsset placeholderAsset = ensureGeneratingPlaceholderAsset(propId, prop.getPropName(), episodeId);
+        log.info("道具重新生成占位资产已就绪: propId={}, episodeId={}, version={}, assetId={}",
+                propId, episodeId, placeholderAsset.getVersion(), placeholderAsset.getId());
 
-        // 异步生成
-        regeneratePropAsset(propId, customPrompt, quality);
+        // 提交后台生成任务，避免 HTTP 请求线程同步等待火山接口。
+        imageGenerateExecutor.execute(() -> regeneratePropAsset(propId, customPrompt, quality, episodeId));
     }
 
     @Override
@@ -410,9 +463,23 @@ public class PropServiceImpl implements PropService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void lockProp(Long propId) {
+        lockProp(propId, null);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void lockProp(Long propId, Long episodeId) {
         Prop prop = propMapper.selectById(propId);
         if (prop == null) {
             throw new BusinessException("道具不存在");
+        }
+
+        PropAsset asset = selectPropAssetForLock(propId, episodeId);
+        if (asset != null) {
+            if (episodeId != null && asset.getEpisodeId() == null) {
+                asset.setEpisodeId(episodeId);
+            }
+            activatePropAsset(propId, asset);
         }
 
         prop.setStatus(PropStatus.LOCKED.getCode());
@@ -560,14 +627,22 @@ public class PropServiceImpl implements PropService {
             prompt.append(", ");
         }
 
-        // 透明背景关键词（重要）
-        prompt.append("transparent background, isolated on white background, clean cutout, ");
+        // 背景关键词（重要）：道具资产用于贴合分镜和场景，优先生成透明背景抠图。
+        prompt.append("transparent background, isolated clean cutout, alpha channel style, no background, no backdrop, ");
         // 排除人物/手部，确保只生成单品道具
         prompt.append("no hands, no hands holding, no one holding, no person holding, no fingers, ");
         prompt.append("no people, no characters, standalone prop, single object, ");
         prompt.append("high quality, detailed, professional product shot, no shadows, centered");
 
         return prompt.toString();
+    }
+
+    private String resolvePropStyleKeywords(Prop prop) {
+        if (prop != null && prop.getStyleKeywords() != null && !prop.getStyleKeywords().trim().isEmpty()) {
+            return prop.getStyleKeywords();
+        }
+        Series series = prop != null ? seriesMapper.selectById(prop.getSeriesId()) : null;
+        return series != null ? series.getStyleKeywords() : null;
     }
 
     /**
@@ -583,38 +658,259 @@ public class PropServiceImpl implements PropService {
     }
 
     /**
-     * 转换为VO
+     * 创建生成中的资产占位，让刷新/新开页面能看到一致状态。
      */
+    private PropAsset createGeneratingPlaceholderAsset(Long propId, String propName, int version) {
+        return createGeneratingPlaceholderAsset(propId, propName, version, null);
+    }
+
+    private PropAsset createGeneratingPlaceholderAsset(Long propId, String propName, int version, Long episodeId) {
+        PropAsset placeholderAsset = new PropAsset();
+        placeholderAsset.setPropId(propId);
+        placeholderAsset.setEpisodeId(episodeId);
+        placeholderAsset.setAssetType("item");
+        placeholderAsset.setViewType("main");
+        placeholderAsset.setVersion(version);
+        placeholderAsset.setStatus(0);
+        placeholderAsset.setIsActive(0);
+        placeholderAsset.setFileName(propName + "_v" + version + "_generating.png");
+        placeholderAsset.setCreatedAt(LocalDateTime.now());
+        placeholderAsset.setUpdatedAt(LocalDateTime.now());
+        propAssetMapper.insert(placeholderAsset);
+        return placeholderAsset;
+    }
+
+    /**
+     * 事务提交后再启动异步生成，避免生成线程读到未提交的道具/占位资产。
+     */
+    private void executeImageGenerationAfterCommit(Runnable task) {
+        if (TransactionSynchronizationManager.isActualTransactionActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    imageGenerateExecutor.execute(task);
+                }
+            });
+            return;
+        }
+
+        imageGenerateExecutor.execute(task);
+    }
+
+    /**
+     * 查找同步创建的生成中占位资产，异步生成成功后复用并更新它。
+     */
+    private PropAsset findLatestGeneratingPlaceholder(Long propId) {
+        return findLatestGeneratingPlaceholder(propId, null);
+    }
+
+    private PropAsset findLatestGeneratingPlaceholder(Long propId, Long episodeId) {
+        LambdaQueryWrapper<PropAsset> wrapper = new LambdaQueryWrapper<>();
+        wrapper.eq(PropAsset::getPropId, propId)
+                .eq(PropAsset::getStatus, 0)
+                .eq(PropAsset::getIsActive, 0)
+                .orderByDesc(PropAsset::getVersion)
+                .last("LIMIT 1");
+        if (episodeId != null) {
+            wrapper.eq(PropAsset::getEpisodeId, episodeId);
+        }
+        return propAssetMapper.selectOne(wrapper);
+    }
+
+    private PropAsset ensureGeneratingPlaceholderAsset(Long propId, String propName, Long episodeId) {
+        PropAsset asset = findLatestGeneratingPlaceholder(propId, episodeId);
+        if (asset != null) {
+            return asset;
+        }
+        int nextVersion = getNextVersion(propId);
+        return createGeneratingPlaceholderAsset(propId, propName, nextVersion, episodeId);
+    }
+
+    private void deactivatePropAssets(Long propId) {
+        LambdaQueryWrapper<PropAsset> updateWrapper = new LambdaQueryWrapper<>();
+        updateWrapper.eq(PropAsset::getPropId, propId);
+        PropAsset updateAsset = new PropAsset();
+        updateAsset.setIsActive(0);
+        updateAsset.setUpdatedAt(LocalDateTime.now());
+        propAssetMapper.update(updateAsset, updateWrapper);
+    }
+
+    private void activatePropAsset(Long propId, PropAsset asset) {
+        if (asset == null) {
+            return;
+        }
+        deactivatePropAssets(propId);
+        asset.setIsActive(1);
+        asset.setUpdatedAt(LocalDateTime.now());
+        propAssetMapper.updateById(asset);
+    }
+
+    private PropAsset selectScopedPropAsset(Long propId, Long episodeId, boolean activeOnly) {
+        LambdaQueryWrapper<PropAsset> wrapper = new LambdaQueryWrapper<>();
+        wrapper.eq(PropAsset::getPropId, propId)
+                .orderByDesc(PropAsset::getVersion)
+                .orderByDesc(PropAsset::getId);
+        if (activeOnly) {
+            wrapper.eq(PropAsset::getIsActive, 1);
+        }
+        List<PropAsset> assets = propAssetMapper.selectList(wrapper);
+        if (assets.isEmpty()) {
+            return null;
+        }
+
+        if (episodeId != null) {
+            PropAsset scopedAsset = assets.stream()
+                    .filter(asset -> episodeId.equals(asset.getEpisodeId()))
+                    .max(Comparator.comparing(PropAsset::getVersion, Comparator.nullsLast(Integer::compareTo))
+                            .thenComparing(PropAsset::getId, Comparator.nullsLast(Long::compareTo)))
+                    .orElse(null);
+            if (scopedAsset != null) {
+                return scopedAsset;
+            }
+        }
+
+        PropAsset activeAsset = assets.stream()
+                .filter(asset -> asset.getIsActive() != null && asset.getIsActive() == 1)
+                .findFirst()
+                .orElse(null);
+        return activeAsset != null ? activeAsset : assets.get(0);
+    }
+
+    private PropAsset selectPropAssetForLock(Long propId, Long episodeId) {
+        LambdaQueryWrapper<PropAsset> wrapper = new LambdaQueryWrapper<>();
+        wrapper.eq(PropAsset::getPropId, propId)
+                .orderByDesc(PropAsset::getIsActive)
+                .orderByDesc(PropAsset::getUpdatedAt)
+                .orderByDesc(PropAsset::getVersion)
+                .orderByDesc(PropAsset::getId);
+        List<PropAsset> assets = propAssetMapper.selectList(wrapper);
+        if (assets.isEmpty()) {
+            return null;
+        }
+
+        PropAsset activeAsset = assets.stream()
+                .filter(asset -> asset.getIsActive() != null && asset.getIsActive() == 1)
+                .findFirst()
+                .orElse(null);
+        if (activeAsset != null) {
+            return activeAsset;
+        }
+
+        return selectScopedPropAsset(propId, episodeId, false);
+    }
+
+    private List<PropAsset> filterAssetsForEpisodeScope(Prop prop, List<PropAsset> assets, Long episodeId) {
+        if (PropStatus.LOCKED.getCode().equals(prop.getStatus()) || episodeId == null) {
+            return assets;
+        }
+        return assets.stream()
+                .filter(asset -> episodeId.equals(asset.getEpisodeId()))
+                .collect(Collectors.toList());
+    }
+
+    private List<PropAsset> filterAssetsForHistoryScope(Prop prop, List<PropAsset> assets, Long episodeId) {
+        if (PropStatus.LOCKED.getCode().equals(prop.getStatus()) || episodeId == null) {
+            return assets;
+        }
+        return assets.stream()
+                .filter(asset -> episodeId.equals(asset.getEpisodeId()) || asset.getEpisodeId() == null)
+                .collect(Collectors.toList());
+    }
+
+    private boolean isVisibleInEpisodeScope(PropDetailVO vo) {
+        if (vo.getStatus() != null && PropStatus.LOCKED.getCode().equals(vo.getStatus())) {
+            return true;
+        }
+        return vo.getAssets() != null && !vo.getAssets().isEmpty();
+    }
+
+    private void applyAssetData(PropDetailVO vo, List<PropDetailVO.PropAssetVO> assetVOs) {
+        applyAssetData(vo, assetVOs, false);
+    }
+
+    private void applyAssetData(PropDetailVO vo, List<PropDetailVO.PropAssetVO> assetVOs, boolean preferLatestScopedAsset) {
+        vo.setAssets(assetVOs);
+
+        // 道具主状态是唯一状态源。旧的生成中占位资产不能覆盖已完成的道具状态。
+        if (vo.getStatus() == null && !assetVOs.isEmpty()) {
+            PropDetailVO.PropAssetVO latestAsset = assetVOs.stream()
+                    .max((a, b) -> Integer.compare(a.getVersion(), b.getVersion()))
+                    .orElse(null);
+            if (latestAsset != null) {
+                vo.setStatus(latestAsset.getStatus());
+            }
+        }
+
+        PropDetailVO.PropAssetVO displayAsset = null;
+        if (!assetVOs.isEmpty()) {
+            if (preferLatestScopedAsset) {
+                PropDetailVO.PropAssetVO generatingAsset = assetVOs.stream()
+                        .filter(assetVO -> assetVO.getStatus() != null && assetVO.getStatus() == 0)
+                        .max(Comparator.comparing(PropDetailVO.PropAssetVO::getVersion, Comparator.nullsLast(Integer::compareTo))
+                                .thenComparing(PropDetailVO.PropAssetVO::getId, Comparator.nullsLast(Long::compareTo)))
+                        .orElse(null);
+                displayAsset = generatingAsset != null ? generatingAsset : assetVOs.stream()
+                        .filter(assetVO -> assetVO.getIsActive() != null && assetVO.getIsActive() == 1
+                                && (assetVO.getFilePath() != null || assetVO.getTransparentPath() != null))
+                        .findFirst()
+                        .orElse(null);
+                if (displayAsset != null) {
+                    for (PropDetailVO.PropAssetVO assetVO : assetVOs) {
+                        assetVO.setIsActive(assetVO.getId() != null && assetVO.getId().equals(displayAsset.getId()) ? 1 : 0);
+                    }
+                }
+            } else {
+                displayAsset = assetVOs.stream()
+                        .filter(assetVO -> assetVO.getIsActive() != null && assetVO.getIsActive() == 1
+                                && (assetVO.getFilePath() != null || assetVO.getTransparentPath() != null))
+                        .findFirst()
+                        .orElse(null);
+            }
+
+            if (displayAsset == null) {
+                displayAsset = assetVOs.stream()
+                        .filter(assetVO -> assetVO.getFilePath() != null || assetVO.getTransparentPath() != null)
+                        .max(Comparator.comparing(PropDetailVO.PropAssetVO::getVersion, Comparator.nullsLast(Integer::compareTo))
+                                .thenComparing(PropDetailVO.PropAssetVO::getId, Comparator.nullsLast(Long::compareTo)))
+                        .orElse(assetVOs.get(0));
+            }
+        }
+
+        if (displayAsset != null) {
+            if (preferLatestScopedAsset && displayAsset.getStatus() != null) {
+                vo.setStatus(displayAsset.getStatus());
+            }
+            vo.setActiveAssetEpisodeId(displayAsset.getEpisodeId());
+            vo.setActiveAssetUrl(displayAsset.getFilePath());
+            vo.setTransparentUrl(displayAsset.getTransparentPath());
+        }
+
+        PropDetailVO.PropAssetVO latestAsset = assetVOs.stream()
+                .max(Comparator.comparing(PropDetailVO.PropAssetVO::getVersion, Comparator.nullsLast(Integer::compareTo))
+                        .thenComparing(PropDetailVO.PropAssetVO::getId, Comparator.nullsLast(Long::compareTo)))
+                .orElse(null);
+        if (latestAsset != null) {
+            vo.setLatestAssetEpisodeId(latestAsset.getEpisodeId());
+        }
+    }
+
     /**
      * 转换为VO（使用预先查询的资产列表，避免N+1查询）
      */
     private PropDetailVO convertToVOWithAssets(Prop prop, List<PropAsset> assets) {
+        return convertToVOWithAssets(prop, assets, null);
+    }
+
+    private PropDetailVO convertToVOWithAssets(Prop prop, List<PropAsset> assets, Long episodeId) {
         PropDetailVO vo = new PropDetailVO();
         BeanUtils.copyProperties(prop, vo);
 
-        List<PropDetailVO.PropAssetVO> assetVOs = assets.stream()
+        boolean scopedNonLocked = episodeId != null && !PropStatus.LOCKED.getCode().equals(prop.getStatus());
+        List<PropAsset> scopedAssets = filterAssetsForEpisodeScope(prop, assets, episodeId);
+        List<PropDetailVO.PropAssetVO> assetVOs = scopedAssets.stream()
                 .map(this::convertAssetToVO)
                 .collect(Collectors.toList());
-        vo.setAssets(assetVOs);
-
-        // 检查最新版本是否正在生成中（版本最高且 status=0）
-        if (!assetVOs.isEmpty()) {
-            PropDetailVO.PropAssetVO latestAsset = assetVOs.stream()
-                    .max((a, b) -> Integer.compare(a.getVersion(), b.getVersion()))
-                    .orElse(null);
-            if (latestAsset != null && latestAsset.getStatus() != null && latestAsset.getStatus() == 0) {
-                vo.setStatus(0);
-            }
-        }
-
-        // 设置激活资产URL
-        for (PropDetailVO.PropAssetVO assetVO : assetVOs) {
-            if (assetVO.getIsActive() != null && assetVO.getIsActive() == 1) {
-                vo.setActiveAssetUrl(assetVO.getFilePath());
-                vo.setTransparentUrl(assetVO.getTransparentPath());
-                break;
-            }
-        }
+        applyAssetData(vo, assetVOs, scopedNonLocked);
 
         return vo;
     }
@@ -623,6 +919,14 @@ public class PropServiceImpl implements PropService {
      * 转换为VO（单个查询，用于详情页）
      */
     private PropDetailVO convertToVO(Prop prop) {
+        return convertToVO(prop, null, false);
+    }
+
+    private PropDetailVO convertToVO(Prop prop, Long episodeId) {
+        return convertToVO(prop, episodeId, false);
+    }
+
+    private PropDetailVO convertToVO(Prop prop, Long episodeId, boolean includeHistory) {
         PropDetailVO vo = new PropDetailVO();
         BeanUtils.copyProperties(prop, vo);
 
@@ -636,26 +940,17 @@ public class PropServiceImpl implements PropService {
         List<PropDetailVO.PropAssetVO> assetVOs = assets.stream()
                 .map(this::convertAssetToVO)
                 .collect(Collectors.toList());
-        vo.setAssets(assetVOs);
-
-        // 检查最新版本是否正在生成中（版本最高且 status=0）
-        if (!assetVOs.isEmpty()) {
-            PropDetailVO.PropAssetVO latestAsset = assetVOs.stream()
-                    .max((a, b) -> Integer.compare(a.getVersion(), b.getVersion()))
-                    .orElse(null);
-            if (latestAsset != null && latestAsset.getStatus() != null && latestAsset.getStatus() == 0) {
-                vo.setStatus(0);
-            }
+        boolean scopedNonLocked = episodeId != null && !PropStatus.LOCKED.getCode().equals(prop.getStatus());
+        boolean preferLatestScopedAsset = scopedNonLocked && !includeHistory;
+        if (scopedNonLocked || includeHistory) {
+            List<PropAsset> scopedAssets = includeHistory
+                    ? filterAssetsForHistoryScope(prop, assets, episodeId)
+                    : filterAssetsForEpisodeScope(prop, assets, episodeId);
+            assetVOs = scopedAssets.stream()
+                    .map(this::convertAssetToVO)
+                    .collect(Collectors.toList());
         }
-
-        // 设置激活资产URL
-        for (PropDetailVO.PropAssetVO assetVO : assetVOs) {
-            if (assetVO.getIsActive() != null && assetVO.getIsActive() == 1) {
-                vo.setActiveAssetUrl(assetVO.getFilePath());
-                vo.setTransparentUrl(assetVO.getTransparentPath());
-                break;
-            }
-        }
+        applyAssetData(vo, assetVOs, preferLatestScopedAsset);
 
         return vo;
     }
@@ -704,19 +999,8 @@ public class PropServiceImpl implements PropService {
             existingProp.setUpdatedAt(LocalDateTime.now());
             propMapper.updateById(existingProp);
 
-            // 获取下一个版本号并创建占位资产记录
             int nextVersion = getNextVersion(propId);
-            PropAsset placeholderAsset = new PropAsset();
-            placeholderAsset.setPropId(propId);
-            placeholderAsset.setAssetType("item");
-            placeholderAsset.setViewType("main");
-            placeholderAsset.setVersion(nextVersion);
-            placeholderAsset.setStatus(0); // 生成中
-            placeholderAsset.setIsActive(0); // 先不激活
-            placeholderAsset.setFileName(propName + "_v" + nextVersion + "_generating.png");
-            placeholderAsset.setCreatedAt(LocalDateTime.now());
-            placeholderAsset.setUpdatedAt(LocalDateTime.now());
-            propAssetMapper.insert(placeholderAsset);
+            PropAsset placeholderAsset = createGeneratingPlaceholderAsset(propId, propName, nextVersion, episodeId);
 
             log.info("已创建占位资产记录: propId={}, version={}, assetId={}", propId, nextVersion, placeholderAsset.getId());
 
@@ -725,7 +1009,7 @@ public class PropServiceImpl implements PropService {
             final Long finalEpisodeId = episodeId;
             final String finalQuality = quality;
             final String finalCustomPrompt = customPrompt;
-            imageGenerateExecutor.execute(() -> regeneratePropWithLLMPrompt(finalPropId, finalEpisodeId, finalQuality, finalCustomPrompt));
+            executeImageGenerationAfterCommit(() -> regeneratePropWithLLMPrompt(finalPropId, finalEpisodeId, finalQuality, finalCustomPrompt));
             return propId;
         }
 
@@ -744,14 +1028,160 @@ public class PropServiceImpl implements PropService {
 
         log.info("道具创建成功: propId={}", prop.getId());
 
+        PropAsset placeholderAsset = createGeneratingPlaceholderAsset(prop.getId(), propName, 1, episodeId);
+        log.info("已创建新道具占位资产记录: propId={}, version=1, assetId={}", prop.getId(), placeholderAsset.getId());
+
         // 异步生成提示词和图片（使用配置的线程池确保立即执行）
         final Long propId = prop.getId();
         final Long finalEpisodeId = episodeId;
         final String finalQuality = quality;
         final String finalCustomPrompt = customPrompt;
-        imageGenerateExecutor.execute(() -> generatePropWithLLMPrompt(propId, finalEpisodeId, finalQuality, finalCustomPrompt));
+        executeImageGenerationAfterCommit(() -> generatePropWithLLMPrompt(propId, finalEpisodeId, finalQuality, finalCustomPrompt));
 
         return prop.getId();
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public PropDetailVO uploadPropAsset(Long seriesId, Long episodeId, String propName, String quality, String customPrompt, MultipartFile file) {
+        if (propName == null || propName.trim().isEmpty()) {
+            throw new BusinessException("道具名称不能为空");
+        }
+
+        Series series = seriesMapper.selectById(seriesId);
+        if (series == null) {
+            throw new BusinessException("系列不存在");
+        }
+
+        LambdaQueryWrapper<Prop> wrapper = new LambdaQueryWrapper<>();
+        wrapper.eq(Prop::getSeriesId, seriesId)
+                .eq(Prop::getPropName, propName.trim())
+                .last("LIMIT 1");
+        Prop prop = propMapper.selectOne(wrapper);
+
+        if (prop == null) {
+            prop = new Prop();
+            prop.setSeriesId(seriesId);
+            prop.setPropName(propName.trim());
+            prop.setPropCode("UPLOAD_" + System.currentTimeMillis());
+            prop.setStyleKeywords(series.getStyleKeywords());
+            prop.setAspectRatio("1:1");
+            prop.setQuality((quality != null && !quality.isBlank()) ? quality : "2k");
+            prop.setStatus(PropStatus.PENDING_REVIEW.getCode());
+            prop.setCreatedAt(LocalDateTime.now());
+            prop.setUpdatedAt(LocalDateTime.now());
+            propMapper.insert(prop);
+        } else {
+            if (quality != null && !quality.isBlank()) {
+                prop.setQuality(quality);
+            }
+            if (customPrompt != null && !customPrompt.isBlank()) {
+                prop.setCustomPrompt(customPrompt.trim());
+            }
+            prop.setStatus(PropStatus.PENDING_REVIEW.getCode());
+            prop.setUpdatedAt(LocalDateTime.now());
+            propMapper.updateById(prop);
+        }
+
+        return uploadPropAsset(prop.getId(), episodeId, customPrompt, file);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public PropDetailVO uploadPropAsset(Long propId, Long episodeId, String customPrompt, MultipartFile file) {
+        Prop prop = propMapper.selectById(propId);
+        if (prop == null) {
+            throw new BusinessException("道具不存在");
+        }
+        if (PropStatus.LOCKED.getCode().equals(prop.getStatus())) {
+            throw new BusinessException("道具已锁定，无法上传新版本");
+        }
+
+        validateUploadedPropImage(file);
+
+        try {
+            String ossUrl = ossService.uploadImage(file.getBytes(), "props");
+            if (ossUrl == null || ossUrl.isBlank()) {
+                throw new BusinessException("上传图片失败");
+            }
+
+            int nextVersion = getNextVersion(propId);
+            deactivatePropAssets(propId);
+
+            PropAsset asset = new PropAsset();
+            asset.setPropId(propId);
+            asset.setEpisodeId(episodeId);
+            asset.setAssetType("item");
+            asset.setViewType("main");
+            asset.setVersion(nextVersion);
+            asset.setFilePath(ossUrl);
+            asset.setTransparentPath(ossUrl);
+            asset.setThumbnailPath(ossUrl);
+            asset.setFileName(prop.getPropName() + "_upload_v" + nextVersion + ".png");
+            asset.setStatus(1);
+            asset.setIsActive(1);
+            asset.setCreatedAt(LocalDateTime.now());
+            asset.setUpdatedAt(LocalDateTime.now());
+            propAssetMapper.insert(asset);
+
+            PropAssetMetadata metadata = new PropAssetMetadata();
+            metadata.setAssetId(asset.getId());
+            metadata.setPrompt("用户手动上传道具图片");
+            metadata.setUserPrompt(customPrompt != null && !customPrompt.isBlank() ? customPrompt.trim() : prop.getCustomPrompt());
+            metadata.setModelVersion("manual-upload");
+            metadata.setAspectRatio("1:1");
+            metadata.setCreatedAt(LocalDateTime.now());
+            propAssetMetadataMapper.insert(metadata);
+
+            if (customPrompt != null && !customPrompt.isBlank()) {
+                prop.setCustomPrompt(customPrompt.trim());
+            }
+            prop.setStatus(PropStatus.PENDING_REVIEW.getCode());
+            prop.setUpdatedAt(LocalDateTime.now());
+            propMapper.updateById(prop);
+
+            clearActiveGeneratingPlaceholders(propId);
+            log.info("道具手动上传完成: propId={}, episodeId={}, assetId={}, version={}",
+                    propId, episodeId, asset.getId(), nextVersion);
+            return getPropDetail(propId, episodeId);
+        } catch (IOException e) {
+            log.error("读取上传道具图片失败: propId={}", propId, e);
+            throw new BusinessException("读取上传图片失败");
+        }
+    }
+
+    private void validateUploadedPropImage(MultipartFile file) {
+        if (file == null || file.isEmpty()) {
+            throw new BusinessException("上传图片不能为空");
+        }
+        String contentType = file.getContentType();
+        if (contentType == null || !ALLOWED_UPLOAD_IMAGE_TYPES.contains(contentType)) {
+            throw new BusinessException("只支持 JPG、PNG、WEBP 格式的图片");
+        }
+        if (file.getSize() > MAX_UPLOAD_IMAGE_SIZE) {
+            throw new BusinessException("图片大小不能超过5MB");
+        }
+        try {
+            BufferedImage image = ImageIO.read(file.getInputStream());
+            if (image == null) {
+                throw new BusinessException("无法识别图片内容");
+            }
+            if (image.getWidth() != image.getHeight()) {
+                throw new BusinessException("道具图片必须为1:1，请先裁剪为正方形");
+            }
+        } catch (IOException e) {
+            throw new BusinessException("读取上传图片失败");
+        }
+    }
+
+    private void clearActiveGeneratingPlaceholders(Long propId) {
+        LambdaQueryWrapper<PropAsset> wrapper = new LambdaQueryWrapper<>();
+        wrapper.eq(PropAsset::getPropId, propId)
+                .eq(PropAsset::getStatus, 0);
+        PropAsset updateAsset = new PropAsset();
+        updateAsset.setIsActive(0);
+        updateAsset.setUpdatedAt(LocalDateTime.now());
+        propAssetMapper.update(updateAsset, wrapper);
     }
 
     /**
@@ -788,7 +1218,7 @@ public class PropServiceImpl implements PropService {
             propMapper.updateById(prop);
 
             // 生成图片
-            generatePropAssetsWithPrompt(propId, prompt, quality);
+            generatePropAssetsWithPrompt(propId, prompt, quality, episodeId);
         } catch (Exception e) {
             log.error("道具生成失败: propId={}", propId, e);
             prop.setStatus(PropStatus.PENDING_REVIEW.getCode());
@@ -839,7 +1269,7 @@ public class PropServiceImpl implements PropService {
             propMapper.updateById(prop);
 
             // 调用重新生成逻辑（版本+1）
-            regeneratePropAsset(propId, prompt, quality);
+            regeneratePropAsset(propId, prompt, quality, episodeId);
         } catch (Exception e) {
             log.error("道具重新生成失败: propId={}", propId, e);
             prop.setStatus(PropStatus.PENDING_REVIEW.getCode());
@@ -853,6 +1283,10 @@ public class PropServiceImpl implements PropService {
      */
     @Async("imageGenerateExecutor")
     public void generatePropAssetsWithPrompt(Long propId, String prompt, String quality) {
+        generatePropAssetsWithPrompt(propId, prompt, quality, null);
+    }
+
+    public void generatePropAssetsWithPrompt(Long propId, String prompt, String quality, Long episodeId) {
         log.info("开始生成道具资产: propId={}", propId);
 
         Prop prop = propMapper.selectById(propId);
@@ -862,23 +1296,27 @@ public class PropServiceImpl implements PropService {
         }
 
         try {
-            // 创建资产记录
-            PropAsset asset = new PropAsset();
-            asset.setPropId(propId);
-            asset.setAssetType("item");
-            asset.setViewType("main");
-            asset.setVersion(1);
-            asset.setStatus(0);
-            asset.setIsActive(1);
-            asset.setCreatedAt(LocalDateTime.now());
-            asset.setUpdatedAt(LocalDateTime.now());
-            propAssetMapper.insert(asset);
+            prop.setStatus(PropStatus.GENERATING.getCode());
+            prop.setUpdatedAt(LocalDateTime.now());
+            propMapper.updateById(prop);
+
+            PropAsset asset = findLatestGeneratingPlaceholder(propId, episodeId);
+            if (asset == null) {
+                int nextVersion = getNextVersion(propId);
+                asset = createGeneratingPlaceholderAsset(propId, prop.getPropName(), nextVersion, episodeId);
+                log.info("未找到占位资产，已补建: propId={}, version={}, assetId={}", propId, nextVersion, asset.getId());
+            } else {
+                log.info("复用已存在的占位资产: propId={}, version={}, assetId={}", propId, asset.getVersion(), asset.getId());
+            }
+
+            int actualVersion = asset.getVersion() != null ? asset.getVersion() : 1;
 
             // 调用图片生成服务
             ImageGenerateRequest request = new ImageGenerateRequest();
             request.setCustomPrompt(prompt);
             request.setAspectRatio("1:1"); // 道具固定 1:1
             request.setQuality(quality != null ? quality : "2k");
+            request.setStyleKeywords(resolvePropStyleKeywords(prop));
 
             long startTime = System.currentTimeMillis();
             ImageGenerateResponse response = imageGenerateService.generatePropImage(request);
@@ -888,12 +1326,15 @@ public class PropServiceImpl implements PropService {
                 // 上传到OSS
                 String ossUrl = ossService.uploadImageFromUrl(response.getImageUrl(), "props");
 
+                deactivatePropAssets(propId);
+
                 // 更新资产记录
                 asset.setFilePath(ossUrl);
                 asset.setTransparentPath(ossUrl);
                 asset.setThumbnailPath(ossUrl);
-                asset.setFileName(prop.getPropName() + "_v1.png");
+                asset.setFileName(prop.getPropName() + "_v" + actualVersion + ".png");
                 asset.setStatus(1);
+                asset.setIsActive(1);
                 asset.setUpdatedAt(LocalDateTime.now());
                 propAssetMapper.updateById(asset);
 
@@ -929,7 +1370,13 @@ public class PropServiceImpl implements PropService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void rollbackToVersion(Long propId, Long assetId) {
-        log.info("回滚道具资产版本: propId={}, assetId={}", propId, assetId);
+        rollbackToVersion(propId, assetId, null);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void rollbackToVersion(Long propId, Long assetId, Long episodeId) {
+        log.info("回滚道具资产版本: propId={}, assetId={}, episodeId={}", propId, assetId, episodeId);
 
         Prop prop = propMapper.selectById(propId);
         if (prop == null) {
@@ -952,6 +1399,14 @@ public class PropServiceImpl implements PropService {
             throw new BusinessException("只能回滚到已完成的版本");
         }
 
+        Long resolvedEpisodeId = episodeId;
+        if (resolvedEpisodeId == null && targetAsset.getEpisodeId() == null) {
+            PropAsset activeAsset = selectScopedPropAsset(propId, null, true);
+            if (activeAsset != null && !assetId.equals(activeAsset.getId())) {
+                resolvedEpisodeId = activeAsset.getEpisodeId();
+            }
+        }
+
         // 停用所有资产
         LambdaQueryWrapper<PropAsset> updateWrapper = new LambdaQueryWrapper<>();
         updateWrapper.eq(PropAsset::getPropId, propId);
@@ -961,10 +1416,18 @@ public class PropServiceImpl implements PropService {
         propAssetMapper.update(updateAsset, updateWrapper);
 
         // 激活目标资产
+        if (resolvedEpisodeId != null && targetAsset.getEpisodeId() == null) {
+            targetAsset.setEpisodeId(resolvedEpisodeId);
+        }
         targetAsset.setIsActive(1);
         targetAsset.setUpdatedAt(LocalDateTime.now());
         propAssetMapper.updateById(targetAsset);
 
-        log.info("道具资产回滚成功: propId={}, assetId={}, version={}", propId, assetId, targetAsset.getVersion());
+        prop.setStatus(PropStatus.PENDING_REVIEW.getCode());
+        prop.setUpdatedAt(LocalDateTime.now());
+        propMapper.updateById(prop);
+
+        log.info("道具资产回滚成功: propId={}, assetId={}, version={}, episodeId={}",
+                propId, assetId, targetAsset.getVersion(), targetAsset.getEpisodeId());
     }
 }

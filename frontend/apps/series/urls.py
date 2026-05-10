@@ -81,8 +81,19 @@ urlpatterns = [
     # 创建场景
     path('api/v1/scenes/', views.scene_create, name='scene_create'),
 
+    # 上传场景图片
+    path('api/v1/scenes/upload/', views.scene_upload, name='scene_upload'),
+    path('api/v1/scenes/<int:scene_id>/upload/', views.scene_asset_upload, name='scene_asset_upload'),
+
     # 创建道具
     path('api/v1/props/', views.prop_create, name='prop_create'),
+
+    # 上传道具图片
+    path('api/v1/props/upload/', views.prop_upload, name='prop_upload'),
+    path('api/v1/props/<int:prop_id>/upload/', views.prop_asset_upload, name='prop_asset_upload'),
+
+    # 获取系列道具
+    path('api/v1/props/series/<int:series_id>/', views.props_by_series, name='props_by_series'),
 
     # 重新生成场景
     path('api/v1/scenes/<int:scene_id>/regenerate/', views.scene_regenerate, name='scene_regenerate'),
@@ -132,6 +143,9 @@ urlpatterns = [
 
     # 更新分镜
     path('api/v1/shots/<int:shot_id>/', views.shot_update, name='shot_update'),
+
+    # 获取剧集分镜列表
+    path('api/v1/shots/episode/<int:episode_id>/', views.shot_list_api, name='shot_list_api'),
 
     # ========== 分镜参考图相关 ==========
     # 获取分镜参考图列表

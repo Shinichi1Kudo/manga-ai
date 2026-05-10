@@ -2,4 +2,32 @@
 <!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN" "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
 <mapper namespace="com.manga.ai.series.mapper.SeriesMapper">
 
+    <select id="selectSeriesListCards" resultType="com.manga.ai.series.dto.SeriesDetailVO">
+        SELECT
+            s.id,
+            s.series_name AS seriesName,
+            LEFT(COALESCE(s.background, ''), 140) AS background,
+            s.status,
+            s.created_at AS createdAt,
+            s.updated_at AS updatedAt,
+            COUNT(r.id) AS roleCount
+        FROM series s
+        LEFT JOIN role r
+            ON r.series_id = s.id
+            AND r.is_deleted = 0
+        WHERE s.is_deleted = 0
+        <if test="userId != null">
+            AND s.user_id = #{userId}
+        </if>
+        GROUP BY
+            s.id,
+            s.series_name,
+            s.background,
+            s.status,
+            s.created_at,
+            s.updated_at
+        ORDER BY s.created_at DESC
+        LIMIT #{limit} OFFSET #{offset}
+    </select>
+
 </mapper>

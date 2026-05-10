@@ -21,6 +21,7 @@ class LoginRequiredMiddleware:
             '/auth/register/',
             '/auth/send-code/',
             '/auth/logout/',
+            '/favicon.ico',
             '/static/',
             '/media/',
         ]

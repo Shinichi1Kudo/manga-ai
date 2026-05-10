@@ -7,6 +7,7 @@ import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.ConcurrentHashMap;
 
 @Slf4j
 @Service
@@ -19,6 +20,8 @@ public class TokenServiceImpl implements TokenService {
 
     private static final String TOKEN_KEY_PREFIX = "auth:token:";
     private static final String USER_TOKENS_KEY_PREFIX = "auth:user:tokens:";
+    private static final long TOKEN_VALIDATION_CACHE_TTL_MS = 30000;
+    private final ConcurrentHashMap<String, CacheEntry> validationCache = new ConcurrentHashMap<>();
 
     public TokenServiceImpl(StringRedisTemplate redisTemplate) {
         this.redisTemplate = redisTemplate;
@@ -43,9 +46,17 @@ public class TokenServiceImpl implements TokenService {
 
     @Override
     public boolean validateTokenInRedis(String token) {
+        CacheEntry cached = validationCache.get(token);
+        long now = System.currentTimeMillis();
+        if (cached != null && cached.expiresAt > now) {
+            return cached.valid;
+        }
+
         try {
             String tokenKey = TOKEN_KEY_PREFIX + token;
-            return Boolean.TRUE.equals(redisTemplate.hasKey(tokenKey));
+            boolean valid = Boolean.TRUE.equals(redisTemplate.hasKey(tokenKey));
+            validationCache.put(token, new CacheEntry(valid, now + TOKEN_VALIDATION_CACHE_TTL_MS));
+            return valid;
         } catch (Exception e) {
             log.error("Redis validateToken failed, falling back to JWT-only validation", e);
             // Redis不可用时降级：返回true让JWT验证通过
@@ -71,6 +82,7 @@ public class TokenServiceImpl implements TokenService {
     @Override
     public void removeToken(String token) {
         try {
+            validationCache.remove(token);
             String tokenKey = TOKEN_KEY_PREFIX + token;
             String userIdStr = redisTemplate.opsForValue().get(tokenKey);
             redisTemplate.delete(tokenKey);
@@ -93,6 +105,7 @@ public class TokenServiceImpl implements TokenService {
             var tokens = redisTemplate.opsForSet().members(userTokensKey);
             if (tokens != null) {
                 for (String token : tokens) {
+                    validationCache.remove(token);
                     redisTemplate.delete(TOKEN_KEY_PREFIX + token);
                 }
             }
@@ -100,6 +113,16 @@ public class TokenServiceImpl implements TokenService {
             log.info("All tokens removed for userId={}", userId);
         } catch (Exception e) {
             log.error("Redis removeAllUserTokens failed, userId={}", userId, e);
+        }
+    }
+
+    private static class CacheEntry {
+        private final boolean valid;
+        private final long expiresAt;
+
+        private CacheEntry(boolean valid, long expiresAt) {
+            this.valid = valid;
+            this.expiresAt = expiresAt;
         }
     }
 }

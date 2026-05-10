@@ -24,6 +24,11 @@ public class PropAsset implements Serializable {
     private Long propId;
 
     /**
+     * 生成来源剧集ID。未锁定资产只在来源剧集中展示，锁定后才作为系列资产共享。
+     */
+    private Long episodeId;
+
+    /**
      * 资产类型
      */
     private String assetType;

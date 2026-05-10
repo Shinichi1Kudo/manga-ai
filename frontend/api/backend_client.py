@@ -35,7 +35,10 @@ class BackendClient:
                 data={'code': 401}
             )
         if response.status_code >= 400:
-            error_data = response.json() if response.content else {}
+            try:
+                error_data = response.json() if response.content else {}
+            except ValueError:
+                error_data = {'message': '后端服务返回了非 JSON 错误页面'}
             raise BackendAPIError(
                 status_code=response.status_code,
                 message=error_data.get('message', 'Unknown error'),
@@ -43,7 +46,14 @@ class BackendClient:
             )
 
         if response.content:
-            result = response.json()
+            try:
+                result = response.json()
+            except ValueError:
+                raise BackendAPIError(
+                    status_code=response.status_code,
+                    message='后端服务返回了非 JSON 响应',
+                    data={}
+                )
             # 处理包装的返回结果
             if isinstance(result, dict):
                 # 检查业务逻辑错误（HTTP 200 但 code != 200 或 success=false）
@@ -103,7 +113,7 @@ class BackendClient:
         )
         return self._handle_response(response)
 
-    def upload(self, endpoint: str, files: Dict) -> Any:
+    def upload(self, endpoint: str, files: Dict, data: Optional[Dict] = None) -> Any:
         """上传文件"""
         # 上传文件时需要移除 Content-Type，让 requests 自动设置
         headers = dict(self.session.headers)
@@ -112,6 +122,7 @@ class BackendClient:
         response = requests.post(
             self._build_url(endpoint),
             files=files,
+            data=data,
             headers=headers,
             timeout=self.timeout
         )

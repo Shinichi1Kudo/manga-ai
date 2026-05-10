@@ -144,15 +144,15 @@
         <div class="text-sm text-white/50">分镜总数</div>
     </div>
     <div class="glass-card p-5 text-center">
-        <div class="text-3xl font-bold text-emerald-400 mb-1" id="completedShots">0</div>
+        <div class="text-3xl font-bold text-emerald-400 mb-1" id="completedShots">{{ completed_shots }}</div>
         <div class="text-sm text-white/50">已完成</div>
     </div>
     <div class="glass-card p-5 text-center">
-        <div class="text-3xl font-bold text-amber-400 mb-1" id="pendingShots">0</div>
+        <div class="text-3xl font-bold text-amber-400 mb-1" id="pendingShots">{{ pending_shots }}</div>
         <div class="text-sm text-white/50">待生成</div>
     </div>
     <div class="glass-card p-5 text-center">
-        <div class="text-3xl font-bold text-blue-400 mb-1" id="progressPercent">0%</div>
+        <div class="text-3xl font-bold text-blue-400 mb-1" id="progressPercent">{{ progress_percent }}%</div>
         <div class="text-sm text-white/50">完成进度</div>
     </div>
 </div>
@@ -252,42 +252,53 @@
         <h2 class="text-lg font-semibold text-white flex items-center gap-2">
             <i data-lucide="image" class="w-5 h-5"></i>场景资产 ({{ scenes|length }})
         </h2>
-        <button type="button" id="addSceneBtn" data-modal-id="addSceneModal" class="px-4 py-2 rounded-lg bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 transition-all text-sm flex items-center gap-2">
-            <i data-lucide="plus" class="w-4 h-4"></i>添加场景
-        </button>
+        <div class="flex items-center gap-2">
+            <button type="button" id="uploadSceneBtn" data-modal-id="uploadSceneModal" class="px-4 py-2 rounded-lg bg-white/10 hover:bg-white/15 transition-all text-sm flex items-center gap-2">
+                <i data-lucide="upload" class="w-4 h-4"></i>上传场景图片
+            </button>
+            <button type="button" id="addSceneBtn" data-modal-id="addSceneModal" class="px-4 py-2 rounded-lg bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 transition-all text-sm flex items-center gap-2">
+                <i data-lucide="plus" class="w-4 h-4"></i>添加场景
+            </button>
+        </div>
     </div>
     {% if scenes %}
     <div id="scenesGrid" class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
         {% for scene in scenes %}
         <div class="glass-card glass-card-hover p-3 text-center group relative" data-scene-name="{{ scene.sceneName }}" data-scene-id="{{ scene.id }}" data-status="{{ scene.status }}">
             <div class="w-full aspect-video rounded-lg bg-white/5 mb-2 overflow-hidden flex items-center justify-center cursor-pointer scene-history-btn"
-                 data-scene-id="{{ scene.id }}" data-scene-name="{{ scene.sceneName }}" data-scene-assets='{{ scene.assets|to_json }}'>
+                 data-scene-id="{{ scene.id }}" data-scene-name="{{ scene.sceneName }}">
                 {% if scene.status == 0 %}
                 <div class="text-center">
                     <i data-lucide="loader-2" class="w-6 h-6 text-blue-400 animate-spin mx-auto"></i>
                     <p class="text-xs text-white/50 mt-1">生成中</p>
                 </div>
                 {% elif scene.activeAssetUrl %}
-                <img src="{{ scene.activeAssetUrl }}" class="w-full h-full object-cover" alt="{{ scene.sceneName }}">
+                <img src="{{ scene.activeAssetUrl }}" class="w-full h-full object-cover" alt="{{ scene.sceneName }}" loading="lazy" decoding="async">
                 {% else %}
                 <i data-lucide="image" class="w-8 h-8 text-white/20"></i>
                 {% endif %}
                 <!-- 锁定标识 -->
                 {% if scene.isLocked %}
-                <div class="absolute top-1 left-1">
+                <div class="absolute top-1 left-1 lock-overlay">
                     <i data-lucide="lock" class="w-4 h-4 text-amber-400"></i>
                 </div>
                 {% endif %}
                 <!-- 操作按钮 -->
                 <div class="absolute top-1 right-1 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                     <button class="scene-history-icon-btn w-7 h-7 rounded-lg bg-black/50 hover:bg-black/70 transition-colors flex items-center justify-center"
-                            data-scene-id="{{ scene.id }}" data-scene-name="{{ scene.sceneName }}" data-scene-assets='{{ scene.assets|to_json }}' title="历史版本">
+                            data-scene-id="{{ scene.id }}" data-scene-name="{{ scene.sceneName }}" title="历史版本">
                         <i data-lucide="history" class="w-4 h-4 text-white"></i>
                     </button>
                     <button class="scene-regenerate-btn w-7 h-7 rounded-lg bg-black/50 hover:bg-black/70 transition-colors flex items-center justify-center"
                             data-scene-id="{{ scene.id }}" data-scene-name="{{ scene.sceneName }}" data-scene-prompt="{{ scene.customPrompt|default:'' }}" title="重新生成">
                         <i data-lucide="refresh-cw" class="w-4 h-4 text-white"></i>
                     </button>
+                    {% if scene.status != 3 %}
+                    <button class="scene-upload-btn w-7 h-7 rounded-lg bg-black/50 hover:bg-black/70 transition-colors flex items-center justify-center"
+                            data-scene-id="{{ scene.id }}" data-scene-name="{{ scene.sceneName }}" data-scene-prompt="{{ scene.customPrompt|default:'' }}" title="上传图片">
+                        <i data-lucide="upload" class="w-4 h-4 text-white"></i>
+                    </button>
+                    {% endif %}
                 </div>
             </div>
             <p class="text-sm text-white/80 truncate mb-1" title="{{ scene.sceneName }}">{{ scene.sceneName }}</p>
@@ -300,7 +311,7 @@
                         {% else %}text-white/50{% endif %}">
                         {{ scene.statusDesc }}
                     </span>
-                    {% if scene.assets and scene.assets|length > 1 %}
+                    {% if scene.assetCount and scene.assetCount > 1 %}
                     <span class="text-xs text-white/30 version-count">· v{{ scene.activeVersion }}</span>
                     {% endif %}
                 </div>
@@ -315,7 +326,7 @@
         {% endfor %}
     </div>
     {% else %}
-    <div class="text-center py-8 text-white/40">
+    <div id="scenesEmptyState" class="text-center py-8 text-white/40">
         <i data-lucide="image" class="w-12 h-12 mx-auto mb-2 opacity-30"></i>
         <p>暂无场景资产</p>
     </div>
@@ -333,6 +344,9 @@
     <button class="scene-regenerate-menu-btn w-full px-4 py-2 text-left text-sm text-white/80 hover:bg-white/10 flex items-center gap-2">
         <i data-lucide="refresh-cw" class="w-4 h-4"></i>重新生成
     </button>
+    <button class="scene-upload-menu-btn w-full px-4 py-2 text-left text-sm text-white/80 hover:bg-white/10 flex items-center gap-2">
+        <i data-lucide="upload" class="w-4 h-4"></i>上传图片
+    </button>
     <div class="border-t border-white/10 my-1"></div>
     <button class="scene-delete-btn w-full px-4 py-2 text-left text-sm text-red-400 hover:bg-red-500/20 flex items-center gap-2">
         <i data-lucide="trash-2" class="w-4 h-4"></i>删除
@@ -345,20 +359,24 @@
         <h2 class="text-lg font-semibold text-white flex items-center gap-2">
             <i data-lucide="box" class="w-5 h-5"></i>道具资产 ({{ props|length }})
         </h2>
-        <button type="button" id="addPropBtn" data-modal-id="addPropModal" class="px-4 py-2 rounded-lg bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 transition-all text-sm flex items-center gap-2">
-            <i data-lucide="plus" class="w-4 h-4"></i>添加道具
-        </button>
+        <div class="flex items-center gap-2">
+            <button type="button" id="uploadPropBtn" data-modal-id="uploadPropModal" class="px-4 py-2 rounded-lg bg-white/10 hover:bg-white/15 transition-all text-sm flex items-center gap-2">
+                <i data-lucide="upload" class="w-4 h-4"></i>上传道具图片
+            </button>
+            <button type="button" id="addPropBtn" data-modal-id="addPropModal" class="px-4 py-2 rounded-lg bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 transition-all text-sm flex items-center gap-2">
+                <i data-lucide="plus" class="w-4 h-4"></i>添加道具
+            </button>
+        </div>
     </div>
-    {% if props %}
-    <div id="propsGrid" class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
+    <div id="propsGrid" class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4 {% if not props %}hidden{% endif %}">
         {% for prop in props %}
         <div class="glass-card glass-card-hover p-3 text-center group relative" data-prop-name="{{ prop.propName }}" data-prop-id="{{ prop.id }}" data-status="{{ prop.status }}">
             <div class="w-full aspect-square rounded-lg bg-white/5 mb-2 overflow-hidden flex items-center justify-center cursor-pointer prop-history-btn"
-                 data-prop-id="{{ prop.id }}" data-prop-name="{{ prop.propName }}" data-prop-assets='{{ prop.assets|to_json }}'>
+                 data-prop-id="{{ prop.id }}" data-prop-name="{{ prop.propName }}">
                 {% if prop.activeAssetUrl %}
-                <img src="{{ prop.activeAssetUrl }}" class="w-full h-full object-cover" alt="{{ prop.propName }}">
+                <img src="{{ prop.activeAssetUrl }}" class="w-full h-full object-cover" alt="{{ prop.propName }}" loading="lazy" decoding="async">
                 {% elif prop.transparentUrl %}
-                <img src="{{ prop.transparentUrl }}" class="w-full h-full object-contain" alt="{{ prop.propName }}">
+                <img src="{{ prop.transparentUrl }}" class="w-full h-full object-contain" alt="{{ prop.propName }}" loading="lazy" decoding="async">
                 {% elif prop.status == 0 %}
                 <div class="text-center">
                     <i data-lucide="loader-2" class="w-6 h-6 text-blue-400 animate-spin mx-auto"></i>
@@ -369,20 +387,26 @@
                 {% endif %}
                 <!-- 锁定标识 -->
                 {% if prop.isLocked %}
-                <div class="absolute top-1 left-1">
+                <div class="absolute top-1 left-1 lock-overlay">
                     <i data-lucide="lock" class="w-4 h-4 text-amber-400"></i>
                 </div>
                 {% endif %}
                 <!-- 操作按钮 -->
                 <div class="absolute top-1 right-1 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                     <button class="prop-history-icon-btn w-7 h-7 rounded-lg bg-black/50 hover:bg-black/70 transition-colors flex items-center justify-center"
-                            data-prop-id="{{ prop.id }}" data-prop-name="{{ prop.propName }}" data-prop-assets='{{ prop.assets|to_json }}' title="历史版本">
+                            data-prop-id="{{ prop.id }}" data-prop-name="{{ prop.propName }}" title="历史版本">
                         <i data-lucide="history" class="w-4 h-4 text-white"></i>
                     </button>
                     <button class="prop-regenerate-btn w-7 h-7 rounded-lg bg-black/50 hover:bg-black/70 transition-colors flex items-center justify-center"
                             data-prop-id="{{ prop.id }}" data-prop-name="{{ prop.propName }}" data-prop-prompt="{{ prop.customPrompt|default:'' }}" title="重新生成">
                         <i data-lucide="refresh-cw" class="w-4 h-4 text-white"></i>
                     </button>
+                    {% if prop.status != 3 %}
+                    <button class="prop-upload-btn w-7 h-7 rounded-lg bg-black/50 hover:bg-black/70 transition-colors flex items-center justify-center"
+                            data-prop-id="{{ prop.id }}" data-prop-name="{{ prop.propName }}" data-prop-prompt="{{ prop.customPrompt|default:'' }}" title="上传图片">
+                        <i data-lucide="upload" class="w-4 h-4 text-white"></i>
+                    </button>
+                    {% endif %}
                 </div>
             </div>
             <p class="text-sm text-white/80 truncate mb-1" title="{{ prop.propName }}">{{ prop.propName }}</p>
@@ -395,7 +419,7 @@
                         {% else %}text-white/50{% endif %}">
                         {{ prop.statusDesc }}
                     </span>
-                    {% if prop.assets and prop.assets|length > 1 %}
+                    {% if prop.assetCount and prop.assetCount > 1 %}
                     <span class="text-xs text-white/30 version-count">· v{{ prop.activeVersion }}</span>
                     {% endif %}
                 </div>
@@ -409,8 +433,8 @@
         </div>
         {% endfor %}
     </div>
-    {% else %}
-    <div class="text-center py-8 text-white/40">
+    {% if not props %}
+    <div id="propsEmptyState" class="text-center py-8 text-white/40">
         <i data-lucide="box" class="w-12 h-12 mx-auto mb-2 opacity-30"></i>
         <p>暂无道具资产</p>
     </div>
@@ -423,14 +447,24 @@
         <h2 class="text-lg font-semibold text-white flex items-center gap-2">
             <i data-lucide="users" class="w-5 h-5"></i>角色资产 ({{ roles|length }})
         </h2>
+        <a href="{% url 'series:review' series_id=series_id %}"
+           class="px-3 py-2 rounded-lg bg-violet-500/15 hover:bg-violet-500/25 text-violet-300 transition-colors text-sm font-medium flex items-center gap-2"
+           title="前往角色审核页修改角色">
+            <i data-lucide="user-pen" class="w-4 h-4"></i>修改角色
+        </a>
     </div>
     {% if roles %}
     <div id="rolesGrid" class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
         {% for role in roles %}
         <div class="glass-card glass-card-hover p-3 text-center group relative" data-role-name="{{ role.roleName }}" data-role-id="{{ role.id }}" data-status="{{ role.status }}">
+            <a href="{% url 'series:review' series_id=series_id %}#role-{{ role.id }}"
+               class="absolute top-2 right-2 z-10 w-7 h-7 rounded-lg bg-black/50 hover:bg-black/70 transition-colors flex items-center justify-center opacity-0 group-hover:opacity-100"
+               title="修改该角色">
+                <i data-lucide="user-pen" class="w-4 h-4 text-white"></i>
+            </a>
             <div class="w-full rounded-lg bg-white/5 mb-2 overflow-hidden flex items-center justify-center cursor-pointer role-preview-btn" style="max-height: 200px;" data-role-name="{{ role.roleName }}" data-role-url="{{ role.assetUrl }}">
                 {% if role.assetUrl %}
-                <img src="{{ role.assetUrl }}" class="w-full h-auto object-contain" style="max-height: 200px;" alt="{{ role.roleName }}">
+                <img src="{{ role.assetUrl }}" class="w-full h-auto object-contain" style="max-height: 200px;" alt="{{ role.roleName }}" loading="lazy" decoding="async">
                 {% elif role.status == 0 %}
                 <div class="text-center py-8">
                     <i data-lucide="loader-2" class="w-6 h-6 text-blue-400 animate-spin mx-auto"></i>
@@ -453,16 +487,33 @@
                 </span>
             </div>
             {% if role.clothings and role.clothings|length > 0 %}
+            {% for clothing in role.clothings %}
+            {% if clothing.assetUrl == role.assetUrl %}
+            <div class="role-current-version-label mt-1 text-[11px] text-emerald-300">
+                {% if clothing.defaultClothing %}当前默认{% else %}当前预览{% endif %} · {{ clothing.clothingName }}{% if clothing.version %} · v{{ clothing.version }}{% endif %}
+            </div>
+            {% endif %}
+            {% endfor %}
+            {% endif %}
+            {% if role.clothings and role.clothings|length > 0 %}
             <div class="mt-2 flex flex-wrap gap-1 justify-center">
                 {% for clothing in role.clothings %}
-                <div class="w-6 h-6 rounded bg-white/10 overflow-hidden cursor-pointer hover:ring-1 hover:ring-white/50 transition-all clothing-thumb {% if clothing.assetUrl == role.assetUrl %}ring-1 ring-blue-400{% endif %}"
-                     title="{{ clothing.clothingName }}"
-                     data-clothing-url="{{ clothing.assetUrl }}"
-                     onclick="switchRoleClothing(this)">
+                <div class="relative w-7 h-7 rounded bg-white/10 overflow-hidden cursor-pointer hover:ring-1 hover:ring-white/50 transition-all clothing-thumb {% if clothing.assetUrl == role.assetUrl %}ring-1 ring-blue-400{% endif %}"
+                     title="{{ clothing.clothingName }}{% if clothing.defaultClothing %} · 当前默认{% endif %}{% if clothing.version %} · v{{ clothing.version }}{% endif %}"
+                    data-clothing-url="{{ clothing.assetUrl }}"
+                    data-clothing-name="{{ clothing.clothingName }}"
+                    data-clothing-version="{{ clothing.version|default:'' }}"
+                    data-clothing-default="{% if clothing.defaultClothing %}true{% else %}false{% endif %}"
+                    onclick="switchRoleClothing(this)">
                     {% if clothing.assetUrl %}
-                    <img src="{{ clothing.assetUrl }}" class="w-full h-full object-cover" alt="{{ clothing.clothingName }}">
+                    <img src="{{ clothing.assetUrl }}" class="w-full h-full object-cover" alt="{{ clothing.clothingName }}" loading="lazy" decoding="async">
                     {% else %}
                     <i data-lucide="shirt" class="w-full h-full text-white/30 p-1"></i>
+                    {% endif %}
+                    {% if clothing.defaultClothing %}
+                    <span class="absolute -right-0.5 -bottom-0.5 w-3.5 h-3.5 rounded-full bg-emerald-500 text-white flex items-center justify-center border border-gray-950" title="当前默认">
+                        <i data-lucide="check" class="w-2.5 h-2.5"></i>
+                    </span>
                     {% endif %}
                 </div>
                 {% endfor %}
@@ -489,6 +540,9 @@
     </button>
     <button class="prop-regenerate-menu-btn w-full px-4 py-2 text-left text-sm text-white/80 hover:bg-white/10 flex items-center gap-2">
         <i data-lucide="refresh-cw" class="w-4 h-4"></i>重新生成
+    </button>
+    <button class="prop-upload-menu-btn w-full px-4 py-2 text-left text-sm text-white/80 hover:bg-white/10 flex items-center gap-2">
+        <i data-lucide="upload" class="w-4 h-4"></i>上传图片
     </button>
     <div class="border-t border-white/10 my-1"></div>
     <button class="prop-delete-btn w-full px-4 py-2 text-left text-sm text-red-400 hover:bg-red-500/20 flex items-center gap-2">
@@ -549,6 +603,101 @@
     </div>
 </div>
 
+<!-- Upload Scene Image Modal -->
+<div id="uploadSceneModal" class="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 hidden overflow-y-auto">
+    <div class="flex items-center justify-center min-h-full p-4">
+        <div class="glass-card p-6 w-full max-w-md relative">
+            <div class="flex items-center justify-between mb-4">
+                <h3 class="text-xl font-semibold text-white">上传场景图片</h3>
+                <button class="close-modal-btn text-white/50 hover:text-white transition-colors" data-modal="uploadSceneModal">
+                    <i data-lucide="x" class="w-6 h-6"></i>
+                </button>
+            </div>
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-sm text-white/70 mb-1">场景名称 *</label>
+                    <input type="text" id="uploadSceneName" class="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-blue-500/50" placeholder="输入场景名称">
+                </div>
+                <div>
+                    <label class="block text-sm text-white/70 mb-1">备注（可选）</label>
+                    <textarea id="uploadScenePrompt" class="w-full h-20 bg-white/5 border border-white/10 rounded-lg px-4 py-2.5 text-white resize-none focus:outline-none focus:border-blue-500/50" placeholder="图片说明"></textarea>
+                </div>
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-sm text-white/70 mb-1">清晰度标记</label>
+                        <select id="uploadSceneQuality" class="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-2.5 text-white focus:outline-none">
+                            <option value="2k">高清 (2K)</option>
+                            <option value="3k">超清 (3K)</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-sm text-white/70 mb-1">图片比例</label>
+                        <select id="uploadSceneAspectRatio" class="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-2.5 text-white focus:outline-none">
+                            <option value="16:9">16:9 横屏</option>
+                            <option value="9:16">9:16 竖屏</option>
+                            <option value="4:3">4:3</option>
+                            <option value="3:4">3:4</option>
+                            <option value="3:2">3:2</option>
+                            <option value="2:3">2:3</option>
+                            <option value="21:9">21:9 超宽</option>
+                            <option value="1:1">1:1 方形</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="rounded-lg border border-white/10 bg-white/5 p-3">
+                    <label class="block text-sm text-white/70 mb-2">本地图片 *</label>
+                    <input type="file" id="sceneUploadInput" accept="image/png,image/jpeg,image/webp" class="hidden">
+                    <button type="button" id="chooseSceneUploadBtn" class="w-full px-4 py-2 rounded-lg bg-white/10 hover:bg-white/15 transition-colors text-sm flex items-center justify-center gap-2">
+                        <i data-lucide="upload" class="w-4 h-4"></i><span id="chooseSceneUploadText">选择本地图片</span>
+                    </button>
+                    <div id="sceneUploadPreviewWrap" class="hidden mt-3">
+                        <div class="w-full aspect-video rounded-lg bg-white/5 overflow-hidden mx-auto border border-white/10">
+                            <img id="sceneUploadPreview" src="" class="w-full h-full object-cover" alt="场景上传预览">
+                        </div>
+                        <p id="sceneUploadFileName" class="text-xs text-white/50 mt-2 text-center truncate"></p>
+                    </div>
+                </div>
+                <p class="text-xs text-white/40">图片会按所选比例裁剪后上传，上传后直接成为当前待审核版本。</p>
+            </div>
+            <div class="flex justify-end gap-3 mt-6">
+                <button class="close-modal-btn px-5 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 transition-all" data-modal="uploadSceneModal">取消</button>
+                <button id="saveSceneUploadBtn" class="px-5 py-2.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 transition-all font-medium flex items-center gap-2">
+                    <i data-lucide="upload" class="w-4 h-4"></i>上传并使用
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Scene Ratio Crop Modal -->
+<div id="sceneCropModal" class="fixed inset-0 bg-black/70 backdrop-blur-sm z-[70] hidden overflow-y-auto">
+    <div class="flex items-center justify-center min-h-full p-4">
+        <div class="glass-card p-6 w-full max-w-2xl relative">
+            <div class="flex items-center justify-between mb-4">
+                <h3 id="sceneCropTitle" class="text-xl font-semibold text-white">裁剪场景图片</h3>
+                <button id="cancelSceneCropBtn" class="text-white/50 hover:text-white transition-colors">
+                    <i data-lucide="x" class="w-6 h-6"></i>
+                </button>
+            </div>
+            <div id="sceneCropStage" class="relative h-[460px] bg-black/40 rounded-xl overflow-hidden border border-white/10 select-none">
+                <img id="sceneCropImage" src="" alt="裁剪图片" class="absolute max-w-none opacity-50" draggable="false">
+                <div id="sceneCropBox" class="absolute border-2 border-emerald-400 shadow-lg shadow-emerald-500/20 overflow-hidden cursor-move">
+                    <img id="sceneCropBoxImage" src="" alt="" class="absolute max-w-none" draggable="false">
+                </div>
+            </div>
+            <div class="mt-4 flex items-center gap-3">
+                <i data-lucide="zoom-out" class="w-4 h-4 text-white/50"></i>
+                <input type="range" id="sceneCropZoom" min="100" max="300" value="100" class="flex-1 accent-emerald-500">
+                <i data-lucide="zoom-in" class="w-4 h-4 text-white/50"></i>
+            </div>
+            <div class="flex justify-end gap-3 mt-5">
+                <button type="button" id="discardSceneCropBtn" class="px-5 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 transition-all">取消</button>
+                <button type="button" id="confirmSceneCropBtn" class="px-5 py-2.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 transition-all font-medium">使用裁剪图</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- Add Prop Modal -->
 <div id="addPropModal" class="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 hidden overflow-y-auto">
     <div class="flex items-center justify-center min-h-full p-4">
@@ -575,7 +724,6 @@
                         <option value="3k">超清 (3K)</option>
                     </select>
                 </div>
-                <p class="text-xs text-white/40">道具图片比例固定为 1:1</p>
             </div>
             <div class="flex justify-end gap-3 mt-6">
                 <button class="close-modal-btn px-5 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 transition-all" data-modal="addPropModal">取消</button>
@@ -583,6 +731,86 @@
                     <i data-lucide="plus" class="w-4 h-4"></i>添加并生成
                     <span class="flex items-center gap-1 text-yellow-300 text-sm"><i data-lucide="coins" class="w-3.5 h-3.5"></i>6</span>
                 </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Upload Prop Image Modal -->
+<div id="uploadPropModal" class="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 hidden overflow-y-auto">
+    <div class="flex items-center justify-center min-h-full p-4">
+        <div class="glass-card p-6 w-full max-w-md relative">
+            <div class="flex items-center justify-between mb-4">
+                <h3 class="text-xl font-semibold text-white">上传道具图片</h3>
+                <button class="close-modal-btn text-white/50 hover:text-white transition-colors" data-modal="uploadPropModal">
+                    <i data-lucide="x" class="w-6 h-6"></i>
+                </button>
+            </div>
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-sm text-white/70 mb-1">道具名称 *</label>
+                    <input type="text" id="uploadPropName" class="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-blue-500/50" placeholder="输入道具名称">
+                </div>
+                <div>
+                    <label class="block text-sm text-white/70 mb-1">备注（可选）</label>
+                    <textarea id="uploadPropPrompt" class="w-full h-20 bg-white/5 border border-white/10 rounded-lg px-4 py-2.5 text-white resize-none focus:outline-none focus:border-blue-500/50" placeholder="图片说明"></textarea>
+                </div>
+                <div>
+                    <label class="block text-sm text-white/70 mb-1">清晰度标记</label>
+                    <select id="uploadPropQuality" class="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-2.5 text-white focus:outline-none">
+                        <option value="2k">高清 (2K)</option>
+                        <option value="3k">超清 (3K)</option>
+                    </select>
+                </div>
+                <div class="rounded-lg border border-white/10 bg-white/5 p-3">
+                    <label class="block text-sm text-white/70 mb-2">本地图片 *</label>
+                    <input type="file" id="propUploadInput" accept="image/png,image/jpeg,image/webp" class="hidden">
+                    <button type="button" id="choosePropUploadBtn" class="w-full px-4 py-2 rounded-lg bg-white/10 hover:bg-white/15 transition-colors text-sm flex items-center justify-center gap-2">
+                        <i data-lucide="upload" class="w-4 h-4"></i>选择本地图片
+                    </button>
+                    <div id="propUploadPreviewWrap" class="hidden mt-3">
+                        <div class="w-28 h-28 rounded-lg bg-white/5 overflow-hidden mx-auto border border-white/10">
+                            <img id="propUploadPreview" src="" class="w-full h-full object-contain" alt="道具上传预览">
+                        </div>
+                        <p id="propUploadFileName" class="text-xs text-white/50 mt-2 text-center truncate"></p>
+                    </div>
+                </div>
+                <p class="text-xs text-white/40">图片比例固定为 1:1，非正方形会先进入裁剪。</p>
+            </div>
+            <div class="flex justify-end gap-3 mt-6">
+                <button class="close-modal-btn px-5 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 transition-all" data-modal="uploadPropModal">取消</button>
+                <button id="savePropUploadBtn" class="px-5 py-2.5 rounded-xl bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 transition-all font-medium flex items-center gap-2">
+                    <i data-lucide="upload" class="w-4 h-4"></i>上传并使用
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Prop Square Crop Modal -->
+<div id="propCropModal" class="fixed inset-0 bg-black/70 backdrop-blur-sm z-[70] hidden overflow-y-auto">
+    <div class="flex items-center justify-center min-h-full p-4">
+        <div class="glass-card p-6 w-full max-w-lg relative">
+            <div class="flex items-center justify-between mb-4">
+                <h3 class="text-xl font-semibold text-white">裁剪为 1:1</h3>
+                <button id="cancelPropCropBtn" class="text-white/50 hover:text-white transition-colors">
+                    <i data-lucide="x" class="w-6 h-6"></i>
+                </button>
+            </div>
+            <div id="propCropStage" class="relative h-[420px] bg-black/40 rounded-xl overflow-hidden border border-white/10 select-none">
+                <img id="propCropImage" src="" alt="裁剪图片" class="absolute max-w-none opacity-50" draggable="false">
+                <div id="propCropBox" class="absolute border-2 border-orange-400 shadow-lg shadow-orange-500/20 overflow-hidden cursor-move">
+                    <img id="propCropBoxImage" src="" alt="" class="absolute max-w-none" draggable="false">
+                </div>
+            </div>
+            <div class="mt-4 flex items-center gap-3">
+                <i data-lucide="zoom-out" class="w-4 h-4 text-white/50"></i>
+                <input type="range" id="propCropZoom" min="100" max="300" value="100" class="flex-1 accent-orange-500">
+                <i data-lucide="zoom-in" class="w-4 h-4 text-white/50"></i>
+            </div>
+            <div class="flex justify-end gap-3 mt-5">
+                <button type="button" id="discardPropCropBtn" class="px-5 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 transition-all">取消</button>
+                <button type="button" id="confirmPropCropBtn" class="px-5 py-2.5 rounded-xl bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 transition-all font-medium">使用裁剪图</button>
             </div>
         </div>
     </div>
@@ -1000,14 +1228,24 @@
     {% if shots %}
     <div class="space-y-4" id="shotList">
         {% for shot in shots %}
-    <div class="glass-card glass-card-hover p-5 shot-card" data-shot-id="{{ shot.id }}" data-status="{{ shot.generationStatus }}">
+    <div class="glass-card glass-card-hover p-5 shot-card"
+         data-shot-id="{{ shot.id }}"
+         data-status="{{ shot.generationStatus }}"
+         data-description-edited="{{ shot.descriptionEdited|default:'false' }}"
+         data-scene-edited="{{ shot.sceneEdited|default:'false' }}"
+         data-shot-characters='{{ shot.characters|to_json|default:"[]" }}'>
         <div class="flex items-start gap-5">
             <!-- 左侧：缩略图 + 操作按钮 -->
             <div class="flex flex-col items-center gap-3 flex-shrink-0">
                 <!-- 缩略图/视频预览 -->
-                <div class="w-36 h-20 rounded-xl bg-white/5 flex items-center justify-center overflow-hidden relative">
-                    {% if shot.thumbnailUrl %}
-                    <img src="{{ shot.thumbnailUrl }}" class="w-full h-full object-cover cursor-pointer hover:opacity-80 transition-opacity" onclick="window.open('{{ shot.videoUrl }}', '_blank')">
+                <div class="shot-thumbnail w-36 h-20 rounded-xl bg-white/5 flex items-center justify-center overflow-hidden relative">
+                    {% if shot.generationStatus == 1 %}
+                    <div class="text-center">
+                        <i data-lucide="loader-2" class="w-6 h-6 text-blue-400 animate-spin mx-auto"></i>
+                        <p class="text-xs text-white/50 mt-1">生成中...</p>
+                    </div>
+                    {% elif shot.thumbnailUrl %}
+                    <img src="{{ shot.thumbnailUrl }}" class="w-full h-full object-cover cursor-pointer hover:opacity-80 transition-opacity" onclick="window.open('{{ shot.videoUrl }}', '_blank')" loading="lazy" decoding="async">
                     {% elif shot.videoUrl and shot.generationStatus == 2 %}
                     <!-- 有视频但没有缩略图，显示视频第一帧 -->
                     <video src="{{ shot.videoUrl }}" class="w-full h-full object-cover cursor-pointer hover:opacity-80 transition-opacity" muted preload="metadata" onclick="window.open('{{ shot.videoUrl }}', '_blank')"></video>
@@ -1016,17 +1254,12 @@
                             <i data-lucide="play" class="w-4 h-4 text-white"></i>
                         </div>
                     </div>
-                    {% elif shot.generationStatus == 1 %}
-                    <div class="text-center">
-                        <i data-lucide="loader-2" class="w-6 h-6 text-blue-400 animate-spin mx-auto"></i>
-                        <p class="text-xs text-white/50 mt-1">生成中...</p>
-                    </div>
                     {% else %}
                     <i data-lucide="video" class="w-8 h-8 text-white/20"></i>
                     {% endif %}
                 </div>
                 <!-- 操作按钮（竖向排列） -->
-                <div class="flex flex-col gap-1.5 w-full">
+                <div class="shot-actions flex flex-col gap-1.5 w-full">
                     {% if shot.generationStatus == 0 and episode.status == 2 %}
                     <button class="generate-btn w-full px-3 py-1.5 rounded-lg bg-gradient-to-r from-blue-500 to-cyan-500 hover:from-blue-600 hover:to-cyan-600 transition-colors text-xs flex items-center justify-center gap-1.5 text-white"
                             data-shot-id="{{ shot.id }}"
@@ -1116,12 +1349,18 @@
                            data-shot-number="{{ shot.shotNumber }}"
                            data-shot-name="{{ shot.shotName|default:'' }}"
                            placeholder="分镜名称">
-                    <span class="px-2 py-0.5 rounded text-xs flex-shrink-0
+                    <span class="generation-status px-2 py-0.5 rounded text-xs flex-shrink-0
                         {% if shot.generationStatus == 2 %}bg-emerald-500/20 text-emerald-300
                         {% elif shot.generationStatus == 1 %}bg-blue-500/20 text-blue-300
                         {% elif shot.generationStatus == 3 %}bg-red-500/20 text-red-300
                         {% else %}bg-white/10 text-white/50{% endif %}">
                         {{ shot.generationStatusDesc }}
+                    </span>
+                    <span class="shot-edit-badge px-2 py-0.5 rounded text-xs flex-shrink-0 inline-flex items-center gap-1 border
+                        {% if shot.descriptionEdited or shot.sceneEdited %}bg-amber-500/15 text-amber-300 border-amber-500/20{% else %}bg-white/5 text-white/40 border-white/10{% endif %}"
+                          title="{% if shot.descriptionEdited or shot.sceneEdited %}场景或剧情已手动编辑{% else %}场景和剧情未手动编辑{% endif %}">
+                        <i data-lucide="{% if shot.descriptionEdited or shot.sceneEdited %}pencil{% else %}circle{% endif %}" class="w-3 h-3"></i>
+                        <span class="shot-edit-badge-text">{% if shot.descriptionEdited or shot.sceneEdited %}已编辑{% else %}未编辑{% endif %}</span>
                     </span>
                 </div>
 
@@ -1137,6 +1376,7 @@
                                  data-shot-id="{{ shot.id }}"
                                  data-scene-name="{{ shot.sceneName|default:'' }}"
                                  data-scene-edited="{{ shot.sceneEdited|default:'false' }}"
+                                 data-scene-asset-url="{{ shot.sceneAssetUrl|default:'' }}"
                                  placeholder="场景描述..."></div>
                         </div>
                     </div>
@@ -1208,6 +1448,7 @@
                                  data-description="{{ shot.description|default:'' }}"
                                  data-sound-effect="{{ shot.soundEffect|default:'' }}"
                                  data-description-edited="{{ shot.descriptionEdited|default:'false' }}"
+                                 data-shot-props='{{ shot.props|to_json|default:"[]" }}'
                                  placeholder="输入分镜内容..."></div>
                             <div class="save-indicator hidden absolute top-2 right-2 text-xs px-2 py-0.5 rounded"></div>
                         </div>
@@ -1238,21 +1479,7 @@ const episodeId = {{ episode_id }};
 const seriesId = {{ series_id }};
 const episodeStatus = {{ episode.status }};
 
-// 打印道具数据到控制台
-const propsData = {{ props|to_json|default:"[]" }};
-
-// 统计数据
-const shots = {{ shots|to_json }};
-let completed = 0, pending = 0, generating = 0;
-shots.forEach(s => {
-    if (s.generationStatus === 2) completed++;
-    if (s.generationStatus === 0) pending++;
-    if (s.generationStatus === 1) generating++;
-});
-document.getElementById('completedShots').textContent = completed;
-document.getElementById('pendingShots').textContent = pending;
-const progress = shots.length > 0 ? Math.round(completed / shots.length * 100) : 0;
-document.getElementById('progressPercent').textContent = progress + '%';
+const generating = {{ generating_shots }};
 
 // 轮询视频生成状态 - 变量声明必须在使用前
 let pollingIntervalId = null;
@@ -1279,19 +1506,9 @@ function startShotGenerationPolling() {
 
                     // 检查页面上的分镜卡片，检测状态变化
                     const card = document.querySelector(`.shot-card[data-shot-id="${shot.id}"]`);
-                    if (card) {
-                        const currentStatus = parseInt(card.dataset.status);
-                        const newStatus = shot.generationStatus;
-
-                        // 如果状态从生成中变为其他状态（完成或失败）
-                        if (currentStatus === 1 && newStatus !== 1) {
-                            hasChanges = true;
-                            // 状态变化处理
-                        }
-
-                        // 同步更新卡片的data-status
-                        card.dataset.status = String(newStatus);
-                    }
+	                    if (card && syncShotGenerationStatus(card, shot.generationStatus, shot.generationStartTime)) {
+	                        hasChanges = true;
+	                    }
                 });
 
                 // 如果有状态变化，刷新页面
@@ -1325,10 +1542,16 @@ if (generating > 0) {
         .then(res => res.json())
         .then(result => {
             const data = result.data || result;
-            if (data.shots && data.shots.some(s => s.generationStatus === 1)) {
-                // 后端检测到生成中的分镜，启动轮询
-                startShotGenerationPolling();
-            }
+	            if (data.shots && data.shots.some(s => s.generationStatus === 1)) {
+	                data.shots.forEach(shot => {
+	                    const card = document.querySelector(`.shot-card[data-shot-id="${shot.id}"]`);
+	                    if (card) {
+	                        syncShotGenerationStatus(card, shot.generationStatus, shot.generationStartTime);
+	                    }
+	                });
+	                // 后端检测到生成中的分镜，启动轮询
+	                startShotGenerationPolling();
+	            }
         })
         .catch(() => {});
 }
@@ -1370,15 +1593,17 @@ checkShotsParsingStatus();
 // 为正在生成的视频启动计时器
 function startGeneratingTimers() {
     document.querySelectorAll('.generating-timer').forEach(timer => {
+        if (timer.dataset.timerActive === 'true') return;
         const startTimeStr = timer.dataset.startTime;
         console.log('[TIMER] Found timer element, startTime:', startTimeStr);
         if (startTimeStr) {
-            const startTime = new Date(startTimeStr);
+            const startTime = parseGenerationStartTime(startTimeStr);
             console.log('[TIMER] Parsed startTime:', startTime, 'isValid:', !isNaN(startTime.getTime()));
             if (isNaN(startTime.getTime())) {
                 console.error('[TIMER] Invalid date:', startTimeStr);
                 return;
             }
+            timer.dataset.timerActive = 'true';
             const updateTimer = () => {
                 const elapsed = Math.floor((Date.now() - startTime.getTime()) / 1000);
                 const minutes = Math.floor(elapsed / 60);
@@ -1410,6 +1635,8 @@ function closeFormModal(modalId) {
 
 // 遮罩层和轮询相关函数
 const pollingItems = new Map();
+let shotAssetBindingRefreshTimer = null;
+let shotAssetBindingIdleChecks = 0;
 
 function startPolling(type, id) {
     const key = `${type}_${id}`;
@@ -1417,12 +1644,50 @@ function startPolling(type, id) {
         pollingItems.set(key, { type, id });
         console.log(`开始轮询: ${key}`);
     }
+    ensureAssetStatusPolling();
+    scheduleShotAssetBindingRefresh();
+    if (type === 'prop') {
+        scheduleSeriesPropsSync();
+    }
 }
 
 function stopPolling(type, id) {
     const key = `${type}_${id}`;
     pollingItems.delete(key);
     console.log(`停止轮询: ${key}`);
+}
+
+function hasActiveAssetWork() {
+    if (pollingItems.size > 0) return true;
+    if (document.querySelector('[data-scene-id][data-status="0"], [data-prop-id][data-status="0"], .shot-card[data-status="1"]')) {
+        return true;
+    }
+    return false;
+}
+
+function scheduleShotAssetBindingRefresh() {
+    shotAssetBindingIdleChecks = 0;
+    if (shotAssetBindingRefreshTimer) return;
+
+    const tick = async () => {
+        if (document.visibilityState === 'visible') {
+            await refreshShotAssetBindings();
+        }
+
+        if (!hasActiveAssetWork()) {
+            shotAssetBindingIdleChecks += 1;
+        } else {
+            shotAssetBindingIdleChecks = 0;
+        }
+
+        if (shotAssetBindingIdleChecks >= 2) {
+            clearInterval(shotAssetBindingRefreshTimer);
+            shotAssetBindingRefreshTimer = null;
+            return;
+        }
+    };
+
+    shotAssetBindingRefreshTimer = setInterval(tick, 5000);
 }
 
 // 添加遮罩层
@@ -1443,9 +1708,1382 @@ function addOverlay(card, type) {
     lucide.createIcons();
 }
 
+function escapeHtml(value) {
+    return String(value ?? '').replace(/[&<>"']/g, char => ({
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#39;'
+    }[char]));
+}
+
+function escapeRegExp(value) {
+    return String(value ?? '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function normalizeAssetMentionText(value) {
+    return String(value ?? '').replace(/@\{([^}]+)\}/g, '$1').trim();
+}
+
+function normalizeSceneText(value) {
+    let normalized = normalizeAssetMentionText(value).replace(/\s+/g, ' ').trim();
+    for (const scene of availableAssets.scene || []) {
+        if (!scene.name) continue;
+        const duplicatedPattern = new RegExp(`^(?:${escapeRegExp(scene.name)}){2,}$`);
+        if (duplicatedPattern.test(normalized)) {
+            return scene.name;
+        }
+    }
+    return normalized || null;
+}
+
+function isTruthyFlag(value) {
+    return value === true || value === 1 || value === '1' || value === 'true' || value === 'True';
+}
+
+function updateShotEditBadge(card, descriptionEdited, sceneEdited) {
+    if (!card) return;
+    const descEdited = isTruthyFlag(descriptionEdited);
+    const sceneWasEdited = isTruthyFlag(sceneEdited);
+    const edited = descEdited || sceneWasEdited;
+
+    card.dataset.descriptionEdited = String(descEdited);
+    card.dataset.sceneEdited = String(sceneWasEdited);
+
+    const badge = card.querySelector('.shot-edit-badge');
+    const text = card.querySelector('.shot-edit-badge-text');
+    const icon = badge?.querySelector('i[data-lucide]');
+    if (!badge || !text) return;
+
+    badge.className = `shot-edit-badge px-2 py-0.5 rounded text-xs flex-shrink-0 inline-flex items-center gap-1 border ${edited ? 'bg-amber-500/15 text-amber-300 border-amber-500/20' : 'bg-white/5 text-white/40 border-white/10'}`;
+    badge.title = edited ? '场景或剧情已手动编辑' : '场景和剧情未手动编辑';
+    text.textContent = edited ? '已编辑' : '未编辑';
+    if (icon) {
+        icon.setAttribute('data-lucide', edited ? 'pencil' : 'circle');
+    }
+    lucide.createIcons();
+}
+
+function statusText(status, fallback) {
+    if (fallback) return fallback;
+    if (status === 0) return '生成中';
+    if (status === 1) return '待审核';
+    if (status === 3) return '已锁定';
+    return '';
+}
+
+function statusClass(status) {
+    if (status === 0) return 'text-blue-400';
+    if (status === 3) return 'text-amber-400';
+    if (status === 1) return 'text-amber-400';
+    return 'text-white/50';
+}
+
+function renderPendingPropCard(id, name) {
+    const safeName = escapeHtml(name);
+    return `
+        <div class="glass-card glass-card-hover p-3 text-center group relative" data-prop-name="${safeName}" data-prop-id="${id}" data-status="0" data-local-pending="true" data-local-pending-at="${Date.now()}">
+            <div class="w-full aspect-square rounded-lg bg-white/5 mb-2 overflow-hidden flex items-center justify-center cursor-pointer prop-history-btn"
+                 data-prop-id="${id}" data-prop-name="${safeName}">
+                <div class="text-center">
+                    <i data-lucide="loader-2" class="w-6 h-6 text-blue-400 animate-spin mx-auto"></i>
+                    <p class="text-xs text-white/50 mt-1">生成中</p>
+                </div>
+                <div class="absolute top-1 right-1 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <button class="prop-history-icon-btn w-7 h-7 rounded-lg bg-black/50 hover:bg-black/70 transition-colors flex items-center justify-center"
+                            data-prop-id="${id}" data-prop-name="${safeName}" title="历史版本">
+                        <i data-lucide="history" class="w-4 h-4 text-white"></i>
+                    </button>
+                    <button class="prop-regenerate-btn w-7 h-7 rounded-lg bg-black/50 hover:bg-black/70 transition-colors flex items-center justify-center"
+                            data-prop-id="${id}" data-prop-name="${safeName}" data-prop-prompt="" title="重新生成">
+                        <i data-lucide="refresh-cw" class="w-4 h-4 text-white"></i>
+                    </button>
+                </div>
+            </div>
+            <p class="text-sm text-white/80 truncate mb-1" title="${safeName}">${safeName}</p>
+            <div class="flex items-center justify-between">
+                <div class="flex items-center gap-1">
+                    <span class="text-xs text-blue-400">生成中</span>
+                </div>
+                <div class="relative">
+                    <button class="prop-menu-btn w-6 h-6 rounded hover:bg-white/10 transition-colors flex items-center justify-center"
+                            data-prop-id="${id}" data-prop-name="${safeName}" data-prop-locked="false">
+                        <i data-lucide="more-vertical" class="w-4 h-4 text-white/50"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+    `;
+}
+
+function appendPendingPropCard(propsGrid, id, name) {
+    if (!propsGrid) return null;
+    propsGrid.classList.remove('hidden');
+    document.getElementById('propsEmptyState')?.remove();
+    propsGrid.insertAdjacentHTML('beforeend', renderPendingPropCard(id, name));
+    const card = propsGrid.querySelector(`[data-prop-id="${id}"]`);
+    bindPropCardEvents(card);
+    return card;
+}
+
+function normalizeStatusValue(status) {
+    const value = Number(status);
+    return Number.isNaN(value) ? null : value;
+}
+
+function getActivePropAsset(prop) {
+    const assets = prop?.assets || [];
+    return assets.find(asset => asset.isActive === 1 || asset.isActive === true) || null;
+}
+
+function getPropImageUrl(prop) {
+    const activeAsset = getActivePropAsset(prop);
+    return prop?.activeAssetUrl
+        || prop?.transparentUrl
+        || activeAsset?.filePath
+        || activeAsset?.transparentPath
+        || activeAsset?.thumbnailPath
+        || null;
+}
+
+function getPropAssetVersion(prop) {
+    const activeAsset = getActivePropAsset(prop);
+    if (activeAsset?.version) return activeAsset.version;
+    const assets = prop?.assets || [];
+    return assets.length ? assets.length : null;
+}
+
+function getActiveSceneAsset(scene) {
+    const assets = scene?.assets || [];
+    return assets.find(asset => asset.isActive === 1 || asset.isActive === true) || null;
+}
+
+function getSceneImageUrl(scene) {
+    const activeAsset = getActiveSceneAsset(scene);
+    return scene?.activeAssetUrl
+        || activeAsset?.filePath
+        || activeAsset?.thumbnailPath
+        || null;
+}
+
+function getSceneAssetVersion(scene) {
+    const activeAsset = getActiveSceneAsset(scene);
+    if (activeAsset?.version) return activeAsset.version;
+    const assets = scene?.assets || [];
+    return assets.length ? assets.length : null;
+}
+
+function renderSceneMediaInner(scene) {
+    const status = normalizeStatusValue(scene.status);
+    const safeName = escapeHtml(scene.sceneName || '');
+    const sceneId = escapeHtml(scene.id);
+    const imageUrl = getSceneImageUrl(scene);
+    const locked = scene.isLocked === true || status === 3;
+
+    const visual = imageUrl ? `
+        <img src="${escapeHtml(imageUrl)}" class="w-full h-full object-cover" alt="${safeName}" loading="lazy" decoding="async">
+    ` : status === 0 ? `
+        <div class="text-center">
+            <i data-lucide="loader-2" class="w-6 h-6 text-blue-400 animate-spin mx-auto"></i>
+            <p class="text-xs text-white/50 mt-1">生成中</p>
+        </div>
+    ` : `
+        <i data-lucide="image" class="w-8 h-8 text-white/20"></i>
+    `;
+
+    return `
+        ${visual}
+        ${locked ? '<div class="absolute top-1 left-1 lock-overlay"><i data-lucide="lock" class="w-4 h-4 text-amber-400"></i></div>' : ''}
+        <div class="absolute top-1 right-1 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+            <button class="scene-history-icon-btn w-7 h-7 rounded-lg bg-black/50 hover:bg-black/70 transition-colors flex items-center justify-center"
+                    data-scene-id="${sceneId}" data-scene-name="${safeName}" title="历史版本">
+                <i data-lucide="history" class="w-4 h-4 text-white"></i>
+            </button>
+            <button class="scene-regenerate-btn w-7 h-7 rounded-lg bg-black/50 hover:bg-black/70 transition-colors flex items-center justify-center"
+                    data-scene-id="${sceneId}" data-scene-name="${safeName}" data-scene-prompt="${escapeHtml(scene.customPrompt || '')}" title="重新生成">
+                <i data-lucide="refresh-cw" class="w-4 h-4 text-white"></i>
+            </button>
+            ${locked ? '' : `
+                <button class="scene-upload-btn w-7 h-7 rounded-lg bg-black/50 hover:bg-black/70 transition-colors flex items-center justify-center"
+                        data-scene-id="${sceneId}" data-scene-name="${safeName}" data-scene-prompt="${escapeHtml(scene.customPrompt || '')}" title="上传图片">
+                    <i data-lucide="upload" class="w-4 h-4 text-white"></i>
+                </button>
+            `}
+        </div>
+    `;
+}
+
+function renderSyncedSceneCard(scene) {
+    const status = normalizeStatusValue(scene.status);
+    const safeName = escapeHtml(scene.sceneName || '');
+    const sceneId = escapeHtml(scene.id);
+    const version = getSceneAssetVersion(scene);
+    const assetCount = (scene.assets || []).length;
+
+    return `
+        <div class="glass-card glass-card-hover p-3 text-center group relative" data-scene-name="${safeName}" data-scene-id="${sceneId}" data-status="${status ?? ''}">
+            <div class="w-full aspect-video rounded-lg bg-white/5 mb-2 overflow-hidden flex items-center justify-center cursor-pointer scene-history-btn"
+                 data-scene-id="${sceneId}" data-scene-name="${safeName}">
+                ${renderSceneMediaInner(scene)}
+            </div>
+            <p class="text-sm text-white/80 truncate mb-1" title="${safeName}">${safeName}</p>
+            <div class="flex items-center justify-between">
+                <div class="flex items-center gap-1">
+                    <span class="text-xs ${statusClass(status)}">${statusText(status, scene.statusDesc)}</span>
+                    ${assetCount > 1 && version ? `<span class="text-xs text-white/30 version-count">· v${version}</span>` : ''}
+                </div>
+                <div class="relative">
+                    <button class="scene-menu-btn w-6 h-6 rounded hover:bg-white/10 transition-colors flex items-center justify-center"
+                            data-scene-id="${sceneId}" data-scene-name="${safeName}" data-scene-locked="${status === 3 ? 'true' : 'false'}">
+                        <i data-lucide="more-vertical" class="w-4 h-4 text-white/50"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+    `;
+}
+
+function renderPropMediaInner(prop) {
+    const status = normalizeStatusValue(prop.status);
+    const safeName = escapeHtml(prop.propName || '');
+    const propId = escapeHtml(prop.id);
+    const imageUrl = getPropImageUrl(prop);
+    const locked = prop.isLocked === true || status === 3;
+
+    const visual = imageUrl ? `
+        <img src="${escapeHtml(imageUrl)}" class="w-full h-full object-contain" alt="${safeName}" loading="lazy" decoding="async">
+    ` : status === 0 ? `
+        <div class="text-center">
+            <i data-lucide="loader-2" class="w-6 h-6 text-blue-400 animate-spin mx-auto"></i>
+            <p class="text-xs text-white/50 mt-1">生成中</p>
+        </div>
+    ` : `
+        <i data-lucide="box" class="w-8 h-8 text-white/20"></i>
+    `;
+
+    return `
+        ${visual}
+        ${locked ? '<div class="absolute top-1 left-1 lock-overlay"><i data-lucide="lock" class="w-4 h-4 text-amber-400"></i></div>' : ''}
+        <div class="absolute top-1 right-1 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+            <button class="prop-history-icon-btn w-7 h-7 rounded-lg bg-black/50 hover:bg-black/70 transition-colors flex items-center justify-center"
+                    data-prop-id="${propId}" data-prop-name="${safeName}" title="历史版本">
+                <i data-lucide="history" class="w-4 h-4 text-white"></i>
+            </button>
+            <button class="prop-regenerate-btn w-7 h-7 rounded-lg bg-black/50 hover:bg-black/70 transition-colors flex items-center justify-center"
+                    data-prop-id="${propId}" data-prop-name="${safeName}" data-prop-prompt="${escapeHtml(prop.customPrompt || '')}" title="重新生成">
+                <i data-lucide="refresh-cw" class="w-4 h-4 text-white"></i>
+            </button>
+            ${locked ? '' : `
+                <button class="prop-upload-btn w-7 h-7 rounded-lg bg-black/50 hover:bg-black/70 transition-colors flex items-center justify-center"
+                        data-prop-id="${propId}" data-prop-name="${safeName}" data-prop-prompt="${escapeHtml(prop.customPrompt || '')}" title="上传图片">
+                    <i data-lucide="upload" class="w-4 h-4 text-white"></i>
+                </button>
+            `}
+        </div>
+    `;
+}
+
+function renderSyncedPropCard(prop) {
+    const status = normalizeStatusValue(prop.status);
+    const safeName = escapeHtml(prop.propName || '');
+    const propId = escapeHtml(prop.id);
+    const version = getPropAssetVersion(prop);
+    const assetCount = (prop.assets || []).length;
+
+    return `
+        <div class="glass-card glass-card-hover p-3 text-center group relative" data-prop-name="${safeName}" data-prop-id="${propId}" data-status="${status ?? ''}">
+            <div class="w-full aspect-square rounded-lg bg-white/5 mb-2 overflow-hidden flex items-center justify-center cursor-pointer prop-history-btn"
+                 data-prop-id="${propId}" data-prop-name="${safeName}">
+                ${renderPropMediaInner(prop)}
+            </div>
+            <p class="text-sm text-white/80 truncate mb-1" title="${safeName}">${safeName}</p>
+            <div class="flex items-center justify-between">
+                <div class="flex items-center gap-1">
+                    <span class="text-xs ${statusClass(status)}">${statusText(status, prop.statusDesc)}</span>
+                    ${assetCount > 1 && version ? `<span class="text-xs text-white/30 version-count">· v${version}</span>` : ''}
+                </div>
+                <div class="relative">
+                    <button class="prop-menu-btn w-6 h-6 rounded hover:bg-white/10 transition-colors flex items-center justify-center"
+                            data-prop-id="${propId}" data-prop-name="${safeName}" data-prop-locked="${status === 3 ? 'true' : 'false'}">
+                        <i data-lucide="more-vertical" class="w-4 h-4 text-white/50"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+    `;
+}
+
+function getOrCreateScenesGrid() {
+    let scenesGrid = document.getElementById('scenesGrid');
+    if (scenesGrid) {
+        return scenesGrid;
+    }
+    const emptyState = document.getElementById('scenesEmptyState');
+    const sceneSection = emptyState?.closest('.glass-card');
+    if (!sceneSection) return null;
+    scenesGrid = document.createElement('div');
+    scenesGrid.id = 'scenesGrid';
+    scenesGrid.className = 'grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4';
+    sceneSection.insertBefore(scenesGrid, emptyState);
+    return scenesGrid;
+}
+
+function bindSceneCardEvents(card) {
+    if (!card) return;
+
+    card.querySelectorAll('.scene-regenerate-btn').forEach(btn => {
+        if (btn.dataset.bound === 'true') return;
+        btn.dataset.bound = 'true';
+        btn.addEventListener('click', function(e) {
+            e.stopPropagation();
+            currentRegenSceneId = this.dataset.sceneId;
+            document.getElementById('regenSceneName').textContent = this.dataset.sceneName;
+            document.getElementById('regenScenePrompt').value = this.dataset.scenePrompt || '';
+            openFormModal('regenerateSceneModal');
+        });
+    });
+
+    card.querySelectorAll('.scene-upload-btn').forEach(btn => {
+        if (btn.dataset.bound === 'true') return;
+        btn.dataset.bound = 'true';
+        btn.addEventListener('click', function(e) {
+            e.stopPropagation();
+            openSceneUploadForExisting(this.dataset.sceneId, this.dataset.sceneName, this.dataset.scenePrompt || '');
+        });
+    });
+
+    card.querySelectorAll('.scene-history-btn, .scene-history-icon-btn').forEach(btn => {
+        if (btn.dataset.bound === 'true') return;
+        btn.dataset.bound = 'true';
+        btn.addEventListener('click', async function(e) {
+            e.stopPropagation();
+            currentSceneHistoryId = this.dataset.sceneId;
+            const name = this.dataset.sceneName;
+            const assets = await loadAssetHistory('scene', currentSceneHistoryId);
+            showSceneHistory(name, assets);
+        });
+    });
+
+    card.querySelectorAll('.scene-menu-btn').forEach(btn => {
+        if (btn.dataset.bound === 'true') return;
+        btn.dataset.bound = 'true';
+        btn.addEventListener('click', function(e) {
+            e.stopPropagation();
+            hideContextMenus();
+            currentContextSceneId = this.dataset.sceneId;
+            const isLocked = this.dataset.sceneLocked === 'true';
+            const lockText = sceneContextMenu.querySelector('.lock-text');
+            const lockIcon = sceneContextMenu.querySelector('.lock-icon');
+            lockText.textContent = isLocked ? '解锁' : '锁定';
+            lockIcon.setAttribute('data-lucide', isLocked ? 'unlock' : 'lock');
+            sceneContextMenu.querySelector('.scene-upload-menu-btn')?.classList.toggle('hidden', isLocked);
+            lucide.createIcons();
+
+            const rect = this.getBoundingClientRect();
+            sceneContextMenu.style.left = rect.right + 'px';
+            sceneContextMenu.style.top = rect.top + 'px';
+            sceneContextMenu.classList.remove('hidden');
+        });
+    });
+}
+
+function applySceneCardState(card, scene) {
+    const status = normalizeStatusValue(scene.status);
+    card.dataset.status = status ?? '';
+    card.dataset.sceneName = scene.sceneName || '';
+
+    const media = card.querySelector('.scene-history-btn');
+    if (media) {
+        media.dataset.sceneId = scene.id;
+        media.dataset.sceneName = scene.sceneName || '';
+        media.innerHTML = renderSceneMediaInner(scene);
+    }
+
+    const nameEl = card.querySelector('p[title]');
+    if (nameEl) {
+        nameEl.textContent = scene.sceneName || '';
+        nameEl.title = scene.sceneName || '';
+    }
+
+    const statusContainer = card.querySelector('.flex.items-center.gap-1');
+    const statusSpan = statusContainer?.querySelector('span:not(.version-count)');
+    if (statusSpan) {
+        statusSpan.textContent = statusText(status, scene.statusDesc);
+        statusSpan.className = 'text-xs ' + statusClass(status);
+    }
+
+    const menuBtn = card.querySelector('.scene-menu-btn');
+    if (menuBtn) {
+        menuBtn.dataset.sceneName = scene.sceneName || '';
+        menuBtn.dataset.sceneLocked = status === 3 ? 'true' : 'false';
+    }
+
+    const version = getSceneAssetVersion(scene);
+    const assetCount = (scene.assets || []).length;
+    let versionSpan = statusContainer?.querySelector('.version-count');
+    if (assetCount > 1 && version) {
+        if (!versionSpan && statusContainer) {
+            versionSpan = document.createElement('span');
+            versionSpan.className = 'text-xs text-white/30 version-count';
+            statusContainer.appendChild(versionSpan);
+        }
+        versionSpan.textContent = `· v${version}`;
+    } else if (versionSpan) {
+        versionSpan.remove();
+    }
+
+    if (status === 0) {
+        addOverlay(card, 'scene');
+        startPolling('scene', scene.id);
+    } else {
+        card.querySelector('.scene-overlay')?.remove();
+        stopPolling('scene', scene.id);
+        const imageUrl = getSceneImageUrl(scene);
+        if (imageUrl) {
+            upsertAvailableAsset('scene', {
+                id: scene.id,
+                name: scene.sceneName,
+                imageUrl
+            });
+        }
+    }
+
+    bindSceneCardEvents(card);
+    lucide.createIcons();
+}
+
+function upsertSceneCardFromBackend(scene) {
+    if (!scene || !scene.id) return;
+    const status = normalizeStatusValue(scene.status);
+    if (![0, 1, 3].includes(status)) return;
+
+    const scenesGrid = getOrCreateScenesGrid();
+    if (!scenesGrid) return;
+    scenesGrid.classList.remove('hidden');
+    document.getElementById('scenesEmptyState')?.remove();
+
+    let card = scenesGrid.querySelector(`[data-scene-id="${scene.id}"]`);
+    if (!card) {
+        scenesGrid.insertAdjacentHTML('beforeend', renderSyncedSceneCard(scene));
+        card = scenesGrid.querySelector(`[data-scene-id="${scene.id}"]`);
+    } else {
+        applySceneCardState(card, scene);
+    }
+    bindSceneCardEvents(card);
+
+    const imageUrl = getSceneImageUrl(scene);
+    if (imageUrl && status !== 0) {
+        upsertAvailableAsset('scene', {
+            id: scene.id,
+            name: scene.sceneName,
+            imageUrl
+        });
+        refreshShotAssetBindings();
+    }
+}
+
+function bindPropCardEvents(card) {
+    if (!card) return;
+
+    card.querySelectorAll('.prop-regenerate-btn').forEach(btn => {
+        if (btn.dataset.bound === 'true') return;
+        btn.dataset.bound = 'true';
+        btn.addEventListener('click', function(e) {
+            e.stopPropagation();
+            currentRegenPropId = this.dataset.propId;
+            document.getElementById('regenPropName').textContent = this.dataset.propName;
+            document.getElementById('regenPropPrompt').value = this.dataset.propPrompt || '';
+            openFormModal('regeneratePropModal');
+        });
+    });
+
+    card.querySelectorAll('.prop-upload-btn').forEach(btn => {
+        if (btn.dataset.bound === 'true') return;
+        btn.dataset.bound = 'true';
+        btn.addEventListener('click', function(e) {
+            e.stopPropagation();
+            openPropUploadForExisting(this.dataset.propId, this.dataset.propName, this.dataset.propPrompt || '');
+        });
+    });
+
+    card.querySelectorAll('.prop-history-btn, .prop-history-icon-btn').forEach(btn => {
+        if (btn.dataset.bound === 'true') return;
+        btn.dataset.bound = 'true';
+        btn.addEventListener('click', async function(e) {
+            e.stopPropagation();
+            currentPropHistoryId = this.dataset.propId;
+            const name = this.dataset.propName;
+            const assets = await loadAssetHistory('prop', currentPropHistoryId);
+            showPropHistory(name, assets);
+        });
+    });
+
+    card.querySelectorAll('.prop-menu-btn').forEach(btn => {
+        if (btn.dataset.bound === 'true') return;
+        btn.dataset.bound = 'true';
+        btn.addEventListener('click', function(e) {
+            e.stopPropagation();
+            hideContextMenus();
+            currentContextPropId = this.dataset.propId;
+            const isLocked = this.dataset.propLocked === 'true';
+            const lockText = propContextMenu.querySelector('.lock-text');
+            const lockIcon = propContextMenu.querySelector('.lock-icon');
+            lockText.textContent = isLocked ? '解锁' : '锁定';
+            lockIcon.setAttribute('data-lucide', isLocked ? 'unlock' : 'lock');
+            propContextMenu.querySelector('.prop-upload-menu-btn')?.classList.toggle('hidden', isLocked);
+            lucide.createIcons();
+
+            const rect = this.getBoundingClientRect();
+            propContextMenu.style.left = rect.right + 'px';
+            propContextMenu.style.top = rect.top + 'px';
+            propContextMenu.classList.remove('hidden');
+        });
+    });
+}
+
+document.querySelectorAll('.prop-upload-btn').forEach(btn => {
+    if (btn.dataset.bound === 'true') return;
+    btn.dataset.bound = 'true';
+    btn.addEventListener('click', function(e) {
+        e.stopPropagation();
+        openPropUploadForExisting(this.dataset.propId, this.dataset.propName, this.dataset.propPrompt || '');
+    });
+});
+
+document.querySelectorAll('#scenesGrid > [data-scene-id]').forEach(bindSceneCardEvents);
+
+function parseAspectRatioValue(value) {
+    const [w, h] = String(value || '16:9').split(':').map(Number);
+    if (!w || !h) return { width: 16, height: 9, label: '16:9' };
+    return { width: w, height: h, label: `${w}:${h}` };
+}
+
+function aspectRatioMatches(width, height, ratioValue) {
+    const ratio = parseAspectRatioValue(ratioValue);
+    return Math.abs((width / height) - (ratio.width / ratio.height)) < 0.01;
+}
+
+function canvasSizeForAspectRatio(ratioValue) {
+    const ratio = parseAspectRatioValue(ratioValue);
+    const maxSide = 1536;
+    if (ratio.width >= ratio.height) {
+        return {
+            width: maxSide,
+            height: Math.round(maxSide * ratio.height / ratio.width)
+        };
+    }
+    return {
+        width: Math.round(maxSide * ratio.width / ratio.height),
+        height: maxSide
+    };
+}
+
+function openSceneUploadForExisting(sceneId, sceneName, prompt = '') {
+    resetSceneUploadState();
+    sceneUploadTargetId = sceneId || null;
+    const nameInput = document.getElementById('uploadSceneName');
+    if (nameInput) {
+        nameInput.disabled = Boolean(sceneId);
+        nameInput.value = sceneName || '';
+    }
+    document.getElementById('uploadScenePrompt').value = prompt || '';
+    document.getElementById('uploadSceneQuality').value = '2k';
+    document.getElementById('uploadSceneAspectRatio').value = document.getElementById('sceneAspectRatio')?.value || '16:9';
+    updateSceneUploadPreviewAspect();
+    openFormModal('uploadSceneModal');
+    document.getElementById('sceneUploadInput')?.click();
+}
+
+function openSceneUploadForNew() {
+    resetSceneUploadState();
+    sceneUploadTargetId = null;
+    const nameInput = document.getElementById('uploadSceneName');
+    if (nameInput) {
+        nameInput.disabled = false;
+        nameInput.value = '';
+    }
+    document.getElementById('uploadScenePrompt').value = '';
+    document.getElementById('uploadSceneQuality').value = '2k';
+    document.getElementById('uploadSceneAspectRatio').value = document.getElementById('sceneAspectRatio')?.value || '16:9';
+    updateSceneUploadPreviewAspect();
+    openFormModal('uploadSceneModal');
+}
+
+let sceneUploadBlob = null;
+let sceneUploadFileName = '';
+let sceneUploadTargetId = null;
+let pendingSceneUploadFile = null;
+let sceneUploadPreviewUrl = '';
+let sceneUploadAspectRatioUsed = '';
+let sceneCropState = {
+    imageUrl: '',
+    naturalWidth: 0,
+    naturalHeight: 0,
+    baseScale: 1,
+    zoom: 1,
+    displayWidth: 0,
+    displayHeight: 0,
+    imageX: 0,
+    imageY: 0,
+    boxWidth: 420,
+    boxHeight: 236,
+    boxX: 0,
+    boxY: 0,
+    dragging: false,
+    startX: 0,
+    startY: 0,
+    aspectRatio: '16:9'
+};
+
+function updateSceneUploadPreviewAspect() {
+    const previewBox = document.querySelector('#sceneUploadPreviewWrap .aspect-video');
+    if (!previewBox) return;
+    const ratio = parseAspectRatioValue(document.getElementById('uploadSceneAspectRatio')?.value || '16:9');
+    previewBox.style.aspectRatio = `${ratio.width} / ${ratio.height}`;
+}
+
+function resetSceneUploadState() {
+    if (sceneUploadPreviewUrl) URL.revokeObjectURL(sceneUploadPreviewUrl);
+    sceneUploadBlob = null;
+    sceneUploadFileName = '';
+    sceneUploadTargetId = null;
+    pendingSceneUploadFile = null;
+    sceneUploadPreviewUrl = '';
+    sceneUploadAspectRatioUsed = '';
+    const input = document.getElementById('sceneUploadInput');
+    if (input) input.value = '';
+    const previewWrap = document.getElementById('sceneUploadPreviewWrap');
+    const preview = document.getElementById('sceneUploadPreview');
+    const fileName = document.getElementById('sceneUploadFileName');
+    if (previewWrap) previewWrap.classList.add('hidden');
+    if (preview) preview.src = '';
+    if (fileName) fileName.textContent = '';
+    updateSceneUploadChooseButton();
+    const nameInput = document.getElementById('uploadSceneName');
+    if (nameInput && !sceneUploadTargetId) nameInput.disabled = false;
+}
+
+function setSceneUploadPreview(blob, fileName) {
+    if (sceneUploadPreviewUrl) URL.revokeObjectURL(sceneUploadPreviewUrl);
+    sceneUploadBlob = blob;
+    sceneUploadFileName = fileName || 'scene.png';
+    sceneUploadAspectRatioUsed = document.getElementById('uploadSceneAspectRatio')?.value || '16:9';
+    sceneUploadPreviewUrl = URL.createObjectURL(blob);
+    const previewWrap = document.getElementById('sceneUploadPreviewWrap');
+    const preview = document.getElementById('sceneUploadPreview');
+    const fileNameEl = document.getElementById('sceneUploadFileName');
+    if (preview) preview.src = sceneUploadPreviewUrl;
+    if (fileNameEl) fileNameEl.textContent = sceneUploadFileName;
+    if (previewWrap) previewWrap.classList.remove('hidden');
+    updateSceneUploadPreviewAspect();
+    updateSceneUploadChooseButton();
+}
+
+function clearSceneCroppedPreview() {
+    if (sceneUploadPreviewUrl) URL.revokeObjectURL(sceneUploadPreviewUrl);
+    sceneUploadBlob = null;
+    sceneUploadFileName = '';
+    sceneUploadPreviewUrl = '';
+    sceneUploadAspectRatioUsed = '';
+    const previewWrap = document.getElementById('sceneUploadPreviewWrap');
+    const preview = document.getElementById('sceneUploadPreview');
+    const fileNameEl = document.getElementById('sceneUploadFileName');
+    if (previewWrap) previewWrap.classList.add('hidden');
+    if (preview) preview.src = '';
+    if (fileNameEl) fileNameEl.textContent = '';
+}
+
+function updateSceneUploadChooseButton() {
+    const text = document.getElementById('chooseSceneUploadText');
+    if (text) text.textContent = pendingSceneUploadFile ? '重新上传本地图片' : '选择本地图片';
+}
+
+async function handleSceneUploadFile(file, options = {}) {
+    if (!file) return;
+    if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.type)) {
+        alert('只支持 JPG、PNG、WEBP 格式');
+        return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+        alert('图片大小不能超过5MB');
+        return;
+    }
+
+    const ratioValue = document.getElementById('uploadSceneAspectRatio')?.value || '16:9';
+    const { image, url } = await imageFileToImage(file);
+    pendingSceneUploadFile = file;
+    clearSceneCroppedPreview();
+    updateSceneUploadChooseButton();
+    if (!options.forceCrop && aspectRatioMatches(image.naturalWidth, image.naturalHeight, ratioValue)) {
+        const size = canvasSizeForAspectRatio(ratioValue);
+        const canvas = document.createElement('canvas');
+        canvas.width = size.width;
+        canvas.height = size.height;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(image, 0, 0, image.naturalWidth, image.naturalHeight, 0, 0, size.width, size.height);
+        canvas.toBlob(blob => {
+            if (!blob) {
+                alert('图片处理失败，请重试');
+                return;
+            }
+            const baseName = (file.name || 'scene.png').replace(/\.[^.]+$/, '');
+            setSceneUploadPreview(blob, `${baseName}_${ratioValue.replace(':', 'x')}.png`);
+        }, 'image/png');
+        URL.revokeObjectURL(url);
+        return;
+    }
+
+    openSceneCropModal(url, image.naturalWidth, image.naturalHeight, file.name, ratioValue);
+}
+
+function openSceneCropModal(imageUrl, naturalWidth, naturalHeight, fileName, aspectRatio) {
+    sceneCropState = {
+        ...sceneCropState,
+        imageUrl,
+        naturalWidth,
+        naturalHeight,
+        zoom: 1,
+        dragging: false,
+        aspectRatio
+    };
+    sceneUploadFileName = fileName || 'scene.png';
+    const title = document.getElementById('sceneCropTitle');
+    if (title) title.textContent = `裁剪为 ${aspectRatio}`;
+    const modal = document.getElementById('sceneCropModal');
+    const image = document.getElementById('sceneCropImage');
+    const boxImage = document.getElementById('sceneCropBoxImage');
+    const zoom = document.getElementById('sceneCropZoom');
+    if (zoom) zoom.value = '100';
+    if (image) image.src = imageUrl;
+    if (boxImage) boxImage.src = imageUrl;
+    modal?.classList.remove('hidden');
+    requestAnimationFrame(layoutSceneCropper);
+}
+
+function layoutSceneCropper() {
+    const stage = document.getElementById('sceneCropStage');
+    if (!stage) return;
+    const stageW = stage.clientWidth;
+    const stageH = stage.clientHeight;
+    const ratio = parseAspectRatioValue(sceneCropState.aspectRatio);
+    const targetRatio = ratio.width / ratio.height;
+    let boxW = stageW * 0.78;
+    let boxH = boxW / targetRatio;
+    if (boxH > stageH * 0.78) {
+        boxH = stageH * 0.78;
+        boxW = boxH * targetRatio;
+    }
+    sceneCropState.boxWidth = boxW;
+    sceneCropState.boxHeight = boxH;
+    sceneCropState.boxX = (stageW - boxW) / 2;
+    sceneCropState.boxY = (stageH - boxH) / 2;
+    sceneCropState.baseScale = Math.max(boxW / sceneCropState.naturalWidth, boxH / sceneCropState.naturalHeight);
+    updateSceneCropImageLayout(true);
+}
+
+function updateSceneCropImageLayout(center = false) {
+    const image = document.getElementById('sceneCropImage');
+    const box = document.getElementById('sceneCropBox');
+    const boxImage = document.getElementById('sceneCropBoxImage');
+    if (!image || !box || !boxImage) return;
+
+    const scale = sceneCropState.baseScale * sceneCropState.zoom;
+    sceneCropState.displayWidth = sceneCropState.naturalWidth * scale;
+    sceneCropState.displayHeight = sceneCropState.naturalHeight * scale;
+    if (center) {
+        sceneCropState.imageX = sceneCropState.boxX + (sceneCropState.boxWidth - sceneCropState.displayWidth) / 2;
+        sceneCropState.imageY = sceneCropState.boxY + (sceneCropState.boxHeight - sceneCropState.displayHeight) / 2;
+    }
+
+    image.style.width = `${sceneCropState.displayWidth}px`;
+    image.style.height = `${sceneCropState.displayHeight}px`;
+    image.style.left = `${sceneCropState.imageX}px`;
+    image.style.top = `${sceneCropState.imageY}px`;
+
+    box.style.width = `${sceneCropState.boxWidth}px`;
+    box.style.height = `${sceneCropState.boxHeight}px`;
+    box.style.left = `${sceneCropState.boxX}px`;
+    box.style.top = `${sceneCropState.boxY}px`;
+
+    boxImage.style.width = `${sceneCropState.displayWidth}px`;
+    boxImage.style.height = `${sceneCropState.displayHeight}px`;
+    boxImage.style.left = `${sceneCropState.imageX - sceneCropState.boxX}px`;
+    boxImage.style.top = `${sceneCropState.imageY - sceneCropState.boxY}px`;
+}
+
+function closeSceneCropModal(clearFile = false) {
+    document.getElementById('sceneCropModal')?.classList.add('hidden');
+    if (clearFile) {
+        pendingSceneUploadFile = null;
+        const input = document.getElementById('sceneUploadInput');
+        if (input) input.value = '';
+        updateSceneUploadChooseButton();
+    }
+}
+
+function confirmSceneCrop() {
+    const image = document.getElementById('sceneCropImage');
+    if (!image || !sceneCropState.naturalWidth || !sceneCropState.naturalHeight) return;
+
+    const scale = sceneCropState.naturalWidth / sceneCropState.displayWidth;
+    const sx = Math.max(0, (sceneCropState.boxX - sceneCropState.imageX) * scale);
+    const sy = Math.max(0, (sceneCropState.boxY - sceneCropState.imageY) * scale);
+    const sw = Math.min(sceneCropState.boxWidth * scale, sceneCropState.naturalWidth - sx);
+    const sh = Math.min(sceneCropState.boxHeight * scale, sceneCropState.naturalHeight - sy);
+    if (sw <= 0 || sh <= 0) {
+        alert('裁剪区域无效，请重新调整');
+        return;
+    }
+
+    const size = canvasSizeForAspectRatio(sceneCropState.aspectRatio);
+    const canvas = document.createElement('canvas');
+    canvas.width = size.width;
+    canvas.height = size.height;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(image, sx, sy, sw, sh, 0, 0, size.width, size.height);
+    canvas.toBlob(blob => {
+        if (!blob) {
+            alert('裁剪失败，请重试');
+            return;
+        }
+        const baseName = (sceneUploadFileName || 'scene.png').replace(/\.[^.]+$/, '');
+        setSceneUploadPreview(blob, `${baseName}_${sceneCropState.aspectRatio.replace(':', 'x')}.png`);
+        closeSceneCropModal(false);
+    }, 'image/png');
+}
+
+async function uploadSceneImageIfNeeded(sceneId = null, sceneName = null) {
+    if (!sceneUploadBlob) return null;
+    const currentAspectRatio = document.getElementById('uploadSceneAspectRatio')?.value || '16:9';
+    if (sceneUploadAspectRatioUsed && sceneUploadAspectRatioUsed !== currentAspectRatio) {
+        throw new Error('图片比例已变更，请重新裁剪后再上传');
+    }
+
+    const formData = new FormData();
+    formData.append('file', sceneUploadBlob, sceneUploadFileName || 'scene.png');
+    formData.append('aspectRatio', currentAspectRatio);
+    const customPrompt = document.getElementById('uploadScenePrompt')?.value.trim() || '';
+    if (customPrompt) {
+        formData.append('customPrompt', customPrompt);
+    }
+
+    let endpoint;
+    if (sceneId) {
+        endpoint = `/api/v1/scenes/${sceneId}/upload/`;
+    } else {
+        formData.append('seriesId', seriesId);
+        if (episodeId) formData.append('episodeId', episodeId);
+        formData.append('sceneName', sceneName || document.getElementById('uploadSceneName')?.value.trim() || '');
+        formData.append('quality', document.getElementById('uploadSceneQuality')?.value || '2k');
+        endpoint = '/api/v1/scenes/upload/';
+    }
+
+    const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'X-CSRFToken': getCookie('csrftoken') },
+        body: formData
+    });
+    const data = await parseJsonResponse(response);
+    if (data.code !== 200) {
+        throw new Error(data.message || '上传失败');
+    }
+    return data.data;
+}
+
+function openPropUploadForExisting(propId, propName, prompt = '') {
+    resetPropUploadState();
+    propUploadTargetId = propId || null;
+    const nameInput = document.getElementById('uploadPropName');
+    if (nameInput) nameInput.disabled = Boolean(propId);
+    document.getElementById('uploadPropName').value = propName || '';
+    document.getElementById('uploadPropPrompt').value = prompt || '';
+    document.getElementById('uploadPropQuality').value = '2k';
+    openFormModal('uploadPropModal');
+    document.getElementById('propUploadInput')?.click();
+}
+
+function openPropUploadForNew() {
+    resetPropUploadState();
+    propUploadTargetId = null;
+    const nameInput = document.getElementById('uploadPropName');
+    if (nameInput) {
+        nameInput.disabled = false;
+        nameInput.value = '';
+    }
+    const promptInput = document.getElementById('uploadPropPrompt');
+    if (promptInput) promptInput.value = '';
+    const qualityInput = document.getElementById('uploadPropQuality');
+    if (qualityInput) qualityInput.value = '2k';
+    openFormModal('uploadPropModal');
+}
+
+let propUploadBlob = null;
+let propUploadFileName = '';
+let propUploadTargetId = null;
+let pendingPropUploadFile = null;
+let propCropState = {
+    imageUrl: '',
+    naturalWidth: 0,
+    naturalHeight: 0,
+    baseScale: 1,
+    zoom: 1,
+    displayWidth: 0,
+    displayHeight: 0,
+    imageX: 0,
+    imageY: 0,
+    boxSize: 260,
+    boxX: 0,
+    boxY: 0,
+    dragging: false,
+    startX: 0,
+    startY: 0
+};
+
+function resetPropUploadState() {
+    const oldPreview = document.getElementById('propUploadPreview')?.src;
+    if (oldPreview && oldPreview.startsWith('blob:')) URL.revokeObjectURL(oldPreview);
+    propUploadBlob = null;
+    propUploadFileName = '';
+    propUploadTargetId = null;
+    pendingPropUploadFile = null;
+    const input = document.getElementById('propUploadInput');
+    if (input) input.value = '';
+    const previewWrap = document.getElementById('propUploadPreviewWrap');
+    const preview = document.getElementById('propUploadPreview');
+    const fileName = document.getElementById('propUploadFileName');
+    if (previewWrap) previewWrap.classList.add('hidden');
+    if (preview) preview.src = '';
+    if (fileName) fileName.textContent = '';
+    const nameInput = document.getElementById('uploadPropName');
+    if (nameInput && !propUploadTargetId) nameInput.disabled = false;
+}
+
+function setPropUploadPreview(blob, fileName) {
+    propUploadBlob = blob;
+    propUploadFileName = fileName || 'prop.png';
+    const previewUrl = URL.createObjectURL(blob);
+    const previewWrap = document.getElementById('propUploadPreviewWrap');
+    const preview = document.getElementById('propUploadPreview');
+    const fileNameEl = document.getElementById('propUploadFileName');
+    if (preview) preview.src = previewUrl;
+    if (fileNameEl) fileNameEl.textContent = propUploadFileName;
+    if (previewWrap) previewWrap.classList.remove('hidden');
+}
+
+function imageFileToImage(file) {
+    return new Promise((resolve, reject) => {
+        const url = URL.createObjectURL(file);
+        const image = new Image();
+        image.onload = () => resolve({ image, url });
+        image.onerror = () => {
+            URL.revokeObjectURL(url);
+            reject(new Error('图片读取失败'));
+        };
+        image.src = url;
+    });
+}
+
+async function handlePropUploadFile(file) {
+    if (!file) return;
+    if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.type)) {
+        alert('只支持 JPG、PNG、WEBP 格式');
+        return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+        alert('图片大小不能超过5MB');
+        return;
+    }
+
+    const { image, url } = await imageFileToImage(file);
+    pendingPropUploadFile = file;
+    const isSquare = image.naturalWidth === image.naturalHeight;
+    if (isSquare) {
+        const canvas = document.createElement('canvas');
+        canvas.width = 1024;
+        canvas.height = 1024;
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(image, 0, 0, image.naturalWidth, image.naturalHeight, 0, 0, 1024, 1024);
+        canvas.toBlob(blob => {
+            if (!blob) {
+                alert('图片处理失败，请重试');
+                return;
+            }
+            const baseName = (file.name || 'prop.png').replace(/\.[^.]+$/, '');
+            setPropUploadPreview(blob, `${baseName}_1x1.png`);
+        }, 'image/png');
+        URL.revokeObjectURL(url);
+        return;
+    }
+
+    openPropCropModal(url, image.naturalWidth, image.naturalHeight, file.name);
+}
+
+function openPropCropModal(imageUrl, naturalWidth, naturalHeight, fileName) {
+    propCropState = {
+        ...propCropState,
+        imageUrl,
+        naturalWidth,
+        naturalHeight,
+        zoom: 1,
+        dragging: false
+    };
+    propUploadFileName = fileName || 'prop.png';
+    const modal = document.getElementById('propCropModal');
+    const image = document.getElementById('propCropImage');
+    const boxImage = document.getElementById('propCropBoxImage');
+    const zoom = document.getElementById('propCropZoom');
+    if (zoom) zoom.value = '100';
+    if (image) image.src = imageUrl;
+    if (boxImage) boxImage.src = imageUrl;
+    modal?.classList.remove('hidden');
+    requestAnimationFrame(layoutPropCropper);
+}
+
+function layoutPropCropper() {
+    const stage = document.getElementById('propCropStage');
+    if (!stage) return;
+    const stageW = stage.clientWidth;
+    const stageH = stage.clientHeight;
+    const boxSize = Math.min(stageW, stageH) * 0.72;
+    propCropState.boxSize = boxSize;
+    propCropState.boxX = (stageW - boxSize) / 2;
+    propCropState.boxY = (stageH - boxSize) / 2;
+    propCropState.baseScale = Math.max(boxSize / propCropState.naturalWidth, boxSize / propCropState.naturalHeight);
+    updatePropCropImageLayout(true);
+}
+
+function updatePropCropImageLayout(center = false) {
+    const image = document.getElementById('propCropImage');
+    const box = document.getElementById('propCropBox');
+    const boxImage = document.getElementById('propCropBoxImage');
+    if (!image || !box || !boxImage) return;
+
+    const scale = propCropState.baseScale * propCropState.zoom;
+    propCropState.displayWidth = propCropState.naturalWidth * scale;
+    propCropState.displayHeight = propCropState.naturalHeight * scale;
+    if (center) {
+        propCropState.imageX = propCropState.boxX + (propCropState.boxSize - propCropState.displayWidth) / 2;
+        propCropState.imageY = propCropState.boxY + (propCropState.boxSize - propCropState.displayHeight) / 2;
+    }
+
+    image.style.width = `${propCropState.displayWidth}px`;
+    image.style.height = `${propCropState.displayHeight}px`;
+    image.style.left = `${propCropState.imageX}px`;
+    image.style.top = `${propCropState.imageY}px`;
+
+    box.style.width = `${propCropState.boxSize}px`;
+    box.style.height = `${propCropState.boxSize}px`;
+    box.style.left = `${propCropState.boxX}px`;
+    box.style.top = `${propCropState.boxY}px`;
+
+    boxImage.style.width = `${propCropState.displayWidth}px`;
+    boxImage.style.height = `${propCropState.displayHeight}px`;
+    boxImage.style.left = `${propCropState.imageX - propCropState.boxX}px`;
+    boxImage.style.top = `${propCropState.imageY - propCropState.boxY}px`;
+}
+
+function closePropCropModal(clearFile = false) {
+    document.getElementById('propCropModal')?.classList.add('hidden');
+    if (clearFile) {
+        pendingPropUploadFile = null;
+        const input = document.getElementById('propUploadInput');
+        if (input) input.value = '';
+    }
+}
+
+async function confirmPropCrop() {
+    const image = document.getElementById('propCropImage');
+    if (!image || !propCropState.naturalWidth || !propCropState.naturalHeight) return;
+
+    const scale = propCropState.naturalWidth / propCropState.displayWidth;
+    const sx = Math.max(0, (propCropState.boxX - propCropState.imageX) * scale);
+    const sy = Math.max(0, (propCropState.boxY - propCropState.imageY) * scale);
+    const sw = Math.min(propCropState.boxSize * scale, propCropState.naturalWidth - sx);
+    const sh = Math.min(propCropState.boxSize * scale, propCropState.naturalHeight - sy);
+    if (sw <= 0 || sh <= 0) {
+        alert('裁剪区域无效，请重新调整');
+        return;
+    }
+
+    const canvas = document.createElement('canvas');
+    canvas.width = 1024;
+    canvas.height = 1024;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(image, sx, sy, sw, sh, 0, 0, 1024, 1024);
+    canvas.toBlob(blob => {
+        if (!blob) {
+            alert('裁剪失败，请重试');
+            return;
+        }
+        const baseName = (propUploadFileName || 'prop.png').replace(/\.[^.]+$/, '');
+        setPropUploadPreview(blob, `${baseName}_1x1.png`);
+        closePropCropModal(false);
+    }, 'image/png');
+}
+
+async function uploadPropImageIfNeeded(propId = null, propName = null) {
+    if (!propUploadBlob) return null;
+
+    const formData = new FormData();
+    formData.append('file', propUploadBlob, propUploadFileName || 'prop.png');
+    if (episodeId) {
+        formData.append('episodeId', episodeId);
+    }
+    const customPrompt = document.getElementById('uploadPropPrompt')?.value.trim() || '';
+    if (customPrompt) {
+        formData.append('customPrompt', customPrompt);
+    }
+
+    let endpoint;
+    if (propId) {
+        endpoint = `/api/v1/props/${propId}/upload/`;
+    } else {
+        formData.append('seriesId', seriesId);
+        formData.append('propName', propName || document.getElementById('uploadPropName')?.value.trim() || '');
+        formData.append('quality', document.getElementById('uploadPropQuality')?.value || '2k');
+        endpoint = '/api/v1/props/upload/';
+    }
+
+    const response = await fetch(endpoint, {
+        method: 'POST',
+        headers: { 'X-CSRFToken': getCookie('csrftoken') },
+        body: formData
+    });
+    const data = await parseJsonResponse(response);
+    if (data.code !== 200) {
+        throw new Error(data.message || '上传失败');
+    }
+    return data.data;
+}
+
+function refreshPropAssetCount() {
+    const heading = document.querySelector('#propsGrid')?.closest('.glass-card')?.querySelector('h2');
+    if (!heading) return;
+    const count = document.querySelectorAll('#propsGrid > [data-prop-id]').length;
+    for (const node of heading.childNodes) {
+        if (node.nodeType === Node.TEXT_NODE && node.textContent.includes('道具资产')) {
+            node.textContent = `道具资产 (${count})`;
+            return;
+        }
+    }
+}
+
+let seriesPropsSyncInFlight = null;
+let seriesPropsSyncStarted = false;
+let seriesPropsSyncTimer = null;
+let seriesPropsIdleChecks = 0;
+
+function applyPropCardState(card, prop) {
+    const status = normalizeStatusValue(prop.status);
+    card.dataset.status = status ?? '';
+    card.dataset.propName = prop.propName || '';
+
+    const media = card.querySelector('.prop-history-btn');
+    if (media) {
+        media.dataset.propId = prop.id;
+        media.dataset.propName = prop.propName || '';
+        media.innerHTML = renderPropMediaInner(prop);
+    }
+
+    const nameEl = card.querySelector('p[title]');
+    if (nameEl) {
+        nameEl.textContent = prop.propName || '';
+        nameEl.title = prop.propName || '';
+    }
+
+    const statusContainer = card.querySelector('.flex.items-center.gap-1');
+    const statusSpan = statusContainer?.querySelector('span:not(.version-count)');
+    if (statusSpan) {
+        statusSpan.textContent = statusText(status, prop.statusDesc);
+        statusSpan.className = 'text-xs ' + statusClass(status);
+    }
+
+    const menuBtn = card.querySelector('.prop-menu-btn');
+    if (menuBtn) {
+        menuBtn.dataset.propName = prop.propName || '';
+        menuBtn.dataset.propLocked = status === 3 ? 'true' : 'false';
+    }
+
+    const version = getPropAssetVersion(prop);
+    const assetCount = (prop.assets || []).length;
+    let versionSpan = statusContainer?.querySelector('.version-count');
+    if (assetCount > 1 && version) {
+        if (!versionSpan && statusContainer) {
+            versionSpan = document.createElement('span');
+            versionSpan.className = 'text-xs text-white/30 version-count';
+            statusContainer.appendChild(versionSpan);
+        }
+        versionSpan.textContent = `· v${version}`;
+    } else if (versionSpan) {
+        versionSpan.remove();
+    }
+
+    if (status === 0) {
+        addOverlay(card, 'prop');
+        startPolling('prop', prop.id);
+    } else {
+        card.querySelector('.prop-overlay')?.remove();
+        stopPolling('prop', prop.id);
+        const imageUrl = getPropImageUrl(prop);
+        if (imageUrl) {
+            upsertAvailableAsset('prop', {
+                id: prop.id,
+                name: prop.propName,
+                imageUrl
+            });
+        }
+    }
+
+    bindPropCardEvents(card);
+    lucide.createIcons();
+}
+
+function upsertPropCardFromBackend(prop) {
+    if (!prop || !prop.id) return;
+    const status = normalizeStatusValue(prop.status);
+    if (![0, 1, 3].includes(status)) return;
+
+    const propsGrid = document.getElementById('propsGrid');
+    if (!propsGrid) return;
+    propsGrid.classList.remove('hidden');
+    document.getElementById('propsEmptyState')?.remove();
+
+    let card = propsGrid.querySelector(`[data-prop-id="${prop.id}"]`);
+    if (!card) {
+        propsGrid.insertAdjacentHTML('beforeend', renderSyncedPropCard(prop));
+        card = propsGrid.querySelector(`[data-prop-id="${prop.id}"]`);
+        bindPropCardEvents(card);
+    } else {
+        delete card.dataset.localPending;
+        delete card.dataset.localPendingAt;
+        applyPropCardState(card, prop);
+    }
+
+    if (status === 0) {
+        addOverlay(card, 'prop');
+        startPolling('prop', prop.id);
+    }
+    const imageUrl = getPropImageUrl(prop);
+    if (imageUrl && status !== 0) {
+        upsertAvailableAsset('prop', {
+            id: prop.id,
+            name: prop.propName,
+            imageUrl
+        });
+        refreshShotAssetBindings();
+    }
+    refreshPropAssetCount();
+}
+
+function pruneHiddenPropCards(visibleProps) {
+    const visibleIds = new Set((visibleProps || []).map(prop => String(prop.id)));
+    const now = Date.now();
+    document.querySelectorAll('#propsGrid > [data-prop-id]').forEach(card => {
+        const propId = String(card.dataset.propId || '');
+        if (visibleIds.has(propId)) return;
+
+        const status = normalizeStatusValue(card.dataset.status);
+        if (status === 3) return;
+
+        const localPendingAt = Number(card.dataset.localPendingAt || 0);
+        if (card.dataset.localPending === 'true' && localPendingAt && now - localPendingAt < 30000) {
+            return;
+        }
+
+        stopPolling('prop', propId);
+        card.remove();
+    });
+}
+
+async function syncSeriesPropsFromBackend() {
+    if (seriesPropsSyncInFlight) return seriesPropsSyncInFlight;
+
+    seriesPropsSyncInFlight = (async () => {
+        try {
+            const response = await fetch(`/api/v1/props/series/${seriesId}/?episodeId=${episodeId}`, {
+                headers: { 'X-Requested-With': 'XMLHttpRequest' }
+            });
+            const result = await response.json();
+            const props = result.data || [];
+            props.forEach(upsertPropCardFromBackend);
+            pruneHiddenPropCards(props);
+            refreshPropAssetCount();
+        } catch (e) {
+            console.warn('同步系列道具状态失败:', e);
+        } finally {
+            seriesPropsSyncInFlight = null;
+        }
+    })();
+
+    return seriesPropsSyncInFlight;
+}
+
+function scheduleSeriesPropsSync() {
+    seriesPropsIdleChecks = 0;
+    if (seriesPropsSyncStarted) return;
+    seriesPropsSyncStarted = true;
+
+    const tick = async () => {
+        if (document.visibilityState === 'visible') {
+            await syncSeriesPropsFromBackend();
+        }
+
+        if (!hasActiveAssetWork()) {
+            seriesPropsIdleChecks += 1;
+        } else {
+            seriesPropsIdleChecks = 0;
+        }
+
+        if (seriesPropsIdleChecks >= 2) {
+            clearInterval(seriesPropsSyncTimer);
+            seriesPropsSyncTimer = null;
+            seriesPropsSyncStarted = false;
+            return;
+        }
+
+        if (!seriesPropsSyncTimer) {
+            seriesPropsSyncTimer = setInterval(tick, 5000);
+        }
+    };
+
+    tick();
+    setTimeout(tick, 1500);
+}
+
+document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible' && hasActiveAssetWork()) {
+        scheduleSeriesPropsSync();
+    }
+});
+
+function upsertAvailableAsset(type, asset) {
+    if (!asset || !asset.name || !asset.imageUrl) return;
+    const list = availableAssets[type] || [];
+    const existingIndex = list.findIndex(item => item.id === asset.id || item.name === asset.name);
+    if (existingIndex >= 0) {
+        list[existingIndex] = { ...list[existingIndex], ...asset, type };
+    } else {
+        list.push({ ...asset, type });
+    }
+    availableAssets[type] = list;
+    assetNameMap[asset.name] = { ...asset, type };
+}
+
 // 移除遮罩层并更新卡片
 function removeOverlayAndUpdateCard(card, type, data) {
     if (!card) return;
+
+    if (type === 'scene') {
+        applySceneCardState(card, data);
+        refreshShotAssetBindings();
+        return;
+    }
+
+    if (type === 'prop') {
+        applyPropCardState(card, data);
+        return;
+    }
 
     const overlay = card.querySelector(`.${type}-overlay`);
     if (overlay) overlay.remove();
@@ -1456,7 +3094,7 @@ function removeOverlayAndUpdateCard(card, type, data) {
     const imgContainer = card.querySelector(`.${type}-history-btn`);
     // 使用更精确的选择器：选中包含状态文字的容器下的第一个span（排除版本号）
     const statusContainer = card.querySelector('.flex.items-center.gap-1');
-    const statusSpan = statusContainer ? statusContainer.querySelector('span:not(.version-count)') : null;
+    const statusSpan = statusContainer ? statusContainer.querySelector('span:not(.version-count)') : card.querySelector('span:not(.version-count)');
 
     if (imgContainer) {
         if (data.activeAssetUrl) {
@@ -1471,9 +3109,9 @@ function removeOverlayAndUpdateCard(card, type, data) {
     }
 
     if (statusSpan) {
-        statusSpan.textContent = data.statusDesc || (data.status === 1 ? '待审核' : '已锁定');
+        statusSpan.textContent = statusText(data.status, data.statusDesc);
         // 更新样式类
-        statusSpan.className = 'text-xs ' + (data.status === 3 ? 'text-amber-400' : 'text-amber-400');
+        statusSpan.className = 'text-xs ' + statusClass(data.status);
     }
 
     // 更新版本号显示
@@ -1486,11 +3124,33 @@ function removeOverlayAndUpdateCard(card, type, data) {
 
     lucide.createIcons();
     stopPolling(type, data.id);
+    if (type === 'prop') {
+        upsertAvailableAsset('prop', {
+            id: data.id,
+            name: data.propName,
+            imageUrl: data.activeAssetUrl || data.transparentUrl
+        });
+        refreshShotAssetBindings();
+    } else if (type === 'scene') {
+        upsertAvailableAsset('scene', {
+            id: data.id,
+            name: data.sceneName,
+            imageUrl: data.activeAssetUrl
+        });
+        refreshShotAssetBindings();
+    }
 }
 
 // 检查状态
-async function checkItemStatus(type, id) {
-    const endpoint = `/api/v1/${type}s/${id}/`;
+async function checkItemStatus(type, id, options = {}) {
+    let endpoint = `/api/v1/${type}s/${id}/`;
+    if (type === 'prop') {
+        const params = new URLSearchParams();
+        if (episodeId) params.set('episodeId', episodeId);
+        if (options.includeHistory) params.set('includeHistory', 'true');
+        const query = params.toString();
+        endpoint = query ? `${endpoint}?${query}` : endpoint;
+    }
     try {
         const response = await fetch(endpoint);
         const result = await response.json();
@@ -1504,16 +3164,28 @@ async function checkItemStatus(type, id) {
 }
 
 // 轮询循环
-setInterval(async () => {
-    for (const [key, item] of pollingItems) {
-        const data = await checkItemStatus(item.type, item.id);
-        if (data && data.status !== 0) {
-            // 状态不再是生成中
-            const card = document.querySelector(`[data-${item.type}-id="${item.id}"]`);
-            removeOverlayAndUpdateCard(card, item.type, data);
+let assetStatusPollingTimer = null;
+
+function ensureAssetStatusPolling() {
+    if (assetStatusPollingTimer) return;
+    assetStatusPollingTimer = setInterval(async () => {
+        if (pollingItems.size === 0) {
+            clearInterval(assetStatusPollingTimer);
+            assetStatusPollingTimer = null;
+            return;
         }
-    }
-}, 5000);
+
+        for (const [key, item] of pollingItems) {
+            const data = await checkItemStatus(item.type, item.id);
+            if (data && data.status !== 0) {
+                clearAssetHistoryCache(item.type, data.id);
+                // 状态不再是生成中
+                const card = document.querySelector(`[data-${item.type}-id="${item.id}"]`);
+                removeOverlayAndUpdateCard(card, item.type, data);
+            }
+        }
+    }, 5000);
+}
 
 // 页面加载时，为所有生成中的场景和道具添加遮罩并启动轮询
 // status === 0 表示正在生成中，需要显示遮罩
@@ -1573,7 +3245,7 @@ document.getElementById('saveSceneBtn')?.addEventListener('click', function() {
     closeFormModal('addSceneModal');
 
     // 检查是否存在同名场景
-    const scenesGrid = document.getElementById('scenesGrid');
+    const scenesGrid = getOrCreateScenesGrid();
     const existingCard = scenesGrid ? scenesGrid.querySelector(`[data-scene-name="${name}"]`) : null;
 
     if (existingCard) {
@@ -1653,12 +3325,127 @@ document.getElementById('addPropBtn')?.addEventListener('click', function(e) {
     e.stopPropagation();
     // 清空输入框
     document.getElementById('propName').value = '';
+    document.getElementById('propName').disabled = false;
     document.getElementById('propPrompt').value = '';
     document.getElementById('propQuality').value = '2k';
     openFormModal('addPropModal');
 });
 
-document.getElementById('savePropBtn')?.addEventListener('click', function() {
+document.getElementById('uploadPropBtn')?.addEventListener('click', function(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    openPropUploadForNew();
+});
+
+document.getElementById('uploadSceneBtn')?.addEventListener('click', function(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    openSceneUploadForNew();
+});
+
+document.getElementById('chooseSceneUploadBtn')?.addEventListener('click', function() {
+    document.getElementById('sceneUploadInput')?.click();
+});
+
+document.getElementById('sceneUploadInput')?.addEventListener('change', function() {
+    handleSceneUploadFile(this.files?.[0]).catch(e => alert(e.message));
+});
+
+document.getElementById('uploadSceneAspectRatio')?.addEventListener('change', function() {
+    updateSceneUploadPreviewAspect();
+    if (pendingSceneUploadFile) {
+        clearSceneCroppedPreview();
+        handleSceneUploadFile(pendingSceneUploadFile, { forceCrop: true }).catch(e => alert(e.message));
+    }
+});
+
+document.getElementById('choosePropUploadBtn')?.addEventListener('click', function() {
+    document.getElementById('propUploadInput')?.click();
+});
+
+document.getElementById('propUploadInput')?.addEventListener('change', async function() {
+    try {
+        await handlePropUploadFile(this.files?.[0]);
+    } catch (e) {
+        alert(e.message || '图片处理失败');
+    }
+});
+
+document.getElementById('propCropZoom')?.addEventListener('input', function() {
+    const previousWidth = propCropState.displayWidth;
+    const previousHeight = propCropState.displayHeight;
+    const centerX = propCropState.boxX + propCropState.boxSize / 2;
+    const centerY = propCropState.boxY + propCropState.boxSize / 2;
+    const relX = previousWidth ? (centerX - propCropState.imageX) / previousWidth : 0.5;
+    const relY = previousHeight ? (centerY - propCropState.imageY) / previousHeight : 0.5;
+    propCropState.zoom = Number(this.value) / 100;
+    const scale = propCropState.baseScale * propCropState.zoom;
+    propCropState.displayWidth = propCropState.naturalWidth * scale;
+    propCropState.displayHeight = propCropState.naturalHeight * scale;
+    propCropState.imageX = centerX - propCropState.displayWidth * relX;
+    propCropState.imageY = centerY - propCropState.displayHeight * relY;
+    updatePropCropImageLayout(false);
+});
+
+document.getElementById('propCropStage')?.addEventListener('mousedown', function(e) {
+    propCropState.dragging = true;
+    propCropState.startX = e.clientX - propCropState.imageX;
+    propCropState.startY = e.clientY - propCropState.imageY;
+});
+
+document.addEventListener('mousemove', function(e) {
+    if (!propCropState.dragging) return;
+    propCropState.imageX = e.clientX - propCropState.startX;
+    propCropState.imageY = e.clientY - propCropState.startY;
+    updatePropCropImageLayout(false);
+});
+
+document.addEventListener('mouseup', function() {
+    propCropState.dragging = false;
+});
+
+document.getElementById('confirmPropCropBtn')?.addEventListener('click', confirmPropCrop);
+document.getElementById('cancelPropCropBtn')?.addEventListener('click', () => closePropCropModal(true));
+document.getElementById('discardPropCropBtn')?.addEventListener('click', () => closePropCropModal(true));
+
+document.getElementById('sceneCropZoom')?.addEventListener('input', function() {
+    const previousWidth = sceneCropState.displayWidth;
+    const previousHeight = sceneCropState.displayHeight;
+    const centerX = sceneCropState.boxX + sceneCropState.boxWidth / 2;
+    const centerY = sceneCropState.boxY + sceneCropState.boxHeight / 2;
+    const relX = previousWidth ? (centerX - sceneCropState.imageX) / previousWidth : 0.5;
+    const relY = previousHeight ? (centerY - sceneCropState.imageY) / previousHeight : 0.5;
+    sceneCropState.zoom = Number(this.value) / 100;
+    const scale = sceneCropState.baseScale * sceneCropState.zoom;
+    sceneCropState.displayWidth = sceneCropState.naturalWidth * scale;
+    sceneCropState.displayHeight = sceneCropState.naturalHeight * scale;
+    sceneCropState.imageX = centerX - sceneCropState.displayWidth * relX;
+    sceneCropState.imageY = centerY - sceneCropState.displayHeight * relY;
+    updateSceneCropImageLayout(false);
+});
+
+document.getElementById('sceneCropStage')?.addEventListener('mousedown', function(e) {
+    sceneCropState.dragging = true;
+    sceneCropState.startX = e.clientX - sceneCropState.imageX;
+    sceneCropState.startY = e.clientY - sceneCropState.imageY;
+});
+
+document.addEventListener('mousemove', function(e) {
+    if (!sceneCropState.dragging) return;
+    sceneCropState.imageX = e.clientX - sceneCropState.startX;
+    sceneCropState.imageY = e.clientY - sceneCropState.startY;
+    updateSceneCropImageLayout(false);
+});
+
+document.addEventListener('mouseup', function() {
+    sceneCropState.dragging = false;
+});
+
+document.getElementById('confirmSceneCropBtn')?.addEventListener('click', confirmSceneCrop);
+document.getElementById('cancelSceneCropBtn')?.addEventListener('click', () => closeSceneCropModal(true));
+document.getElementById('discardSceneCropBtn')?.addEventListener('click', () => closeSceneCropModal(true));
+
+document.getElementById('savePropBtn')?.addEventListener('click', async function() {
     const name = document.getElementById('propName').value.trim();
     if (!name) {
         alert('请输入道具名称');
@@ -1672,13 +3459,16 @@ document.getElementById('savePropBtn')?.addEventListener('click', function() {
     const propsGrid = document.getElementById('propsGrid');
     const existingCard = propsGrid ? propsGrid.querySelector(`[data-prop-name="${name}"]`) : null;
 
+    const requestBody = {
+        seriesId: seriesId,
+        episodeId: episodeId,
+        propName: name,
+        quality: document.getElementById('propQuality').value,
+        customPrompt: document.getElementById('propPrompt').value.trim()
+    };
+
     if (existingCard) {
         const existingId = existingCard.dataset.propId;
-        addOverlay(existingCard, 'prop');
-
-        if (existingId) {
-            startPolling('prop', existingId);
-        }
 
         fetch('/api/v1/props/', {
             method: 'POST',
@@ -1686,60 +3476,119 @@ document.getElementById('savePropBtn')?.addEventListener('click', function() {
                 'Content-Type': 'application/json',
                 'X-CSRFToken': getCookie('csrftoken')
             },
-            body: JSON.stringify({
-                seriesId: seriesId,
-                episodeId: episodeId,
-                propName: name,
-                quality: document.getElementById('propQuality').value,
-                customPrompt: document.getElementById('propPrompt').value.trim()
-            })
-        }).catch(e => console.error('道具创建失败:', e));
-    } else {
-        // 添加占位卡片
-        if (propsGrid) {
-            const placeholder = document.createElement('div');
-            placeholder.className = 'glass-card glass-card-hover p-3 text-center group relative';
-            placeholder.dataset.propName = name;
-            placeholder.dataset.status = '0'; // 生成中状态
-            placeholder.innerHTML = `
-                <div class="w-full aspect-square rounded-lg bg-white/5 mb-2 overflow-hidden flex items-center justify-center prop-history-btn">
-                    <div class="text-center">
-                        <i data-lucide="image" class="w-6 h-6 text-white/30 mx-auto"></i>
-                    </div>
-                </div>
-                <p class="text-sm text-white/80 truncate mb-1">${name}</p>
-                <span class="text-xs text-blue-400">生成中</span>
-            `;
-            propsGrid.appendChild(placeholder);
-            lucide.createIcons();
-            // 添加遮罩层
-            addOverlay(placeholder, 'prop');
-        }
-
-        // 异步提交
-        fetch('/api/v1/props/', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-CSRFToken': getCookie('csrftoken')
-            },
-            body: JSON.stringify({
-                seriesId: seriesId,
-                episodeId: episodeId,
-                propName: name,
-                quality: document.getElementById('propQuality').value,
-                customPrompt: document.getElementById('propPrompt').value.trim()
-            })
+            body: JSON.stringify(requestBody)
         }).then(response => response.json())
           .then(data => {
               if (data.code === 200) {
-                  const card = propsGrid ? propsGrid.querySelector(`[data-prop-name="${name}"]`) : null;
-                  if (card && data.data) {
-                      card.dataset.propId = data.data;
-                      startPolling('prop', data.data);
-                  }
+                  const propId = data.data || existingId;
+                  existingCard.dataset.propId = propId;
+                  existingCard.dataset.status = '0';
+                  addOverlay(existingCard, 'prop');
+                  startPolling('prop', propId);
+              } else {
+                  alert('道具创建失败: ' + (data.message || '未知错误'));
               }
-          }).catch(e => console.error('道具创建失败:', e));
+          }).catch(e => {
+              console.error('道具创建失败:', e);
+              alert('道具创建失败: ' + e.message);
+          });
+    } else {
+        fetch('/api/v1/props/', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': getCookie('csrftoken')
+            },
+            body: JSON.stringify(requestBody)
+        }).then(response => response.json())
+          .then(data => {
+              if (data.code === 200 && data.data && propsGrid) {
+                  const card = appendPendingPropCard(propsGrid, data.data, name);
+                  addOverlay(card, 'prop');
+                  lucide.createIcons();
+                  startPolling('prop', data.data);
+              } else {
+                  alert('道具创建失败: ' + (data.message || '未知错误'));
+              }
+          }).catch(e => {
+              console.error('道具创建失败:', e);
+              alert('道具创建失败: ' + e.message);
+          });
+    }
+});
+
+document.getElementById('savePropUploadBtn')?.addEventListener('click', async function() {
+    const name = document.getElementById('uploadPropName').value.trim();
+    if (!name) {
+        alert('请输入道具名称');
+        return;
+    }
+    if (!propUploadBlob) {
+        alert('请选择要上传的图片');
+        return;
+    }
+
+    const propsGrid = document.getElementById('propsGrid');
+    const existingCard = propsGrid ? propsGrid.querySelector(`[data-prop-name="${name}"]`) : null;
+
+    this.disabled = true;
+    const originalHtml = this.innerHTML;
+    this.innerHTML = '<i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i>上传中...';
+    lucide.createIcons();
+    try {
+        const prop = await uploadPropImageIfNeeded(propUploadTargetId || existingCard?.dataset.propId || null, name);
+        if (prop) {
+            upsertPropCardFromBackend(prop);
+            clearAssetHistoryCache('prop', prop.id);
+            refreshShotAssetBindings();
+            scheduleShotAssetBindingRefresh();
+            scheduleSeriesPropsSync();
+        }
+        closeFormModal('uploadPropModal');
+        resetPropUploadState();
+    } catch (e) {
+        alert('上传失败: ' + e.message);
+    } finally {
+        this.disabled = false;
+        this.innerHTML = originalHtml;
+        lucide.createIcons();
+    }
+});
+
+document.getElementById('saveSceneUploadBtn')?.addEventListener('click', async function() {
+    const name = document.getElementById('uploadSceneName').value.trim();
+    if (!name) {
+        alert('请输入场景名称');
+        return;
+    }
+    if (!sceneUploadBlob) {
+        alert('请选择要上传的图片');
+        return;
+    }
+
+    const scenesGrid = document.getElementById('scenesGrid');
+    const existingCard = scenesGrid ? scenesGrid.querySelector(`[data-scene-name="${name}"]`) : null;
+
+    this.disabled = true;
+    const originalHtml = this.innerHTML;
+    this.innerHTML = '<i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i>上传中...';
+    lucide.createIcons();
+    try {
+        const scene = await uploadSceneImageIfNeeded(sceneUploadTargetId || existingCard?.dataset.sceneId || null, name);
+        if (scene) {
+            upsertSceneCardFromBackend(scene);
+            clearAssetHistoryCache('scene', scene.id);
+            refreshShotAssetBindings();
+            scheduleShotAssetBindingRefresh();
+        }
+        closeFormModal('uploadSceneModal');
+        resetSceneUploadState();
+    } catch (e) {
+        alert('上传失败: ' + e.message);
+    } finally {
+        this.disabled = false;
+        this.innerHTML = originalHtml;
+        lucide.createIcons();
     }
 });
 
@@ -1747,6 +3596,8 @@ document.getElementById('savePropBtn')?.addEventListener('click', function() {
 let currentRegenSceneId = null;
 console.log('[DEBUG] 绑定场景重新生成按钮, 数量:', document.querySelectorAll('.scene-regenerate-btn').length);
 document.querySelectorAll('.scene-regenerate-btn').forEach(btn => {
+    if (btn.dataset.bound === 'true') return;
+    btn.dataset.bound = 'true';
     btn.addEventListener('click', function(e) {
         e.stopPropagation();
         console.log('[DEBUG] 场景重新生成按钮被点击, sceneId:', this.dataset.sceneId);
@@ -1776,7 +3627,7 @@ document.getElementById('confirmRegenSceneBtn')?.addEventListener('click', async
                 quality: document.getElementById('regenSceneQuality').value
             })
         });
-        const data = await response.json();
+        const data = await parseJsonResponse(response);
         if (data.code === 200) {
             closeFormModal('regenerateSceneModal');
             // 更新卡片为生成中状态
@@ -1803,6 +3654,8 @@ document.getElementById('confirmRegenSceneBtn')?.addEventListener('click', async
 let currentRegenPropId = null;
 console.log('[DEBUG] 绑定道具重新生成按钮, 数量:', document.querySelectorAll('.prop-regenerate-btn').length);
 document.querySelectorAll('.prop-regenerate-btn').forEach(btn => {
+    if (btn.dataset.bound === 'true') return;
+    btn.dataset.bound = 'true';
     btn.addEventListener('click', function(e) {
         e.stopPropagation();
         console.log('[DEBUG] 道具重新生成按钮被点击, propId:', this.dataset.propId);
@@ -1811,6 +3664,18 @@ document.querySelectorAll('.prop-regenerate-btn').forEach(btn => {
         document.getElementById('regenPropPrompt').value = this.dataset.propPrompt || '';
         openFormModal('regeneratePropModal');
     });
+});
+
+document.querySelector('.prop-upload-menu-btn')?.addEventListener('click', async function() {
+    if (!currentContextPropId) return;
+    const menuBtn = document.querySelector(`.prop-menu-btn[data-prop-id="${currentContextPropId}"]`);
+    if (menuBtn?.dataset.propLocked === 'true') {
+        alert('道具已锁定，请先解锁后再上传图片');
+        hideContextMenus();
+        return;
+    }
+    openPropUploadForExisting(currentContextPropId, menuBtn?.dataset.propName || '', '');
+    hideContextMenus();
 });
 
 document.getElementById('confirmRegenPropBtn')?.addEventListener('click', async function() {
@@ -1828,10 +3693,11 @@ document.getElementById('confirmRegenPropBtn')?.addEventListener('click', async 
             },
             body: JSON.stringify({
                 customPrompt: document.getElementById('regenPropPrompt').value.trim(),
-                quality: document.getElementById('regenPropQuality').value
+                quality: document.getElementById('regenPropQuality').value,
+                episodeId: episodeId
             })
         });
-        const data = await response.json();
+        const data = await parseJsonResponse(response);
         if (data.code === 200) {
             closeFormModal('regeneratePropModal');
             // 更新卡片为生成中状态
@@ -1857,17 +3723,50 @@ document.getElementById('confirmRegenPropBtn')?.addEventListener('click', async 
 // Scene History
 let currentSceneHistoryId = null;
 document.querySelectorAll('.scene-history-btn, .scene-history-icon-btn').forEach(btn => {
-    btn.addEventListener('click', function(e) {
+    if (btn.dataset.bound === 'true') return;
+    btn.dataset.bound = 'true';
+    btn.addEventListener('click', async function(e) {
         e.stopPropagation();
         currentSceneHistoryId = this.dataset.sceneId;
         const name = this.dataset.sceneName;
-        let assets = [];
-        try {
-            assets = JSON.parse(this.dataset.sceneAssets || '[]');
-        } catch (e) {}
+        const assets = await loadAssetHistory('scene', currentSceneHistoryId);
         showSceneHistory(name, assets);
     });
 });
+
+const assetHistoryCache = new Map();
+
+async function loadAssetHistory(type, id) {
+    const cacheKey = `${type}_${id}`;
+    if (assetHistoryCache.has(cacheKey)) {
+        return assetHistoryCache.get(cacheKey);
+    }
+
+    const modalId = type === 'scene' ? 'sceneHistoryModal' : 'propHistoryModal';
+    const listId = type === 'scene' ? 'sceneHistoryList' : 'propHistoryList';
+    const nameId = type === 'scene' ? 'sceneHistoryName' : 'propHistoryName';
+    const title = type === 'scene' ? '场景' : '道具';
+
+    const list = document.getElementById(listId);
+    if (list) {
+        list.innerHTML = `<div class="col-span-4 text-center py-8 text-white/40">${title}历史加载中...</div>`;
+    }
+    const trigger = document.querySelector(`.${type}-history-btn[data-${type}-id="${id}"]`);
+    const nameEl = document.getElementById(nameId);
+    if (nameEl && trigger?.dataset[`${type}Name`]) {
+        nameEl.textContent = trigger.dataset[`${type}Name`];
+    }
+    openFormModal(modalId);
+
+    const data = await checkItemStatus(type, id, { includeHistory: type === 'prop' });
+    const assets = data?.assets || [];
+    assetHistoryCache.set(cacheKey, assets);
+    return assets;
+}
+
+function clearAssetHistoryCache(type, id) {
+    assetHistoryCache.delete(`${type}_${id}`);
+}
 
 function showSceneHistory(name, assets) {
     document.getElementById('sceneHistoryName').textContent = name;
@@ -1929,6 +3828,14 @@ function switchRoleClothing(thumbEl) {
         el.classList.remove('ring-1', 'ring-blue-400');
     });
     thumbEl.classList.add('ring-1', 'ring-blue-400');
+
+    const name = thumbEl.dataset.clothingName || '';
+    const version = thumbEl.dataset.clothingVersion || '';
+    let marker = roleCard.querySelector('.role-current-version-label');
+    if (marker) {
+        const defaultText = thumbEl.dataset.clothingDefault === 'true' ? '当前默认' : '预览版本';
+        marker.textContent = `${defaultText}${name ? ' · ' + name : ''}${version ? ' · v' + version : ''}`;
+    }
 }
 
 // 资产大图预览
@@ -1963,7 +3870,7 @@ function bindSceneRollback() {
                         'Content-Type': 'application/json',
                         'X-CSRFToken': getCookie('csrftoken')
                     },
-                    body: JSON.stringify({ assetId: parseInt(assetId) })
+                    body: JSON.stringify({ assetId: parseInt(assetId), episodeId: episodeId })
                 });
                 const data = await response.json();
                 if (data.code === 200) {
@@ -1985,11 +3892,7 @@ function bindSceneRollback() {
                     // 获取最新的场景数据并更新卡片
                     const sceneData = await checkItemStatus('scene', sceneId);
                     if (sceneData) {
-                        // 更新历史按钮的 data
-                        const historyBtn = card?.querySelector('.scene-history-btn');
-                        if (historyBtn && sceneData.assets) {
-                            historyBtn.dataset.sceneAssets = JSON.stringify(sceneData.assets);
-                        }
+                        clearAssetHistoryCache('scene', sceneId);
                         // 更新版本号显示
                         const versionSpan = card?.querySelector('.version-count');
                         if (versionSpan && sceneData.assets) {
@@ -2044,14 +3947,13 @@ document.getElementById('rolePreviewModal').addEventListener('click', function(e
 // Prop History
 let currentPropHistoryId = null;
 document.querySelectorAll('.prop-history-btn, .prop-history-icon-btn').forEach(btn => {
-    btn.addEventListener('click', function(e) {
+    if (btn.dataset.bound === 'true') return;
+    btn.dataset.bound = 'true';
+    btn.addEventListener('click', async function(e) {
         e.stopPropagation();
         currentPropHistoryId = this.dataset.propId;
         const name = this.dataset.propName;
-        let assets = [];
-        try {
-            assets = JSON.parse(this.dataset.propAssets || '[]');
-        } catch (e) {}
+        const assets = await loadAssetHistory('prop', currentPropHistoryId);
         showPropHistory(name, assets);
     });
 });
@@ -2136,11 +4038,7 @@ function bindPropRollback() {
                     // 获取最新的道具数据并更新卡片
                     const propData = await checkItemStatus('prop', propId);
                     if (propData) {
-                        // 更新历史按钮的 data
-                        const historyBtn = card?.querySelector('.prop-history-btn');
-                        if (historyBtn && propData.assets) {
-                            historyBtn.dataset.propAssets = JSON.stringify(propData.assets);
-                        }
+                        clearAssetHistoryCache('prop', propId);
                         // 更新版本数量显示
                         const versionSpan = card?.querySelector('.version-count');
                         if (versionSpan && propData.assets) {
@@ -2453,6 +4351,12 @@ async function pollParseResult() {
                     pollShotParsing();
                     return;
                 }
+                // 如果分镜解析失败，回到资产选择弹窗以便重试
+                else if (status === 1 && data.assetsReady && data.shotParseFailed) {
+                    console.log('分镜解析失败，回到资产选择弹窗');
+                    await returnToAssetSelectionAfterShotParseFailure(data);
+                    return;
+                }
                 // 如果资产解析完成（assetsReady=true）且未确认，显示资产选择弹窗
                 else if (status === 1 && data.assetsReady && !data.assetsConfirmed) {
                     console.log('资产解析完成，显示资产选择弹窗');
@@ -2536,25 +4440,159 @@ function stopTimer(button) {
     }
 }
 
+function parseGenerationStartTime(value) {
+    if (!value) return new Date();
+    const normalized = value.includes('T') ? value : value.replace(' ', 'T');
+    const parsed = new Date(normalized);
+    return isNaN(parsed.getTime()) ? new Date() : parsed;
+}
+
+function lockShotGenerationControls(card, activeButton = null) {
+    if (!card) return;
+    card.querySelectorAll('.generate-btn, .regenerate-btn').forEach(btn => {
+        if (!btn.dataset.originalHtml) {
+            btn.dataset.originalHtml = btn.innerHTML;
+        }
+        btn.disabled = true;
+        btn.setAttribute('aria-disabled', 'true');
+        btn.classList.add('opacity-60', 'cursor-not-allowed');
+        if (btn !== activeButton && !btn.dataset.startTime) {
+            btn.innerHTML = '<i data-lucide="loader-2" class="w-3.5 h-3.5 animate-spin"></i>生成中';
+        }
+    });
+    lucide.createIcons();
+}
+
+function showGeneratingActions(card, startTimeValue = null) {
+    const actions = card.querySelector('.shot-actions');
+    if (!actions) return;
+
+    let placeholder = actions.querySelector('.generating-action-placeholder');
+    if (!placeholder) {
+        Array.from(actions.children).forEach(child => {
+            child.dataset.hiddenDuringGeneration = child.classList.contains('hidden') ? 'true' : 'false';
+            child.classList.add('hidden');
+        });
+        placeholder = document.createElement('span');
+        placeholder.className = 'generating-action-placeholder generating-timer w-full px-3 py-1.5 rounded-lg bg-blue-500/20 text-blue-300 text-xs flex items-center justify-center gap-1.5';
+        placeholder.dataset.startTime = parseGenerationStartTime(startTimeValue).toISOString();
+        placeholder.innerHTML = '<i data-lucide="loader-2" class="w-3.5 h-3.5 animate-spin"></i><span class="timer-text">0秒</span>';
+        actions.prepend(placeholder);
+    } else if (startTimeValue) {
+        placeholder.dataset.startTime = parseGenerationStartTime(startTimeValue).toISOString();
+    }
+    startGeneratingTimers();
+    lucide.createIcons();
+}
+
+function restoreGeneratingActions(card) {
+    const actions = card.querySelector('.shot-actions');
+    if (!actions) return;
+
+    actions.querySelectorAll('.generating-action-placeholder').forEach(el => el.remove());
+    Array.from(actions.children).forEach(child => {
+        if (child.dataset.hiddenDuringGeneration === 'false') {
+            child.classList.remove('hidden');
+        }
+        delete child.dataset.hiddenDuringGeneration;
+    });
+}
+
+function unlockShotGenerationControls(card) {
+    if (!card) return;
+    card.querySelectorAll('.generate-btn, .regenerate-btn').forEach(btn => {
+        stopTimer(btn);
+        btn.disabled = false;
+        btn.removeAttribute('aria-disabled');
+        btn.classList.remove('opacity-60', 'cursor-not-allowed');
+        if (btn.dataset.originalHtml) {
+            btn.innerHTML = btn.dataset.originalHtml;
+            delete btn.dataset.originalHtml;
+        }
+    });
+    lucide.createIcons();
+}
+
+function restoreCardFromGenerating(card) {
+    if (!card) return;
+    if (card.dataset.preGenerationStatus) {
+        card.dataset.status = card.dataset.preGenerationStatus;
+        delete card.dataset.preGenerationStatus;
+    }
+    const thumbContainer = card.querySelector('.shot-thumbnail');
+    if (thumbContainer && thumbContainer._previousGenerationHtml !== undefined) {
+        thumbContainer.innerHTML = thumbContainer._previousGenerationHtml;
+        delete thumbContainer._previousGenerationHtml;
+        delete thumbContainer.dataset.generatingActive;
+    }
+    restoreGeneratingActions(card);
+    unlockShotGenerationControls(card);
+}
+
 // 更新卡片为生成中状态
-function updateCardToGenerating(card) {
+function updateCardToGenerating(card, activeButton = null, startTimeValue = null) {
+    if (!card) return;
+    if (card.dataset.status !== '1' && !card.dataset.preGenerationStatus) {
+        card.dataset.preGenerationStatus = card.dataset.status || '';
+    }
+    card.dataset.status = '1';
+
     // 更新状态标签
     const statusSpan = card.querySelector('.generation-status');
     if (statusSpan) {
-        statusSpan.className = 'px-3 py-2 rounded-lg bg-blue-500/20 text-blue-300 text-sm flex items-center gap-2 generation-status';
+        statusSpan.className = 'generation-status px-2 py-0.5 rounded text-xs flex-shrink-0 bg-blue-500/20 text-blue-300 inline-flex items-center gap-1';
         statusSpan.innerHTML = '<i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i>生成中';
         lucide.createIcons();
     }
     // 更新缩略图显示加载状态
-    const thumbContainer = card.querySelector('.w-40.h-24');
-    if (thumbContainer && !thumbContainer.querySelector('.animate-spin')) {
+    const thumbContainer = card.querySelector('.shot-thumbnail');
+    if (thumbContainer) {
+        if (!thumbContainer.dataset.generatingActive) {
+            thumbContainer._previousGenerationHtml = thumbContainer.innerHTML;
+        }
+        thumbContainer.dataset.generatingActive = 'true';
         thumbContainer.innerHTML = `
             <div class="text-center">
-                <i data-lucide="loader-2" class="w-8 h-8 text-blue-400 animate-spin mx-auto"></i>
+                <i data-lucide="loader-2" class="w-6 h-6 text-blue-400 animate-spin mx-auto"></i>
                 <p class="text-xs text-white/50 mt-1">生成中...</p>
             </div>
         `;
         lucide.createIcons();
+    }
+    lockShotGenerationControls(card, activeButton);
+    showGeneratingActions(card, startTimeValue);
+}
+
+function syncShotGenerationStatus(card, status, startTimeValue = null) {
+    if (!card || status === undefined || status === null) return false;
+    const currentStatus = parseInt(card.dataset.status || '0', 10);
+    const nextStatus = parseInt(status, 10);
+
+    if (currentStatus === 1 && nextStatus !== 1) {
+        return true;
+    }
+
+    if (nextStatus === 1) {
+        updateCardToGenerating(card, null, startTimeValue);
+        scheduleShotAssetBindingRefresh();
+        return false;
+    }
+
+    card.dataset.status = String(nextStatus);
+    return false;
+}
+
+function isAlreadyGeneratingResponse(data) {
+    const message = data?.message || data?.error || '';
+    return message.includes('正在生成') || message.includes('生成中');
+}
+
+async function readJsonResponse(response) {
+    const text = await response.text();
+    try {
+        return JSON.parse(text);
+    } catch (e) {
+        throw new Error(response.ok ? '服务返回了非 JSON 响应' : `服务返回异常(${response.status})`);
     }
 }
 
@@ -2679,26 +4717,27 @@ lucide.createIcons();
 
 // 单个生成
 document.querySelectorAll('.generate-btn').forEach(btn => {
-    btn.addEventListener('click', async function() {
-        const shotId = this.dataset.shotId;
-        this.disabled = true;
-        startTimer(this);
+	    btn.addEventListener('click', async function() {
+	        const shotId = this.dataset.shotId;
+	        const card = this.closest('.shot-card');
+	        if (card && card.dataset.status === '1') {
+	            updateCardToGenerating(card, this);
+	            return;
+	        }
+	        this.disabled = true;
 
-        // 立即更新 UI 为生成中状态，不等后端返回
-        const card = this.closest('.shot-card');
-        if (card) {
-            card.dataset.status = '1';
-            updateCardToGenerating(card);
-        }
-        // 启动轮询
-        startShotGenerationPolling();
+	        // 立即更新 UI 为生成中状态，不等后端返回
+	        if (card) {
+	            updateCardToGenerating(card, this);
+	        }
+	        startTimer(this);
+	        // 启动轮询
+	        startShotGenerationPolling();
 
         try {
             // 从编辑器中提取参考图 URL（用户选择的资产）
             const referenceUrls = [];
-            const card = this.closest('.shot-card');
-
-            // 从场景编辑器提取
+	            // 从场景编辑器提取
             const sceneEditor = card.querySelector('[data-field="scene"]');
             if (sceneEditor) {
                 sceneEditor.querySelectorAll('[data-asset-url]').forEach(el => {
@@ -2728,48 +4767,45 @@ document.querySelectorAll('.generate-btn').forEach(btn => {
                 },
                 body: JSON.stringify({ referenceUrls: referenceUrls })
             });
-            const data = await response.json();
-            if (!(data.success || data.code === 200)) {
-                stopTimer(this);
-                alert('生成失败: ' + (data.error || data.message));
-                this.disabled = false;
-                const credits = calculateCredits(this.dataset.resolution, this.dataset.duration, this.closest('.shot-card')?.querySelector('.video-model-select')?.value);
-                this.innerHTML = '<i data-lucide="play" class="w-4 h-4"></i>生成<span class="credit-cost text-white/80 text-xs ml-1"><i data-lucide="coins" class="w-3 h-3 text-yellow-400 inline-block"></i>' + credits + '</span>';
-                lucide.createIcons();
-            }
-        } catch (e) {
-            stopTimer(this);
-            alert('请求失败: ' + e.message);
-            this.disabled = false;
-            const credits = calculateCredits(this.dataset.resolution, this.dataset.duration, this.closest('.shot-card')?.querySelector('.video-model-select')?.value);
-            this.innerHTML = '<i data-lucide="play" class="w-4 h-4"></i>生成<span class="credit-cost text-white/80 text-xs ml-1"><i data-lucide="coins" class="w-3 h-3 text-yellow-400 inline-block"></i>' + credits + '</span>';
-            lucide.createIcons();
-        }
-    });
-});
+	            const data = await readJsonResponse(response);
+	            if (!(data.success || data.code === 200)) {
+	                if (isAlreadyGeneratingResponse(data)) {
+	                    if (card) updateCardToGenerating(card, this);
+	                    return;
+	                }
+	                restoreCardFromGenerating(card);
+	                alert('生成失败: ' + (data.error || data.message));
+	            }
+	        } catch (e) {
+	            restoreCardFromGenerating(card);
+	            alert('请求失败: ' + e.message);
+	        }
+	    });
+	});
 
 // 重新生成
 document.querySelectorAll('.regenerate-btn').forEach(btn => {
-    btn.addEventListener('click', async function() {
-        const shotId = this.dataset.shotId;
-        this.disabled = true;
-        startTimer(this);
+	    btn.addEventListener('click', async function() {
+	        const shotId = this.dataset.shotId;
+	        const card = this.closest('.shot-card');
+	        if (card && card.dataset.status === '1') {
+	            updateCardToGenerating(card, this);
+	            return;
+	        }
+	        this.disabled = true;
 
-        // 立即更新 UI 为生成中状态，不等后端返回
-        const card = this.closest('.shot-card');
-        if (card) {
-            card.dataset.status = '1';
-            updateCardToGenerating(card);
-        }
-        // 启动轮询
-        startShotGenerationPolling();
+	        // 立即更新 UI 为生成中状态，不等后端返回
+	        if (card) {
+	            updateCardToGenerating(card, this);
+	        }
+	        startTimer(this);
+	        // 启动轮询
+	        startShotGenerationPolling();
 
         try {
             // 从编辑器中提取参考图 URL（用户选择的资产）
             const referenceUrls = [];
-            const card = this.closest('.shot-card');
-
-            // 从场景编辑器提取
+	            // 从场景编辑器提取
             const sceneEditor = card.querySelector('[data-field="scene"]');
             if (sceneEditor) {
                 sceneEditor.querySelectorAll('[data-asset-url]').forEach(el => {
@@ -2799,25 +4835,21 @@ document.querySelectorAll('.regenerate-btn').forEach(btn => {
                 },
                 body: JSON.stringify({ referenceUrls: referenceUrls })
             });
-            const data = await response.json();
-            if (!(data.success || data.code === 200)) {
-                stopTimer(this);
-                alert('生成失败: ' + (data.error || data.message));
-                this.disabled = false;
-                const credits = calculateCredits(this.dataset.resolution, this.dataset.duration, this.closest('.shot-card')?.querySelector('.video-model-select')?.value);
-                this.innerHTML = '<i data-lucide="refresh-cw" class="w-4 h-4"></i>重新生成<span class="credit-cost text-white/50 text-xs ml-1"><i data-lucide="coins" class="w-3 h-3 text-yellow-400 inline-block"></i>' + credits + '</span>';
-                lucide.createIcons();
-            }
-        } catch (e) {
-            stopTimer(this);
-            alert('请求失败: ' + e.message);
-            this.disabled = false;
-            const credits = calculateCredits(this.dataset.resolution, this.dataset.duration, this.closest('.shot-card')?.querySelector('.video-model-select')?.value);
-            this.innerHTML = '<i data-lucide="refresh-cw" class="w-4 h-4"></i>重新生成<span class="credit-cost text-white/50 text-xs ml-1"><i data-lucide="coins" class="w-3 h-3 text-yellow-400 inline-block"></i>' + credits + '</span>';
-            lucide.createIcons();
-        }
-    });
-});
+	            const data = await readJsonResponse(response);
+	            if (!(data.success || data.code === 200)) {
+	                if (isAlreadyGeneratingResponse(data)) {
+	                    if (card) updateCardToGenerating(card, this);
+	                    return;
+	                }
+	                restoreCardFromGenerating(card);
+	                alert('生成失败: ' + (data.error || data.message));
+	            }
+	        } catch (e) {
+	            restoreCardFromGenerating(card);
+	            alert('请求失败: ' + e.message);
+	        }
+	    });
+	});
 
 // 审核通过
 document.querySelectorAll('.approve-btn').forEach(btn => {
@@ -2861,6 +4893,8 @@ document.addEventListener('click', hideContextMenus);
 
 // 场景菜单按钮
 document.querySelectorAll('.scene-menu-btn').forEach(btn => {
+    if (btn.dataset.bound === 'true') return;
+    btn.dataset.bound = 'true';
     btn.addEventListener('click', function(e) {
         e.stopPropagation();
         hideContextMenus();
@@ -2870,6 +4904,7 @@ document.querySelectorAll('.scene-menu-btn').forEach(btn => {
         // 更新菜单文字
         const lockText = sceneContextMenu.querySelector('.lock-text');
         const lockIcon = sceneContextMenu.querySelector('.lock-icon');
+        const uploadMenuBtn = sceneContextMenu.querySelector('.scene-upload-menu-btn');
         if (isLocked) {
             lockText.textContent = '解锁';
             lockIcon.setAttribute('data-lucide', 'unlock');
@@ -2877,6 +4912,7 @@ document.querySelectorAll('.scene-menu-btn').forEach(btn => {
             lockText.textContent = '锁定';
             lockIcon.setAttribute('data-lucide', 'lock');
         }
+        uploadMenuBtn?.classList.toggle('hidden', isLocked);
         lucide.createIcons();
 
         // 定位菜单
@@ -2889,6 +4925,8 @@ document.querySelectorAll('.scene-menu-btn').forEach(btn => {
 
 // 道具菜单按钮
 document.querySelectorAll('.prop-menu-btn').forEach(btn => {
+    if (btn.dataset.bound === 'true') return;
+    btn.dataset.bound = 'true';
     btn.addEventListener('click', function(e) {
         e.stopPropagation();
         hideContextMenus();
@@ -2898,6 +4936,7 @@ document.querySelectorAll('.prop-menu-btn').forEach(btn => {
         // 更新菜单文字
         const lockText = propContextMenu.querySelector('.lock-text');
         const lockIcon = propContextMenu.querySelector('.lock-icon');
+        const uploadMenuBtn = propContextMenu.querySelector('.prop-upload-menu-btn');
         if (isLocked) {
             lockText.textContent = '解锁';
             lockIcon.setAttribute('data-lucide', 'unlock');
@@ -2905,6 +4944,7 @@ document.querySelectorAll('.prop-menu-btn').forEach(btn => {
             lockText.textContent = '锁定';
             lockIcon.setAttribute('data-lucide', 'lock');
         }
+        uploadMenuBtn?.classList.toggle('hidden', isLocked);
         lucide.createIcons();
 
         // 定位菜单
@@ -3011,11 +5051,29 @@ function updateSceneLockUI(sceneId, isLocked) {
         menuBtn.dataset.sceneLocked = isLocked ? 'true' : 'false';
     }
 
+    // 锁定后不允许上传新版本；解锁后恢复上传入口。
+    if (card) {
+        const actions = card.querySelector('.scene-history-btn .absolute.top-1.right-1');
+        const uploadBtn = card.querySelector(`.scene-upload-btn[data-scene-id="${sceneId}"]`);
+        if (isLocked) {
+            uploadBtn?.remove();
+        } else if (actions && !uploadBtn) {
+            const prompt = card.querySelector('.scene-regenerate-btn')?.dataset.scenePrompt || '';
+            actions.insertAdjacentHTML('beforeend', `
+                <button class="scene-upload-btn w-7 h-7 rounded-lg bg-black/50 hover:bg-black/70 transition-colors flex items-center justify-center"
+                        data-scene-id="${sceneId}" data-scene-name="${escapeHtml(card.dataset.sceneName || '')}" data-scene-prompt="${escapeHtml(prompt)}" title="上传图片">
+                    <i data-lucide="upload" class="w-4 h-4 text-white"></i>
+                </button>
+            `);
+            bindSceneCardEvents(card);
+        }
+    }
+
     // 更新锁定图标
     const imageContainer = document.querySelector(`.scene-history-btn[data-scene-id="${sceneId}"]`);
     if (imageContainer) {
-        let lockOverlay = imageContainer.querySelector('.lock-overlay');
         if (isLocked) {
+            let lockOverlay = imageContainer.querySelector('.lock-overlay');
             if (!lockOverlay) {
                 lockOverlay = document.createElement('div');
                 lockOverlay.className = 'absolute top-1 left-1 lock-overlay';
@@ -3024,7 +5082,7 @@ function updateSceneLockUI(sceneId, isLocked) {
                 lucide.createIcons();
             }
         } else {
-            if (lockOverlay) lockOverlay.remove();
+            imageContainer.querySelectorAll('.lock-overlay, .absolute.top-1.left-1').forEach(el => el.remove());
         }
     }
 
@@ -3042,6 +5100,7 @@ function updateSceneLockUI(sceneId, isLocked) {
     const lockIcon = sceneContextMenu.querySelector('.lock-icon');
     if (lockText) lockText.textContent = isLocked ? '解锁' : '锁定';
     if (lockIcon) lockIcon.setAttribute('data-lucide', isLocked ? 'unlock' : 'lock');
+    sceneContextMenu.querySelector('.scene-upload-menu-btn')?.classList.toggle('hidden', isLocked);
     lucide.createIcons();
 }
 
@@ -3054,6 +5113,22 @@ sceneContextMenu.querySelector('.scene-regenerate-menu-btn')?.addEventListener('
     // 触发原有的重新生成按钮
     const regenBtn = document.querySelector(`.scene-regenerate-btn[data-scene-id="${currentContextSceneId}"]`);
     if (regenBtn) regenBtn.click();
+});
+
+// 场景上传图片（菜单）
+sceneContextMenu.querySelector('.scene-upload-menu-btn')?.addEventListener('click', function(e) {
+    e.stopPropagation();
+    if (!currentContextSceneId) return;
+    const menuBtn = document.querySelector(`.scene-menu-btn[data-scene-id="${currentContextSceneId}"]`);
+    if (menuBtn?.dataset.sceneLocked === 'true') {
+        alert('场景已锁定，请先解锁后再上传图片');
+        hideContextMenus();
+        return;
+    }
+    const sceneName = menuBtn?.dataset.sceneName || '';
+    const uploadBtn = document.querySelector(`.scene-upload-btn[data-scene-id="${currentContextSceneId}"]`);
+    openSceneUploadForExisting(currentContextSceneId, sceneName, uploadBtn?.dataset.scenePrompt || '');
+    hideContextMenus();
 });
 
 // 场景删除
@@ -3139,7 +5214,11 @@ propContextMenu.querySelector('.prop-toggle-lock-btn')?.addEventListener('click'
     try {
         const response = await fetch(`/api/v1/props/${currentContextPropId}/${action}/`, {
             method: 'POST',
-            headers: { 'X-CSRFToken': getCookie('csrftoken') }
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': getCookie('csrftoken')
+            },
+            body: JSON.stringify({ episodeId: episodeId })
         });
         const data = await response.json();
         if (data.code === 200) {
@@ -3167,11 +5246,29 @@ function updatePropLockUI(propId, isLocked) {
         menuBtn.dataset.propLocked = isLocked ? 'true' : 'false';
     }
 
+    // 锁定后不允许上传新版本；解锁后恢复上传入口。
+    if (card) {
+        const actions = card.querySelector('.prop-history-btn .absolute.top-1.right-1');
+        const uploadBtn = card.querySelector(`.prop-upload-btn[data-prop-id="${propId}"]`);
+        if (isLocked) {
+            uploadBtn?.remove();
+        } else if (actions && !uploadBtn) {
+            const prompt = card.querySelector('.prop-regenerate-btn')?.dataset.propPrompt || '';
+            actions.insertAdjacentHTML('beforeend', `
+                <button class="prop-upload-btn w-7 h-7 rounded-lg bg-black/50 hover:bg-black/70 transition-colors flex items-center justify-center"
+                        data-prop-id="${propId}" data-prop-name="${escapeHtml(card.dataset.propName || '')}" data-prop-prompt="${escapeHtml(prompt)}" title="上传图片">
+                    <i data-lucide="upload" class="w-4 h-4 text-white"></i>
+                </button>
+            `);
+            bindPropCardEvents(card);
+        }
+    }
+
     // 更新锁定图标
     const imageContainer = document.querySelector(`.prop-history-btn[data-prop-id="${propId}"]`);
     if (imageContainer) {
-        let lockOverlay = imageContainer.querySelector('.lock-overlay');
         if (isLocked) {
+            let lockOverlay = imageContainer.querySelector('.lock-overlay');
             if (!lockOverlay) {
                 lockOverlay = document.createElement('div');
                 lockOverlay.className = 'absolute top-1 left-1 lock-overlay';
@@ -3180,7 +5277,7 @@ function updatePropLockUI(propId, isLocked) {
                 lucide.createIcons();
             }
         } else {
-            if (lockOverlay) lockOverlay.remove();
+            imageContainer.querySelectorAll('.lock-overlay, .absolute.top-1.left-1').forEach(el => el.remove());
         }
     }
 
@@ -3198,6 +5295,7 @@ function updatePropLockUI(propId, isLocked) {
     const lockIcon = propContextMenu.querySelector('.lock-icon');
     if (lockText) lockText.textContent = isLocked ? '解锁' : '锁定';
     if (lockIcon) lockIcon.setAttribute('data-lucide', isLocked ? 'unlock' : 'lock');
+    propContextMenu.querySelector('.prop-upload-menu-btn')?.classList.toggle('hidden', isLocked);
     lucide.createIcons();
 }
 
@@ -3253,6 +5351,17 @@ async function showAssetSelectionModal() {
         console.error('获取资产清单失败:', e);
         alert('请求失败: ' + e.message);
     }
+}
+
+async function returnToAssetSelectionAfterShotParseFailure(data) {
+    if (shotParsingIntervalId) {
+        clearInterval(shotParsingIntervalId);
+        shotParsingIntervalId = null;
+    }
+    localStorage.removeItem(`shotParsing_${episodeId}`);
+    hideShotParsingOverlay();
+    alert(data?.errorMessage || '分镜解析失败，请重新提交解析。');
+    await showAssetSelectionModal();
 }
 
 // 渲染资产列表
@@ -3583,6 +5692,8 @@ async function pollShotParsing() {
                 localStorage.removeItem(`shotParsing_${episodeId}`);
                 hideShotParsingOverlay();
                 location.reload();
+            } else if (data.status === 1 && data.assetsReady && data.shotParseFailed) {
+                await returnToAssetSelectionAfterShotParseFailure(data);
             } else if (data.status === 0) {
                 clearInterval(shotParsingIntervalId);
                 shotParsingIntervalId = null;
@@ -3623,6 +5734,12 @@ document.addEventListener('DOMContentLoaded', async function() {
             pollShotParsing();
             return;
         }
+        // shotParseFailed=true 表示分镜解析失败，资产仍可复用，直接回到选择弹窗
+        else if (data.status === 1 && data.assetsReady && data.shotParseFailed) {
+            console.log('检测到分镜解析失败，显示选择弹窗...');
+            await returnToAssetSelectionAfterShotParseFailure(data);
+            return;
+        }
         // assetsReady=true 且 assetsConfirmed=false 表示资产解析完成但用户还没确认，需要弹窗
         else if (data.status === 1 && data.assetsReady && !data.assetsConfirmed) {
             console.log('检测到资产已解析，显示选择弹窗...');
@@ -3647,11 +5764,12 @@ document.addEventListener('DOMContentLoaded', async function() {
 // 可用资产数据
 let availableAssets = { scene: [], role: [], prop: [] };
 let assetNameMap = {}; // 名称到资产的映射
+let shotAssetRefreshInFlight = null;
 
 // 资产数据（从模板传递）
-const seriesScenes = {{ scenes|to_json }};
+const seriesScenes = {{ mention_scenes|to_json }};
 const seriesRoles = {{ roles|to_json }};
-const seriesProps = {{ props|to_json }};
+const seriesProps = {{ mention_props|to_json }};
 
 // 资产类型配置
 const assetTypeConfig = {
@@ -3679,40 +5797,30 @@ async function initAvailableAssets() {
     }));
 
     // 角色资产：从后端 API 获取所有服装
-    try {
-        const response = await fetch(`/api/series/${seriesId}/role-assets/`);
-        const result = await response.json();
-        if (result.data && result.data.roles) {
-            availableAssets.role = [];
-            for (const role of result.data.roles) {
-                if (role.clothings && role.clothings.length > 0) {
-                    for (const clothing of role.clothings) {
-                        // 服装名称格式：角色名-服装名（默认服装只显示角色名）
-                        const displayName = clothing.clothingName === '默认' || clothing.clothingId === 1
-                            ? role.roleName
-                            : `${role.roleName}-${clothing.clothingName}`;
-                        availableAssets.role.push({
-                            id: role.id,
-                            clothingId: clothing.clothingId,
-                            name: displayName,
-                            displayName: role.roleName,  // 显示名称（不含服装后缀）
-                            imageUrl: clothing.assetUrl,
-                            type: 'role'
-                        });
-                    }
-                }
+    availableAssets.role = [];
+    for (const role of seriesRoles) {
+        if (role.clothings && role.clothings.length > 0) {
+            for (const clothing of role.clothings) {
+                const displayName = clothing.clothingName === '默认' || clothing.clothingId === 1
+                    ? role.roleName
+                    : `${role.roleName}-${clothing.clothingName}`;
+                availableAssets.role.push({
+                    id: role.id,
+                    clothingId: clothing.clothingId || clothing.id,
+                    name: displayName,
+                    displayName: role.roleName,
+                    imageUrl: clothing.assetUrl,
+                    type: 'role'
+                });
             }
+        } else if (role.assetUrl) {
+            availableAssets.role.push({
+                id: role.id,
+                name: role.roleName,
+                imageUrl: role.assetUrl,
+                type: 'role'
+            });
         }
-        // 角色服装资产加载完成
-    } catch (e) {
-        console.error('加载角色服装资产失败:', e);
-        // 降级：使用模板传递的角色数据
-        availableAssets.role = seriesRoles.filter(r => r.assetUrl).map(r => ({
-            id: r.id,
-            name: r.roleName,
-            imageUrl: r.assetUrl,
-            type: 'role'
-        }));
     }
 
     // availableAssets 初始化完成
@@ -3723,10 +5831,71 @@ async function initAvailableAssets() {
     });
 }
 
+async function refreshShotAssetBindings() {
+    if (shotAssetRefreshInFlight) return shotAssetRefreshInFlight;
+
+    shotAssetRefreshInFlight = (async () => {
+        try {
+            const response = await fetch(`/api/v1/shots/episode/${episodeId}/`);
+            const result = await response.json();
+            if (result.code !== 200 || !Array.isArray(result.data)) return;
+
+            result.data.forEach(shot => {
+                const card = document.querySelector(`.shot-card[data-shot-id="${shot.id}"]`);
+                if (!card) return;
+
+                if (shot.characters) {
+                    card.dataset.shotCharacters = JSON.stringify(shot.characters);
+                }
+                updateShotEditBadge(card, shot.descriptionEdited, shot.sceneEdited);
+
+                const descEditor = card.querySelector('.description-editor');
+                if (descEditor) {
+                    descEditor.dataset.shotProps = JSON.stringify(shot.props || []);
+                    if (shot.descriptionEdited !== undefined && shot.descriptionEdited !== null) {
+                        descEditor.dataset.descriptionEdited = String(shot.descriptionEdited);
+                    }
+                    const descFocused = document.activeElement === descEditor || descEditor.contains(document.activeElement);
+                    if (descEditor.dataset.userDirty !== 'true' && !descFocused) {
+                        descEditor.dataset.description = shot.description || '';
+                        descEditor.dataset.shotType = shot.shotType || '';
+                        descEditor.dataset.soundEffect = shot.soundEffect || '';
+                        renderDescriptionWithAutoAssets(descEditor);
+                    }
+                }
+
+	                const sceneEditor = card.querySelector('.scene-editor');
+	                if (sceneEditor) {
+	                    sceneEditor.dataset.sceneName = normalizeSceneText(shot.sceneName) || '';
+	                    sceneEditor.dataset.sceneAssetUrl = shot.sceneAssetUrl || '';
+                    if (shot.sceneEdited !== undefined && shot.sceneEdited !== null) {
+                        sceneEditor.dataset.sceneEdited = String(shot.sceneEdited);
+                    }
+                    const sceneFocused = document.activeElement === sceneEditor || sceneEditor.contains(document.activeElement);
+                    if (sceneEditor.dataset.userDirty !== 'true' && !sceneFocused) {
+	                        renderSceneWithAutoAssets(sceneEditor);
+	                    }
+	                }
+
+	                syncShotGenerationStatus(card, shot.generationStatus, shot.generationStartTime);
+	            });
+        } catch (e) {
+            console.error('刷新分镜资产失败:', e);
+        } finally {
+            shotAssetRefreshInFlight = null;
+        }
+    })();
+
+    return shotAssetRefreshInFlight;
+}
+
 // 初始化资产（异步）并等待完成后再初始化编辑功能
 let assetsInitialized = false;
 initAvailableAssets().then(() => {
     assetsInitialized = true;
+    if (document.querySelector('[data-prop-id][data-status="0"]')) {
+        scheduleSeriesPropsSync();
+    }
     // 资产加载完成后，重新渲染所有描述编辑器和场景编辑器
     document.querySelectorAll('.description-editor').forEach(editor => {
         renderDescriptionWithAutoAssets(editor);
@@ -3734,6 +5903,13 @@ initAvailableAssets().then(() => {
     document.querySelectorAll('.scene-editor').forEach(editor => {
         renderSceneWithAutoAssets(editor);
     });
+    refreshShotAssetBindings();
+});
+
+document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible' && hasActiveAssetWork()) {
+        scheduleShotAssetBindingRefresh();
+    }
 });
 
 // 防抖保存器
@@ -3771,15 +5947,83 @@ function showSaveIndicator(shotId, status) {
     }
 }
 
+function getShotSelectPayload(card, fields) {
+    const fieldSet = new Set(fields || []);
+    const data = {};
+
+    if (fieldSet.has('duration')) {
+        const durationSelect = card.querySelector('.duration-select');
+        if (durationSelect) data.duration = parseInt(durationSelect.value, 10);
+    }
+    if (fieldSet.has('resolution')) {
+        const resolutionSelect = card.querySelector('.resolution-select');
+        if (resolutionSelect) data.resolution = resolutionSelect.value;
+    }
+    if (fieldSet.has('aspectRatio')) {
+        const aspectRatioSelect = card.querySelector('.aspect-ratio-select');
+        if (aspectRatioSelect) data.aspectRatio = aspectRatioSelect.value;
+    }
+    if (fieldSet.has('videoModel')) {
+        const videoModelSelect = card.querySelector('.video-model-select');
+        if (videoModelSelect) data.videoModel = videoModelSelect.value;
+    }
+
+    return data;
+}
+
+function syncShotButtonDatasets(card) {
+    const duration = card.querySelector('.duration-select')?.value;
+    const resolution = card.querySelector('.resolution-select')?.value;
+    card.querySelectorAll('.generate-btn, .regenerate-btn').forEach(btn => {
+        if (duration) btn.dataset.duration = duration;
+        if (resolution) btn.dataset.resolution = resolution;
+    });
+}
+
+async function saveShotSettings(shotId, fields) {
+    const card = document.querySelector(`.shot-card[data-shot-id="${shotId}"]`);
+    if (!card) return;
+
+    const data = getShotSelectPayload(card, fields);
+    if (Object.keys(data).length === 0) return;
+
+    syncShotButtonDatasets(card);
+    showSaveIndicator(shotId, 'saving');
+
+    try {
+        const response = await fetch(`/api/v1/shots/${shotId}/`, {
+            method: 'PUT',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': getCookie('csrftoken')
+            },
+            body: JSON.stringify(data)
+        });
+        const result = await response.json();
+        showSaveIndicator(shotId, (result.code === 200 || result.success) ? 'saved' : 'error');
+    } catch (e) {
+        console.error('保存分镜设置失败:', e);
+        showSaveIndicator(shotId, 'error');
+    }
+}
+
 // 解析合并的分镜文本格式
 function parseShotText(text) {
     const result = {
+        startTime: null,
+        endTime: null,
         shotType: null,
         description: null,
         soundEffect: null
     };
 
     if (!text) return result;
+
+    const timeMatch = text.match(/时间【\s*(\d{1,2}):(\d{2})\s*-\s*(\d{1,2}):(\d{2})\s*】/);
+    if (timeMatch) {
+        result.startTime = parseInt(timeMatch[1], 10) * 60 + parseInt(timeMatch[2], 10);
+        result.endTime = parseInt(timeMatch[3], 10) * 60 + parseInt(timeMatch[4], 10);
+    }
 
     // 解析镜头【XXX】
     const shotTypeMatch = text.match(/镜头【(.+?)】/);
@@ -3842,17 +6086,36 @@ async function saveShotInline(shotId) {
     const videoModelSelect = card.querySelector('.video-model-select');
 
     const fullText = extractDescriptionText(descriptionEditor);
-    const sceneText = extractDescriptionText(sceneEditor);
+    const sceneText = normalizeSceneText(extractDescriptionText(sceneEditor));
+    const parsedShotText = parseShotText(fullText || '');
+    const descriptionDirty = descriptionEditor?.dataset.userDirty === 'true';
+    const sceneDirty = sceneEditor?.dataset.userDirty === 'true';
 
-    // 不再解析，直接保存完整文本到 description 字段
     const data = {
         duration: durationSelect ? parseInt(durationSelect.value) : null,
         resolution: resolutionSelect ? resolutionSelect.value : null,
         aspectRatio: aspectRatioSelect ? aspectRatioSelect.value : null,
-        videoModel: videoModelSelect ? videoModelSelect.value : null,
-        description: fullText,  // 保存完整文本，不拆分
-        sceneName: sceneText
+        videoModel: videoModelSelect ? videoModelSelect.value : null
     };
+
+    if (descriptionDirty) {
+        data.description = parsedShotText.description || fullText;
+        data.descriptionEdited = true;
+        if (parsedShotText.shotType) {
+            data.shotType = parsedShotText.shotType;
+        }
+        if (parsedShotText.soundEffect) {
+            data.soundEffect = parsedShotText.soundEffect;
+        }
+        if (parsedShotText.startTime !== null && parsedShotText.endTime !== null) {
+            data.startTime = parsedShotText.startTime;
+            data.endTime = parsedShotText.endTime;
+        }
+    }
+    if (sceneDirty) {
+        data.sceneName = sceneText;
+        data.sceneEdited = true;
+    }
 
     showSaveIndicator(shotId, 'saving');
 
@@ -3872,6 +6135,28 @@ async function saveShotInline(shotId) {
         if (result.code === 200 || result.success) {
             // 保存参考图
             await saveMentionedAssets(shotId, descriptionEditor);
+            if (descriptionDirty && descriptionEditor) {
+                descriptionEditor.dataset.userDirty = 'false';
+                descriptionEditor.dataset.descriptionEdited = 'true';
+                if (data.description) {
+                    descriptionEditor.dataset.description = data.description;
+                }
+                if (data.shotType) {
+                    descriptionEditor.dataset.shotType = data.shotType;
+                }
+                if (data.soundEffect) {
+                    descriptionEditor.dataset.soundEffect = data.soundEffect;
+                }
+            }
+            if (sceneDirty && sceneEditor) {
+                sceneEditor.dataset.userDirty = 'false';
+                sceneEditor.dataset.sceneEdited = 'true';
+            }
+            updateShotEditBadge(
+                card,
+                descriptionEditor?.dataset.descriptionEdited,
+                sceneEditor?.dataset.sceneEdited
+            );
             showSaveIndicator(shotId, 'saved');
         } else {
             showSaveIndicator(shotId, 'error');
@@ -3891,6 +6176,10 @@ function extractDescriptionText(editor) {
     // 将资产容器替换为 @{名称} 格式
     // 不截断前面的文本——用户输入了什么就保留什么
     clone.querySelectorAll('[data-asset-name]').forEach(wrapper => {
+        if (wrapper.dataset.assetSource === 'auto') {
+            wrapper.replaceWith(document.createTextNode(''));
+            return;
+        }
         const name = wrapper.dataset.assetName;
         const text = document.createTextNode('@{' + name + '}');
         wrapper.replaceWith(text);
@@ -3971,6 +6260,9 @@ function initDescriptionMention(editor) {
 
     // 在输入时也保存选区
     editor.addEventListener('input', function(e) {
+        if (!editor.dataset.renderingAssets) {
+            editor.dataset.userDirty = 'true';
+        }
         const selection = window.getSelection();
         if (selection.rangeCount) {
             savedRange = selection.getRangeAt(0).cloneRange();
@@ -3978,6 +6270,9 @@ function initDescriptionMention(editor) {
     });
 
     editor.addEventListener('input', function(e) {
+        if (!editor.dataset.renderingAssets) {
+            editor.dataset.userDirty = 'true';
+        }
         // INPUT EVENT FIRED
         const selection = window.getSelection();
         if (!selection.rangeCount) {
@@ -4219,6 +6514,7 @@ function initDescriptionMention(editor) {
 // 删除@触发文本
 // 插入资产缩略图
 function insertAssetThumb(editor, asset) {
+    editor.dataset.userDirty = 'true';
     const selection = window.getSelection();
     if (!selection.rangeCount) return;
 
@@ -4316,12 +6612,31 @@ function renderDescriptionWithThumbs(editor, rawText) {
 
 // 渲染描述文本
 function renderDescriptionWithAutoAssets(editor) {
-    let description = editor.dataset.description || '';
-    const shotType = editor.dataset.shotType || '';
-    const soundEffect = editor.dataset.soundEffect || '';
-    // 判断是否用户编辑过（值为 '1', 'true', 'True' 表示已编辑）
-    const descEdited = editor.dataset.descriptionEdited;
-    const isUserEdited = descEdited === '1' || descEdited === 'true' || descEdited === 'True';
+    editor.dataset.renderingAssets = 'true';
+    try {
+        let description = editor.dataset.description || '';
+        const shotType = editor.dataset.shotType || '';
+        const soundEffect = editor.dataset.soundEffect || '';
+        // 判断是否用户编辑过（值为 '1', 'true', 'True' 表示已编辑）
+        const descEdited = editor.dataset.descriptionEdited;
+        const isUserEdited = descEdited === '1' || descEdited === 'true' || descEdited === 'True';
+
+    // 解析分镜数据中的道具和角色（后端实时返回）
+    let shotProps = [];
+    let shotCharacters = [];
+    try {
+        if (editor.dataset.shotProps) {
+            shotProps = JSON.parse(editor.dataset.shotProps);
+        }
+    } catch (e) {}
+
+    // 从父级 shot-card 获取角色数据
+    const shotCard = editor.closest('.shot-card');
+    try {
+        if (shotCard && shotCard.dataset.shotCharacters) {
+            shotCharacters = JSON.parse(shotCard.dataset.shotCharacters);
+        }
+    } catch (e) {}
 
     // 如果没有格式标记且 description 为空，组合 shotType 和 soundEffect
     if (!description.includes('镜头【') && !description.includes('剧情【') && !description.includes('音效【')) {
@@ -4340,16 +6655,43 @@ function renderDescriptionWithAutoAssets(editor) {
 
     let processedDescription = description;
 
+    // 构建资产列表，优先使用分镜数据中的资产（后端实时返回）
+    // 道具：优先使用 shotProps 中的数据
+    const propAssets = shotProps.filter(p => p.propName && p.assetUrl).map(p => ({
+        id: p.propId,
+        name: p.propName,
+        imageUrl: p.assetUrl,
+        type: 'prop',
+        typeLabel: '道具'
+    }));
+
+    // 角色：优先使用 shotCharacters 中的数据
+    const roleAssets = shotCharacters.filter(c => c.roleName && c.assetUrl).map(c => ({
+        id: c.roleId,
+        name: c.roleName,
+        imageUrl: c.assetUrl,
+        type: 'role',
+        typeLabel: '角色'
+    }));
+
+    // 场景：从 availableAssets 获取（场景已经在 renderSceneWithAutoAssets 中处理）
+    const sceneAssets = availableAssets.scene.map(a => ({...a, typeLabel: '场景'}));
+
+    // 合并：分镜数据优先，然后是 availableAssets（兼容旧逻辑）
     const allAssets = [
-        ...availableAssets.scene.map(a => ({...a, typeLabel: '场景'})),
-        ...availableAssets.role.map(a => ({...a, typeLabel: '角色'})),
-        ...availableAssets.prop.map(a => ({...a, typeLabel: '道具'}))
+        ...roleAssets,
+        ...propAssets,
+        ...sceneAssets,
+        // 补充 availableAssets 中没有在分镜数据中出现的资产
+        ...availableAssets.role.filter(a => !roleAssets.find(r => r.name === a.name)).map(a => ({...a, typeLabel: '角色'})),
+        ...availableAssets.prop.filter(a => !propAssets.find(p => p.name === a.name)).map(a => ({...a, typeLabel: '道具'}))
     ];
 
-    function createThumbHtml(asset) {
+    function createThumbHtml(asset, source = 'auto') {
         return `<span class="inline-flex items-center gap-1 whitespace-nowrap" contenteditable="false"
                         data-asset-id="${asset.id}" data-asset-type="${asset.type}"
-                        data-asset-name="${asset.name}" data-asset-url="${asset.imageUrl}">
+                        data-asset-name="${asset.name}" data-asset-url="${asset.imageUrl}"
+                        data-asset-source="${source}">
                         <img class="inline-asset-thumb w-5 h-5 rounded align-middle border-2 ${assetTypeConfig[asset.type].borderColor}"
                             src="${asset.imageUrl}" alt="${asset.name}"
                             title="${assetTypeConfig[asset.type].label}: ${asset.name}">
@@ -4357,101 +6699,135 @@ function renderDescriptionWithAutoAssets(editor) {
                     </span>`;
     }
 
-    if (isUserEdited) {
-        // 用户编辑过：将 @{名称} 转换为缩略图显示（只显示缩略图）
-        processedDescription = description.replace(/@\{([^}]+)\}/g, (match, name) => {
-            const asset = allAssets.find(a => a.name === name);
-            if (asset && asset.imageUrl) {
-                return createThumbHtml(asset);  // 只返回缩略图
+    function chooseAssetByName(assets, name) {
+        const sameNameAssets = assets.filter(a => a.name === name);
+        if (sameNameAssets.length === 1) return sameNameAssets[0];
+        if (sameNameAssets.length > 1) {
+            return sameNameAssets.find(a => a.clothingName === '默认') || sameNameAssets[0];
+        }
+        return null;
+    }
+
+    function appendAutoThumbs(text, assets) {
+        let result = text;
+        for (const asset of assets) {
+            if (!asset.name || !result.includes(asset.name)) continue;
+            const targetAsset = chooseAssetByName(assets, asset.name);
+            if (!targetAsset || !targetAsset.imageUrl) continue;
+            const regex = new RegExp(escapeRegExp(asset.name), 'g');
+            result = result.replace(regex, asset.name + createThumbHtml(targetAsset, 'auto'));
+        }
+        return result;
+    }
+
+    function renderEditedDescription(text, assetsForPlainNames, assetsForMentions) {
+        const parts = text.split(/(@\{[^}]+\})/g);
+        return parts.map((part, index) => {
+            if (part.startsWith('@{') && part.endsWith('}')) {
+                const name = part.substring(2, part.length - 1);
+                const asset = chooseAssetByName(assetsForMentions, name);
+                return asset && asset.imageUrl ? createThumbHtml(asset, 'mention') : name;
             }
-            return '';  // 没找到资产时不显示
-        });
+
+            const nextPart = parts[index + 1] || '';
+            const nextName = nextPart.startsWith('@{') && nextPart.endsWith('}')
+                ? nextPart.substring(2, nextPart.length - 1)
+                : null;
+            if (nextName && part.endsWith(nextName)) {
+                const visibleText = part.slice(0, -nextName.length);
+                return appendAutoThumbs(visibleText, assetsForPlainNames) + nextName;
+            }
+
+            return appendAutoThumbs(part, assetsForPlainNames);
+        }).join('');
+    }
+
+    if (isUserEdited) {
+        // 用户编辑过：显式 @{名称} 正常显示，同时保留本分镜已有角色/道具的自动缩略图。
+        processedDescription = renderEditedDescription(description, [...roleAssets, ...propAssets], allAssets);
     } else {
         // 用户未编辑：去掉 @{名称} 标记，然后检查是否有完全匹配的资产名
         processedDescription = description.replace(/@\{([^}]+)\}/g, '$1');
 
         // 检查文本中是否有完全匹配的资产名（场景、角色、道具）
         // 在名称后面加缩略图
-        for (const asset of allAssets) {
-            if (asset.name && processedDescription.includes(asset.name)) {
-                // 检查这个名称对应的资产
-                const sameNameAssets = allAssets.filter(a => a.name === asset.name);
-
-                let targetAsset = null;
-                if (sameNameAssets.length === 1) {
-                    // 只有一个同名资产，直接使用
-                    targetAsset = sameNameAssets[0];
-                } else if (sameNameAssets.length > 1) {
-                    // 多个同名资产（如角色有多个服装），优先使用名称为"默认"的服装
-                    targetAsset = sameNameAssets.find(a => a.clothingName === '默认') || sameNameAssets[0];
-                }
-
-                if (targetAsset && targetAsset.imageUrl) {
-                    // 在名称后面加缩略图（替换所有出现）
-                    const regex = new RegExp(asset.name, 'g');
-                    processedDescription = processedDescription.replace(regex, asset.name + createThumbHtml(targetAsset));
-                }
-            }
-        }
+        processedDescription = appendAutoThumbs(processedDescription, allAssets);
     }
 
-    editor.innerHTML = processedDescription;
+        editor.innerHTML = processedDescription;
+    } finally {
+        delete editor.dataset.renderingAssets;
+    }
 }
 
 // 渲染场景输入框
 function renderSceneWithAutoAssets(editor) {
-    const sceneName = editor.dataset.sceneName || '';
-    // 判断是否用户编辑过（值为 '1', 'true', 'True' 表示已编辑）
-    const sceneEdited = editor.dataset.sceneEdited;
-    const isUserEdited = sceneEdited === '1' || sceneEdited === 'true' || sceneEdited === 'True';
+    editor.dataset.renderingAssets = 'true';
+    try {
+        const sceneName = normalizeSceneText(editor.dataset.sceneName) || '';
+        const sceneAssetUrl = editor.dataset.sceneAssetUrl || '';  // 后端返回的场景资产URL
+        // 判断是否用户编辑过（值为 '1', 'true', 'True' 表示已编辑）
+        const sceneEdited = editor.dataset.sceneEdited;
+        const isUserEdited = sceneEdited === '1' || sceneEdited === 'true' || sceneEdited === 'True';
 
-    if (!sceneName) {
-        editor.innerHTML = '';
-        return;
+        if (!sceneName) {
+            editor.innerHTML = '';
+            return;
+        }
+
+        let processedScene = sceneName;
+
+    // 辅助函数：创建缩略图HTML
+    function createSceneThumbHtml(name, imageUrl, assetId) {
+        const safeName = normalizeSceneText(name) || name;
+        return `<span class="inline-flex items-center gap-1 whitespace-nowrap" contenteditable="false"
+                        data-asset-id="${assetId || ''}" data-asset-type="scene"
+                        data-asset-name="${safeName}" data-asset-url="${imageUrl}">
+                        <img class="inline-asset-thumb w-5 h-5 rounded align-middle border-2 ${assetTypeConfig.scene.borderColor}"
+                            src="${imageUrl}" alt="${safeName}"
+                            title="场景: ${safeName}">
+                        <span class="${assetTypeConfig.scene.bgColor} px-1.5 py-0.5 rounded text-xs text-white">${safeName}</span>
+                    </span>`;
     }
 
-    let processedScene = sceneName;
-
     if (isUserEdited) {
-        // 用户编辑过：将 @{名称} 转换为缩略图显示（只显示缩略图，不加名称前缀）
+        // 用户编辑过：将 @{名称} 转换为缩略图显示
         processedScene = sceneName.replace(/@\{([^}]+)\}/g, (match, name) => {
-            const asset = availableAssets.scene.find(a => a.name === name);
+            const cleanName = normalizeSceneText(name) || name;
+            // 优先使用后端返回的 sceneAssetUrl（如果名称匹配）
+            if (sceneAssetUrl && cleanName === sceneName) {
+                return createSceneThumbHtml(cleanName, sceneAssetUrl, '');
+            }
+            // 否则从 availableAssets 查找
+            const asset = availableAssets.scene.find(a => a.name === cleanName);
             if (asset && asset.imageUrl) {
-                const thumbHtml = `<span class="inline-flex items-center gap-1 whitespace-nowrap" contenteditable="false"
-                                data-asset-id="${asset.id}" data-asset-type="scene"
-                                data-asset-name="${asset.name}" data-asset-url="${asset.imageUrl}">
-                                <img class="inline-asset-thumb w-5 h-5 rounded align-middle border-2 ${assetTypeConfig.scene.borderColor}"
-                                    src="${asset.imageUrl}" alt="${asset.name}"
-                                    title="场景: ${asset.name}">
-                                <span class="${assetTypeConfig.scene.bgColor} px-1.5 py-0.5 rounded text-xs text-white">${asset.name}</span>
-                            </span>`;
-                return thumbHtml;  // 只返回缩略图
+                return createSceneThumbHtml(cleanName, asset.imageUrl, asset.id);
             }
             return '';  // 没找到资产时不显示
         });
     } else {
         // 用户未编辑：检查场景名称是否完全匹配某个资产
-        // 完全匹配时在名称后面加缩略图
-        const exactMatches = availableAssets.scene.filter(a => a.name === sceneName);
-        if (exactMatches.length >= 1) {
-            // 如果有多个同名资产，使用第一个；否则使用唯一匹配的
-            const asset = exactMatches[0];
-            if (asset.imageUrl) {
-                const thumbHtml = `<span class="inline-flex items-center gap-1 whitespace-nowrap" contenteditable="false"
-                                data-asset-id="${asset.id}" data-asset-type="scene"
-                                data-asset-name="${asset.name}" data-asset-url="${asset.imageUrl}">
-                                <img class="inline-asset-thumb w-5 h-5 rounded align-middle border-2 ${assetTypeConfig.scene.borderColor}"
-                                    src="${asset.imageUrl}" alt="${asset.name}"
-                                    title="场景: ${asset.name}">
-                                <span class="${assetTypeConfig.scene.bgColor} px-1.5 py-0.5 rounded text-xs text-white">${asset.name}</span>
-                            </span>`;
-                processedScene = sceneName + thumbHtml;  // 名称后面加缩略图
+        // 优先使用后端返回的 sceneAssetUrl
+        if (sceneAssetUrl) {
+            const thumbHtml = createSceneThumbHtml(sceneName, sceneAssetUrl, '');
+            processedScene = sceneName + thumbHtml;
+        } else {
+            // 否则从 availableAssets 查找
+            const exactMatches = availableAssets.scene.filter(a => a.name === sceneName);
+            if (exactMatches.length >= 1) {
+                const asset = exactMatches[0];
+                if (asset.imageUrl) {
+                    const thumbHtml = createSceneThumbHtml(sceneName, asset.imageUrl, asset.id);
+                    processedScene = sceneName + thumbHtml;
+                }
             }
         }
-        // 不匹配时，保持原样（纯文本）
     }
 
-    editor.innerHTML = processedScene;
+        editor.innerHTML = processedScene;
+    } finally {
+        delete editor.dataset.renderingAssets;
+    }
 }
 
 // 初始化内联编辑
@@ -4504,8 +6880,7 @@ function initInlineEditing() {
             durationSelect.addEventListener('change', () => {
                 // 更新积分显示
                 updateShotCreditDisplay(card);
-                // 立即保存
-                saveShotInline(shotId);
+                saveShotSettings(shotId, ['duration']);
             });
         }
 
@@ -4515,7 +6890,7 @@ function initInlineEditing() {
             resolutionSelect.addEventListener('change', () => {
                 // 更新积分显示
                 updateShotCreditDisplay(card);
-                saveShotInline(shotId);
+                saveShotSettings(shotId, ['resolution']);
             });
         }
 
@@ -4523,7 +6898,7 @@ function initInlineEditing() {
         const aspectRatioSelect = card.querySelector('.aspect-ratio-select');
         if (aspectRatioSelect) {
             aspectRatioSelect.addEventListener('change', () => {
-                saveShotInline(shotId);
+                saveShotSettings(shotId, ['aspectRatio']);
             });
         }
 
@@ -4534,7 +6909,7 @@ function initInlineEditing() {
                 // 根据模型更新分辨率选项
                 updateResolutionOptions(card, videoModelSelect.value);
                 updateShotCreditDisplay(card);
-                saveShotInline(shotId);
+                saveShotSettings(shotId, ['videoModel', 'resolution']);
             });
         }
 
@@ -4596,6 +6971,11 @@ function initInlineEditing() {
 
 // 保存分镜名称
 async function saveShotName(shotId, shotName, shotNumber) {
+    const input = document.querySelector(`.shot-name-input[data-shot-id="${shotId}"]`);
+    if (input) {
+        input.dataset.saving = 'true';
+        input.classList.add('opacity-70');
+    }
     try {
         const response = await fetch(`/api/v1/shots/${shotId}/`, {
             method: 'PUT',
@@ -4603,19 +6983,28 @@ async function saveShotName(shotId, shotName, shotNumber) {
                 'Content-Type': 'application/json',
                 'X-CSRFToken': getCookie('csrftoken')
             },
-            body: JSON.stringify({ shotName: shotName })
+	            body: JSON.stringify({ shotName: shotName || '' })
         });
         const result = await response.json();
         if (result.code !== 200 && !result.success) {
             console.error('保存分镜名称失败:', result.message);
             // 恢复默认名称
-            const input = document.querySelector(`.shot-name-input[data-shot-id="${shotId}"]`);
             if (input) {
                 input.value = `分镜${shotNumber}`;
+                input.dataset.isDefault = 'true';
             }
+        } else if (input) {
+            input.dataset.shotName = shotName || '';
+            input.dataset.originalValue = input.value;
+            input.dataset.originalIsDefault = input.dataset.isDefault;
         }
     } catch (error) {
         console.error('保存分镜名称失败:', error);
+    } finally {
+        if (input) {
+            delete input.dataset.saving;
+            input.classList.remove('opacity-70');
+        }
     }
 }
 
@@ -4626,6 +7015,7 @@ function initDragAndDrop() {
 
     const cards = shotList.querySelectorAll('.shot-card');
     let draggedCard = null;
+    let originalOrder = [];
 
     cards.forEach(card => {
         const handle = card.querySelector('.drag-handle');
@@ -4642,6 +7032,7 @@ function initDragAndDrop() {
 
         card.addEventListener('dragstart', function(e) {
             draggedCard = this;
+            originalOrder = getShotOrder();
             this.classList.add('dragging');
             e.dataTransfer.effectAllowed = 'move';
             e.dataTransfer.setData('text/plain', this.dataset.shotId);
@@ -4654,8 +7045,11 @@ function initDragAndDrop() {
             document.querySelectorAll('.shot-card').forEach(c => c.classList.remove('drag-over'));
             draggedCard = null;
 
-            // 保存新顺序
-            saveShotOrder();
+            const nextOrder = getShotOrder();
+            if (!isSameOrder(originalOrder, nextOrder)) {
+                updateShotNumbers();
+                saveShotOrder(originalOrder);
+            }
         });
 
         // 拖拽经过
@@ -4684,8 +7078,31 @@ function initDragAndDrop() {
     });
 }
 
+function getShotOrder() {
+    const shotList = document.getElementById('shotList');
+    if (!shotList) return [];
+    return Array.from(shotList.querySelectorAll('.shot-card')).map(card => String(card.dataset.shotId));
+}
+
+function isSameOrder(left, right) {
+    if (!left || !right || left.length !== right.length) return false;
+    return left.every((id, index) => id === right[index]);
+}
+
+function restoreShotOrder(order) {
+    const shotList = document.getElementById('shotList');
+    if (!shotList || !order || order.length === 0) return;
+    order.forEach(shotId => {
+        const card = shotList.querySelector(`.shot-card[data-shot-id="${shotId}"]`);
+        if (card) {
+            shotList.appendChild(card);
+        }
+    });
+    updateShotNumbers();
+}
+
 // 保存分镜顺序
-async function saveShotOrder() {
+async function saveShotOrder(previousOrder = null) {
     const shotList = document.getElementById('shotList');
     if (!shotList) {
         console.error('shotList not found');
@@ -4694,8 +7111,6 @@ async function saveShotOrder() {
 
     const cards = shotList.querySelectorAll('.shot-card');
     const shotIds = Array.from(cards).map(card => parseInt(card.dataset.shotId));
-
-    console.log('Saving shot order:', { episodeId, shotIds });
 
     try {
         const response = await fetch(`/api/v1/shots/episode/${episodeId}/reorder`, {
@@ -4707,24 +7122,17 @@ async function saveShotOrder() {
             body: JSON.stringify({ shotIds: shotIds })
         });
         const result = await response.json();
-        console.log('Reorder response:', result);
         if (result.code === 200 || result.success) {
-            console.log('Shot order saved successfully');
-            // 更新序号和默认名称显示
-            cards.forEach((card, index) => {
-                const nameInput = card.querySelector('.shot-name-input');
-                if (nameInput) {
-                    const shotNumber = index + 1;
-                    nameInput.dataset.shotNumber = shotNumber;
-                    // 只有当前是默认名称时才更新
-                    if (nameInput.dataset.isDefault === 'true') {
-                        nameInput.value = `分镜${shotNumber}`;
-                    }
-                }
-            });
+            updateShotNumbers();
+        } else if (previousOrder) {
+            console.error('保存顺序失败:', result.message);
+            restoreShotOrder(previousOrder);
         }
     } catch (error) {
         console.error('保存顺序失败:', error);
+        if (previousOrder) {
+            restoreShotOrder(previousOrder);
+        }
     }
 }
 
@@ -4972,6 +7380,16 @@ async function fetchWithAuth(url, options = {}) {
     }
 
     return response;
+}
+
+async function parseJsonResponse(response) {
+    const contentType = response.headers.get('content-type') || '';
+    if (!contentType.includes('application/json')) {
+        const text = await response.text();
+        const title = text.match(/<title>(.*?)<\/title>/i)?.[1];
+        throw new Error(title || `服务返回了非 JSON 响应 (${response.status})`);
+    }
+    return response.json();
 }
 </script>
 {% endblock %}

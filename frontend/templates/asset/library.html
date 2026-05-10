@@ -26,7 +26,7 @@
                 <option value="{{ series.id }}">{{ series.seriesName }} ({{ series.roleCount }}个角色)</option>
                 {% endfor %}
             {% else %}
-                <option value="">暂无已锁定的系列</option>
+                <option value="">加载系列中...</option>
             {% endif %}
         </select>
     </div>
@@ -50,21 +50,10 @@
 
 <!-- Asset Content -->
 <div id="assetContent" class="glass-card p-6 min-h-[400px]">
-    {% if locked_series %}
     <div class="flex items-center justify-center py-12">
         <div class="spinner mr-3"></div>
         <span class="text-white/60">加载中...</span>
     </div>
-    {% else %}
-    <div class="text-center py-12">
-        <i data-lucide="folder-x" class="w-16 h-16 text-white/20 mx-auto mb-4"></i>
-        <p class="text-white/50">暂无已锁定的系列</p>
-        <p class="text-white/30 text-sm mt-2">请先创建系列并锁定后再查看资产库</p>
-        <a href="/init/" class="btn-neon mt-6 inline-flex items-center gap-2">
-            <i data-lucide="plus" class="w-4 h-4"></i>创建新系列
-        </a>
-    </div>
-    {% endif %}
 </div>
 
 <!-- Image Preview Modal -->
@@ -401,6 +390,9 @@
 {% block extra_js %}
 <script>
 let currentSeriesId = null;
+let currentAssetType = 'role';
+let assetRequestSeq = 0;
+const assetResponseCache = new Map();
 let assetZoom = 1;
 let assetImageTranslate = { x: 0, y: 0 };
 let assetIsDragging = false;
@@ -416,9 +408,7 @@ function initIcons() {
 // 页面加载时加载第一个系列的资产
 document.addEventListener('DOMContentLoaded', function() {
     const selector = document.getElementById('seriesSelector');
-    if (selector && selector.value) {
-        loadSeriesAssets(selector.value, 'role');
-    }
+    loadLockedSeries();
 
     // 系列选择器变化事件
     if (selector) {
@@ -494,9 +484,80 @@ document.addEventListener('DOMContentLoaded', function() {
     });
 });
 
+function renderEmptySeries() {
+    const content = document.getElementById('assetContent');
+    content.innerHTML = `
+        <div class="text-center py-12">
+            <i data-lucide="folder-x" class="w-16 h-16 text-white/20 mx-auto mb-4"></i>
+            <p class="text-white/50">暂无已锁定的系列</p>
+            <p class="text-white/30 text-sm mt-2">请先创建系列并锁定后再查看资产库</p>
+            <a href="/init/" class="btn-neon mt-6 inline-flex items-center gap-2">
+                <i data-lucide="plus" class="w-4 h-4"></i>创建新系列
+            </a>
+        </div>
+    `;
+    initIcons();
+}
+
+function loadLockedSeries() {
+    const selector = document.getElementById('seriesSelector');
+    if (!selector) return;
+
+    fetch('/api/locked-series/')
+        .then(res => {
+            if (!res.ok) throw new Error('HTTP error ' + res.status);
+            return res.json();
+        })
+        .then(result => {
+            if (!result.success) throw new Error(result.error || '加载系列失败');
+
+            const seriesList = result.data || [];
+            if (seriesList.length === 0) {
+                selector.innerHTML = '<option value="">暂无已锁定的系列</option>';
+                renderEmptySeries();
+                return;
+            }
+
+            selector.innerHTML = seriesList.map(series => {
+                const roleCount = series.roleCount || 0;
+                return `<option value="${series.id}">${escapeHtml(series.seriesName)} (${roleCount}个角色)</option>`;
+            }).join('');
+
+            loadSeriesAssets(selector.value, currentAssetType);
+        })
+        .catch(err => {
+            console.error('loadLockedSeries error:', err);
+            selector.innerHTML = '<option value="">系列加载失败</option>';
+            document.getElementById('assetContent').innerHTML = `
+                <div class="text-center py-12">
+                    <i data-lucide="alert-circle" class="w-12 h-12 text-red-400 mx-auto mb-4"></i>
+                    <p class="text-red-400">系列加载失败: ${escapeHtml(err.message)}</p>
+                </div>
+            `;
+            initIcons();
+        });
+}
+
+function escapeHtml(value) {
+    return String(value ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+}
+
 function loadSeriesAssets(seriesId, assetType = 'role') {
     currentSeriesId = seriesId;
+    currentAssetType = assetType;
     const content = document.getElementById('assetContent');
+    const cacheKey = `${seriesId}:${assetType}`;
+    const requestSeq = ++assetRequestSeq;
+
+    if (assetResponseCache.has(cacheKey)) {
+        renderAssetResponse(assetType, assetResponseCache.get(cacheKey));
+        return;
+    }
 
     content.innerHTML = `
         <div class="flex items-center justify-center py-12">
@@ -525,17 +586,11 @@ function loadSeriesAssets(seriesId, assetType = 'role') {
             return res.json();
         })
         .then(result => {
+            if (requestSeq !== assetRequestSeq) return;
             if (result.success) {
+                assetResponseCache.set(cacheKey, result.data);
                 try {
-                    if (assetType === 'role') {
-                        renderAssets(result.data);
-                    } else if (assetType === 'scene') {
-                        renderSceneAssets(result.data);
-                    } else if (assetType === 'prop') {
-                        renderPropAssets(result.data);
-                    } else if (assetType === 'video') {
-                        renderVideoAssets(result.data);
-                    }
+                    renderAssetResponse(assetType, result.data);
                 } catch (e) {
                     console.error('renderAssets error:', e);
                     content.innerHTML = `
@@ -557,6 +612,7 @@ function loadSeriesAssets(seriesId, assetType = 'role') {
             }
         })
         .catch(err => {
+            if (requestSeq !== assetRequestSeq) return;
             console.error('fetch error:', err);
             content.innerHTML = `
                 <div class="text-center py-12">
@@ -566,6 +622,18 @@ function loadSeriesAssets(seriesId, assetType = 'role') {
             `;
             initIcons();
         });
+}
+
+function renderAssetResponse(assetType, data) {
+    if (assetType === 'role') {
+        renderAssets(data);
+    } else if (assetType === 'scene') {
+        renderSceneAssets(data);
+    } else if (assetType === 'prop') {
+        renderPropAssets(data);
+    } else if (assetType === 'video') {
+        renderVideoAssets(data);
+    }
 }
 
 function renderAssets(data) {
@@ -615,7 +683,7 @@ function renderAssets(data) {
         html += `
             <div class="role-card">
                 <div class="role-header">
-                    ${coverImage ? `<img src="${coverImage}" class="role-cover" alt="${role.roleName}">` : '<div class="role-cover role-cover-empty"><i data-lucide="user" class="w-8 h-8"></i></div>'}
+                    ${coverImage ? `<img src="${coverImage}" class="role-cover" alt="${role.roleName}" loading="lazy" decoding="async">` : '<div class="role-cover role-cover-empty"><i data-lucide="user" class="w-8 h-8"></i></div>'}
                     <div class="role-info">
                         <h3 class="text-lg font-semibold">${role.roleName}</h3>
                         <span class="text-xs text-white/40">${role.roleCode}</span>
@@ -637,7 +705,7 @@ function renderAssets(data) {
                     const titleText = role.roleName + ' - ' + clothing.clothingName + ' - ' + viewName;
                     html += `
                         <div class="view-item" data-preview-src="${imgPath.replace(/&/g,'&amp;').replace(/"/g,'&quot;')}" data-preview-title="${titleText.replace(/&/g,'&amp;').replace(/"/g,'&quot;')}">
-                            <img src="${imgPath}" alt="${displayName}" onload="updateImageInfo(this)">
+                            <img src="${imgPath}" alt="${displayName}" loading="lazy" decoding="async" onload="updateImageInfo(this)">
                             <div class="view-info">
                                 <div class="info-row">
                                     <span class="view-type">${displayName}</span>
@@ -705,7 +773,7 @@ function renderSceneAssets(scenes) {
         if (imgPath) {
             html += `
                 <div class="view-item" data-preview-src="${imgPath.replace(/&/g,'&amp;').replace(/"/g,'&quot;')}" data-preview-title="${displayName.replace(/&/g,'&amp;').replace(/"/g,'&quot;')}">
-                    <img src="${imgPath}" alt="${scene.sceneName}" onload="updateImageInfo(this)">
+                    <img src="${imgPath}" alt="${scene.sceneName}" loading="lazy" decoding="async" onload="updateImageInfo(this)">
                     <div class="view-info">
                         <div class="info-row">
                             <span class="view-type">${scene.sceneName}</span>
@@ -760,7 +828,7 @@ function renderPropAssets(props) {
         if (imgPath) {
             html += `
                 <div class="view-item" data-preview-src="${imgPath.replace(/&/g,'&amp;').replace(/"/g,'&quot;')}" data-preview-title="${displayName.replace(/&/g,'&amp;').replace(/"/g,'&quot;')}">
-                    <img src="${imgPath}" alt="${prop.propName}" onload="updateImageInfo(this)">
+                    <img src="${imgPath}" alt="${prop.propName}" loading="lazy" decoding="async" onload="updateImageInfo(this)">
                     <div class="view-info">
                         <div class="info-row">
                             <span class="view-type">${prop.propName}</span>
@@ -994,7 +1062,7 @@ function renderVideoAssets(data) {
                          data-description="${(shot.description || '').replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'&#10;')}">
                         <div class="video-thumbnail">
                             ${shot.thumbnailUrl
-                                ? `<img src="${shot.thumbnailUrl}" alt="${shotName}">`
+                                ? `<img src="${shot.thumbnailUrl}" alt="${shotName}" loading="lazy" decoding="async">`
                                 : `<video src="${shot.videoUrl}" muted preload="metadata"></video>`
                             }
                             <div class="play-overlay">

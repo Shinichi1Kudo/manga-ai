@@ -2,9 +2,49 @@ from django.shortcuts import render
 from django.http import JsonResponse, FileResponse
 from django.views.decorators.http import require_http_methods
 from django.views.decorators.csrf import csrf_exempt
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import json
+import threading
+import time
 
 from api.backend_client import BackendClient, BackendAPIError
+
+_CACHE_TTL_SECONDS = 30
+_CACHE_LOCK = threading.Lock()
+_CACHE = {}
+
+
+def _cache_key(request, endpoint):
+    token = request.session.get('token') or ''
+    return f'{token}:{endpoint}'
+
+
+def _cache_key_for_token(token, endpoint):
+    return f'{token or ""}:{endpoint}'
+
+
+def _get_cached(request, endpoint, fetcher):
+    return _get_cached_for_key(_cache_key(request, endpoint), fetcher)
+
+
+def _get_cached_for_token(token, endpoint, fetcher):
+    return _get_cached_for_key(_cache_key_for_token(token, endpoint), fetcher)
+
+
+def _get_cached_for_key(key, fetcher):
+    now = time.monotonic()
+    with _CACHE_LOCK:
+        cached = _CACHE.get(key)
+        if cached and cached['expires_at'] > now:
+            return cached['data']
+
+    data = fetcher()
+    with _CACHE_LOCK:
+        _CACHE[key] = {
+            'data': data,
+            'expires_at': now + _CACHE_TTL_SECONDS,
+        }
+    return data
 
 
 def get_client(request):
@@ -15,15 +55,8 @@ def get_client(request):
 
 def asset_library_page(request):
     """资产库页面"""
-    client = get_client(request)
-    try:
-        # 获取已锁定的系列列表
-        locked_series = client.get('/v1/series/locked')
-    except BackendAPIError as e:
-        locked_series = []
-
     return render(request, 'asset/library.html', {
-        'locked_series': locked_series if locked_series else [],
+        'locked_series': [],
     })
 
 
@@ -31,7 +64,7 @@ def get_locked_series(request):
     """API: 获取已锁定的系列列表"""
     client = get_client(request)
     try:
-        locked_series = client.get('/v1/series/locked')
+        locked_series = _get_cached(request, '/v1/series/locked', lambda: client.get('/v1/series/locked'))
         return JsonResponse({'success': True, 'data': locked_series})
     except BackendAPIError as e:
         return JsonResponse({'success': False, 'error': e.message}, status=400)
@@ -40,16 +73,21 @@ def get_locked_series(request):
 def get_series_assets(request, series_id):
     """API: 获取系列的所有资产（角色资产按系列，场景/道具资产展示全部）"""
     client = get_client(request)
+    token = request.session.get('token')
     try:
         # 获取系列信息
-        series = client.get(f'/v1/series/{series_id}')
+        series = _get_cached(request, f'/v1/series/{series_id}', lambda: client.get(f'/v1/series/{series_id}'))
         # 获取角色列表
-        roles = client.get(f'/v1/roles/series/{series_id}') or []
+        roles = _get_cached(request, f'/v1/roles/series/{series_id}', lambda: client.get(f'/v1/roles/series/{series_id}') or [])
 
         # 收集所有角色资产
         role_assets = []
-        for role in roles:
-            assets = client.get(f'/v1/assets/role/{role["id"]}') or []
+
+        def fetch_role_assets(role):
+            role_id = role["id"]
+            role_client = BackendClient(token=token)
+            endpoint = f'/v1/assets/role/{role_id}'
+            assets = _get_cached_for_token(token, endpoint, lambda: role_client.get(endpoint) or [])
             # 只取激活的资产
             active_assets = [a for a in assets if a.get('isActive') == 1 or a.get('isActive') == True]
 
@@ -65,13 +103,22 @@ def get_series_assets(request, series_id):
                     }
                 clothing_map[cid]['assets'].append(asset)
 
-            role_assets.append({
+            return {
                 'roleId': role['id'],
                 'roleName': role['roleName'],
                 'roleCode': role.get('roleCode', ''),
                 'clothings': list(clothing_map.values()),
                 'hasAssets': len(active_assets) > 0  # 标记是否有资产
-            })
+            }
+
+        if roles:
+            max_workers = min(8, len(roles))
+            with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                future_map = {executor.submit(fetch_role_assets, role): index for index, role in enumerate(roles)}
+                indexed_results = []
+                for future in as_completed(future_map):
+                    indexed_results.append((future_map[future], future.result()))
+            role_assets = [item[1] for item in sorted(indexed_results, key=lambda item: item[0])]
 
         return JsonResponse({
             'success': True,
@@ -119,10 +166,10 @@ def get_series_scenes(request, series_id):
     client = get_client(request)
     try:
         # 获取系列信息
-        series = client.get(f'/v1/series/{series_id}')
+        series = _get_cached(request, f'/v1/series/{series_id}', lambda: client.get(f'/v1/series/{series_id}'))
         series_name = series.get('seriesName', '') if series else ''
 
-        scenes = client.get(f'/v1/scenes/series/{series_id}') or []
+        scenes = _get_cached(request, f'/v1/scenes/series/{series_id}', lambda: client.get(f'/v1/scenes/series/{series_id}') or [])
         # 只取已锁定的场景，并添加系列名称
         locked_scenes = []
         for scene in scenes:
@@ -173,10 +220,10 @@ def get_series_props(request, series_id):
     client = get_client(request)
     try:
         # 获取系列信息
-        series = client.get(f'/v1/series/{series_id}')
+        series = _get_cached(request, f'/v1/series/{series_id}', lambda: client.get(f'/v1/series/{series_id}'))
         series_name = series.get('seriesName', '') if series else ''
 
-        props = client.get(f'/v1/props/series/{series_id}') or []
+        props = _get_cached(request, f'/v1/props/series/{series_id}', lambda: client.get(f'/v1/props/series/{series_id}') or [])
         # 只取已锁定的道具，并添加系列名称
         locked_props = []
         for prop in props:
@@ -328,7 +375,7 @@ def get_series_video_assets(request, series_id):
     """API: 获取系列影视资产"""
     client = get_client(request)
     try:
-        data = client.get(f'/v1/series/{series_id}/video-assets')
+        data = _get_cached(request, f'/v1/series/{series_id}/video-assets', lambda: client.get(f'/v1/series/{series_id}/video-assets'))
         return JsonResponse({'success': True, 'data': data})
     except BackendAPIError as e:
         return JsonResponse({'success': False, 'error': e.message}, status=400)

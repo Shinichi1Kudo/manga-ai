@@ -140,6 +140,7 @@ CREATE TABLE IF NOT EXISTS scene_asset (
 CREATE TABLE IF NOT EXISTS prop_asset (
     id BIGINT AUTO_INCREMENT PRIMARY KEY,
     prop_id BIGINT NOT NULL,
+    episode_id BIGINT COMMENT '生成来源剧集ID',
     asset_type VARCHAR(20),
     view_type VARCHAR(20),
     version INT DEFAULT 1,
@@ -151,7 +152,8 @@ CREATE TABLE IF NOT EXISTS prop_asset (
     is_active INT DEFAULT 1,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    INDEX idx_prop_id (prop_id)
+    INDEX idx_prop_id (prop_id),
+    INDEX idx_prop_asset_episode_id (episode_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='道具资产表';
 
 -- 场景资产元数据表

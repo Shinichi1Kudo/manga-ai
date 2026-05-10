@@ -1,10 +1,13 @@
 """
 URL configuration for manga_ai project.
 """
+from django.http import HttpResponse
 from django.urls import path, include
 from apps.role import urls as role_urls
 
 urlpatterns = [
+    path('favicon.ico', lambda request: HttpResponse(status=204)),
+
     # 首页
     path('', include('apps.series.urls')),
 

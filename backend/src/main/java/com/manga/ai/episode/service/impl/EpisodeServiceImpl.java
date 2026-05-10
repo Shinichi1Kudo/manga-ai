@@ -57,6 +57,7 @@ import org.apache.ibatis.session.ExecutorType;
 import org.apache.ibatis.session.SqlSession;
 import org.apache.ibatis.session.SqlSessionFactory;
 import org.springframework.beans.BeanUtils;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -69,6 +70,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Executor;
 import java.util.stream.Collectors;
 
 /**
@@ -97,6 +99,9 @@ public class EpisodeServiceImpl implements EpisodeService {
     private final UserService userService;
     private final SqlSessionFactory sqlSessionFactory;
     private final RoleAssetMapper roleAssetMapper;
+
+    @Qualifier("llmExecutor")
+    private final Executor llmExecutor;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -274,20 +279,24 @@ public class EpisodeServiceImpl implements EpisodeService {
                     log.info("分镜解析失败，返还积分: userId={}, credits={}", userId, requiredCredits);
                 }
                 log.error("分镜解析失败: episodeId={}, error={}", episodeId, result.getErrorMessage());
-                // 分镜解析失败，清除assetsConfirmed标记，保持解析中状态让用户可以重试
+                // 分镜解析失败，清除assetsConfirmed标记，保留资产解析结果让用户可以重试
                 try {
                     JSONObject parsedJson = JSON.parseObject(episode.getParsedScript());
                     if (parsedJson != null) {
                         parsedJson.remove("assetsConfirmed");
+                        parsedJson.put("shotParseFailed", true);
+                        parsedJson.put("errorMessage", result.getErrorMessage() != null ? result.getErrorMessage() : "分镜解析失败，请重试");
+                        parsedJson.put("timestamp", System.currentTimeMillis());
                         episode.setParsedScript(parsedJson.toJSONString());
                     }
                 } catch (Exception e) {
                     log.warn("清除assetsConfirmed标记失败: episodeId={}", episodeId);
                 }
-                // 保持解析中状态，让用户可以重新选择资产
+                episode.setTotalShots(0);
+                episode.setTotalDuration(0);
                 episode.setUpdatedAt(LocalDateTime.now());
                 episodeMapper.updateById(episode);
-                log.info("分镜解析失败，保持解析中状态等待重试: episodeId={}", episodeId);
+                log.info("分镜解析失败，已回到资产选择状态等待重试: episodeId={}", episodeId);
             }
         } catch (Exception e) {
             // 异常时返还积分
@@ -296,19 +305,24 @@ public class EpisodeServiceImpl implements EpisodeService {
                 log.info("分镜解析异常，返还积分: userId={}, credits={}", userId, requiredCredits);
             }
             log.error("分镜解析异常: episodeId={}", episodeId, e);
-            // 分镜解析异常，清除assetsConfirmed标记，保持解析中状态
+            // 分镜解析异常，清除assetsConfirmed标记，保留资产解析结果让用户可以重试
             try {
                 JSONObject parsedJson = JSON.parseObject(episode.getParsedScript());
                 if (parsedJson != null) {
                     parsedJson.remove("assetsConfirmed");
+                    parsedJson.put("shotParseFailed", true);
+                    parsedJson.put("errorMessage", "分镜解析异常: " + e.getMessage());
+                    parsedJson.put("timestamp", System.currentTimeMillis());
                     episode.setParsedScript(parsedJson.toJSONString());
                 }
             } catch (Exception ex) {
                 log.warn("清除assetsConfirmed标记失败: episodeId={}", episodeId);
             }
+            episode.setTotalShots(0);
+            episode.setTotalDuration(0);
             episode.setUpdatedAt(LocalDateTime.now());
             episodeMapper.updateById(episode);
-            log.info("分镜解析异常，保持解析中状态等待重试: episodeId={}", episodeId);
+            log.info("分镜解析异常，已回到资产选择状态等待重试: episodeId={}", episodeId);
         }
     }
 
@@ -803,6 +817,32 @@ public class EpisodeServiceImpl implements EpisodeService {
     }
 
     @Override
+    public EpisodeDetailVO getEpisodeBasicDetail(Long episodeId) {
+        LambdaQueryWrapper<Episode> wrapper = new LambdaQueryWrapper<>();
+        wrapper.eq(Episode::getId, episodeId)
+                .select(Episode::getId,
+                        Episode::getSeriesId,
+                        Episode::getEpisodeNumber,
+                        Episode::getEpisodeName,
+                        Episode::getScriptText,
+                        Episode::getTotalShots,
+                        Episode::getTotalDuration,
+                        Episode::getStatus,
+                        Episode::getCreatedAt,
+                        Episode::getUpdatedAt);
+        Episode episode = episodeMapper.selectOne(wrapper);
+        if (episode == null) {
+            throw new BusinessException("剧集不存在");
+        }
+
+        EpisodeDetailVO vo = new EpisodeDetailVO();
+        BeanUtils.copyProperties(episode, vo);
+        vo.setShots(List.of());
+        vo.setRoles(List.of());
+        return vo;
+    }
+
+    @Override
     public EpisodeProgressVO getEpisodeProgress(Long episodeId) {
         Episode episode = episodeMapper.selectById(episodeId);
         if (episode == null) {
@@ -833,6 +873,8 @@ public class EpisodeServiceImpl implements EpisodeService {
                     else if (json.containsKey("scenes") && json.containsKey("props") && !json.getBooleanValue("error")) {
                         assetsReady = true;
                     }
+                    vo.setShotParseFailed(json.getBooleanValue("shotParseFailed"));
+                    vo.setErrorMessage(json.getString("errorMessage"));
                 } catch (Exception e) {
                     // 解析失败，不设置
                 }
@@ -864,6 +906,7 @@ public class EpisodeServiceImpl implements EpisodeService {
                     EpisodeProgressVO.ShotProgress sp = new EpisodeProgressVO.ShotProgress();
                     sp.setId(shot.getId());
                     sp.setGenerationStatus(shot.getGenerationStatus());
+                    sp.setGenerationStartTime(shot.getGenerationStartTime() != null ? shot.getGenerationStartTime().toString() : null);
                     return sp;
                 })
                 .collect(Collectors.toList());
@@ -1326,7 +1369,6 @@ public class EpisodeServiceImpl implements EpisodeService {
     }
 
     @Override
-    @Async("llmExecutor")
     public void generateSelectedAssets(Long episodeId, GenerateAssetsRequest request, Long userId) {
         log.info("开始批量生成资产: episodeId={}, userId={}, sceneIds={}, propIds={}, newSceneNames={}, newPropNames={}",
                 episodeId, userId, request.getSceneIds(), request.getPropIds(),
@@ -1437,10 +1479,6 @@ public class EpisodeServiceImpl implements EpisodeService {
             }
         }
 
-        // 异步触发分镜解析（与资产生成并行执行）
-        log.info("触发分镜解析（并行）: episodeId={}, userId={}", episodeId, userId);
-        parseShots(episodeId, userId);
-
         // 更新已存在的场景状态为生成中
         if (request.getSceneIds() != null && !request.getSceneIds().isEmpty()) {
             for (Long sceneId : request.getSceneIds()) {
@@ -1467,7 +1505,7 @@ public class EpisodeServiceImpl implements EpisodeService {
             }
         }
 
-        // 更新已存在的道具状态为生成中
+        // 先提交场景/道具生成任务，让生成中占位在接口返回前落库。
         for (Long sceneId : allSceneIds) {
             Scene scene = sceneMapper.selectById(sceneId);
             if (scene == null || SceneStatus.LOCKED.getCode().equals(scene.getStatus())) {
@@ -1506,12 +1544,16 @@ public class EpisodeServiceImpl implements EpisodeService {
 
             if (existingPropAsset != null) {
                 log.info("提交道具重新生成任务: propId={}", propId);
-                propService.regeneratePropAssetWithCredit(propId, null, request.getQuality(), userId);
+                propService.regeneratePropAssetWithCredit(propId, null, request.getQuality(), userId, episodeId);
             } else {
                 log.info("提交道具首次生成任务: propId={}", propId);
-                propService.generatePropAssetsWithCredit(propId, userId);
+                propService.generatePropAssetsWithCredit(propId, userId, episodeId);
             }
         }
+
+        // 异步触发分镜解析（与资产生成并行执行）
+        log.info("触发分镜解析（并行）: episodeId={}, userId={}", episodeId, userId);
+        llmExecutor.execute(() -> parseShots(episodeId, userId));
 
         log.info("批量生成资产任务已全部提交: episodeId={}", episodeId);
     }

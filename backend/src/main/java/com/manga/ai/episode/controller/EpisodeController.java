@@ -78,8 +78,12 @@ public class EpisodeController {
      * 获取剧集详情
      */
     @GetMapping("/{episodeId}")
-    public Result<EpisodeDetailVO> getEpisodeDetail(@PathVariable Long episodeId) {
-        EpisodeDetailVO detail = episodeService.getEpisodeDetail(episodeId);
+    public Result<EpisodeDetailVO> getEpisodeDetail(
+            @PathVariable Long episodeId,
+            @RequestParam(defaultValue = "false") boolean basic) {
+        EpisodeDetailVO detail = basic
+                ? episodeService.getEpisodeBasicDetail(episodeId)
+                : episodeService.getEpisodeDetail(episodeId);
         return Result.success(detail);
     }
 

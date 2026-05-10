@@ -310,7 +310,7 @@
         </div>
 
         <!-- 添加新服装按钮 -->
-        <button class="mt-4 w-full py-3 rounded-xl bg-white/5 hover:bg-white/10 border border-dashed border-white/20 text-white/60 text-sm transition-colors flex items-center justify-center gap-2 {% if role.status >= 2 %}opacity-50 cursor-not-allowed{% endif %}"
+        <button class="new-clothing-btn mt-4 w-full py-3 rounded-xl bg-white/5 hover:bg-white/10 border border-dashed border-white/20 text-white/60 text-sm transition-colors flex items-center justify-center gap-2 {% if role.status >= 2 %}opacity-50 cursor-not-allowed{% endif %}"
                 {% if role.status >= 2 %}disabled{% endif %}
                 onclick="{% if role.status < 2 %}generateNewClothing({{ role.id }}){% endif %}">
             <i data-lucide="plus" class="w-4 h-4"></i>生成新服装
@@ -357,12 +357,14 @@
         </div>
 
         <!-- 主图片显示 - 生成中 -->
-        <div class="generating-overlay rounded-xl bg-violet-500/10 border border-violet-500/20 py-8 text-center"
-             data-role-id="{{ role.id }}" data-clothing-id="{{ role.assets.0.clothingId }}">
-            <div class="spinner mb-4 mx-auto"></div>
-            <p class="text-violet-300">正在生成图片...</p>
-            <p class="text-white/40 text-sm mt-2">预计需要 30-60 秒</p>
-            <p class="text-white/30 text-xs mt-1">版本 v{{ role.assets.0.version }}</p>
+        <div class="relative rounded-xl overflow-hidden bg-white/5 min-h-96">
+            <div class="generating-overlay absolute inset-0 flex flex-col items-center justify-center bg-violet-500/10 rounded-xl pointer-events-none z-0"
+                 data-role-id="{{ role.id }}" data-clothing-id="{{ role.assets.0.clothingId }}">
+                <div class="spinner mb-4"></div>
+                <p class="text-violet-300">正在生成图片...</p>
+                <p class="text-white/40 text-sm mt-2">预计需要 30-60 秒</p>
+                <p class="text-white/30 text-xs mt-1">版本 v{{ role.assets.0.version }}</p>
+            </div>
             <img id="mainImage-{{ role.id }}"
                  src=""
                  class="w-full max-h-96 object-contain cursor-pointer hidden"
@@ -371,7 +373,7 @@
 
         <!-- 添加新服装按钮 - 只有在有成功资产时才显示 -->
         {% if role.has_successful_asset %}
-        <button class="mt-4 w-full py-3 rounded-xl bg-white/5 hover:bg-white/10 border border-dashed border-white/20 text-white/60 text-sm transition-colors flex items-center justify-center gap-2 {% if role.status >= 2 %}opacity-50 cursor-not-allowed{% endif %}"
+        <button class="new-clothing-btn mt-4 w-full py-3 rounded-xl bg-white/5 hover:bg-white/10 border border-dashed border-white/20 text-white/60 text-sm transition-colors flex items-center justify-center gap-2 {% if role.status >= 2 %}opacity-50 cursor-not-allowed{% endif %}"
                 {% if role.status >= 2 %}disabled{% endif %}
                 onclick="{% if role.status < 2 %}generateNewClothing({{ role.id }}){% endif %}">
             <i data-lucide="plus" class="w-4 h-4"></i>生成新服装
@@ -1234,9 +1236,13 @@ function selectClothing(tab) {
             // 正在生成中，显示生成中状态（图片变暗，显示遮罩）
             if (imageUrl && imageUrl.trim() !== '') {
                 mainImage.src = imageUrl;
+                mainImage.style.display = 'block';
+                mainImage.style.opacity = '0.3';
+            } else {
+                mainImage.removeAttribute('src');
+                mainImage.style.display = 'none';
+                mainImage.style.opacity = '1';
             }
-            mainImage.style.display = 'block';
-            mainImage.style.opacity = '0.3';
 
             if (!generatingOverlay) {
                 generatingOverlay = document.createElement('div');
@@ -2551,6 +2557,83 @@ function updateStats() {
 }
 updateStats();
 
+function getActiveClothingId(card) {
+    return card?.querySelector('.clothing-section .clothing-tab.active')?.dataset.clothingId || '1';
+}
+
+function setButtonBusy(button, busy, busyText = null) {
+    if (!button) return;
+    if (busy) {
+        button.dataset.originalHtml = button.innerHTML;
+        button.disabled = true;
+        button.classList.add('opacity-70', 'cursor-not-allowed');
+        if (busyText) {
+            button.innerHTML = `<i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i>${busyText}`;
+            lucide.createIcons();
+        }
+    } else {
+        if (button.dataset.originalHtml) {
+            button.innerHTML = button.dataset.originalHtml;
+            delete button.dataset.originalHtml;
+            lucide.createIcons();
+        }
+        button.classList.remove('opacity-70', 'cursor-not-allowed');
+    }
+}
+
+function setRoleActionState(card, locked) {
+    if (!card) return;
+    const roleId = card.dataset.roleId;
+    const disabledClasses = ['opacity-50', 'cursor-not-allowed'];
+    const setDisabled = (button, disabled, restoreClick) => {
+        if (!button) return;
+        button.disabled = disabled;
+        if (disabled) {
+            button.classList.add(...disabledClasses);
+            button.onclick = null;
+        } else {
+            button.classList.remove(...disabledClasses);
+            if (restoreClick) {
+                button.onclick = restoreClick;
+            }
+        }
+    };
+
+    setDisabled(card.querySelector('.confirm-btn'), locked, null);
+    setDisabled(card.querySelector('.delete-btn'), locked, null);
+    setDisabled(card.querySelector('.set-default-btn'), locked, function(event) {
+        event.stopPropagation();
+        setDefaultClothing(roleId, getActiveClothingId(card));
+    });
+    setDisabled(card.querySelector('.regenerate-btn'), locked, function(event) {
+        event.stopPropagation();
+        regenerateClothing(roleId, getActiveClothingId(card));
+    });
+    card.querySelectorAll('.new-clothing-btn').forEach(button => {
+        setDisabled(button, locked, function() {
+            generateNewClothing(roleId);
+        });
+    });
+    const unlockBtn = card.querySelector('.unlock-btn');
+    if (unlockBtn) {
+        unlockBtn.disabled = !locked;
+        unlockBtn.classList.toggle('opacity-50', !locked);
+        unlockBtn.classList.toggle('cursor-not-allowed', !locked);
+    }
+}
+
+function markRolePending(card) {
+    if (!card) return;
+    const badge = card.querySelector('.status-badge');
+    if (badge) {
+        badge.className = 'status-badge status-pending';
+        badge.textContent = '待审核';
+    }
+    card.dataset.roleStatus = '1';
+    setRoleActionState(card, false);
+    updateStats();
+}
+
 // 初始化按钮状态
 function initButtonStates() {
     document.querySelectorAll('.role-card').forEach(card => {
@@ -2691,6 +2774,8 @@ document.addEventListener('click', function(e) {
 
     if (!confirm('确定要解锁该角色吗？解锁后系列将恢复为待审核状态。')) return;
 
+    const card = document.querySelector(`.role-card[data-role-id="${roleId}"]`);
+    setButtonBusy(unlockBtn, true, '解锁中');
     showToast('正在解锁...', 'success');
 
     fetch(`/roles/${roleId}/unlock/`, {
@@ -2700,11 +2785,16 @@ document.addEventListener('click', function(e) {
     .then(response => response.json())
     .then(data => {
         if (data.success) {
-            showToast('角色已解锁，页面即将刷新', 'success');
-            setTimeout(() => location.reload(), 1000);
+            markRolePending(card);
+            showToast('角色已解锁', 'success');
         } else {
+            setButtonBusy(unlockBtn, false);
             showToast(data.error || '解锁失败', 'error');
         }
+    })
+    .catch(() => {
+        setButtonBusy(unlockBtn, false);
+        showToast('解锁失败，请稍后重试', 'error');
     });
 });
 
@@ -3481,9 +3571,13 @@ function selectClothingWithoutURL(tab) {
 
             if (imageUrl && imageUrl.trim() !== '') {
                 mainImage.src = imageUrl;
+                mainImage.style.display = 'block';
+                mainImage.style.opacity = '0.3';
+            } else {
+                mainImage.removeAttribute('src');
+                mainImage.style.display = 'none';
+                mainImage.style.opacity = '1';
             }
-            mainImage.style.display = 'block';
-            mainImage.style.opacity = '0.3';
 
             if (!generatingOverlay) {
                 generatingOverlay = document.createElement('div');

@@ -31,6 +31,8 @@ public class ImagePromptGenerateServiceImpl implements ImagePromptGenerateServic
             1. 场景图是纯背景图，绝对不能包含任何人物、角色、人像
             2. 只描述环境、建筑、家具、装饰等场景元素
             3. 必须在提示词末尾加上 "no people, no characters, no figures, empty scene, background only"
+            4. 必须严格沿用用户提供的“系列风格”，不要把动漫/3D动漫/卡通风格改成真人、写实摄影或 live-action
+            5. 如果系列风格包含动漫、动画、卡通、二次元、3D 等表达，提示词必须包含 "ultra-detailed 3D anime render, stylized 3D animation, not live action, not photorealistic"
 
             只输出英文提示词，不要包含任何解释或额外内容。
             """;
@@ -42,7 +44,11 @@ public class ImagePromptGenerateServiceImpl implements ImagePromptGenerateServic
             重要规则：
             1. 道具图是独立单品，绝对不能包含手、人物、或其他物品
             2. 只描述道具本身的外观、材质、细节
-            3. 必须在提示词末尾加上 "no hands, no hands holding, no people, standalone prop"
+            3. 必须使用透明背景抠图："transparent background, isolated clean cutout, alpha channel style"
+            4. 不要使用白底、纯色背景、场景背景、桌面、房间、渐变背景或纹理背景
+            5. 必须严格沿用用户提供的“系列风格”，不要把动漫/3D动漫/卡通风格改成真人、写实摄影或 live-action
+            6. 如果系列风格包含动漫、动画、卡通、二次元、3D 等表达，提示词必须包含 "ultra-detailed 3D anime render, stylized 3D animation, not live action, not photorealistic"
+            7. 必须在提示词末尾加上 "no hands, no hands holding, no people, standalone prop"
 
             只输出英文提示词，不要包含任何解释或额外内容。
             """;
@@ -143,7 +149,7 @@ public class ImagePromptGenerateServiceImpl implements ImagePromptGenerateServic
         sb.append("1. 英文输出\n");
         sb.append("2. 只描述场景环境，包含建筑、家具、装饰等\n");
         sb.append("3. 包含光线和氛围描述\n");
-        sb.append("4. 包含风格关键词\n");
+        sb.append("4. 必须明确包含系列风格关键词，不允许改成真人、写实摄影或 live-action\n");
         sb.append("5. 强调高质量、细节丰富\n");
         sb.append("6. 绝对不能包含任何人物、角色、人像\n");
         sb.append("7. 提示词末尾必须包含：no people, no characters, empty scene, background only\n");
@@ -172,13 +178,15 @@ public class ImagePromptGenerateServiceImpl implements ImagePromptGenerateServic
         sb.append("道具名称：").append(propName).append("\n");
         sb.append("\n要求：\n");
         sb.append("1. 英文输出\n");
-        sb.append("2. 透明背景产品图风格\n");
+        sb.append("2. 产品图风格，独立单品居中展示\n");
         sb.append("3. 包含道具的细节描述\n");
-        sb.append("4. 包含风格关键词\n");
+        sb.append("4. 必须明确包含系列风格关键词，不允许改成真人、写实摄影或 live-action\n");
         sb.append("5. 强调高质量、细节丰富\n");
         sb.append("6. 正方形构图，居中展示\n");
         sb.append("7. 必须是独立单品，禁止出现手、人物、或其他物品\n");
-        sb.append("8. 提示词末尾必须包含：no hands, no hands holding, no people, standalone prop\n");
+        sb.append("8. 必须使用透明背景抠图：transparent background, isolated clean cutout, alpha channel style\n");
+        sb.append("9. 不要使用白底、纯色背景、场景背景、桌面、房间、渐变背景或纹理背景\n");
+        sb.append("10. 提示词末尾必须包含：no hands, no hands holding, no people, standalone prop\n");
 
         return sb.toString();
     }
@@ -203,7 +211,7 @@ public class ImagePromptGenerateServiceImpl implements ImagePromptGenerateServic
         if (styleKeywords != null && !styleKeywords.isEmpty()) {
             sb.append(styleKeywords).append(", ");
         }
-        sb.append("transparent background, isolated on white background, no hands, no hands holding, no people, standalone prop, high quality, centered");
+        sb.append("transparent background, isolated clean cutout, alpha channel style, no background, no backdrop, no hands, no hands holding, no people, standalone prop, high quality, centered");
         return sb.toString();
     }
 }
