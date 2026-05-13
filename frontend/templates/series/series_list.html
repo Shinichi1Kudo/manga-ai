@@ -131,7 +131,6 @@
                             <video
                                 class="absolute inset-0 h-full w-full object-cover"
                                 data-showcase-video="before"
-                                src="/static/videos/subject-replacement-before.mp4"
                                 muted
                                 autoplay
                                 loop
@@ -158,8 +157,8 @@
                         </div>
                         <div class="relative aspect-video overflow-hidden rounded-xl border border-white/10 md:aspect-[4/5]">
                             <img
+                                id="showcaseReferenceImage"
                                 class="absolute inset-0 h-full w-full object-cover"
-                                src="/static/images/subject-replacement-reference-model.png"
                                 alt="主体替换参考图"
                             >
                             <div class="absolute inset-0 bg-gradient-to-t from-black/55 via-transparent to-transparent"></div>
@@ -178,7 +177,6 @@
                             <video
                                 class="absolute inset-0 h-full w-full object-cover"
                                 data-showcase-video="after"
-                                src="/static/videos/subject-replacement-after.mp4"
                                 muted
                                 autoplay
                                 loop
@@ -305,6 +303,50 @@ function updateShowcaseAudioButton(button, muted) {
 
 function getShowcaseVideo(target) {
     return document.querySelector(`[data-showcase-video="${target}"]`);
+}
+
+function setShowcaseMedia(data) {
+    if (!data) return;
+
+    const beforeVideo = getShowcaseVideo('before');
+    const afterVideo = getShowcaseVideo('after');
+    const referenceImage = document.getElementById('showcaseReferenceImage');
+
+    if (beforeVideo && data.beforeVideoUrl) {
+        beforeVideo.src = data.beforeVideoUrl;
+        beforeVideo.load();
+        beforeVideo.play().catch(() => {});
+    }
+    if (afterVideo && data.afterVideoUrl) {
+        afterVideo.src = data.afterVideoUrl;
+        afterVideo.load();
+        afterVideo.play().catch(() => {});
+    }
+    if (referenceImage && data.referenceImageUrl) {
+        referenceImage.src = data.referenceImageUrl;
+    }
+}
+
+function loadShowcaseAssets() {
+    fetch('/api/v1/common/showcase-assets/', {
+        headers: { 'Accept': 'application/json' }
+    })
+        .then(response => {
+            if (!response.ok) {
+                throw new Error(`HTTP ${response.status}`);
+            }
+            return response.json();
+        })
+        .then(result => {
+            if (result.code === 200 && result.data) {
+                setShowcaseMedia(result.data);
+            } else {
+                throw new Error(result.message || '展示素材加载失败');
+            }
+        })
+        .catch(error => {
+            console.error('加载主体替换展示素材失败:', error);
+        });
 }
 
 function initShowcaseVideoControls() {
@@ -939,6 +981,7 @@ function stopPolling(seriesId) {
 
 document.addEventListener('DOMContentLoaded', function() {
     initLoginRequiredLinks();
+    loadShowcaseAssets();
     initShowcaseVideoControls();
     if (!IS_AUTHENTICATED) {
         renderAnonymousSeriesPrompt();

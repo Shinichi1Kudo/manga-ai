@@ -32,4 +32,23 @@ public class CommonController {
             return Result.error("获取图片失败");
         }
     }
+
+    /**
+     * 获取首页主体替换演示素材URL
+     */
+    @GetMapping("/showcase-assets")
+    public Result<Map<String, String>> getShowcaseAssets() {
+        String beforeVideoUrl = ossService.getPresignedUrl("showcase/subject-replacement/before.mp4");
+        String referenceImageUrl = ossService.getPresignedUrl("showcase/subject-replacement/reference-model.png");
+        String afterVideoUrl = ossService.getPresignedUrl("showcase/subject-replacement/after.mp4");
+
+        if (beforeVideoUrl != null && referenceImageUrl != null && afterVideoUrl != null) {
+            return Result.success(Map.of(
+                    "beforeVideoUrl", beforeVideoUrl,
+                    "referenceImageUrl", referenceImageUrl,
+                    "afterVideoUrl", afterVideoUrl
+            ));
+        }
+        return Result.error("获取展示素材失败");
+    }
 }

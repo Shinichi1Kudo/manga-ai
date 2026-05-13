@@ -20,3 +20,20 @@ class AnonymousPublicEndpointTests(TestCase):
         self.assertEqual(response.status_code, 401)
         self.assertEqual(response.json()['message'], '请先登录')
         self.assertNotIn('next', self.client.session)
+
+    def test_showcase_assets_endpoint_is_public(self):
+        backend_client = Mock()
+        backend_client.get.return_value = {
+            'beforeVideoUrl': 'https://oss.example.com/before.mp4',
+            'referenceImageUrl': 'https://oss.example.com/reference.png',
+            'afterVideoUrl': 'https://oss.example.com/after.mp4',
+        }
+
+        with patch('apps.series.views.get_client', return_value=backend_client):
+            response = self.client.get('/api/v1/common/showcase-assets/')
+
+        self.assertEqual(response.status_code, 200)
+        data = response.json()['data']
+        self.assertEqual(data['beforeVideoUrl'], 'https://oss.example.com/before.mp4')
+        self.assertEqual(data['referenceImageUrl'], 'https://oss.example.com/reference.png')
+        self.assertEqual(data['afterVideoUrl'], 'https://oss.example.com/after.mp4')

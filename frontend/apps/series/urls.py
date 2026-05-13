@@ -187,6 +187,7 @@ urlpatterns = [
 
     # 联系我们图片
     path('api/v1/common/contact-image/', views.contact_image, name='contact_image'),
+    path('api/v1/common/showcase-assets/', views.showcase_assets, name='showcase_assets'),
 
     # 积分记录页面
     path('credits/records/', views.credit_records, name='credit_records'),

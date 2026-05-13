@@ -1458,6 +1458,16 @@ def contact_image(request):
         return JsonResponse({'code': 400, 'message': e.message}, status=400)
 
 
+def showcase_assets(request):
+    """获取首页主体替换演示素材URL"""
+    client = get_client(request)
+    try:
+        result = client.get('/v1/common/showcase-assets')
+        return JsonResponse({'code': 200, 'data': result})
+    except BackendAPIError as e:
+        return JsonResponse({'code': 400, 'message': e.message}, status=400)
+
+
 def credit_records(request):
     """积分记录页面"""
     return render(request, 'credits/credit_records.html')
