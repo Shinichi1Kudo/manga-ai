@@ -719,8 +719,8 @@ function connectWebSocket() {
     if (typeof SockJS === 'undefined' || typeof Stomp === 'undefined') return;
     if (stompClient && stompClient.connected) return;
 
-    // WebSocket 连接到后端服务器（端口 8081）
-    const socket = new SockJS('http://localhost:8081/api/ws');
+    // WebSocket 连接经由当前站点代理，避免 HTTPS 页面加载 HTTP 连接
+    const socket = new SockJS('/api/ws');
     stompClient = Stomp.over(socket);
 
     // 禁用调试日志

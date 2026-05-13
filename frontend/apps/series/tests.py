@@ -1,5 +1,7 @@
+from pathlib import Path
 from unittest.mock import Mock, patch
 
+from django.conf import settings
 from django.test import TestCase
 
 from api.backend_client import BackendAPIError
@@ -69,3 +71,12 @@ class SubjectReplacementDeleteTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()['code'], 200)
+
+
+class SeriesListWebSocketTests(TestCase):
+    def test_websocket_uses_current_site_proxy_path(self):
+        template_path = Path(settings.BASE_DIR) / 'templates/series/series_list.html'
+        template = template_path.read_text(encoding='utf-8')
+
+        self.assertIn("new SockJS('/api/ws')", template)
+        self.assertNotIn('localhost:8081/api/ws', template)

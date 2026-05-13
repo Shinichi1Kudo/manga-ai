@@ -84,7 +84,7 @@ public class OssService {
             URL ossUrl = ossClient.generatePresignedUrl(bucketName, fileName, expiration);
 
             log.info("图片上传成功: {}", fileName);
-            return ossUrl.toString();
+            return toHttpsUrl(ossUrl.toString());
 
         } catch (Exception e) {
             log.error("上传图片到OSS失败", e);
@@ -115,7 +115,7 @@ public class OssService {
             URL ossUrl = ossClient.generatePresignedUrl(bucketName, fileName, expiration);
 
             log.info("图片上传成功: {}", fileName);
-            return ossUrl.toString();
+            return toHttpsUrl(ossUrl.toString());
 
         } catch (Exception e) {
             log.error("上传图片到OSS失败", e);
@@ -153,7 +153,7 @@ public class OssService {
             URL ossUrl = ossClient.generatePresignedUrl(bucketName, fileName, expiration);
 
             log.info("视频上传成功: {}", fileName);
-            return ossUrl.toString();
+            return toHttpsUrl(ossUrl.toString());
 
         } catch (Exception e) {
             log.error("上传视频到OSS失败", e);
@@ -188,7 +188,7 @@ public class OssService {
             URL ossUrl = ossClient.generatePresignedUrl(bucketName, fileName, expiration);
 
             log.info("视频上传成功: {}", fileName);
-            return ossUrl.toString();
+            return toHttpsUrl(ossUrl.toString());
 
         } catch (Exception e) {
             log.error("上传视频到OSS失败", e);
@@ -222,7 +222,7 @@ public class OssService {
             URL ossUrl = ossClient.generatePresignedUrl(bucketName, fileName, expiration);
 
             log.info("图片上传成功: {}", fileName);
-            return ossUrl.toString();
+            return toHttpsUrl(ossUrl.toString());
 
         } catch (Exception e) {
             log.error("上传图片到OSS失败", e);
@@ -240,7 +240,7 @@ public class OssService {
             Date expiration = new Date(System.currentTimeMillis() + (long) urlExpirationYears * 365 * 24 * 60 * 60 * 1000L);
             URL url = ossClient.generatePresignedUrl(bucketName, objectKey, expiration);
             log.info("生成签名URL成功: {}", objectKey);
-            return url.toString();
+            return toHttpsUrl(url.toString());
         } catch (Exception e) {
             log.error("生成签名URL失败: {}", objectKey, e);
             return null;
@@ -312,5 +312,12 @@ public class OssService {
             log.warn("解析OSS URL失败: {}", url);
         }
         return null;
+    }
+
+    String toHttpsUrl(String url) {
+        if (url == null) {
+            return null;
+        }
+        return url.replaceFirst("^http://", "https://");
     }
 }
