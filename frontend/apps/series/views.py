@@ -279,9 +279,13 @@ def subject_replacement_tasks(request):
         return JsonResponse({'code': 500, 'message': str(e)}, status=500)
 
 
-@require_http_methods(["GET"])
+@csrf_exempt
+@require_http_methods(["GET", "DELETE"])
 def subject_replacement_task_detail(request, task_id):
     """主体替换任务详情"""
+    if request.method == 'DELETE':
+        return subject_replacement_task_delete(request, task_id)
+
     client = get_client(request)
     try:
         result = client.get(f'/v1/subject-replacements/{task_id}')
@@ -318,6 +322,8 @@ def subject_replacement_task_delete(request, task_id):
         client.delete(f'/v1/subject-replacements/{task_id}')
         return JsonResponse({'code': 200, 'data': None})
     except BackendAPIError as e:
+        if e.message == '任务不存在':
+            return JsonResponse({'code': 200, 'data': None})
         return JsonResponse({'code': 400, 'message': e.message}, status=400)
     except Exception as e:
         return JsonResponse({'code': 500, 'message': str(e)}, status=500)

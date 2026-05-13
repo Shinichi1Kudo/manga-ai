@@ -286,7 +286,7 @@ function replacementTemplate(index, item = null) {
             </div>
             <details class="mt-4">
                 <summary class="cursor-pointer text-sm text-cyan-200/80 hover:text-cyan-100 inline-flex items-center gap-2">
-                    <i data-lucide="sliders-horizontal" class="w-4 h-4"></i>补充定位信息
+                    <i data-lucide="sliders-horizontal" class="w-4 h-4"></i>补充其他信息
                 </summary>
                 <div class="grid md:grid-cols-3 gap-3 mt-3">
                     <label class="block">
@@ -703,8 +703,13 @@ document.getElementById('recentTasks').addEventListener('click', async event => 
 
     if (event.target.closest('.delete-task')) {
         if (!confirm('确定删除这个主体替换任务吗？删除后最近任务里将不再显示。')) return;
+        const deleteButton = event.target.closest('.delete-task');
+        deleteButton.disabled = true;
+        deleteButton.classList.add('opacity-50', 'cursor-not-allowed');
         try {
-            await requestJson(`/api/v1/subject-replacements/${taskId}/delete/`, {method: 'DELETE'});
+            await requestJson(`/api/v1/subject-replacements/${taskId}/`, {method: 'DELETE'});
+            recentTasksCache = recentTasksCache.filter(task => String(task.id) !== String(taskId));
+            renderRecentTaskPage();
             if (String(activeTaskId) === String(taskId)) {
                 if (pollTimer) {
                     clearInterval(pollTimer);
@@ -718,6 +723,8 @@ document.getElementById('recentTasks').addEventListener('click', async event => 
             await loadRecentTasks();
             showToast('任务已删除', 'success');
         } catch (error) {
+            deleteButton.disabled = false;
+            deleteButton.classList.remove('opacity-50', 'cursor-not-allowed');
             showToast(error.message, 'error');
         }
         return;

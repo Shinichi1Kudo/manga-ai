@@ -63,7 +63,7 @@ public class SubjectReplacementController {
     /**
      * 删除任务
      */
-    @DeleteMapping("/{taskId}")
+    @DeleteMapping({"/{taskId}", "/{taskId}/delete"})
     public Result<Void> deleteTask(@PathVariable Long taskId) {
         subjectReplacementService.deleteTask(taskId);
         return Result.success();

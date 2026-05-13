@@ -2,6 +2,8 @@ from unittest.mock import Mock, patch
 
 from django.test import TestCase
 
+from api.backend_client import BackendAPIError
+
 
 class AnonymousPublicEndpointTests(TestCase):
     def test_contact_image_endpoint_is_public(self):
@@ -37,3 +39,33 @@ class AnonymousPublicEndpointTests(TestCase):
         self.assertEqual(data['beforeVideoUrl'], 'https://oss.example.com/before.mp4')
         self.assertEqual(data['referenceImageUrl'], 'https://oss.example.com/reference.png')
         self.assertEqual(data['afterVideoUrl'], 'https://oss.example.com/after.mp4')
+
+
+class SubjectReplacementDeleteTests(TestCase):
+    def test_delete_uses_canonical_task_endpoint(self):
+        session = self.client.session
+        session['token'] = 'token-1'
+        session.save()
+
+        backend_client = Mock()
+
+        with patch('apps.series.views.get_client', return_value=backend_client):
+            response = self.client.delete('/api/v1/subject-replacements/5/')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['code'], 200)
+        backend_client.delete.assert_called_once_with('/v1/subject-replacements/5')
+
+    def test_delete_treats_missing_task_as_success(self):
+        session = self.client.session
+        session['token'] = 'token-1'
+        session.save()
+
+        backend_client = Mock()
+        backend_client.delete.side_effect = BackendAPIError(404, '任务不存在', {'code': 404})
+
+        with patch('apps.series.views.get_client', return_value=backend_client):
+            response = self.client.delete('/api/v1/subject-replacements/5/delete/')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['code'], 200)

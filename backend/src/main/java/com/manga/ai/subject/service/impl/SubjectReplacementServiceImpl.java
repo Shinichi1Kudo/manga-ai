@@ -221,8 +221,18 @@ public class SubjectReplacementServiceImpl implements SubjectReplacementService 
 
     @Override
     public void deleteTask(Long taskId) {
-        SubjectReplacementTask task = getOwnedTask(taskId);
-        taskMapper.deleteById(task.getId());
+        Long userId = UserContextHolder.getUserId();
+        if (userId == null) {
+            throw new BusinessException(401, "未登录");
+        }
+        if (taskId == null) {
+            throw new BusinessException(400, "任务ID不能为空");
+        }
+
+        LambdaQueryWrapper<SubjectReplacementTask> wrapper = new LambdaQueryWrapper<>();
+        wrapper.eq(SubjectReplacementTask::getId, taskId)
+                .eq(SubjectReplacementTask::getUserId, userId);
+        taskMapper.delete(wrapper);
     }
 
     @Override
