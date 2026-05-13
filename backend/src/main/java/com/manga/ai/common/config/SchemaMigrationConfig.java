@@ -93,11 +93,33 @@ public class SchemaMigrationConfig {
             try (Statement statement = connection.createStatement()) {
                 statement.execute(mysql ? mysqlSubjectReplacementTaskSql() : genericSubjectReplacementTaskSql());
             }
+            ensureSubjectReplacementCreditColumns(connection, mysql);
             ensureIndex(connection, "idx_subject_replacement_user_created", "subject_replacement_task", "user_id, created_at");
             ensureIndex(connection, "idx_subject_replacement_status", "subject_replacement_task", "status");
         } catch (Exception e) {
             log.error("数据库迁移失败: subject_replacement_task", e);
             throw new IllegalStateException("数据库迁移失败: subject_replacement_task", e);
+        }
+    }
+
+    private void ensureSubjectReplacementCreditColumns(Connection connection, boolean mysql) throws Exception {
+        ensureColumn(connection, mysql, "subject_replacement_task", "deducted_credits",
+                "INT DEFAULT NULL COMMENT '已扣除的积分（用于生成失败时返还）'",
+                "INT DEFAULT NULL");
+        ensureColumn(connection, mysql, "subject_replacement_task", "credits_refunded",
+                "TINYINT(1) DEFAULT 0 COMMENT '积分是否已返还'",
+                "BOOLEAN DEFAULT FALSE");
+    }
+
+    private void ensureColumn(Connection connection, boolean mysql, String tableName, String columnName,
+                              String mysqlDefinition, String genericDefinition) throws Exception {
+        if (hasColumn(connection, tableName, columnName)) {
+            return;
+        }
+        try (Statement statement = connection.createStatement()) {
+            statement.execute("ALTER TABLE " + tableName + " ADD COLUMN " + columnName + " "
+                    + (mysql ? mysqlDefinition : genericDefinition));
+            log.info("数据库迁移完成: {}.{}", tableName, columnName);
         }
     }
 
@@ -123,6 +145,8 @@ public class SchemaMigrationConfig {
                 + "completed_at TIMESTAMP NULL,"
                 + "generation_duration INT,"
                 + "seed BIGINT,"
+                + "deducted_credits INT DEFAULT NULL COMMENT '已扣除的积分（用于生成失败时返还）',"
+                + "credits_refunded TINYINT(1) DEFAULT 0 COMMENT '积分是否已返还',"
                 + "created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,"
                 + "updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
                 + ")";
@@ -150,6 +174,8 @@ public class SchemaMigrationConfig {
                 + "completed_at TIMESTAMP,"
                 + "generation_duration INT,"
                 + "seed BIGINT,"
+                + "deducted_credits INT DEFAULT NULL,"
+                + "credits_refunded BOOLEAN DEFAULT FALSE,"
                 + "created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,"
                 + "updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
                 + ")";

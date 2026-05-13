@@ -11,6 +11,7 @@ public enum CreditUsageType {
     ROLE_CREATE("role_create", "角色创建"),
     SCENE_CREATE("scene_create", "场景创建"),
     PROP_CREATE("prop_create", "道具创建"),
+    SUBJECT_REPLACEMENT("subject_replacement", "主体替换"),
     REDEEM_CODE("redeem_code", "兑换码兑换");
 
     private final String code;

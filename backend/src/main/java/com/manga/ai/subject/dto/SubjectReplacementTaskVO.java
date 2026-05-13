@@ -50,6 +50,10 @@ public class SubjectReplacementTaskVO implements Serializable {
 
     private Integer generationDuration;
 
+    private Integer deductedCredits;
+
+    private Boolean creditsRefunded;
+
     private LocalDateTime createdAt;
 
     private LocalDateTime submittedAt;

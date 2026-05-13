@@ -29,6 +29,11 @@ public class CreditConstants {
      */
     public static final int CREDITS_PER_SCRIPT_PARSE = 2;
 
+    /**
+     * 主体替换积分：32积分/秒
+     */
+    public static final int CREDITS_PER_SECOND_SUBJECT_REPLACEMENT = 32;
+
     // 保留旧常量名兼容（已废弃，使用按模型的方法）
     @Deprecated
     public static final int CREDITS_PER_SECOND_480P = CREDITS_PER_SECOND_480P_FAST;
@@ -57,6 +62,18 @@ public class CreditConstants {
         }
         int rate = getCreditsPerSecond(resolution, videoModel);
         return rate * duration;
+    }
+
+    /**
+     * 根据时长计算主体替换所需积分
+     * @param duration 时长(秒)
+     * @return 所需积分
+     */
+    public static int calculateSubjectReplacementCredits(Integer duration) {
+        if (duration == null || duration <= 0) {
+            duration = DEFAULT_DURATION;
+        }
+        return CREDITS_PER_SECOND_SUBJECT_REPLACEMENT * duration;
     }
 
     /**

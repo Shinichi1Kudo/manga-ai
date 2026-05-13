@@ -2,6 +2,8 @@ package com.manga.ai.subject.service.impl;
 
 import com.alibaba.fastjson2.JSON;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.manga.ai.common.constants.CreditConstants;
+import com.manga.ai.common.enums.CreditUsageType;
 import com.manga.ai.common.exception.BusinessException;
 import com.manga.ai.common.service.OssService;
 import com.manga.ai.subject.dto.SubjectReplacementCreateRequest;
@@ -10,6 +12,7 @@ import com.manga.ai.subject.dto.SubjectReplacementTaskVO;
 import com.manga.ai.subject.entity.SubjectReplacementTask;
 import com.manga.ai.subject.mapper.SubjectReplacementTaskMapper;
 import com.manga.ai.subject.service.SubjectReplacementService;
+import com.manga.ai.user.service.UserService;
 import com.manga.ai.user.service.impl.UserServiceImpl.UserContextHolder;
 import com.manga.ai.video.dto.SeedanceRequest;
 import com.manga.ai.video.dto.SeedanceResponse;
@@ -57,6 +60,7 @@ public class SubjectReplacementServiceImpl implements SubjectReplacementService 
     private final SubjectReplacementTaskMapper taskMapper;
     private final OssService ossService;
     private final SeedanceService seedanceService;
+    private final UserService userService;
     @Qualifier("videoGenerateExecutor")
     private final Executor videoGenerateExecutor;
 
@@ -85,9 +89,24 @@ public class SubjectReplacementServiceImpl implements SubjectReplacementService 
         task.setPrompt(prompt);
         task.setReplacementsJson(JSON.toJSONString(request.getReplacements()));
         task.setStatus("pending");
+        int requiredCredits = CreditConstants.calculateSubjectReplacementCredits(task.getDuration());
+        task.setDeductedCredits(requiredCredits);
+        task.setCreditsRefunded(false);
         task.setCreatedAt(LocalDateTime.now());
         task.setUpdatedAt(LocalDateTime.now());
         taskMapper.insert(task);
+
+        try {
+            userService.deductCredits(userId, requiredCredits, CreditUsageType.SUBJECT_REPLACEMENT.getCode(),
+                    "主体替换-任务" + task.getId(), task.getId(), "SUBJECT_REPLACEMENT");
+        } catch (RuntimeException e) {
+            deleteInsertedTask(task.getId(), userId);
+            throw e;
+        }
+        task.setUpdatedAt(LocalDateTime.now());
+        taskMapper.updateById(task);
+        log.info("主体替换扣费: userId={}, taskId={}, duration={}s, credits={}",
+                userId, task.getId(), task.getDuration(), requiredCredits);
 
         videoGenerateExecutor.execute(() -> executeTask(task.getId()));
         return toVO(task);
@@ -161,6 +180,7 @@ public class SubjectReplacementServiceImpl implements SubjectReplacementService 
                 task.setStatus("failed");
                 task.setErrorMessage(toFriendlyError(response.getErrorMessage() != null ? response.getErrorMessage() : "主体替换失败"));
                 task.setCompletedAt(LocalDateTime.now());
+                refundCreditsIfNeeded(task);
                 log.warn("主体替换任务失败: taskId={}, status={}, error={}", taskId, response.getStatus(), response.getErrorMessage());
             }
         } catch (Exception e) {
@@ -168,6 +188,7 @@ public class SubjectReplacementServiceImpl implements SubjectReplacementService 
             task.setStatus("failed");
             task.setErrorMessage(toFriendlyError(e.getMessage()));
             task.setCompletedAt(LocalDateTime.now());
+            refundCreditsIfNeeded(task);
         } finally {
             task.setUpdatedAt(LocalDateTime.now());
             taskMapper.updateById(task);
@@ -572,6 +593,16 @@ public class SubjectReplacementServiceImpl implements SubjectReplacementService 
         return task;
     }
 
+    private void deleteInsertedTask(Long taskId, Long userId) {
+        if (taskId == null || userId == null) {
+            return;
+        }
+        LambdaQueryWrapper<SubjectReplacementTask> wrapper = new LambdaQueryWrapper<>();
+        wrapper.eq(SubjectReplacementTask::getId, taskId)
+                .eq(SubjectReplacementTask::getUserId, userId);
+        taskMapper.delete(wrapper);
+    }
+
     private void trimItem(SubjectReplacementItemDTO item) {
         item.setSourceObject(normalizeText(item.getSourceObject()));
         item.setReplacementType(normalizeReplacementType(item.getReplacementType()));
@@ -603,6 +634,21 @@ public class SubjectReplacementServiceImpl implements SubjectReplacementService 
             return "物品";
         }
         return "人物";
+    }
+
+    private void refundCreditsIfNeeded(SubjectReplacementTask task) {
+        if (task == null || userService == null) {
+            return;
+        }
+        Integer deductedCredits = task.getDeductedCredits();
+        if (deductedCredits == null || deductedCredits <= 0 || Boolean.TRUE.equals(task.getCreditsRefunded())) {
+            return;
+        }
+        userService.refundCredits(task.getUserId(), deductedCredits,
+                "主体替换失败返还-任务" + task.getId(), task.getId(), "SUBJECT_REPLACEMENT");
+        task.setCreditsRefunded(true);
+        log.info("主体替换失败返还积分: userId={}, taskId={}, credits={}",
+                task.getUserId(), task.getId(), deductedCredits);
     }
 
     private boolean isBlank(String value) {

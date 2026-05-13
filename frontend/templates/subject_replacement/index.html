@@ -81,6 +81,21 @@
                         </select>
                     </label>
                 </div>
+                <div id="creditPreview" class="mt-4 rounded-xl border border-cyan-300/15 bg-cyan-300/[0.06] px-4 py-3">
+                    <div class="flex flex-wrap items-center justify-between gap-3">
+                        <div class="flex items-center gap-2 text-sm text-cyan-100">
+                            <i data-lucide="coins" class="w-4 h-4"></i>
+                            <span>主体替换按 <span id="creditsPerSecond">32</span> 积分/秒计费</span>
+                        </div>
+                        <div class="text-sm text-white/75">
+                            预计消耗 <span id="estimatedCredits" class="text-cyan-100 font-semibold">160</span> 积分
+                        </div>
+                    </div>
+                    <div class="mt-2 flex flex-wrap items-center justify-between gap-2 text-xs text-white/45">
+                        <span>当前余额：<span id="currentCredits">读取中...</span></span>
+                        <span id="creditSufficientText">正在检查余额</span>
+                    </div>
+                </div>
             </section>
 
             <section class="glass-card p-6">
@@ -173,6 +188,8 @@ let pollTimer = null;
 let recentTasksCache = [];
 let recentTaskPage = 1;
 const recentTaskPageSize = 5;
+const subjectReplacementCreditsPerSecond = 32;
+let currentCredits = null;
 
 const replacementList = document.getElementById('replacementList');
 const originalVideoInput = document.getElementById('originalVideoInput');
@@ -192,6 +209,57 @@ const replacementTypeConfigs = {
 
 function getReplacementTypeConfig(type) {
     return replacementTypeConfigs[type] || replacementTypeConfigs.person;
+}
+
+function getSelectedDuration() {
+    const value = parseInt(document.getElementById('duration')?.value || '5', 10);
+    return Number.isFinite(value) && value > 0 ? value : 5;
+}
+
+function getEstimatedCredits() {
+    return getSelectedDuration() * subjectReplacementCreditsPerSecond;
+}
+
+function updateCreditPreview() {
+    const estimatedCredits = getEstimatedCredits();
+    document.getElementById('creditsPerSecond').textContent = subjectReplacementCreditsPerSecond;
+    document.getElementById('estimatedCredits').textContent = estimatedCredits;
+
+    const currentCreditsEl = document.getElementById('currentCredits');
+    const sufficientEl = document.getElementById('creditSufficientText');
+    if (currentCredits === null || currentCredits === undefined) {
+        currentCreditsEl.textContent = '读取中...';
+        sufficientEl.textContent = '正在检查余额';
+        sufficientEl.className = 'text-white/45';
+        return;
+    }
+
+    currentCreditsEl.textContent = `${currentCredits} 积分`;
+    if (currentCredits >= estimatedCredits) {
+        sufficientEl.textContent = '余额充足';
+        sufficientEl.className = 'text-emerald-200';
+    } else {
+        sufficientEl.textContent = `还差 ${estimatedCredits - currentCredits} 积分`;
+        sufficientEl.className = 'text-red-200';
+    }
+}
+
+async function loadUserCredits() {
+    try {
+        const response = await fetch('/api/user/info/');
+        const result = await response.json();
+        if (result.code === 200 && result.data) {
+            currentCredits = result.data.credits || 0;
+            const navCreditsEl = document.getElementById('userCredits');
+            if (navCreditsEl) {
+                navCreditsEl.textContent = currentCredits;
+            }
+        }
+    } catch (error) {
+        console.warn('获取积分失败:', error);
+    } finally {
+        updateCreditPreview();
+    }
 }
 
 function showToast(message, type = 'info') {
@@ -502,6 +570,11 @@ document.getElementById('subjectReplacementForm').addEventListener('submit', asy
     }
 
     const replacements = collectReplacements();
+    const estimatedCredits = getEstimatedCredits();
+    if (currentCredits !== null && currentCredits < estimatedCredits) {
+        showToast(`积分不足，本次需要 ${estimatedCredits} 积分，当前 ${currentCredits} 积分`, 'error');
+        return;
+    }
     for (let i = 0; i < replacements.length; i += 1) {
         const item = replacements[i];
         if (!item.sourceObject) {
@@ -541,6 +614,11 @@ document.getElementById('subjectReplacementForm').addEventListener('submit', asy
         }
         showToast('任务已提交，正在生成', 'success');
         setActiveTask(result.data);
+        currentCredits = result.data.deductedCredits
+            ? Math.max(0, (currentCredits || 0) - result.data.deductedCredits)
+            : currentCredits;
+        updateCreditPreview();
+        loadUserCredits();
         loadRecentTasks();
         startPolling(result.data.id);
     } catch (error) {
@@ -757,6 +835,7 @@ document.getElementById('recentTaskNext').addEventListener('click', () => {
         renderRecentTaskPage();
     }
 });
+document.getElementById('duration').addEventListener('change', updateCreditPreview);
 document.getElementById('imagePreviewClose').addEventListener('click', closeImagePreview);
 document.getElementById('imagePreviewModal').addEventListener('click', event => {
     if (event.target.id === 'imagePreviewModal') {
@@ -770,6 +849,7 @@ document.addEventListener('keydown', event => {
 });
 
 addReplacement();
+loadUserCredits();
 loadRecentTasks();
 safeCreateIcons();
 </script>

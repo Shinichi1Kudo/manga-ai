@@ -446,6 +446,8 @@ CREATE TABLE IF NOT EXISTS subject_replacement_task (
     completed_at TIMESTAMP,
     generation_duration INT,
     seed BIGINT,
+    deducted_credits INT DEFAULT NULL,
+    credits_refunded BOOLEAN DEFAULT FALSE,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );

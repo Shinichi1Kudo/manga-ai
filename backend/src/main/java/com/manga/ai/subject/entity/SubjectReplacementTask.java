@@ -61,6 +61,16 @@ public class SubjectReplacementTask implements Serializable {
 
     private Long seed;
 
+    /**
+     * 已扣除的积分（用于生成失败时返还）
+     */
+    private Integer deductedCredits;
+
+    /**
+     * 积分是否已返还，避免重复返还
+     */
+    private Boolean creditsRefunded;
+
     private LocalDateTime createdAt;
 
     private LocalDateTime updatedAt;
