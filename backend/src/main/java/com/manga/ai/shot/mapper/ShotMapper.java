@@ -26,8 +26,21 @@ public interface ShotMapper extends BaseMapper<Shot> {
      * 将指定编号之后的分镜编号-1（删除分镜时使用）
      */
     @Update("UPDATE shot SET shot_number = shot_number - 1, updated_at = NOW() " +
-            "WHERE episode_id = #{episodeId} AND shot_number > #{deletedNumber} AND is_deleted = 0")
-    int decrementShotNumbers(@Param("episodeId") Long episodeId, @Param("deletedNumber") Integer deletedNumber);
+            "WHERE episode_id = #{episodeId} AND shot_number > #{deletedNumber} " +
+            "AND status <> #{lockedStatus} AND is_deleted = 0")
+    int decrementUnlockedShotNumbers(@Param("episodeId") Long episodeId,
+                                     @Param("deletedNumber") Integer deletedNumber,
+                                     @Param("lockedStatus") Integer lockedStatus);
+
+    /**
+     * 将指定编号之后的已锁定分镜编号-1（解锁时使用）。
+     */
+    @Update("UPDATE shot SET shot_number = shot_number - 1, updated_at = NOW() " +
+            "WHERE episode_id = #{episodeId} AND shot_number > #{deletedNumber} " +
+            "AND status = #{lockedStatus} AND is_deleted = 0")
+    int decrementLockedShotNumbers(@Param("episodeId") Long episodeId,
+                                   @Param("deletedNumber") Integer deletedNumber,
+                                   @Param("lockedStatus") Integer lockedStatus);
 
     /**
      * 批量更新分镜编号，避免拖拽排序时逐条更新导致接口变慢。
@@ -59,6 +72,18 @@ public interface ShotMapper extends BaseMapper<Shot> {
     /**
      * 查询剧集下分镜的最小字段，用于快速校验排序请求。
      */
-    @Select("SELECT id, episode_id, shot_number FROM shot WHERE episode_id = #{episodeId} AND is_deleted = 0")
+    @Select("SELECT id, episode_id, shot_number, status FROM shot WHERE episode_id = #{episodeId} AND is_deleted = 0")
     List<Shot> selectOrderFieldsByEpisodeId(@Param("episodeId") Long episodeId);
+
+    /**
+     * 查询剧集下待审核分镜最大的排序号，用于解锁后放到待审核列表末尾。
+     */
+    @Select("SELECT COALESCE(MAX(shot_number), 0) FROM shot WHERE episode_id = #{episodeId} AND status <> #{lockedStatus} AND is_deleted = 0")
+    Integer selectMaxUnlockedShotNumber(@Param("episodeId") Long episodeId, @Param("lockedStatus") Integer lockedStatus);
+
+    /**
+     * 查询剧集下已锁定分镜最大的排序号，用于锁定后放到已锁定列表末尾。
+     */
+    @Select("SELECT COALESCE(MAX(shot_number), 0) FROM shot WHERE episode_id = #{episodeId} AND status = #{lockedStatus} AND is_deleted = 0")
+    Integer selectMaxLockedShotNumber(@Param("episodeId") Long episodeId, @Param("lockedStatus") Integer lockedStatus);
 }

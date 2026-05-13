@@ -922,7 +922,7 @@
 
         // 登录过期弹窗
         let loginExpiredShown = false;
-        function showLoginExpiredModal() {
+        function showLoginExpiredModal(title = '登录已过期', message = '您的登录状态已失效，请重新登录', buttonText = '重新登录', dismissible = false) {
             if (loginExpiredShown) return;
             loginExpiredShown = true;
 
@@ -931,21 +931,34 @@
             modal.id = 'loginExpiredModal';
             modal.className = 'fixed inset-0 bg-black/70 backdrop-blur-sm z-[1000] flex items-center justify-center';
             modal.innerHTML = `
-                <div class="bg-[#1a1a2e] border border-white/10 rounded-2xl p-8 max-w-md mx-4 text-center">
+                <div class="relative bg-[#1a1a2e] border border-white/10 rounded-2xl p-8 max-w-md mx-4 text-center">
+                    ${dismissible ? `
+                    <button onclick="closeLoginExpiredModal()" class="absolute right-4 top-4 p-2 rounded-lg text-white/45 hover:text-white hover:bg-white/10 transition-colors" title="关闭">
+                        <i data-lucide="x" class="w-4 h-4"></i>
+                    </button>
+                    ` : ''}
                     <div class="w-16 h-16 rounded-full bg-gradient-to-br from-red-500 to-orange-500 flex items-center justify-center mx-auto mb-4 shadow-lg">
                         <i data-lucide="log-in" class="w-8 h-8"></i>
                     </div>
-                    <h3 class="text-2xl font-bold mb-2">登录已过期</h3>
-                    <p class="text-white/50 mb-6">您的登录状态已失效，请重新登录</p>
+                    <h3 class="text-2xl font-bold mb-2">${title}</h3>
+                    <p class="text-white/50 mb-6">${message}</p>
                     <div class="flex gap-3 justify-center">
                         <button onclick="window.location.href='/auth/login/'" class="px-6 py-2.5 rounded-xl bg-gradient-to-r from-violet-600 to-blue-600 hover:from-violet-500 hover:to-blue-500 transition-colors font-medium">
-                            重新登录
+                            ${buttonText}
                         </button>
                     </div>
                 </div>
             `;
             document.body.appendChild(modal);
             lucide.createIcons();
+        }
+
+        function closeLoginExpiredModal() {
+            const modal = document.getElementById('loginExpiredModal');
+            if (modal) {
+                modal.remove();
+            }
+            loginExpiredShown = false;
         }
     </script>
 
@@ -963,8 +976,17 @@
 
                 <!-- 二维码区域 -->
                 <div class="bg-white rounded-2xl p-4 inline-block mb-6 cursor-pointer hover:shadow-lg hover:shadow-green-500/20 transition-all" onclick="showQrPreview()">
-                    <img id="contactQrImg" src="" alt="微信二维码" class="max-w-52 max-h-52 w-auto h-auto object-contain">
-                    <p class="text-gray-400 text-xs mt-2 flex items-center justify-center gap-1">
+                    <div id="contactQrLoading" class="w-52 h-52 flex items-center justify-center text-gray-400 text-sm">
+                        二维码加载中...
+                    </div>
+                    <img id="contactQrImg" alt="微信二维码" class="hidden max-w-52 max-h-52 w-auto h-auto object-contain">
+                    <div id="contactQrError" class="hidden w-52 h-52 flex-col items-center justify-center text-gray-500 text-sm gap-3">
+                        <span>二维码加载失败</span>
+                        <button type="button" onclick="event.stopPropagation(); loadContactImage(true)" class="px-4 py-2 rounded-lg bg-gray-900 text-white text-xs hover:bg-gray-700 transition-colors">
+                            重试
+                        </button>
+                    </div>
+                    <p id="contactQrHint" class="hidden text-gray-400 text-xs mt-2 items-center justify-center gap-1">
                         <i data-lucide="zoom-in" class="w-3 h-3"></i>
                         点击查看大图
                     </p>
@@ -996,7 +1018,7 @@
                 <i data-lucide="x" class="w-5 h-5"></i>
             </button>
             <div class="bg-white rounded-3xl p-6 shadow-2xl">
-                <img id="contactQrPreviewImg" src="" alt="微信二维码" class="w-full h-auto object-contain rounded-2xl">
+                <img id="contactQrPreviewImg" alt="微信二维码" class="w-full h-auto object-contain rounded-2xl">
                 <p class="text-center text-gray-500 mt-4 text-sm">扫码添加微信，获取更多积分</p>
             </div>
         </div>
@@ -1005,23 +1027,82 @@
     <script>
         // 联系我们图片URL缓存
         let contactImageUrl = null;
+        let contactImageLoading = false;
 
-        function loadContactImage() {
-            if (contactImageUrl) return; // 已加载
+        function setContactImageState(state) {
+            const loadingEl = document.getElementById('contactQrLoading');
+            const imgEl = document.getElementById('contactQrImg');
+            const errorEl = document.getElementById('contactQrError');
+            const hintEl = document.getElementById('contactQrHint');
 
-            fetch('/api/v1/common/contact-image/')
-                .then(res => res.json())
-                .then(data => {
-                    if (data.code === 200 && data.data && data.data.url) {
-                        contactImageUrl = data.data.url;
-                        document.getElementById('contactQrImg').src = contactImageUrl;
-                        document.getElementById('contactQrPreviewImg').src = contactImageUrl;
+            if (loadingEl) loadingEl.classList.toggle('hidden', state !== 'loading');
+            if (imgEl) imgEl.classList.toggle('hidden', state !== 'loaded');
+            if (errorEl) {
+                errorEl.classList.toggle('hidden', state !== 'error');
+                errorEl.classList.toggle('flex', state === 'error');
+            }
+            if (hintEl) {
+                hintEl.classList.toggle('hidden', state !== 'loaded');
+                hintEl.classList.toggle('flex', state === 'loaded');
+            }
+        }
+
+        function loadContactImage(force = false) {
+            if (contactImageUrl && !force) {
+                setContactImageState('loaded');
+                return Promise.resolve(contactImageUrl);
+            }
+            if (contactImageLoading) {
+                return Promise.resolve(null);
+            }
+
+            contactImageLoading = true;
+            setContactImageState('loading');
+
+            return fetch('/api/v1/common/contact-image/', {
+                headers: { 'Accept': 'application/json' }
+            })
+                .then(res => {
+                    if (!res.ok) {
+                        throw new Error(`HTTP ${res.status}`);
                     }
+                    return res.json();
                 })
-                .catch(err => console.error('加载联系我们图片失败:', err));
+                .then(data => {
+                    const url = data && data.code === 200 && data.data && data.data.url;
+                    if (!url) {
+                        throw new Error(data && data.message ? data.message : 'empty contact image url');
+                    }
+                    return new Promise((resolve, reject) => {
+                        const probe = new Image();
+                        probe.onload = () => resolve(url);
+                        probe.onerror = () => reject(new Error('contact image failed to load'));
+                        probe.src = url;
+                    });
+                })
+                .then(url => {
+                    contactImageUrl = url;
+                    document.getElementById('contactQrImg').src = contactImageUrl;
+                    document.getElementById('contactQrPreviewImg').src = contactImageUrl;
+                    setContactImageState('loaded');
+                    return url;
+                })
+                .catch(err => {
+                    console.error('加载联系我们图片失败:', err);
+                    contactImageUrl = null;
+                    setContactImageState('error');
+                    return null;
+                })
+                .finally(() => {
+                    contactImageLoading = false;
+                });
         }
 
         function showQrPreview() {
+            if (!contactImageUrl) {
+                loadContactImage();
+                return;
+            }
             const modal = document.getElementById('qrPreviewModal');
             modal.classList.remove('hidden');
             modal.classList.add('flex');

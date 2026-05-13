@@ -109,6 +109,16 @@ public class SeedanceServiceImpl implements SeedanceService {
                         imageContent.put("image_url", imageUrl);
 
                         contentArray.add(imageContent);
+                    } else if ("video_url".equals(content.getType()) && content.getVideoUrl() != null) {
+                        JSONObject videoContent = new JSONObject();
+                        videoContent.put("type", "video_url");
+                        videoContent.put("role", content.getRole() != null ? content.getRole() : "reference_video");
+
+                        JSONObject videoUrl = new JSONObject();
+                        videoUrl.put("url", content.getVideoUrl().getUrl());
+                        videoContent.put("video_url", videoUrl);
+
+                        contentArray.add(videoContent);
                     }
                 }
             }
@@ -116,8 +126,11 @@ public class SeedanceServiceImpl implements SeedanceService {
             // 官方示例用 content (单数)
             requestBody.put("content", contentArray);
             requestBody.put("duration", request.getDuration());
-            requestBody.put("ratio", "16:9");
-            requestBody.put("watermark", false);
+            requestBody.put("ratio", request.getRatio() != null ? request.getRatio() : "16:9");
+            requestBody.put("watermark", request.getWatermark() != null ? request.getWatermark() : false);
+            if (request.getGenerateAudio() != null) {
+                requestBody.put("generate_audio", request.getGenerateAudio());
+            }
 
             // 统一使用新的 API 端点
             url = baseUrl + "/contents/generations/tasks";
@@ -144,7 +157,7 @@ public class SeedanceServiceImpl implements SeedanceService {
                 errorResponse.setErrorMessage("视频生成任务提交失败: " + response.getStatusCode());
                 return errorResponse;
             }
-        } catch (org.springframework.web.client.HttpClientErrorException e) {
+        } catch (org.springframework.web.client.HttpStatusCodeException e) {
             log.error("Seedance API调用失败: statusCode={}, responseBody={}", e.getStatusCode(), e.getResponseBodyAsString());
             SeedanceResponse errorResponse = new SeedanceResponse();
             errorResponse.setStatus("failed");
@@ -185,6 +198,13 @@ public class SeedanceServiceImpl implements SeedanceService {
                 errorResponse.setErrorMessage("查询任务状态失败: " + response.getStatusCode());
                 return errorResponse;
             }
+        } catch (org.springframework.web.client.HttpStatusCodeException e) {
+            log.error("查询任务状态失败: taskId={}, statusCode={}, responseBody={}", taskId, e.getStatusCode(), e.getResponseBodyAsString());
+            SeedanceResponse errorResponse = new SeedanceResponse();
+            errorResponse.setStatus("failed");
+            errorResponse.setTaskId(taskId);
+            errorResponse.setErrorMessage(parseApiError(e.getResponseBodyAsString()));
+            return errorResponse;
         } catch (Exception e) {
             log.error("查询任务状态异常: taskId={}", taskId, e);
             SeedanceResponse errorResponse = new SeedanceResponse();
@@ -361,7 +381,7 @@ public class SeedanceServiceImpl implements SeedanceService {
                 }
             }
         } else if ("failed".equals(response.getStatus())) {
-            response.setErrorMessage(json.getString("error"));
+            response.setErrorMessage(toFriendlyApiError(json.get("error")));
         }
 
         return response;
@@ -375,29 +395,169 @@ public class SeedanceServiceImpl implements SeedanceService {
             JSONObject json = JSON.parseObject(errorBody);
             JSONObject error = json.getJSONObject("error");
             if (error != null) {
-                String code = error.getString("code");
-                String message = error.getString("message");
-
-                // 根据错误代码返回中文提示
-                if ("AccountOverdueError".equals(code)) {
-                    return "火山引擎账户欠费，请充值后重试";
-                } else if ("InsufficientBalance".equals(code)) {
-                    return "账户余额不足，请充值后重试";
-                } else if ("RateLimitExceeded".equals(code)) {
-                    return "请求过于频繁，请稍后重试";
-                } else if ("InvalidApiKey".equals(code)) {
-                    return "API密钥无效，请检查配置";
-                } else if ("ModelNotFound".equals(code)) {
-                    return "模型不存在或已下线";
-                } else if ("ContentViolation".equals(code)) {
-                    return "内容违规，请修改后重试";
-                } else if (message != null && !message.isEmpty()) {
-                    return message;
-                }
+                return toFriendlyApiError(error);
+            }
+            if (json.containsKey("code") || json.containsKey("Code")
+                    || json.containsKey("message") || json.containsKey("Message")) {
+                return toFriendlyApiError(json);
             }
         } catch (Exception e) {
             log.warn("解析错误信息失败: {}", e.getMessage());
         }
         return "视频生成失败，请稍后重试";
+    }
+
+    private String toFriendlyApiError(Object errorPayload) {
+        if (errorPayload == null) {
+            return "视频生成失败，请稍后重试";
+        }
+        if (errorPayload instanceof JSONObject error) {
+            String code = firstNonBlank(error.getString("code"), error.getString("Code"));
+            String message = firstNonBlank(error.getString("message"), error.getString("Message"), error.toJSONString());
+            return toFriendlyApiError(code, message);
+        }
+        String message = String.valueOf(errorPayload);
+        String code = extractErrorCode(message);
+        return toFriendlyApiError(code, message);
+    }
+
+    private String toFriendlyApiError(String code, String message) {
+        String normalizedCode = code == null ? "" : code.trim();
+        String normalizedMessage = message == null ? "" : message.trim();
+        String combined = (normalizedCode + " " + normalizedMessage).toLowerCase();
+
+        if (containsAny(combined, "missingparameter")) {
+            return "请求缺少必要参数，请检查视频、参考图、比例、时长和替换描述后重试。";
+        }
+        if (containsAny(combined, "invalidparameter", "invalidargumenterror", "invalidimageurl")) {
+            return "请求参数不合法，请检查视频、参考图格式或替换描述后重试。";
+        }
+        if (containsAny(combined, "outofcontexterror")) {
+            return "输入内容过长，已超过模型上下文限制，请减少参考图数量或缩短替换描述后重试。";
+        }
+        if (containsAny(combined, "policyviolation", "copyright")) {
+            return "输入或生成内容可能涉及版权限制，请更换素材或调整描述后重试。";
+        }
+        if (containsAny(combined, "privacyinformation", "real person")) {
+            return "输入图片或视频可能包含真人隐私信息，请更换素材后重试。";
+        }
+        if (containsAny(combined, "sensitivecontentdetected", "riskdetection", "contentviolation", "contentsecurity")) {
+            if (containsAny(combined, "inputimage")) {
+                return "输入参考图可能包含敏感内容，请更换参考图后重试。";
+            }
+            if (containsAny(combined, "inputvideo")) {
+                return "输入视频可能包含敏感内容，请更换视频后重试。";
+            }
+            if (containsAny(combined, "inputtext")) {
+                return "输入提示词可能包含敏感内容，请调整替换描述后重试。";
+            }
+            if (containsAny(combined, "outputvideo", "outputimage", "outputtext")) {
+                return "生成结果可能触发内容审核，请调整视频、参考图或替换描述后重试。";
+            }
+            return "内容可能触发平台审核，请调整视频、参考图或替换描述后重试。";
+        }
+        if (containsAny(combined, "authenticationerror", "invalidapikey")) {
+            return "火山引擎鉴权失败，请检查 API Key 或 AK/SK 配置。";
+        }
+        if (containsAny(combined, "invalidaccountstatus")) {
+            return "火山引擎账号状态异常，请检查账号状态或联系管理员。";
+        }
+        if (containsAny(combined, "serviceoverdue", "accountoverdueerror", "insufficientbalance", "overdue")) {
+            return "火山引擎账号欠费或余额不足，请充值后重试。";
+        }
+        if (containsAny(combined, "servicenotopen", "modelnotopen")) {
+            return "模型服务未开通，请在火山方舟控制台开通对应模型后重试。";
+        }
+        if (containsAny(combined, "accessdenied", "permissiondenied", "invalidsubscription")) {
+            return "当前账号没有访问该模型或资源的权限，请检查权限、白名单或套餐状态。";
+        }
+        if (containsAny(combined, "invalidendpointormodel", "unsupportedmodel", "modelnotfound")) {
+            return "模型或推理接入点不可用，请检查模型配置后重试。";
+        }
+        if (containsAny(combined, "rateLimit".toLowerCase(), "quotaexceeded", "serveroverloaded",
+                "requestbursttoofast", "setlimitexceeded", "inflightbatchsizeexceeded",
+                "accountratelimitexceeded", "too many requests")) {
+            return "当前请求过多或额度已达上限，请稍后重试，或检查火山引擎额度和并发限制。";
+        }
+        if (containsAny(combined, "closedendpoint")) {
+            return "推理接入点暂时不可用，请稍后重试或检查接入点状态。";
+        }
+        if (containsAny(combined, "internalserviceerror", "internalerror", "unknownerror",
+                "internal error", "internalservererror")) {
+            return "火山引擎服务内部异常，请稍后重试。";
+        }
+        if (containsAny(combined, "invaliddata", "invalidjson", "invalidjsonl")) {
+            return "输入数据格式不符合要求，请检查素材或请求内容后重试。";
+        }
+        if (containsAny(combined, "timeout", "timed out", "超时")) {
+            return "视频生成超时，请稍后重试。";
+        }
+        if (!normalizedMessage.isEmpty()) {
+            return stripRequestId(normalizedMessage);
+        }
+        return "视频生成失败，请稍后重试";
+    }
+
+    private boolean containsAny(String text, String... keywords) {
+        if (text == null) {
+            return false;
+        }
+        for (String keyword : keywords) {
+            if (keyword != null && text.contains(keyword.toLowerCase())) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private String firstNonBlank(String... values) {
+        if (values == null) {
+            return null;
+        }
+        for (String value : values) {
+            if (value != null && !value.isBlank()) {
+                return value;
+            }
+        }
+        return null;
+    }
+
+    private String extractErrorCode(String message) {
+        if (message == null || message.isBlank()) {
+            return null;
+        }
+        String[] knownCodes = {
+                "MissingParameter", "InvalidParameter", "InvalidEndpoint.ClosedEndpoint",
+                "SensitiveContentDetected", "SensitiveContentDetected.SevereViolation",
+                "SensitiveContentDetected.Violence", "InputTextSensitiveContentDetected",
+                "InputImageSensitiveContentDetected", "InputVideoSensitiveContentDetected",
+                "InputAudioSensitiveContentDetected", "OutputTextSensitiveContentDetected",
+                "OutputImageSensitiveContentDetected", "OutputVideoSensitiveContentDetected",
+                "OutputAudioSensitiveContentDetected", "PolicyViolation", "PrivacyInformation",
+                "InputTextRiskDetection", "InputImageRiskDetection", "OutputTextRiskDetection",
+                "OutputImageRiskDetection", "ContentSecurityDetectionError",
+                "InvalidArgumentError", "InvalidImageURL", "OutofContextError",
+                "AuthenticationError", "InvalidAccountStatus", "ServiceNotOpen",
+                "ServiceOverdue", "AccountOverdueError", "AccessDenied", "PermissionDenied",
+                "InvalidEndpointOrModel", "ModelNotOpen", "UnsupportedModel",
+                "RateLimitExceeded", "QuotaExceeded", "ServerOverloaded",
+                "RequestBurstTooFast", "SetLimitExceeded", "InflightBatchsizeExceeded",
+                "AccountRateLimitExceeded", "InternalServiceError"
+        };
+        for (String knownCode : knownCodes) {
+            if (message.contains(knownCode)) {
+                return knownCode;
+            }
+        }
+        return null;
+    }
+
+    private String stripRequestId(String message) {
+        if (message == null) {
+            return "";
+        }
+        return message.replaceAll("(?i)\\s*Request\\s*ID\\s*:\\s*[^;\\n。]*", "")
+                .replaceAll("(?i)\\s*Request\\s*id\\s*:\\s*[^;\\n。]*", "")
+                .trim();
     }
 }

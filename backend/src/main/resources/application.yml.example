@@ -50,6 +50,13 @@ volcengine:
     model: doubao-seedream-5-0-260128
     base-url: https://ark.cn-beijing.volces.com/api/v3
     timeout: 120000
+  seedance:
+    api-key: YOUR_API_KEY
+    base-url: https://ark.cn-beijing.volces.com/api/v3
+    model: seedance-2.0
+    subject-replacement-model: doubao-seedance-2-0-260128
+    timeout: 600000
+    poll-interval: 5000
 
 # 文件存储配置
 storage:

@@ -44,6 +44,21 @@ public class SeedanceRequest implements Serializable {
     private Integer height = 720;
 
     /**
+     * 视频比例: 16:9 / 9:16 / 1:1 等
+     */
+    private String ratio = "16:9";
+
+    /**
+     * 是否生成音频
+     */
+    private Boolean generateAudio;
+
+    /**
+     * 是否添加水印
+     */
+    private Boolean watermark = false;
+
+    /**
      * 种子值
      */
     private Long seed;
@@ -86,6 +101,11 @@ public class SeedanceRequest implements Serializable {
          * 角色: "reference_image"
          */
         private String role;
+
+        /**
+         * 视频URL (type="video_url"时)
+         */
+        private VideoUrl videoUrl;
     }
 
     /**
@@ -93,6 +113,16 @@ public class SeedanceRequest implements Serializable {
      */
     @Data
     public static class ImageUrl implements Serializable {
+        private static final long serialVersionUID = 1L;
+
+        private String url;
+    }
+
+    /**
+     * 视频URL
+     */
+    @Data
+    public static class VideoUrl implements Serializable {
         private static final long serialVersionUID = 1L;
 
         private String url;

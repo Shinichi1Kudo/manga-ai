@@ -18,7 +18,7 @@
 
 <!-- Series Selector -->
 <div class="glass-card p-6 mb-6">
-    <div class="flex items-center gap-4">
+    <div class="flex items-center gap-4 flex-wrap">
         <label class="text-sm text-white/60 whitespace-nowrap">选择系列：</label>
         <select id="seriesSelector" class="input-modern flex-1 max-w-md">
             {% if locked_series %}
@@ -29,6 +29,12 @@
                 <option value="">加载系列中...</option>
             {% endif %}
         </select>
+        <a id="episodeDetailLink"
+           href="#"
+           class="px-4 py-2.5 rounded-xl bg-blue-500/20 text-blue-300 hover:bg-blue-500/30 transition-colors text-sm font-medium inline-flex items-center gap-2 opacity-50 pointer-events-none"
+           title="跳转到该系列的剧集制作管理页面">
+            <i data-lucide="external-link" class="w-4 h-4"></i><span id="episodeDetailLinkText">剧集制作管理</span>
+        </a>
     </div>
 </div>
 
@@ -417,6 +423,7 @@ document.addEventListener('DOMContentLoaded', function() {
             const activeTab = document.querySelector('.asset-type-tab.active');
             const assetType = activeTab ? activeTab.dataset.type : 'role';
             if (seriesId) {
+                updateEpisodeEntryLink(seriesId);
                 loadSeriesAssets(seriesId, assetType);
             }
         });
@@ -523,6 +530,7 @@ function loadLockedSeries() {
                 return `<option value="${series.id}">${escapeHtml(series.seriesName)} (${roleCount}个角色)</option>`;
             }).join('');
 
+            updateEpisodeEntryLink(selector.value);
             loadSeriesAssets(selector.value, currentAssetType);
         })
         .catch(err => {
@@ -536,6 +544,42 @@ function loadLockedSeries() {
             `;
             initIcons();
         });
+}
+
+function setEpisodeEntryLoading() {
+    const link = document.getElementById('episodeDetailLink');
+    const text = document.getElementById('episodeDetailLinkText');
+    if (!link || !text) return;
+    link.href = '#';
+    link.classList.add('opacity-50', 'pointer-events-none');
+    text.textContent = '查询剧集...';
+}
+
+function setEpisodeEntryLink(data) {
+    const link = document.getElementById('episodeDetailLink');
+    const text = document.getElementById('episodeDetailLinkText');
+    if (!link || !text) return;
+    if (!data || !data.url) {
+        link.href = '#';
+        link.classList.add('opacity-50', 'pointer-events-none');
+        text.textContent = '剧集制作管理';
+        return;
+    }
+    link.href = data.url;
+    link.classList.remove('opacity-50', 'pointer-events-none');
+    text.textContent = '剧集制作管理';
+    link.title = data.label || '跳转到该系列的剧集制作管理页面';
+}
+
+function updateEpisodeEntryLink(seriesId) {
+    if (!seriesId) {
+        setEpisodeEntryLink(null);
+        return;
+    }
+    setEpisodeEntryLink({
+        url: `/${seriesId}/episodes/`,
+        label: '跳转到该系列的剧集制作管理页面',
+    });
 }
 
 function escapeHtml(value) {

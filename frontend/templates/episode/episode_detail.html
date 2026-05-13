@@ -57,6 +57,34 @@
 .shot-name-input {
     max-width: 200px;
 }
+.shot-card.locked-shot-card .description-editor,
+.shot-card.locked-shot-card .scene-editor {
+    cursor: not-allowed;
+    color: rgba(255,255,255,0.62);
+    border-color: rgba(255,255,255,0.08);
+}
+.shot-card.locked-shot-card select:disabled {
+    cursor: not-allowed;
+    opacity: 0.58;
+}
+.shot-actions {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.shot-actions > a,
+.shot-actions > button,
+.shot-actions > span {
+    min-height: 32px;
+}
+.shot-actions > a,
+.shot-actions > button {
+    white-space: nowrap;
+}
+.shot-actions i {
+    flex-shrink: 0;
+}
+.shot-action-full {
+    grid-column: 1 / -1;
+}
 .inline-asset-thumb:hover {
     transform: scale(1.2);
     box-shadow: 0 4px 12px rgba(0,0,0,0.4);
@@ -138,18 +166,22 @@
 </div>
 
 <!-- Stats Cards -->
-<div class="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+<div class="grid grid-cols-2 md:grid-cols-5 gap-4 mb-8">
     <div class="glass-card p-5 text-center">
-        <div class="text-3xl font-bold gradient-text mb-1">{{ shots|length }}</div>
+        <div class="text-3xl font-bold gradient-text mb-1" id="totalShots">{{ shots|length }}</div>
         <div class="text-sm text-white/50">分镜总数</div>
     </div>
     <div class="glass-card p-5 text-center">
-        <div class="text-3xl font-bold text-emerald-400 mb-1" id="completedShots">{{ completed_shots }}</div>
-        <div class="text-sm text-white/50">已完成</div>
+        <div class="text-3xl font-bold text-emerald-400 mb-1" id="generatedShots">{{ generated_shots }}</div>
+        <div class="text-sm text-white/50">已生成</div>
     </div>
     <div class="glass-card p-5 text-center">
         <div class="text-3xl font-bold text-amber-400 mb-1" id="pendingShots">{{ pending_shots }}</div>
         <div class="text-sm text-white/50">待生成</div>
+    </div>
+    <div class="glass-card p-5 text-center">
+        <div class="text-3xl font-bold text-orange-300 mb-1" id="lockedShots">{{ locked_review_shots_count }}</div>
+        <div class="text-sm text-white/50">已锁定</div>
     </div>
     <div class="glass-card p-5 text-center">
         <div class="text-3xl font-bold text-blue-400 mb-1" id="progressPercent">{{ progress_percent }}%</div>
@@ -969,6 +1001,92 @@
     </div>
 </div>
 
+<!-- Manual Shot Video Upload Modal -->
+<div id="shotVideoUploadModal" class="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 hidden overflow-y-auto">
+    <div class="flex items-center justify-center min-h-full p-4">
+        <div class="glass-card p-6 w-full max-w-2xl relative">
+            <div class="flex items-center justify-between mb-4">
+                <h3 class="text-xl font-semibold text-white">上传分镜视频 - <span id="shotVideoUploadTitle"></span></h3>
+                <button class="close-modal-btn text-white/50 hover:text-white transition-colors" data-modal="shotVideoUploadModal">
+                    <i data-lucide="x" class="w-6 h-6"></i>
+                </button>
+            </div>
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-sm text-white/70 mb-1">视频比例</label>
+                    <select id="shotVideoUploadAspectRatio" class="w-full bg-white/5 border border-white/10 rounded-lg px-4 py-2.5 text-white focus:outline-none">
+                        <option value="16:9">16:9</option>
+                        <option value="4:3">4:3</option>
+                        <option value="1:1">1:1</option>
+                        <option value="3:4">3:4</option>
+                        <option value="9:16">9:16</option>
+                        <option value="21:9">21:9</option>
+                    </select>
+                </div>
+                <div class="rounded-lg border border-white/10 bg-white/5 p-3">
+                    <label class="block text-sm text-white/70 mb-2">本地视频 *</label>
+                    <input type="file" id="shotVideoUploadInput" accept="video/mp4,video/webm,video/quicktime,video/x-m4v,.mp4,.webm,.mov,.m4v" class="hidden">
+                    <button type="button" id="chooseShotVideoUploadBtn" class="w-full px-4 py-2 rounded-lg bg-white/10 hover:bg-white/15 transition-colors text-sm flex items-center justify-center gap-2">
+                        <i data-lucide="upload" class="w-4 h-4"></i><span id="chooseShotVideoUploadText">选择本地视频</span>
+                    </button>
+                    <div id="shotVideoUploadPreviewWrap" class="hidden mt-3">
+                        <div class="w-full max-h-[360px] rounded-lg bg-black/40 overflow-hidden mx-auto border border-white/10">
+                            <video id="shotVideoUploadPreview" src="" class="w-full max-h-[360px]" controls muted preload="metadata"></video>
+                        </div>
+                        <div class="flex items-center justify-between gap-3 mt-2 text-xs text-white/50">
+                            <p id="shotVideoUploadFileName" class="truncate"></p>
+                            <span id="shotVideoUploadRatioBadge" class="px-2 py-0.5 rounded bg-white/10 text-white/60 flex-shrink-0"></span>
+                        </div>
+                        <button type="button" id="recropShotVideoBtn" class="hidden mt-3 w-full px-3 py-1.5 rounded-lg bg-violet-500/20 text-violet-200 hover:bg-violet-500/30 transition-colors text-xs flex items-center justify-center gap-1.5">
+                            <i data-lucide="crop" class="w-3.5 h-3.5"></i>重新裁剪
+                        </button>
+                    </div>
+                </div>
+            </div>
+            <div class="flex justify-end gap-3 mt-6">
+                <button class="close-modal-btn px-5 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 transition-all" data-modal="shotVideoUploadModal">取消</button>
+                <button id="saveShotVideoUploadBtn" class="px-5 py-2.5 rounded-xl bg-gradient-to-r from-violet-500 to-blue-500 hover:from-violet-600 hover:to-blue-600 transition-all font-medium flex items-center gap-2">
+                    <i data-lucide="upload" class="w-4 h-4"></i>上传并使用
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Manual Shot Video Crop Modal -->
+<div id="shotVideoCropModal" class="fixed inset-0 bg-black/70 backdrop-blur-sm z-[70] hidden overflow-y-auto">
+    <div class="flex items-center justify-center min-h-full p-4">
+        <div class="glass-card p-6 w-full max-w-4xl relative">
+            <div class="flex items-center justify-between mb-4">
+                <h3 class="text-xl font-semibold text-white">裁剪分镜视频</h3>
+                <button id="cancelShotVideoCropBtn" class="text-white/50 hover:text-white transition-colors">
+                    <i data-lucide="x" class="w-6 h-6"></i>
+                </button>
+            </div>
+            <div id="shotVideoCropStage" class="relative h-[520px] bg-black/50 rounded-xl overflow-hidden border border-white/10 select-none">
+                <video id="shotVideoCropVideo" src="" class="absolute max-w-none opacity-50" muted loop playsinline preload="metadata"></video>
+                <div id="shotVideoCropBox" class="absolute border-2 border-violet-400 shadow-lg shadow-violet-500/20 overflow-hidden cursor-move">
+                    <video id="shotVideoCropBoxVideo" src="" class="absolute max-w-none" muted loop playsinline preload="metadata"></video>
+                </div>
+            </div>
+            <div class="mt-4 flex items-center gap-3">
+                <i data-lucide="zoom-out" class="w-4 h-4 text-white/50"></i>
+                <input type="range" id="shotVideoCropZoom" min="100" max="300" value="100" class="flex-1 accent-violet-500">
+                <i data-lucide="zoom-in" class="w-4 h-4 text-white/50"></i>
+            </div>
+            <div id="shotVideoCropProgress" class="hidden mt-4">
+                <div class="h-2 bg-white/10 rounded-full overflow-hidden">
+                    <div id="shotVideoCropProgressBar" class="h-full bg-violet-500 rounded-full transition-all" style="width: 0%"></div>
+                </div>
+            </div>
+            <div class="flex justify-end gap-3 mt-5">
+                <button type="button" id="discardShotVideoCropBtn" class="px-5 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 transition-all">取消</button>
+                <button type="button" id="confirmShotVideoCropBtn" class="px-5 py-2.5 rounded-xl bg-gradient-to-r from-violet-500 to-blue-500 hover:from-violet-600 hover:to-blue-600 transition-all font-medium">使用裁剪视频</button>
+            </div>
+        </div>
+    </div>
+</div>
+
 <!-- Role Image Preview Modal -->
 <div id="rolePreviewModal" class="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 hidden flex items-center justify-center p-4">
     <div class="relative max-w-4xl max-h-[90vh] w-full">
@@ -1218,7 +1336,10 @@
 
     <!-- Shot List Header -->
     <div class="flex items-center justify-between mb-4">
-        <h3 class="text-lg font-medium text-white">分镜列表</h3>
+        <div>
+            <h3 class="text-lg font-medium text-white">待审核分镜列表</h3>
+            <p class="text-xs text-white/40 mt-1">共 <span id="pendingReviewShotCount">{{ pending_review_shots_count }}</span> 个待审核分镜</p>
+        </div>
         <button id="addShotBtn" class="px-4 py-2 rounded-lg bg-blue-500/20 text-blue-300 hover:bg-blue-500/30 transition-colors text-sm flex items-center gap-2">
             <i data-lucide="plus" class="w-4 h-4"></i>添加分镜
         </button>
@@ -1229,16 +1350,22 @@
     <div class="space-y-4" id="shotList">
         {% for shot in shots %}
     <div class="glass-card glass-card-hover p-5 shot-card"
-         data-shot-id="{{ shot.id }}"
-         data-status="{{ shot.generationStatus }}"
-         data-description-edited="{{ shot.descriptionEdited|default:'false' }}"
-         data-scene-edited="{{ shot.sceneEdited|default:'false' }}"
-         data-shot-characters='{{ shot.characters|to_json|default:"[]" }}'>
+	         data-shot-id="{{ shot.id }}"
+	         data-status="{{ shot.generationStatus }}"
+	         data-review-status="{{ shot.status|default:0 }}"
+	         data-video-source="{{ shot.videoSource|default:'' }}"
+	         data-video-url="{{ shot.videoUrl|default:'' }}"
+	         data-thumbnail-url="{{ shot.thumbnailUrl|default:'' }}"
+	         data-generation-duration="{{ shot.generationDuration|default:'' }}"
+	         data-generation-start-time="{{ shot.generationStartTime|default:'' }}"
+	         data-description-edited="{{ shot.descriptionEdited|default:'false' }}"
+	         data-scene-edited="{{ shot.sceneEdited|default:'false' }}"
+	         data-shot-characters='{{ shot.characters|to_json|default:"[]" }}'>
         <div class="flex items-start gap-5">
             <!-- 左侧：缩略图 + 操作按钮 -->
-            <div class="flex flex-col items-center gap-3 flex-shrink-0">
+            <div class="flex flex-col items-center gap-3 flex-shrink-0 w-64">
                 <!-- 缩略图/视频预览 -->
-                <div class="shot-thumbnail w-36 h-20 rounded-xl bg-white/5 flex items-center justify-center overflow-hidden relative">
+                <div class="shot-thumbnail w-full aspect-video rounded-xl bg-white/5 flex items-center justify-center overflow-hidden relative">
                     {% if shot.generationStatus == 1 %}
                     <div class="text-center">
                         <i data-lucide="loader-2" class="w-6 h-6 text-blue-400 animate-spin mx-auto"></i>
@@ -1258,10 +1385,10 @@
                     <i data-lucide="video" class="w-8 h-8 text-white/20"></i>
                     {% endif %}
                 </div>
-                <!-- 操作按钮（竖向排列） -->
-                <div class="shot-actions flex flex-col gap-1.5 w-full">
+                <!-- 操作按钮（两列排列） -->
+                <div class="shot-actions grid gap-1.5 w-full">
                     {% if shot.generationStatus == 0 and episode.status == 2 %}
-                    <button class="generate-btn w-full px-3 py-1.5 rounded-lg bg-gradient-to-r from-blue-500 to-cyan-500 hover:from-blue-600 hover:to-cyan-600 transition-colors text-xs flex items-center justify-center gap-1.5 text-white"
+                    <button class="generate-btn min-w-0 px-2.5 py-1.5 rounded-lg bg-gradient-to-r from-blue-500 to-cyan-500 hover:from-blue-600 hover:to-cyan-600 transition-colors text-xs flex items-center justify-center gap-1.5 text-white"
                             data-shot-id="{{ shot.id }}"
                             data-duration="{{ shot.duration|default:5 }}"
                             data-resolution="{{ shot.resolution|default:'720p' }}">
@@ -1270,53 +1397,63 @@
                     </button>
                     {% endif %}
                     {% if shot.generationStatus == 1 %}
-                    <span class="generating-timer w-full px-3 py-1.5 rounded-lg bg-blue-500/20 text-blue-300 text-xs flex items-center justify-center gap-1.5"
+                    <span class="generating-timer shot-action-full min-w-0 px-2.5 py-1.5 rounded-lg bg-blue-500/20 text-blue-300 text-xs flex items-center justify-center gap-1.5"
                           data-start-time="{{ shot.generationStartTime }}">
                         <i data-lucide="loader-2" class="w-3.5 h-3.5 animate-spin"></i><span class="timer-text">0秒</span>
                     </span>
                     {% endif %}
                     {% if shot.generationStatus == 2 %}
                     <a href="{{ shot.videoUrl }}" target="_blank"
-                       class="w-full px-3 py-1.5 rounded-lg bg-emerald-500/20 text-emerald-300 hover:bg-emerald-500/30 transition-colors text-xs flex items-center justify-center gap-1.5">
+                       class="min-w-0 px-2.5 py-1.5 rounded-lg bg-emerald-500/20 text-emerald-300 hover:bg-emerald-500/30 transition-colors text-xs flex items-center justify-center gap-1.5">
                         <i data-lucide="play-circle" class="w-3.5 h-3.5"></i>预览
                     </a>
-                    <button class="regenerate-btn w-full px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 transition-colors text-xs flex items-center justify-center gap-1.5 text-white/70"
+                    <button class="regenerate-btn min-w-0 px-2.5 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 transition-colors text-xs flex items-center justify-center gap-1.5 text-white/70"
                             data-shot-id="{{ shot.id }}"
                             data-duration="{{ shot.duration|default:5 }}"
                             data-resolution="{{ shot.resolution|default:'720p' }}">
                         <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i>重新生成
                         <span class="credit-cost text-white/50 text-xs ml-1"></span>
                     </button>
-                    {% if shot.generationDuration %}
-                    <span class="w-full text-center text-xs text-white/40 flex items-center justify-center gap-1">
-                        <i data-lucide="clock" class="w-3 h-3"></i>
+                    {% if shot.status != 1 and shot.generationDuration and shot.videoSource != 'manual' %}
+                    <span class="shot-generation-duration-badge shot-action-full w-full text-center text-xs text-cyan-200/80 bg-cyan-500/10 border border-cyan-400/10 rounded-lg px-2 py-1 flex flex-col items-center justify-center gap-0.5 leading-tight"
+                          title="本次系统生成视频耗时">
+                        <span class="inline-flex items-center justify-center gap-1">
+                            <i data-lucide="clock" class="w-3 h-3"></i>
+                            <span>本次视频生成耗时</span>
+                        </span>
                         {% if shot.generationDuration >= 60 %}
-                        {{ shot.generationDuration|div:60 }}分{{ shot.generationDuration|modulo:60 }}秒
+                        <span class="font-medium text-cyan-100">{{ shot.generationDuration|div:60 }}分{{ shot.generationDuration|modulo:60 }}秒</span>
                         {% else %}
-                        {{ shot.generationDuration }}秒
+                        <span class="font-medium text-cyan-100">{{ shot.generationDuration }}秒</span>
                         {% endif %}
                     </span>
                     {% endif %}
-                    <button class="video-history-btn w-full px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 transition-colors text-xs flex items-center justify-center gap-1.5 text-white/70"
+                    <button class="video-history-btn min-w-0 px-2.5 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 transition-colors text-xs flex items-center justify-center gap-1.5 text-white/70"
                             data-shot-id="{{ shot.id }}">
                         <i data-lucide="history" class="w-3.5 h-3.5"></i>历史
                     </button>
-                    <button class="download-shot-btn w-full px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 transition-colors text-xs flex items-center justify-center gap-1.5 text-white/70"
+                    <button class="download-shot-btn min-w-0 px-2.5 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 transition-colors text-xs flex items-center justify-center gap-1.5 text-white/70"
                             data-shot-id="{{ shot.id }}"
                             data-filename="{{ series.seriesName }}_第{{ episode.episodeNumber }}集{% if episode.episodeName %}{{ episode.episodeName }}{% endif %}_{{ shot.shotName|default:'分镜' }}{{ shot.shotNumber }}">
                         <i data-lucide="download" class="w-3.5 h-3.5"></i>下载
                     </button>
+                    {% if shot.status != 1 %}
+                    <button class="lock-shot-btn min-w-0 px-2.5 py-1.5 rounded-lg bg-amber-500/20 text-amber-300 hover:bg-amber-500/30 transition-colors text-xs flex items-center justify-center gap-1.5"
+                            data-shot-id="{{ shot.id }}">
+                        <i data-lucide="lock" class="w-3.5 h-3.5"></i>锁定分镜
+                    </button>
+                    {% endif %}
                     {% endif %}
                     {% if shot.generationStatus == 3 %}
-                    <span class="w-full px-3 py-1.5 rounded-lg bg-red-500/20 text-red-300 text-xs flex items-center justify-center gap-1.5">
+                    <span class="shot-action-full min-w-0 px-2.5 py-1.5 rounded-lg bg-red-500/20 text-red-300 text-xs flex items-center justify-center gap-1.5">
                         <i data-lucide="alert-circle" class="w-3.5 h-3.5"></i>失败
                     </span>
                     {% if shot.generationError %}
-                    <span class="w-full px-2 py-1 rounded bg-red-500/10 text-red-300/80 text-xs truncate" title="{{ shot.generationError }}">
+                    <span class="shot-action-full w-full px-2 py-1 rounded bg-red-500/10 text-red-300/80 text-xs truncate" title="{{ shot.generationError }}">
                         {{ shot.generationError|truncatechars:30 }}
                     </span>
                     {% endif %}
-                    <button class="regenerate-btn w-full px-3 py-1.5 rounded-lg bg-orange-500/20 text-orange-300 hover:bg-orange-500/30 transition-colors text-xs flex items-center justify-center gap-1.5"
+                    <button class="regenerate-btn min-w-0 px-2.5 py-1.5 rounded-lg bg-orange-500/20 text-orange-300 hover:bg-orange-500/30 transition-colors text-xs flex items-center justify-center gap-1.5"
                             data-shot-id="{{ shot.id }}"
                             data-duration="{{ shot.duration|default:5 }}"
                             data-resolution="{{ shot.resolution|default:'720p' }}">
@@ -1324,8 +1461,16 @@
                         <span class="credit-cost text-white/50 text-xs ml-1"></span>
                     </button>
                     {% endif %}
+                    {% if shot.status != 1 and shot.generationStatus != 1 %}
+                    <button class="manual-video-upload-btn min-w-0 px-2.5 py-1.5 rounded-lg bg-violet-500/20 text-violet-200 hover:bg-violet-500/30 transition-colors text-xs flex items-center justify-center gap-1.5"
+                            data-shot-id="{{ shot.id }}"
+                            data-shot-number="{{ shot.shotNumber }}"
+                            data-shot-name="{{ shot.shotName|default:'' }}">
+                        <i data-lucide="upload" class="w-3.5 h-3.5"></i>上传视频
+                    </button>
+                    {% endif %}
                     <!-- 删除按钮 -->
-                    <button class="delete-shot-btn w-full px-3 py-1.5 rounded-lg bg-white/5 hover:bg-red-500/20 text-white/40 hover:text-red-300 transition-colors text-xs flex items-center justify-center gap-1.5"
+                    <button class="delete-shot-btn min-w-0 px-2.5 py-1.5 rounded-lg bg-white/5 hover:bg-red-500/20 text-white/40 hover:text-red-300 transition-colors text-xs flex items-center justify-center gap-1.5"
                             data-shot-id="{{ shot.id }}"
                             data-shot-number="{{ shot.shotNumber }}"
                             title="删除分镜">
@@ -1349,14 +1494,27 @@
                            data-shot-number="{{ shot.shotNumber }}"
                            data-shot-name="{{ shot.shotName|default:'' }}"
                            placeholder="分镜名称">
-                    <span class="generation-status px-2 py-0.5 rounded text-xs flex-shrink-0
-                        {% if shot.generationStatus == 2 %}bg-emerald-500/20 text-emerald-300
-                        {% elif shot.generationStatus == 1 %}bg-blue-500/20 text-blue-300
-                        {% elif shot.generationStatus == 3 %}bg-red-500/20 text-red-300
-                        {% else %}bg-white/10 text-white/50{% endif %}">
-                        {{ shot.generationStatusDesc }}
-                    </span>
-                    <span class="shot-edit-badge px-2 py-0.5 rounded text-xs flex-shrink-0 inline-flex items-center gap-1 border
+	                    <span class="generation-status px-2 py-0.5 rounded text-xs flex-shrink-0
+	                        {% if shot.generationStatus == 2 %}bg-emerald-500/20 text-emerald-300
+	                        {% elif shot.generationStatus == 1 %}bg-blue-500/20 text-blue-300
+	                        {% elif shot.generationStatus == 3 %}bg-red-500/20 text-red-300
+	                        {% else %}bg-white/10 text-white/50{% endif %}">
+	                        {{ shot.generationStatusDesc }}
+	                    </span>
+	                    {% if shot.status != 1 and shot.generationStatus == 2 and shot.videoUrl %}
+	                    {% if shot.videoSource == 'manual' %}
+	                    <button type="button" disabled class="shot-video-source-badge px-2 py-0.5 rounded text-xs flex-shrink-0 inline-flex items-center gap-1 border bg-violet-500/15 text-violet-200 border-violet-400/20 cursor-default" data-video-source="manual" title="当前视频来源：手动上传">
+	                        <i data-lucide="upload" class="w-3 h-3"></i>
+	                        手动上传
+	                    </button>
+	                    {% else %}
+	                    <button type="button" disabled class="shot-video-source-badge px-2 py-0.5 rounded text-xs flex-shrink-0 inline-flex items-center gap-1 border bg-cyan-500/15 text-cyan-200 border-cyan-400/20 cursor-default" data-video-source="system" title="当前视频来源：系统生成">
+	                        <i data-lucide="sparkles" class="w-3 h-3"></i>
+	                        系统生成
+	                    </button>
+	                    {% endif %}
+	                    {% endif %}
+	                    <span class="shot-edit-badge px-2 py-0.5 rounded text-xs flex-shrink-0 inline-flex items-center gap-1 border
                         {% if shot.descriptionEdited or shot.sceneEdited %}bg-amber-500/15 text-amber-300 border-amber-500/20{% else %}bg-white/5 text-white/40 border-white/10{% endif %}"
                           title="{% if shot.descriptionEdited or shot.sceneEdited %}场景或剧情已手动编辑{% else %}场景和剧情未手动编辑{% endif %}">
                         <i data-lucide="{% if shot.descriptionEdited or shot.sceneEdited %}pencil{% else %}circle{% endif %}" class="w-3 h-3"></i>
@@ -1459,6 +1617,11 @@
     </div>
     {% endfor %}
 </div>
+<div id="pendingShotEmptyState" class="glass-card p-10 text-center hidden">
+    <i data-lucide="check-circle-2" class="w-12 h-12 text-emerald-400 mx-auto mb-3"></i>
+    <h3 class="text-base font-medium text-white/80 mb-1">暂无待审核分镜</h3>
+    <p class="text-white/40 text-sm">审核通过的分镜会移动到下方已锁定分镜列表。</p>
+</div>
 {% else %}
 <div class="glass-card p-12 text-center">
     {% if episode.status == 1 %}
@@ -1472,6 +1635,18 @@
     {% endif %}
 </div>
 {% endif %}
+
+<div id="lockedShotsSection" class="mt-8 hidden">
+    <div class="flex items-center justify-between mb-4">
+        <div>
+            <h3 class="text-lg font-medium text-white flex items-center gap-2">
+                <i data-lucide="lock" class="w-4 h-4 text-amber-300"></i>已锁定分镜列表
+            </h3>
+            <p class="text-xs text-white/40 mt-1">共 <span id="lockedReviewShotCount">{{ locked_review_shots_count }}</span> 个已锁定分镜</p>
+        </div>
+    </div>
+    <div class="space-y-4" id="lockedShotList"></div>
+</div>
 </div><!-- shotsContainer end -->
 
 <script>
@@ -1480,6 +1655,387 @@ const seriesId = {{ series_id }};
 const episodeStatus = {{ episode.status }};
 
 const generating = {{ generating_shots }};
+
+function refreshShotStats() {
+    const cards = Array.from(document.querySelectorAll('.shot-card'));
+    const totalCount = cards.length;
+    const generatedCount = cards.filter(card => parseInt(card.dataset.status || '0', 10) === 2).length;
+    const pendingCount = cards.filter(card => parseInt(card.dataset.status || '0', 10) === 0).length;
+    const lockedCount = cards.filter(card => card.dataset.reviewStatus === '1' || card.closest('#lockedShotList')).length;
+    const progressPercent = totalCount ? Math.round((lockedCount / totalCount) * 100) : 0;
+
+    const totalEl = document.getElementById('totalShots');
+    const generatedEl = document.getElementById('generatedShots');
+    const pendingEl = document.getElementById('pendingShots');
+    const lockedEl = document.getElementById('lockedShots');
+    const progressEl = document.getElementById('progressPercent');
+    if (totalEl) totalEl.textContent = totalCount;
+    if (generatedEl) generatedEl.textContent = generatedCount;
+    if (pendingEl) pendingEl.textContent = pendingCount;
+    if (lockedEl) lockedEl.textContent = lockedCount;
+    if (progressEl) progressEl.textContent = `${progressPercent}%`;
+}
+
+function refreshShotListCounts() {
+    const pendingList = document.getElementById('shotList');
+    const lockedList = document.getElementById('lockedShotList');
+    const pendingCount = pendingList ? pendingList.querySelectorAll('.shot-card').length : 0;
+    const lockedCount = lockedList ? lockedList.querySelectorAll('.shot-card').length : 0;
+
+    const pendingCountEl = document.getElementById('pendingReviewShotCount');
+    const lockedCountEl = document.getElementById('lockedReviewShotCount');
+    if (pendingCountEl) pendingCountEl.textContent = pendingCount;
+    if (lockedCountEl) lockedCountEl.textContent = lockedCount;
+
+    document.getElementById('pendingShotEmptyState')?.classList.toggle('hidden', pendingCount > 0);
+    document.getElementById('lockedShotsSection')?.classList.toggle('hidden', lockedCount === 0);
+    refreshShotStats();
+}
+
+function renderShotVideoSourceBadge(source) {
+    if (source === 'manual') {
+        return `
+            <button type="button" disabled class="shot-video-source-badge px-2 py-0.5 rounded text-xs flex-shrink-0 inline-flex items-center gap-1 border bg-violet-500/15 text-violet-200 border-violet-400/20 cursor-default" data-video-source="manual" title="当前视频来源：手动上传">
+                <i data-lucide="upload" class="w-3 h-3"></i>
+                手动上传
+            </button>
+        `;
+    }
+    if (source === 'system') {
+        return `
+            <button type="button" disabled class="shot-video-source-badge px-2 py-0.5 rounded text-xs flex-shrink-0 inline-flex items-center gap-1 border bg-cyan-500/15 text-cyan-200 border-cyan-400/20 cursor-default" data-video-source="system" title="当前视频来源：系统生成">
+                <i data-lucide="sparkles" class="w-3 h-3"></i>
+                系统生成
+            </button>
+        `;
+    }
+    return '';
+}
+
+function syncShotVideoSourceBadge(card, source) {
+    if (!card) return;
+    const normalizedSource = source === 'manual' || source === 'system' ? source : '';
+    card.dataset.videoSource = normalizedSource;
+
+    const existing = card.querySelector('.shot-video-source-badge');
+    if (card.dataset.reviewStatus === '1' || !normalizedSource) {
+        existing?.remove();
+        return;
+    }
+
+    const html = renderShotVideoSourceBadge(normalizedSource);
+    if (!html) {
+        existing?.remove();
+        return;
+    }
+    if (existing) {
+        existing.outerHTML = html;
+    } else {
+        card.querySelector('.generation-status')?.insertAdjacentHTML('afterend', html);
+    }
+    lucide.createIcons();
+}
+
+function isLockedShotCard(card) {
+    return card?.dataset.reviewStatus === '1';
+}
+
+function getShotCardData(card) {
+    if (!card) return {};
+    return {
+        id: card.dataset.shotId,
+        generationStatus: parseInt(card.dataset.status || '0', 10),
+        duration: parseInt(card.querySelector('.duration-select')?.value || '5', 10),
+        resolution: card.querySelector('.resolution-select')?.value || '720p',
+        aspectRatio: card.querySelector('.aspect-ratio-select')?.value || '16:9',
+        videoModel: card.querySelector('.video-model-select')?.value || 'seedance-2.0-fast',
+        videoUrl: card.dataset.videoUrl || '',
+        thumbnailUrl: card.dataset.thumbnailUrl || '',
+        videoSource: card.dataset.videoSource || '',
+        generationDuration: card.dataset.generationDuration || '',
+        shotName: card.querySelector('.shot-name-input')?.value || '',
+        shotNumber: card.querySelector('.shot-name-input')?.dataset.shotNumber || ''
+    };
+}
+
+function applyLockedShotCardState(card) {
+    if (!card) return;
+    card.dataset.reviewStatus = '1';
+    card.classList.add('opacity-90', 'locked-shot-card');
+    card.querySelector('.drag-handle')?.classList.remove('hidden');
+    delete card.dataset.dragBound;
+    card.setAttribute('draggable', 'false');
+    card.querySelectorAll('.generate-btn, .regenerate-btn, .manual-video-upload-btn, .lock-shot-btn, .delete-shot-btn, .shot-video-source-badge, .shot-generation-duration-badge').forEach(btn => btn.remove());
+    card.querySelectorAll('.duration-select, .resolution-select, .video-model-select, .aspect-ratio-select').forEach(select => {
+        select.disabled = true;
+        select.setAttribute('aria-disabled', 'true');
+        select.classList.add('cursor-not-allowed', 'opacity-60');
+    });
+    card.querySelectorAll('.description-editor, .scene-editor').forEach(editor => {
+        editor.setAttribute('contenteditable', 'false');
+        editor.setAttribute('aria-readonly', 'true');
+        editor.dataset.userDirty = 'false';
+        editor.classList.add('cursor-not-allowed', 'opacity-75');
+        editor.classList.remove('focus:border-blue-400');
+    });
+    const nameInput = card.querySelector('.shot-name-input');
+    if (nameInput) {
+        if (nameInput.dataset.isDefault === 'true') {
+            nameInput.value = `分镜${nameInput.dataset.shotNumber}`;
+        }
+        nameInput.disabled = false;
+        nameInput.removeAttribute('aria-disabled');
+        nameInput.classList.remove('cursor-not-allowed', 'opacity-60');
+    }
+    ensureUnlockShotButton(card);
+}
+
+function ensureUnlockShotButton(card) {
+    if (!card) return;
+    const actions = card.querySelector('.shot-actions');
+    if (!actions || actions.querySelector('.unlock-shot-btn')) return;
+    const shotId = card.dataset.shotId || '';
+    actions.insertAdjacentHTML('beforeend', `
+        <button class="unlock-shot-btn min-w-0 px-2.5 py-1.5 rounded-lg bg-emerald-500/20 text-emerald-300 hover:bg-emerald-500/30 transition-colors text-xs flex items-center justify-center gap-1.5"
+                data-shot-id="${escapeHtml(shotId)}">
+            <i data-lucide="unlock" class="w-3.5 h-3.5"></i>解锁分镜
+        </button>
+    `);
+    bindUnlockShotButtons(actions);
+    lucide.createIcons();
+}
+
+function renderPendingShotActions(card) {
+    const actions = card?.querySelector('.shot-actions');
+    if (!actions) return;
+    const shot = getShotCardData(card);
+    const shotId = shot.id;
+    const status = shot.generationStatus;
+    const duration = shot.duration || 5;
+    const resolution = shot.resolution || '720p';
+    const shotNameValue = shot.shotName || '分镜';
+    const shotNumberValue = shot.shotNumber || '';
+    const filename = escapeHtml(`{{ series.seriesName }}_第{{ episode.episodeNumber }}集{% if episode.episodeName %}{{ episode.episodeName }}{% endif %}_${shotNameValue}${shotNumberValue}`);
+    const completedWithVideo = status === 2 && shot.videoUrl;
+
+    let html = '';
+    if (status === 0 && episodeStatus === 2) {
+        html += `
+            <button class="generate-btn min-w-0 px-2.5 py-1.5 rounded-lg bg-gradient-to-r from-blue-500 to-cyan-500 hover:from-blue-600 hover:to-cyan-600 transition-colors text-xs flex items-center justify-center gap-1.5 text-white"
+                    data-shot-id="${escapeHtml(shotId)}"
+                    data-duration="${duration}"
+                    data-resolution="${escapeHtml(resolution)}">
+                <i data-lucide="play" class="w-3.5 h-3.5"></i>生成
+                <span class="credit-cost text-white/80 text-xs ml-1"></span>
+            </button>
+        `;
+    }
+    if (status === 1) {
+        html += `
+            <span class="generating-action-placeholder generating-timer shot-action-full min-w-0 px-2.5 py-1.5 rounded-lg bg-blue-500/20 text-blue-300 text-xs flex items-center justify-center gap-1.5"
+                  data-start-time="${escapeHtml(card.dataset.generationStartTime || '')}">
+                <i data-lucide="loader-2" class="w-3.5 h-3.5 animate-spin"></i><span class="timer-text">0秒</span>
+            </span>
+        `;
+    }
+    if (completedWithVideo) {
+        html += `
+            <a href="${escapeHtml(shot.videoUrl)}" target="_blank"
+               class="min-w-0 px-2.5 py-1.5 rounded-lg bg-emerald-500/20 text-emerald-300 hover:bg-emerald-500/30 transition-colors text-xs flex items-center justify-center gap-1.5">
+                <i data-lucide="play-circle" class="w-3.5 h-3.5"></i>预览
+            </a>
+            <button class="regenerate-btn min-w-0 px-2.5 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 transition-colors text-xs flex items-center justify-center gap-1.5 text-white/70"
+                    data-shot-id="${escapeHtml(shotId)}"
+                    data-duration="${duration}"
+                    data-resolution="${escapeHtml(resolution)}">
+                <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i>重新生成
+                <span class="credit-cost text-white/50 text-xs ml-1"></span>
+            </button>
+            ${renderShotGenerationDurationBadge(shot)}
+            <button class="video-history-btn min-w-0 px-2.5 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 transition-colors text-xs flex items-center justify-center gap-1.5 text-white/70"
+                    data-shot-id="${escapeHtml(shotId)}">
+                <i data-lucide="history" class="w-3.5 h-3.5"></i>历史
+            </button>
+            <button class="download-shot-btn min-w-0 px-2.5 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 transition-colors text-xs flex items-center justify-center gap-1.5 text-white/70"
+                    data-shot-id="${escapeHtml(shotId)}"
+                    data-filename="${filename}">
+                <i data-lucide="download" class="w-3.5 h-3.5"></i>下载
+            </button>
+            <button class="lock-shot-btn min-w-0 px-2.5 py-1.5 rounded-lg bg-amber-500/20 text-amber-300 hover:bg-amber-500/30 transition-colors text-xs flex items-center justify-center gap-1.5"
+                    data-shot-id="${escapeHtml(shotId)}">
+                <i data-lucide="lock" class="w-3.5 h-3.5"></i>锁定分镜
+            </button>
+        `;
+    } else if (status === 2) {
+        html += `
+            <button class="regenerate-btn min-w-0 px-2.5 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 transition-colors text-xs flex items-center justify-center gap-1.5 text-white/70"
+                    data-shot-id="${escapeHtml(shotId)}"
+                    data-duration="${duration}"
+                    data-resolution="${escapeHtml(resolution)}">
+                <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i>生成视频
+                <span class="credit-cost text-white/50 text-xs ml-1"></span>
+            </button>
+        `;
+    }
+    if (status === 3) {
+        html += `
+            <span class="shot-action-full min-w-0 px-2.5 py-1.5 rounded-lg bg-red-500/20 text-red-300 text-xs flex items-center justify-center gap-1.5">
+                <i data-lucide="alert-circle" class="w-3.5 h-3.5"></i>失败
+            </span>
+            <button class="regenerate-btn min-w-0 px-2.5 py-1.5 rounded-lg bg-orange-500/20 text-orange-300 hover:bg-orange-500/30 transition-colors text-xs flex items-center justify-center gap-1.5"
+                    data-shot-id="${escapeHtml(shotId)}"
+                    data-duration="${duration}"
+                    data-resolution="${escapeHtml(resolution)}">
+                <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i>重试
+                <span class="credit-cost text-white/50 text-xs ml-1"></span>
+            </button>
+        `;
+    }
+    if (status !== 1) {
+        html += `
+            <button class="manual-video-upload-btn min-w-0 px-2.5 py-1.5 rounded-lg bg-violet-500/20 text-violet-200 hover:bg-violet-500/30 transition-colors text-xs flex items-center justify-center gap-1.5"
+                    data-shot-id="${escapeHtml(shotId)}"
+                    data-shot-number="${escapeHtml(shotNumberValue)}"
+                    data-shot-name="${escapeHtml(card.querySelector('.shot-name-input')?.value || '')}">
+                <i data-lucide="upload" class="w-3.5 h-3.5"></i>上传视频
+            </button>
+        `;
+    }
+    html += `
+        <button class="delete-shot-btn min-w-0 px-2.5 py-1.5 rounded-lg bg-white/5 hover:bg-red-500/20 text-white/40 hover:text-red-300 transition-colors text-xs flex items-center justify-center gap-1.5"
+                data-shot-id="${escapeHtml(shotId)}"
+                data-shot-number="${escapeHtml(shotNumberValue)}"
+                title="删除分镜">
+            <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>删除
+        </button>
+    `;
+
+    actions.innerHTML = html;
+    bindVideoHistoryButtons();
+    bindShotVideoUploadButtons();
+    bindRegenerateButtons(actions);
+    bindDownloadShotButtons();
+    bindDeleteShotButtons();
+    bindLockShotButtons(actions);
+    updateShotCreditDisplay(card);
+    if (status === 1) startGeneratingTimers();
+    lucide.createIcons();
+}
+
+function applyPendingShotCardState(card) {
+    if (!card) return;
+    card.dataset.reviewStatus = '0';
+    card.classList.remove('opacity-90', 'locked-shot-card');
+    card.querySelector('.drag-handle')?.classList.remove('hidden');
+    delete card.dataset.dragBound;
+    card.querySelector('.unlock-shot-btn')?.remove();
+    card.querySelectorAll('.duration-select, .resolution-select, .video-model-select, .aspect-ratio-select').forEach(select => {
+        select.disabled = false;
+        select.removeAttribute('aria-disabled');
+        select.classList.remove('cursor-not-allowed', 'opacity-60');
+    });
+    card.querySelectorAll('.description-editor, .scene-editor').forEach(editor => {
+        editor.setAttribute('contenteditable', 'true');
+        editor.removeAttribute('aria-readonly');
+        editor.classList.remove('cursor-not-allowed', 'opacity-75');
+        editor.classList.add('focus:border-blue-400');
+        if (editor.dataset.mentionBound !== 'true') {
+            try {
+                initDescriptionMention(editor);
+                editor.dataset.mentionBound = 'true';
+            } catch (e) {
+                console.error('initDescriptionMention error:', e);
+            }
+        }
+        if (editor.dataset.blurBound !== 'true') {
+            const shotId = card.dataset.shotId;
+            editor.addEventListener('blur', () => debouncedSave(shotId));
+            editor.dataset.blurBound = 'true';
+        }
+    });
+    renderPendingShotActions(card);
+    syncShotVideoSourceBadge(card, card.dataset.status === '2' ? (card.dataset.videoSource || 'system') : '');
+    syncShotGenerationDurationBadge(card, getShotCardData(card));
+}
+
+function splitShotListsByReviewStatus() {
+    const pendingList = document.getElementById('shotList');
+    const lockedList = document.getElementById('lockedShotList');
+    if (!pendingList || !lockedList) return;
+
+    pendingList.querySelectorAll('.shot-card[data-review-status="1"]').forEach(card => {
+        applyLockedShotCardState(card);
+        lockedList.appendChild(card);
+    });
+    lockedList.querySelectorAll('.shot-card').forEach(applyLockedShotCardState);
+    renumberShotListDisplay(pendingList);
+    renumberShotListDisplay(lockedList);
+    refreshShotListCounts();
+}
+
+function moveShotToLockedList(shotId) {
+    const card = document.querySelector(`.shot-card[data-shot-id="${shotId}"]`);
+    const lockedList = document.getElementById('lockedShotList');
+    if (!card || !lockedList) return;
+    card.dataset.reviewStatus = '1';
+    applyLockedShotCardState(card);
+    lockedList.appendChild(card);
+    renumberShotListDisplay(document.getElementById('shotList'));
+    renumberShotListDisplay(lockedList);
+    refreshShotListCounts();
+    initDragAndDrop();
+}
+
+function getNextPendingShotNumber() {
+    const pendingList = document.getElementById('shotList');
+    return pendingList ? pendingList.querySelectorAll('.shot-card').length + 1 : 1;
+}
+
+function renumberPendingShotDisplay() {
+    renumberShotListDisplay(document.getElementById('shotList'));
+}
+
+function renumberShotListDisplay(list) {
+    if (!list) return;
+    list.querySelectorAll('.shot-card').forEach((card, index) => {
+        const shotNumber = index + 1;
+        const nameInput = card.querySelector('.shot-name-input');
+        if (nameInput) {
+            nameInput.dataset.shotNumber = shotNumber;
+            if (nameInput.dataset.isDefault === 'true') {
+                nameInput.value = `分镜${shotNumber}`;
+            }
+        }
+        const deleteBtn = card.querySelector('.delete-shot-btn');
+        if (deleteBtn) {
+            deleteBtn.dataset.shotNumber = shotNumber;
+        }
+        const uploadBtn = card.querySelector('.manual-video-upload-btn');
+        if (uploadBtn) {
+            uploadBtn.dataset.shotNumber = shotNumber;
+        }
+    });
+}
+
+function moveShotToPendingList(shotId) {
+    const card = document.querySelector(`.shot-card[data-shot-id="${shotId}"]`);
+    const pendingList = document.getElementById('shotList');
+    if (!card || !pendingList) return;
+    const nextShotNumber = getNextPendingShotNumber();
+    pendingList.appendChild(card);
+    const nameInput = card.querySelector('.shot-name-input');
+    if (nameInput) {
+        nameInput.dataset.shotNumber = nextShotNumber;
+        if (nameInput.dataset.isDefault === 'true') {
+            nameInput.value = `分镜${nextShotNumber}`;
+        }
+    }
+    applyPendingShotCardState(card);
+    renumberShotListDisplay(pendingList);
+    renumberShotListDisplay(document.getElementById('lockedShotList'));
+    refreshShotListCounts();
+    initDragAndDrop();
+}
 
 // 轮询视频生成状态 - 变量声明必须在使用前
 let pollingIntervalId = null;
@@ -1631,6 +2187,10 @@ function closeFormModal(modalId) {
     const modal = document.getElementById(modalId);
     modal.classList.add('hidden');
     document.body.style.overflow = '';
+    if (modalId === 'shotVideoUploadModal') {
+        resetShotVideoUploadState();
+        setShotVideoUploadButtonLoading(false);
+    }
 }
 
 // 遮罩层和轮询相关函数
@@ -1720,6 +2280,24 @@ function escapeHtml(value) {
 
 function escapeRegExp(value) {
     return String(value ?? '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function showToast(message, type = 'info') {
+    const colorClass = {
+        success: 'bg-emerald-500/90 border-emerald-300/30',
+        error: 'bg-red-500/90 border-red-300/30',
+        warning: 'bg-amber-500/90 border-amber-300/30',
+        info: 'bg-blue-500/90 border-blue-300/30'
+    }[type] || 'bg-blue-500/90 border-blue-300/30';
+    const toast = document.createElement('div');
+    toast.className = `fixed top-5 right-5 z-[120] max-w-sm px-4 py-2.5 rounded-xl border text-white text-sm shadow-lg transition-all duration-300 ${colorClass}`;
+    toast.textContent = message;
+    document.body.appendChild(toast);
+    setTimeout(() => {
+        toast.style.opacity = '0';
+        toast.style.transform = 'translateY(-8px)';
+        setTimeout(() => toast.remove(), 300);
+    }, 2200);
 }
 
 function normalizeAssetMentionText(value) {
@@ -2277,6 +2855,847 @@ function canvasSizeForAspectRatio(ratioValue) {
         width: Math.round(maxSide * ratio.width / ratio.height),
         height: maxSide
     };
+}
+
+const shotVideoUploadState = {
+    shotId: null,
+    card: null,
+    file: null,
+    uploadFile: null,
+    objectUrl: null,
+    croppedUrl: null,
+    sourceWidth: 0,
+    sourceHeight: 0,
+    originalWidth: 0,
+    originalHeight: 0,
+    cropRequired: false,
+    croppedForRatio: null,
+    uploadAfterCrop: false
+};
+
+const shotVideoCropState = {
+    objectUrl: null,
+    ratio: '16:9',
+    scale: 1,
+    minScale: 1,
+    offsetX: 0,
+    offsetY: 0,
+    dragging: false,
+    dragStartX: 0,
+    dragStartY: 0,
+    startOffsetX: 0,
+    startOffsetY: 0
+};
+
+function revokeShotVideoUploadUrls() {
+    if (shotVideoUploadState.objectUrl) {
+        URL.revokeObjectURL(shotVideoUploadState.objectUrl);
+    }
+    if (shotVideoUploadState.croppedUrl) {
+        URL.revokeObjectURL(shotVideoUploadState.croppedUrl);
+    }
+    shotVideoUploadState.objectUrl = null;
+    shotVideoUploadState.croppedUrl = null;
+}
+
+function resetShotVideoUploadState() {
+    revokeShotVideoUploadUrls();
+    shotVideoUploadState.shotId = null;
+    shotVideoUploadState.card = null;
+    shotVideoUploadState.file = null;
+    shotVideoUploadState.uploadFile = null;
+    shotVideoUploadState.sourceWidth = 0;
+    shotVideoUploadState.sourceHeight = 0;
+    shotVideoUploadState.originalWidth = 0;
+    shotVideoUploadState.originalHeight = 0;
+    shotVideoUploadState.cropRequired = false;
+    shotVideoUploadState.croppedForRatio = null;
+    shotVideoUploadState.uploadAfterCrop = false;
+    const input = document.getElementById('shotVideoUploadInput');
+    if (input) input.value = '';
+    const preview = document.getElementById('shotVideoUploadPreview');
+    if (preview) {
+        preview.pause();
+        preview.removeAttribute('src');
+        preview.load();
+    }
+    document.getElementById('shotVideoUploadPreviewWrap')?.classList.add('hidden');
+    const chooseText = document.getElementById('chooseShotVideoUploadText');
+    if (chooseText) chooseText.textContent = '选择本地视频';
+    document.getElementById('recropShotVideoBtn')?.classList.add('hidden');
+    const ratioBadge = document.getElementById('shotVideoUploadRatioBadge');
+    if (ratioBadge) ratioBadge.textContent = '';
+}
+
+function setShotVideoUploadButtonLoading(isLoading) {
+    const btn = document.getElementById('saveShotVideoUploadBtn');
+    if (!btn) return;
+    btn.disabled = isLoading;
+    btn.classList.toggle('opacity-60', isLoading);
+    btn.classList.toggle('cursor-not-allowed', isLoading);
+    btn.innerHTML = isLoading
+        ? '<i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i>上传中...'
+        : '<i data-lucide="upload" class="w-4 h-4"></i>上传并使用';
+    lucide.createIcons();
+}
+
+function getSelectedShotVideoUploadRatio() {
+    return document.getElementById('shotVideoUploadAspectRatio')?.value || '16:9';
+}
+
+function openShotVideoUploadModal(button) {
+    const card = button.closest('.shot-card');
+    if (isLockedShotCard(card)) {
+        showToast('已锁定分镜只能修改标题', 'warning');
+        return;
+    }
+    const shotId = button.dataset.shotId;
+    resetShotVideoUploadState();
+    shotVideoUploadState.shotId = shotId;
+    shotVideoUploadState.card = card;
+
+    const title = button.dataset.shotName?.trim() || `分镜${button.dataset.shotNumber || ''}`;
+    const titleEl = document.getElementById('shotVideoUploadTitle');
+    if (titleEl) titleEl.textContent = title;
+
+    const ratioSelect = document.getElementById('shotVideoUploadAspectRatio');
+    const cardRatio = card?.querySelector('.aspect-ratio-select')?.value || '16:9';
+    if (ratioSelect) ratioSelect.value = cardRatio;
+
+    openFormModal('shotVideoUploadModal');
+}
+
+function updateShotVideoUploadRatioStatus() {
+    const ratio = getSelectedShotVideoUploadRatio();
+    const badge = document.getElementById('shotVideoUploadRatioBadge');
+    if (!shotVideoUploadState.file || !shotVideoUploadState.sourceWidth || !shotVideoUploadState.sourceHeight) {
+        if (badge) badge.textContent = '';
+        return;
+    }
+
+    const alreadyCropped = shotVideoUploadState.uploadFile && shotVideoUploadState.croppedForRatio === ratio;
+    const rawMatches = aspectRatioMatches(shotVideoUploadState.originalWidth || shotVideoUploadState.sourceWidth, shotVideoUploadState.originalHeight || shotVideoUploadState.sourceHeight, ratio);
+    const readyForUpload = alreadyCropped || rawMatches;
+    const actualLabel = alreadyCropped ? ratio : `${shotVideoUploadState.sourceWidth}:${shotVideoUploadState.sourceHeight}`;
+    shotVideoUploadState.cropRequired = !rawMatches;
+    if (!rawMatches && shotVideoUploadState.croppedForRatio !== ratio) {
+        shotVideoUploadState.uploadFile = null;
+        if (shotVideoUploadState.croppedUrl) {
+            URL.revokeObjectURL(shotVideoUploadState.croppedUrl);
+            shotVideoUploadState.croppedUrl = null;
+        }
+        const preview = document.getElementById('shotVideoUploadPreview');
+        if (preview && shotVideoUploadState.objectUrl) {
+            preview.src = shotVideoUploadState.objectUrl;
+            preview.load();
+        }
+        shotVideoUploadState.sourceWidth = shotVideoUploadState.originalWidth;
+        shotVideoUploadState.sourceHeight = shotVideoUploadState.originalHeight;
+    }
+    document.getElementById('recropShotVideoBtn')?.classList.toggle('hidden', !shotVideoUploadState.file || !shotVideoUploadState.cropRequired);
+    if (rawMatches && !alreadyCropped) {
+        shotVideoUploadState.uploadFile = shotVideoUploadState.file;
+        shotVideoUploadState.croppedForRatio = null;
+    }
+    if (badge) {
+        badge.textContent = rawMatches ? `原片 ${actualLabel}` : (alreadyCropped ? `已裁剪为 ${ratio}` : `需裁剪为 ${ratio}`);
+        badge.className = readyForUpload
+            ? 'px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 flex-shrink-0'
+            : 'px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 flex-shrink-0';
+    }
+}
+
+async function handleShotVideoFileSelected(file) {
+    if (!file) return;
+    if (!file.type.startsWith('video/') && !/\.(mp4|webm|mov|m4v)$/i.test(file.name || '')) {
+        alert('只支持 MP4、WEBM、MOV 格式的视频');
+        return;
+    }
+    if (file.size > 50 * 1024 * 1024) {
+        alert('视频大小不能超过50MB');
+        return;
+    }
+
+    if (shotVideoUploadState.objectUrl) {
+        URL.revokeObjectURL(shotVideoUploadState.objectUrl);
+    }
+    if (shotVideoUploadState.croppedUrl) {
+        URL.revokeObjectURL(shotVideoUploadState.croppedUrl);
+        shotVideoUploadState.croppedUrl = null;
+    }
+
+    const objectUrl = URL.createObjectURL(file);
+    const preview = document.getElementById('shotVideoUploadPreview');
+    const wrap = document.getElementById('shotVideoUploadPreviewWrap');
+    const fileName = document.getElementById('shotVideoUploadFileName');
+    const chooseText = document.getElementById('chooseShotVideoUploadText');
+
+    shotVideoUploadState.file = file;
+    shotVideoUploadState.uploadFile = null;
+    shotVideoUploadState.objectUrl = objectUrl;
+    shotVideoUploadState.croppedForRatio = null;
+    shotVideoUploadState.sourceWidth = 0;
+    shotVideoUploadState.sourceHeight = 0;
+
+    if (preview) {
+        preview.src = objectUrl;
+        preview.load();
+        await new Promise((resolve, reject) => {
+            preview.onloadedmetadata = resolve;
+            preview.onerror = () => reject(new Error('无法读取视频信息'));
+        });
+        shotVideoUploadState.sourceWidth = preview.videoWidth;
+        shotVideoUploadState.sourceHeight = preview.videoHeight;
+        shotVideoUploadState.originalWidth = preview.videoWidth;
+        shotVideoUploadState.originalHeight = preview.videoHeight;
+    }
+    if (wrap) wrap.classList.remove('hidden');
+    if (fileName) fileName.textContent = file.name || '本地视频';
+    if (chooseText) chooseText.textContent = '重新上传本地视频';
+    updateShotVideoUploadRatioStatus();
+}
+
+function getShotVideoCropElements() {
+    return {
+        modal: document.getElementById('shotVideoCropModal'),
+        stage: document.getElementById('shotVideoCropStage'),
+        video: document.getElementById('shotVideoCropVideo'),
+        box: document.getElementById('shotVideoCropBox'),
+        boxVideo: document.getElementById('shotVideoCropBoxVideo'),
+        zoom: document.getElementById('shotVideoCropZoom')
+    };
+}
+
+function updateShotVideoCropTransform() {
+    const { stage, video, box, boxVideo } = getShotVideoCropElements();
+    if (!stage || !video || !box || !boxVideo) return;
+
+    const stageRect = stage.getBoundingClientRect();
+    const boxRect = box.getBoundingClientRect();
+    const sourceWidth = shotVideoUploadState.originalWidth || shotVideoUploadState.sourceWidth;
+    const sourceHeight = shotVideoUploadState.originalHeight || shotVideoUploadState.sourceHeight;
+    const baseWidth = sourceWidth * shotVideoCropState.minScale;
+    const baseHeight = sourceHeight * shotVideoCropState.minScale;
+    const displayWidth = baseWidth * shotVideoCropState.scale;
+    const displayHeight = baseHeight * shotVideoCropState.scale;
+
+    const minX = box.offsetLeft + box.offsetWidth - displayWidth;
+    const maxX = box.offsetLeft;
+    const minY = box.offsetTop + box.offsetHeight - displayHeight;
+    const maxY = box.offsetTop;
+    shotVideoCropState.offsetX = Math.min(maxX, Math.max(minX, shotVideoCropState.offsetX));
+    shotVideoCropState.offsetY = Math.min(maxY, Math.max(minY, shotVideoCropState.offsetY));
+
+    const left = shotVideoCropState.offsetX;
+    const top = shotVideoCropState.offsetY;
+    video.style.width = `${displayWidth}px`;
+    video.style.height = `${displayHeight}px`;
+    video.style.left = `${left}px`;
+    video.style.top = `${top}px`;
+
+    boxVideo.style.width = `${displayWidth}px`;
+    boxVideo.style.height = `${displayHeight}px`;
+    boxVideo.style.left = `${left - (boxRect.left - stageRect.left)}px`;
+    boxVideo.style.top = `${top - (boxRect.top - stageRect.top)}px`;
+}
+
+function layoutShotVideoCropBox() {
+    const { stage, box } = getShotVideoCropElements();
+    if (!stage || !box) return;
+    const sourceWidth = shotVideoUploadState.originalWidth || shotVideoUploadState.sourceWidth;
+    const sourceHeight = shotVideoUploadState.originalHeight || shotVideoUploadState.sourceHeight;
+    const ratio = parseAspectRatioValue(shotVideoCropState.ratio);
+    const stageWidth = stage.clientWidth;
+    const stageHeight = stage.clientHeight;
+    const maxWidth = stageWidth * 0.82;
+    const maxHeight = stageHeight * 0.82;
+    let boxWidth = maxWidth;
+    let boxHeight = boxWidth * ratio.height / ratio.width;
+    if (boxHeight > maxHeight) {
+        boxHeight = maxHeight;
+        boxWidth = boxHeight * ratio.width / ratio.height;
+    }
+    box.style.width = `${boxWidth}px`;
+    box.style.height = `${boxHeight}px`;
+    box.style.left = `${(stageWidth - boxWidth) / 2}px`;
+    box.style.top = `${(stageHeight - boxHeight) / 2}px`;
+
+    const scaleX = boxWidth / sourceWidth;
+    const scaleY = boxHeight / sourceHeight;
+    shotVideoCropState.minScale = Math.max(scaleX, scaleY);
+    shotVideoCropState.scale = 1;
+    const zoom = document.getElementById('shotVideoCropZoom');
+    if (zoom) zoom.value = '100';
+    const displayWidth = sourceWidth * shotVideoCropState.minScale;
+    const displayHeight = sourceHeight * shotVideoCropState.minScale;
+    shotVideoCropState.offsetX = box.offsetLeft + (boxWidth - displayWidth) / 2;
+    shotVideoCropState.offsetY = box.offsetTop + (boxHeight - displayHeight) / 2;
+    updateShotVideoCropTransform();
+}
+
+async function openShotVideoCropModal() {
+    if (!shotVideoUploadState.file || !shotVideoUploadState.objectUrl) return;
+    const { modal, video, boxVideo } = getShotVideoCropElements();
+    if (!modal || !video || !boxVideo) return;
+
+    shotVideoCropState.ratio = getSelectedShotVideoUploadRatio();
+    shotVideoCropState.objectUrl = shotVideoUploadState.objectUrl;
+    const progress = document.getElementById('shotVideoCropProgress');
+    const bar = document.getElementById('shotVideoCropProgressBar');
+    progress?.classList.add('hidden');
+    if (bar) bar.style.width = '0%';
+    video.src = shotVideoCropState.objectUrl;
+    boxVideo.src = shotVideoCropState.objectUrl;
+    video.muted = true;
+    boxVideo.muted = true;
+    video.load();
+    boxVideo.load();
+    modal.classList.remove('hidden');
+    document.body.style.overflow = 'hidden';
+    await Promise.all([
+        video.play().catch(() => {}),
+        boxVideo.play().catch(() => {})
+    ]);
+    requestAnimationFrame(layoutShotVideoCropBox);
+    lucide.createIcons();
+}
+
+function closeShotVideoCropModal() {
+    const { modal, video, boxVideo } = getShotVideoCropElements();
+    modal?.classList.add('hidden');
+    video?.pause();
+    boxVideo?.pause();
+    const progress = document.getElementById('shotVideoCropProgress');
+    const bar = document.getElementById('shotVideoCropProgressBar');
+    progress?.classList.add('hidden');
+    if (bar) bar.style.width = '0%';
+    document.body.style.overflow = document.getElementById('shotVideoUploadModal')?.classList.contains('hidden') ? '' : 'hidden';
+}
+
+async function recordCroppedShotVideo() {
+    const { video, box } = getShotVideoCropElements();
+    if (!video || !box) throw new Error('裁剪器未初始化');
+    if (!window.MediaRecorder) throw new Error('当前浏览器不支持视频裁剪录制');
+
+    const ratio = parseAspectRatioValue(shotVideoCropState.ratio);
+    const width = ratio.width >= ratio.height ? 1280 : Math.round(1280 * ratio.width / ratio.height);
+    const height = ratio.width >= ratio.height ? Math.round(1280 * ratio.height / ratio.width) : 1280;
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.max(2, Math.round(width / 2) * 2);
+    canvas.height = Math.max(2, Math.round(height / 2) * 2);
+    const ctx = canvas.getContext('2d');
+    const stream = canvas.captureStream(30);
+    const audioTracks = video.captureStream ? video.captureStream().getAudioTracks() : [];
+    audioTracks.forEach(track => stream.addTrack(track));
+    const mimeType = MediaRecorder.isTypeSupported('video/webm;codecs=vp9')
+        ? 'video/webm;codecs=vp9'
+        : 'video/webm';
+    const recorder = new MediaRecorder(stream, { mimeType });
+    const chunks = [];
+    const duration = video.duration || 0;
+    if (!duration) throw new Error('无法读取视频时长');
+
+    const progress = document.getElementById('shotVideoCropProgress');
+    const progressBar = document.getElementById('shotVideoCropProgressBar');
+    progress?.classList.remove('hidden');
+
+    recorder.ondataavailable = event => {
+        if (event.data && event.data.size > 0) chunks.push(event.data);
+    };
+
+    await new Promise(resolve => {
+        recorder.onstop = resolve;
+        video.muted = true;
+        video.loop = false;
+        video.onended = () => recorder.state === 'recording' && recorder.stop();
+        let started = false;
+        const startRecording = () => {
+            if (started) return;
+            started = true;
+            video.play();
+            recorder.start(100);
+            const drawFrame = () => {
+                if (recorder.state !== 'recording') return;
+                const stage = document.getElementById('shotVideoCropStage');
+                const stageRect = stage.getBoundingClientRect();
+                const boxRect = box.getBoundingClientRect();
+                const sourceWidth = shotVideoUploadState.originalWidth || shotVideoUploadState.sourceWidth;
+                const sourceHeight = shotVideoUploadState.originalHeight || shotVideoUploadState.sourceHeight;
+                const displayWidth = sourceWidth * shotVideoCropState.minScale * shotVideoCropState.scale;
+                const displayHeight = sourceHeight * shotVideoCropState.minScale * shotVideoCropState.scale;
+                const videoLeft = shotVideoCropState.offsetX;
+                const videoTop = shotVideoCropState.offsetY;
+                const sx = ((boxRect.left - stageRect.left) - videoLeft) / displayWidth * sourceWidth;
+                const sy = ((boxRect.top - stageRect.top) - videoTop) / displayHeight * sourceHeight;
+                const sw = box.offsetWidth / displayWidth * sourceWidth;
+                const sh = box.offsetHeight / displayHeight * sourceHeight;
+                ctx.drawImage(video, sx, sy, sw, sh, 0, 0, canvas.width, canvas.height);
+                if (progressBar) {
+                    progressBar.style.width = `${Math.min(100, (video.currentTime / duration) * 100)}%`;
+                }
+                if (video.currentTime >= duration) {
+                    recorder.stop();
+                    return;
+                }
+                requestAnimationFrame(drawFrame);
+            };
+            drawFrame();
+        };
+        video.pause();
+        video.onseeked = startRecording;
+        video.currentTime = 0;
+        setTimeout(startRecording, 200);
+    });
+
+    if (progressBar) progressBar.style.width = '100%';
+    const blob = new Blob(chunks, { type: 'video/webm' });
+    if (!blob.size) throw new Error('裁剪视频失败');
+    return new File([blob], `${(shotVideoUploadState.file?.name || 'shot-video').replace(/\.[^.]+$/, '')}_cropped.webm`, { type: 'video/webm' });
+}
+
+function updateShotCardAfterManualUpload(card, shot) {
+    if (!card || !shot) return;
+    card.dataset.status = String(shot.generationStatus ?? 2);
+    card.dataset.videoUrl = shot.videoUrl || '';
+    card.dataset.thumbnailUrl = shot.thumbnailUrl || '';
+    card.dataset.videoSource = shot.videoSource || 'manual';
+    card.dataset.generationDuration = shot.generationDuration || '';
+    card.dataset.generationStartTime = shot.generationStartTime || '';
+    updateShotCardVideoPreview(card, shot);
+
+    const statusSpan = card.querySelector('.generation-status');
+    if (statusSpan) {
+        statusSpan.className = 'generation-status px-2 py-0.5 rounded text-xs flex-shrink-0 bg-emerald-500/20 text-emerald-300';
+        statusSpan.textContent = '已生成';
+    }
+    syncShotVideoSourceBadge(card, shot.videoSource || 'manual');
+    syncShotGenerationDurationBadge(card, shot);
+
+    const ratioSelect = card.querySelector('.aspect-ratio-select');
+    if (ratioSelect && shot.aspectRatio) {
+        ratioSelect.value = shot.aspectRatio;
+    }
+
+    updateCompletedShotActions(card, shot);
+    refreshShotStats();
+    lucide.createIcons();
+}
+
+function updateShotCardVideoPreview(card, shot) {
+    const thumb = card.querySelector('.shot-thumbnail');
+    if (thumb) {
+        const videoUrl = escapeHtml(shot.videoUrl || '');
+        const thumbnailUrl = escapeHtml(shot.thumbnailUrl || '');
+        if (!videoUrl && !thumbnailUrl) {
+            thumb.innerHTML = '<i data-lucide="video" class="w-8 h-8 text-white/20"></i>';
+            delete thumb.dataset.generatingActive;
+            lucide.createIcons();
+            return;
+        }
+        thumb.innerHTML = thumbnailUrl ? `
+            <img src="${thumbnailUrl}" class="w-full h-full object-cover cursor-pointer hover:opacity-80 transition-opacity" onclick="window.open('${videoUrl}', '_blank')" loading="lazy" decoding="async">
+        ` : `
+            <video src="${videoUrl}" class="w-full h-full object-cover cursor-pointer hover:opacity-80 transition-opacity" muted preload="metadata" onclick="window.open('${videoUrl}', '_blank')"></video>
+            <div class="absolute inset-0 flex items-center justify-center pointer-events-none">
+                <div class="w-8 h-8 rounded-full bg-black/50 flex items-center justify-center">
+                    <i data-lucide="play" class="w-4 h-4 text-white"></i>
+                </div>
+            </div>
+        `;
+        delete thumb.dataset.generatingActive;
+    }
+}
+
+function formatShotGenerationDuration(seconds) {
+    const value = parseInt(seconds, 10);
+    if (!value || value < 0) return '';
+    if (value >= 60) {
+        return `${Math.floor(value / 60)}分${value % 60}秒`;
+    }
+    return `${value}秒`;
+}
+
+function renderShotGenerationDurationBadge(shot) {
+    const durationText = formatShotGenerationDuration(shot?.generationDuration);
+    const source = shot?.videoSource || 'system';
+    if (!durationText || source === 'manual') return '';
+    return `
+        <span class="shot-generation-duration-badge shot-action-full w-full text-center text-xs text-cyan-200/80 bg-cyan-500/10 border border-cyan-400/10 rounded-lg px-2 py-1 flex flex-col items-center justify-center gap-0.5 leading-tight"
+              title="本次系统生成视频耗时">
+            <span class="inline-flex items-center justify-center gap-1">
+                <i data-lucide="clock" class="w-3 h-3"></i>
+                <span>本次视频生成耗时</span>
+            </span>
+            <span class="font-medium text-cyan-100">${durationText}</span>
+        </span>
+    `;
+}
+
+function syncShotGenerationDurationBadge(card, shot) {
+    if (!card) return;
+    const existing = card.querySelector('.shot-generation-duration-badge');
+    if (card.dataset.reviewStatus === '1') {
+        existing?.remove();
+        return;
+    }
+    const html = renderShotGenerationDurationBadge(shot);
+    if (!html) {
+        existing?.remove();
+        return;
+    }
+    if (existing) {
+        existing.outerHTML = html;
+        lucide.createIcons();
+        return;
+    }
+    const historyButton = card.querySelector('.video-history-btn');
+    if (historyButton) {
+        historyButton.insertAdjacentHTML('beforebegin', html);
+        lucide.createIcons();
+    }
+}
+
+function updateCompletedShotActions(card, shot) {
+    const actions = card.querySelector('.shot-actions');
+    const shotId = shot.id || card.dataset.shotId;
+    const videoUrl = escapeHtml(shot.videoUrl || '');
+    const locked = isLockedShotCard(card);
+    if (actions && shot.videoUrl) {
+        const duration = card.querySelector('.duration-select')?.value || shot.duration || 5;
+        const resolution = card.querySelector('.resolution-select')?.value || shot.resolution || '720p';
+        const shotNameValue = card.querySelector('.shot-name-input')?.value || '分镜';
+        const shotNumberValue = card.querySelector('.shot-name-input')?.dataset.shotNumber || '';
+        const filename = escapeHtml(`{{ series.seriesName }}_第{{ episode.episodeNumber }}集{% if episode.episodeName %}{{ episode.episodeName }}{% endif %}_${shotNameValue}`);
+        actions.innerHTML = `
+            <a href="${videoUrl}" target="_blank"
+               class="min-w-0 px-2.5 py-1.5 rounded-lg bg-emerald-500/20 text-emerald-300 hover:bg-emerald-500/30 transition-colors text-xs flex items-center justify-center gap-1.5">
+                <i data-lucide="play-circle" class="w-3.5 h-3.5"></i>预览
+            </a>
+            ${locked ? '' : `
+            <button class="regenerate-btn min-w-0 px-2.5 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 transition-colors text-xs flex items-center justify-center gap-1.5 text-white/70"
+                    data-shot-id="${shotId}"
+                    data-duration="${duration}"
+                    data-resolution="${resolution}">
+                <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i>重新生成
+                <span class="credit-cost text-white/50 text-xs ml-1"></span>
+            </button>
+            `}
+            ${renderShotGenerationDurationBadge(shot)}
+            <button class="video-history-btn min-w-0 px-2.5 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 transition-colors text-xs flex items-center justify-center gap-1.5 text-white/70"
+                    data-shot-id="${shotId}">
+                <i data-lucide="history" class="w-3.5 h-3.5"></i>历史
+            </button>
+            <button class="download-shot-btn min-w-0 px-2.5 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 transition-colors text-xs flex items-center justify-center gap-1.5 text-white/70"
+                    data-shot-id="${shotId}"
+                    data-filename="${filename}">
+                <i data-lucide="download" class="w-3.5 h-3.5"></i>下载
+            </button>
+            ${locked ? '' : `
+            <button class="lock-shot-btn min-w-0 px-2.5 py-1.5 rounded-lg bg-amber-500/20 text-amber-300 hover:bg-amber-500/30 transition-colors text-xs flex items-center justify-center gap-1.5"
+                    data-shot-id="${shotId}">
+                <i data-lucide="lock" class="w-3.5 h-3.5"></i>锁定分镜
+            </button>
+            <button class="manual-video-upload-btn min-w-0 px-2.5 py-1.5 rounded-lg bg-violet-500/20 text-violet-200 hover:bg-violet-500/30 transition-colors text-xs flex items-center justify-center gap-1.5"
+                    data-shot-id="${shotId}"
+                    data-shot-number="${escapeHtml(shotNumberValue)}"
+                    data-shot-name="${escapeHtml(card.querySelector('.shot-name-input')?.value || '')}">
+                <i data-lucide="upload" class="w-3.5 h-3.5"></i>上传视频
+            </button>
+            <button class="delete-shot-btn min-w-0 px-2.5 py-1.5 rounded-lg bg-white/5 hover:bg-red-500/20 text-white/40 hover:text-red-300 transition-colors text-xs flex items-center justify-center gap-1.5"
+                    data-shot-id="${shotId}"
+                    data-shot-number="${escapeHtml(shotNumberValue)}"
+                    title="删除分镜">
+                <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>删除
+            </button>
+            `}
+        `;
+        bindVideoHistoryButtons();
+        bindShotVideoUploadButtons();
+        bindRegenerateButtons(actions);
+        bindDownloadShotButtons();
+        bindDeleteShotButtons();
+        bindLockShotButtons(actions);
+        updateShotCreditDisplay(card);
+        if (locked) applyLockedShotCardState(card);
+    }
+}
+
+function bindRegenerateButtons(scope = document) {
+    scope.querySelectorAll('.regenerate-btn').forEach(btn => {
+        if (btn.dataset.bound === 'true') return;
+        btn.dataset.bound = 'true';
+        btn.addEventListener('click', handleShotRegenerateClick);
+    });
+}
+
+function collectShotReferenceUrls(card) {
+    const referenceUrls = [];
+    const addUrl = url => {
+        if (url && !referenceUrls.includes(url)) {
+            referenceUrls.push(url);
+        }
+    };
+
+    card?.querySelectorAll('[data-asset-url]').forEach(el => addUrl(el.dataset.assetUrl));
+
+    const sceneEditor = card?.querySelector('[data-field="scene"]');
+    addUrl(sceneEditor?.dataset.sceneAssetUrl);
+
+    try {
+        const characters = JSON.parse(card?.dataset.shotCharacters || '[]');
+        characters.forEach(character => addUrl(character.assetUrl));
+    } catch (e) {}
+
+    const descEditor = card?.querySelector('[data-field="description"]');
+    try {
+        const props = JSON.parse(descEditor?.dataset.shotProps || '[]');
+        props.forEach(prop => addUrl(prop.assetUrl));
+    } catch (e) {}
+
+    return referenceUrls;
+}
+
+async function handleShotRegenerateClick() {
+    const shotId = this.dataset.shotId;
+    const card = this.closest('.shot-card');
+    if (isLockedShotCard(card)) {
+        showToast('已锁定分镜只能修改标题', 'warning');
+        return;
+    }
+    if (card && card.dataset.status === '1') {
+        updateCardToGenerating(card, this);
+        return;
+    }
+    this.disabled = true;
+
+    // 立即更新 UI 为生成中状态，不等后端返回
+    if (card) {
+        updateCardToGenerating(card, this);
+    }
+    startTimer(this);
+    // 启动轮询
+    startShotGenerationPolling();
+
+    try {
+        const referenceUrls = collectShotReferenceUrls(card);
+
+        const response = await fetch(`/api/v1/shots/${shotId}/generate-with-references/`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': getCookie('csrftoken')
+            },
+            body: JSON.stringify({ referenceUrls: referenceUrls })
+        });
+        const data = await readJsonResponse(response);
+        if (!(data.success || data.code === 200)) {
+            if (isAlreadyGeneratingResponse(data)) {
+                if (card) updateCardToGenerating(card, this);
+                return;
+            }
+            restoreCardFromGenerating(card);
+            alert('生成失败: ' + (data.error || data.message));
+        }
+    } catch (e) {
+        restoreCardFromGenerating(card);
+        alert('请求失败: ' + e.message);
+    }
+}
+
+async function uploadShotVideoFile() {
+    const uploadFile = shotVideoUploadState.uploadFile;
+    if (!shotVideoUploadState.shotId || !uploadFile) return;
+    if (isLockedShotCard(shotVideoUploadState.card)) {
+        showToast('已锁定分镜只能修改标题', 'warning');
+        return;
+    }
+    const formData = new FormData();
+    formData.append('file', uploadFile);
+    formData.append('aspectRatio', getSelectedShotVideoUploadRatio());
+
+    setShotVideoUploadButtonLoading(true);
+    try {
+        const response = await fetch(`/api/v1/shots/${shotVideoUploadState.shotId}/upload-video/`, {
+            method: 'POST',
+            headers: { 'X-CSRFToken': getCookie('csrftoken') },
+            body: formData
+        });
+        const data = await readJsonResponse(response);
+        if (!(data.success || data.code === 200)) {
+            throw new Error(data.message || data.error || '上传失败');
+        }
+        updateShotCardAfterManualUpload(shotVideoUploadState.card, data.data);
+        closeFormModal('shotVideoUploadModal');
+    } catch (e) {
+        alert('上传失败: ' + e.message);
+    } finally {
+        setShotVideoUploadButtonLoading(false);
+    }
+}
+
+async function ensureShotVideoReadyForUpload() {
+    if (!shotVideoUploadState.file) {
+        alert('请先选择本地视频');
+        return false;
+    }
+    updateShotVideoUploadRatioStatus();
+    if (!shotVideoUploadState.cropRequired) {
+        shotVideoUploadState.uploadFile = shotVideoUploadState.file;
+        return true;
+    }
+    if (shotVideoUploadState.uploadFile && shotVideoUploadState.croppedForRatio === getSelectedShotVideoUploadRatio()) {
+        return true;
+    }
+    shotVideoUploadState.uploadAfterCrop = true;
+    await openShotVideoCropModal();
+    return false;
+}
+
+function bindShotVideoUploadButtons() {
+    document.querySelectorAll('.manual-video-upload-btn').forEach(btn => {
+        if (btn.dataset.bound === 'true') return;
+        btn.dataset.bound = 'true';
+        btn.addEventListener('click', function(e) {
+            e.preventDefault();
+            if (this.disabled) return;
+            openShotVideoUploadModal(this);
+        });
+    });
+}
+
+function bindDownloadShotButtons() {
+    document.querySelectorAll('.download-shot-btn').forEach(btn => {
+        if (btn.dataset.bound === 'true') return;
+        btn.dataset.bound = 'true';
+        btn.addEventListener('click', function() {
+            const shotId = this.dataset.shotId;
+            const filename = (this.dataset.filename || '分镜') + '.mp4';
+            const url = `/api/v1/shots/${shotId}/download/?filename=${encodeURIComponent(filename)}`;
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+        });
+    });
+}
+
+function bindDeleteShotButtons() {
+    document.querySelectorAll('.delete-shot-btn').forEach(btn => {
+        if (btn.dataset.bound === 'true') return;
+        btn.dataset.bound = 'true';
+        btn.addEventListener('click', function(e) {
+            e.preventDefault();
+            const shotId = this.dataset.shotId;
+            const shotNumber = this.dataset.shotNumber;
+            if (isLockedShotCard(this.closest('.shot-card'))) {
+                showToast('已锁定分镜只能修改标题', 'warning');
+                return;
+            }
+            if (confirm(`确定要删除分镜 ${shotNumber} 吗？`)) {
+                deleteShot(shotId, this.closest('.shot-card'));
+            }
+        });
+    });
+}
+
+function bindLockShotButtons(scope = document) {
+    scope.querySelectorAll('.lock-shot-btn').forEach(btn => {
+        if (btn.dataset.bound === 'true') return;
+        btn.dataset.bound = 'true';
+        btn.addEventListener('click', handleLockShotClick);
+    });
+}
+
+function bindUnlockShotButtons(scope = document) {
+    scope.querySelectorAll('.unlock-shot-btn').forEach(btn => {
+        if (btn.dataset.bound === 'true') return;
+        btn.dataset.bound = 'true';
+        btn.addEventListener('click', handleUnlockShotClick);
+    });
+}
+
+async function handleLockShotClick() {
+    const shotId = this.dataset.shotId;
+    const card = this.closest('.shot-card');
+    if (!shotId || !card) return;
+    if (parseInt(card.dataset.status || '0', 10) !== 2) {
+        alert('分镜视频完成后才能锁定');
+        return;
+    }
+
+    const originalHtml = this.innerHTML;
+    this.disabled = true;
+    this.classList.add('opacity-60', 'cursor-not-allowed');
+    this.innerHTML = '<i data-lucide="loader-2" class="w-3.5 h-3.5 animate-spin"></i>锁定中...';
+    lucide.createIcons();
+
+    try {
+        const response = await fetch(`/api/v1/shots/${shotId}/review/`, {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': getCookie('csrftoken'),
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ approved: true })
+        });
+        const data = await response.json();
+        if (data.success || data.code === 200) {
+            moveShotToLockedList(shotId);
+        } else {
+            alert('锁定失败: ' + (data.error || data.message || '未知错误'));
+            this.disabled = false;
+            this.classList.remove('opacity-60', 'cursor-not-allowed');
+            this.innerHTML = originalHtml;
+            lucide.createIcons();
+        }
+    } catch (e) {
+        alert('请求失败: ' + e.message);
+        this.disabled = false;
+        this.classList.remove('opacity-60', 'cursor-not-allowed');
+        this.innerHTML = originalHtml;
+        lucide.createIcons();
+    }
+}
+
+async function handleUnlockShotClick() {
+    const shotId = this.dataset.shotId;
+    const card = this.closest('.shot-card');
+    if (!shotId || !card) return;
+
+    const originalHtml = this.innerHTML;
+    this.disabled = true;
+    this.classList.add('opacity-60', 'cursor-not-allowed');
+    this.innerHTML = '<i data-lucide="loader-2" class="w-3.5 h-3.5 animate-spin"></i>解锁中...';
+    lucide.createIcons();
+
+    try {
+        const response = await fetch(`/api/v1/shots/${shotId}/unlock/`, {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': getCookie('csrftoken'),
+                'Content-Type': 'application/json'
+            }
+        });
+        const data = await readJsonResponse(response);
+        if (data.success || data.code === 200) {
+            moveShotToPendingList(shotId);
+            showToast('分镜已解锁', 'success');
+        } else {
+            alert('解锁失败: ' + (data.error || data.message || '未知错误'));
+            this.disabled = false;
+            this.classList.remove('opacity-60', 'cursor-not-allowed');
+            this.innerHTML = originalHtml;
+            lucide.createIcons();
+        }
+    } catch (e) {
+        alert('请求失败: ' + e.message);
+        this.disabled = false;
+        this.classList.remove('opacity-60', 'cursor-not-allowed');
+        this.innerHTML = originalHtml;
+        lucide.createIcons();
+    }
 }
 
 function openSceneUploadForExisting(sceneId, sceneName, prompt = '') {
@@ -3208,6 +4627,9 @@ document.querySelectorAll('[data-prop-id]').forEach(card => {
 // Close modal buttons
 document.querySelectorAll('.close-modal-btn').forEach(btn => {
     btn.addEventListener('click', function() {
+        if (this.dataset.modal === 'shotVideoUploadModal') {
+            resetShotVideoUploadState();
+        }
         closeFormModal(this.dataset.modal);
     });
 });
@@ -3217,9 +4639,119 @@ document.querySelectorAll('[id$="Modal"]').forEach(modal => {
     modal.addEventListener('click', function(e) {
         // 只有点击最外层遮罩层才关闭
         if (e.target === this) {
+            if (this.id === 'shotVideoUploadModal') {
+                resetShotVideoUploadState();
+            }
             closeFormModal(this.id);
         }
     });
+});
+
+document.getElementById('chooseShotVideoUploadBtn')?.addEventListener('click', function() {
+    document.getElementById('shotVideoUploadInput')?.click();
+});
+
+document.getElementById('shotVideoUploadInput')?.addEventListener('change', async function() {
+    try {
+        await handleShotVideoFileSelected(this.files?.[0]);
+    } catch (e) {
+        alert(e.message || '读取视频失败');
+        this.value = '';
+    }
+});
+
+document.getElementById('shotVideoUploadAspectRatio')?.addEventListener('change', function() {
+    updateShotVideoUploadRatioStatus();
+});
+
+document.getElementById('saveShotVideoUploadBtn')?.addEventListener('click', async function() {
+    if (await ensureShotVideoReadyForUpload()) {
+        await uploadShotVideoFile();
+    }
+});
+
+document.getElementById('recropShotVideoBtn')?.addEventListener('click', async function() {
+    if (!shotVideoUploadState.file) return;
+    shotVideoUploadState.uploadAfterCrop = false;
+    await openShotVideoCropModal();
+});
+
+document.getElementById('shotVideoCropZoom')?.addEventListener('input', function() {
+    shotVideoCropState.scale = Number(this.value || 100) / 100;
+    updateShotVideoCropTransform();
+});
+
+document.getElementById('shotVideoCropBox')?.addEventListener('pointerdown', function(e) {
+    shotVideoCropState.dragging = true;
+    shotVideoCropState.dragStartX = e.clientX;
+    shotVideoCropState.dragStartY = e.clientY;
+    shotVideoCropState.startOffsetX = shotVideoCropState.offsetX;
+    shotVideoCropState.startOffsetY = shotVideoCropState.offsetY;
+    this.setPointerCapture(e.pointerId);
+});
+
+document.getElementById('shotVideoCropBox')?.addEventListener('pointermove', function(e) {
+    if (!shotVideoCropState.dragging) return;
+    shotVideoCropState.offsetX = shotVideoCropState.startOffsetX + (e.clientX - shotVideoCropState.dragStartX);
+    shotVideoCropState.offsetY = shotVideoCropState.startOffsetY + (e.clientY - shotVideoCropState.dragStartY);
+    updateShotVideoCropTransform();
+});
+
+document.getElementById('shotVideoCropBox')?.addEventListener('pointerup', function(e) {
+    shotVideoCropState.dragging = false;
+    this.releasePointerCapture(e.pointerId);
+});
+
+document.getElementById('shotVideoCropBox')?.addEventListener('pointercancel', function() {
+    shotVideoCropState.dragging = false;
+});
+
+document.getElementById('cancelShotVideoCropBtn')?.addEventListener('click', function() {
+    shotVideoUploadState.uploadAfterCrop = false;
+    closeShotVideoCropModal();
+});
+
+document.getElementById('discardShotVideoCropBtn')?.addEventListener('click', function() {
+    shotVideoUploadState.uploadAfterCrop = false;
+    closeShotVideoCropModal();
+});
+
+document.getElementById('confirmShotVideoCropBtn')?.addEventListener('click', async function() {
+    const originalHtml = this.innerHTML;
+    this.disabled = true;
+    this.classList.add('opacity-60', 'cursor-not-allowed');
+    this.innerHTML = '<i data-lucide="loader-2" class="w-4 h-4 animate-spin inline mr-1"></i>裁剪中...';
+    lucide.createIcons();
+    try {
+        const croppedFile = await recordCroppedShotVideo();
+        if (shotVideoUploadState.croppedUrl) {
+            URL.revokeObjectURL(shotVideoUploadState.croppedUrl);
+        }
+        shotVideoUploadState.uploadFile = croppedFile;
+        shotVideoUploadState.croppedForRatio = getSelectedShotVideoUploadRatio();
+        shotVideoUploadState.croppedUrl = URL.createObjectURL(croppedFile);
+        const preview = document.getElementById('shotVideoUploadPreview');
+        if (preview) {
+            preview.src = shotVideoUploadState.croppedUrl;
+            preview.load();
+        }
+        const croppedRatio = parseAspectRatioValue(shotVideoUploadState.croppedForRatio);
+        shotVideoUploadState.sourceWidth = croppedRatio.width;
+        shotVideoUploadState.sourceHeight = croppedRatio.height;
+        updateShotVideoUploadRatioStatus();
+        closeShotVideoCropModal();
+        if (shotVideoUploadState.uploadAfterCrop) {
+            shotVideoUploadState.uploadAfterCrop = false;
+            await uploadShotVideoFile();
+        }
+    } catch (e) {
+        alert('裁剪失败: ' + e.message);
+    } finally {
+        this.disabled = false;
+        this.classList.remove('opacity-60', 'cursor-not-allowed');
+        this.innerHTML = originalHtml;
+        lucide.createIcons();
+    }
 });
 
 // Add Scene
@@ -4071,6 +5603,7 @@ async function showVideoHistory(shotId, shotNum) {
     currentVideoHistoryShotNum = shotNum;
     document.getElementById('videoHistoryShotNum').textContent = shotNum;
     const container = document.getElementById('videoHistoryList');
+    const locked = isLockedShotCard(document.querySelector(`.shot-card[data-shot-id="${shotId}"]`));
 
     // 显示加载状态
     container.innerHTML = '<div class="col-span-2 text-center py-8 text-white/40"><i data-lucide="loader-2" class="w-6 h-6 animate-spin inline"></i> 加载中...</div>';
@@ -4088,7 +5621,9 @@ async function showVideoHistory(shotId, shotNum) {
 
         const assets = data.data;
         container.innerHTML = assets.map(asset => `
-            <div class="glass-card p-4 ${asset.isActive ? 'ring-2 ring-emerald-500/50' : ''}">
+            <div class="glass-card p-4 video-history-card ${asset.isActive ? 'ring-2 ring-emerald-500/50' : ''}"
+                 data-video-asset-id="${asset.id}"
+                 data-shot-id="${shotId}">
                 <div class="w-full aspect-video rounded-lg bg-white/5 mb-3 overflow-hidden flex items-center justify-center">
                     ${asset.thumbnailUrl ? `
                         <img src="${asset.thumbnailUrl}" class="w-full h-full object-cover" alt="视频缩略图">
@@ -4100,17 +5635,18 @@ async function showVideoHistory(shotId, shotNum) {
                 </div>
                 <div class="flex items-center justify-between mb-2">
                     <span class="text-sm font-medium text-white">版本 ${asset.version || '-'}</span>
-                    ${asset.isActive ? '<span class="text-xs text-emerald-400 bg-emerald-500/20 px-2 py-0.5 rounded">当前版本</span>' : ''}
+                    ${asset.isActive ? '<span class="video-active-version-badge text-xs text-emerald-400 bg-emerald-500/20 px-2 py-0.5 rounded">当前版本</span>' : ''}
+                    ${asset.model === 'manual-upload' ? '<span class="text-xs text-violet-300 bg-violet-500/20 px-2 py-0.5 rounded">手动上传</span>' : ''}
                 </div>
                 <p class="text-xs text-white/40 mb-3">${asset.createdAt ? new Date(asset.createdAt).toLocaleString('zh-CN') : '-'}</p>
-                <div class="flex gap-2">
+                <div class="video-history-actions flex gap-2">
                     ${asset.videoUrl ? `
                         <a href="${asset.videoUrl}" target="_blank"
                            class="flex-1 px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 transition-colors text-xs text-center text-white/70">
                             <i data-lucide="play-circle" class="w-3 h-3 inline mr-1"></i>预览
                         </a>
                     ` : ''}
-                    ${!asset.isActive ? `
+                    ${!asset.isActive && !locked ? `
                         <button class="video-rollback-btn flex-1 px-3 py-1.5 rounded-lg bg-blue-500/20 text-blue-300 hover:bg-blue-500/30 transition-colors text-xs"
                                 data-shot-id="${shotId}" data-asset-id="${asset.id}">
                             <i data-lucide="undo-2" class="w-3 h-3 inline mr-1"></i>回滚
@@ -4128,11 +5664,18 @@ async function showVideoHistory(shotId, shotNum) {
 
 function bindVideoRollback() {
     document.querySelectorAll('.video-rollback-btn').forEach(btn => {
+        if (btn.dataset.bound === 'true') return;
+        btn.dataset.bound = 'true';
         btn.addEventListener('click', async function() {
+            const shotId = this.dataset.shotId;
+            if (isLockedShotCard(document.querySelector(`.shot-card[data-shot-id="${shotId}"]`))) {
+                showToast('已锁定分镜只能修改标题', 'warning');
+                return;
+            }
             if (!confirm('确定要回滚到此版本吗？')) return;
 
-            const shotId = this.dataset.shotId;
             const assetId = this.dataset.assetId;
+            const originalHtml = this.innerHTML;
 
             this.disabled = true;
             this.innerHTML = '<i data-lucide="loader-2" class="w-3 h-3 inline mr-1 animate-spin"></i>回滚中...';
@@ -4147,36 +5690,90 @@ function bindVideoRollback() {
                 });
                 const data = await response.json();
                 if (data.code === 200) {
-                    alert('回滚成功');
-                    // 关闭弹窗并刷新分镜列表
-                    closeFormModal('videoHistoryModal');
-                    // 刷新分镜数据
-                    location.reload();
+                    const card = document.querySelector(`.shot-card[data-shot-id="${shotId}"]`);
+                    if (card && data.data) {
+                        updateShotCardAfterVideoRollback(card, data.data);
+                    }
+                    markVideoHistoryActive(assetId);
+                    showToast('回滚成功', 'success');
                 } else {
                     alert('回滚失败: ' + (data.message || '未知错误'));
                     this.disabled = false;
-                    this.innerHTML = '<i data-lucide="undo-2" class="w-3 h-3 inline mr-1"></i>回滚';
+                    this.innerHTML = originalHtml;
                     lucide.createIcons();
                 }
             } catch (e) {
                 alert('请求失败: ' + e.message);
                 this.disabled = false;
-                this.innerHTML = '<i data-lucide="undo-2" class="w-3 h-3 inline mr-1"></i>回滚';
+                this.innerHTML = originalHtml;
                 lucide.createIcons();
             }
         });
     });
 }
 
+function updateShotCardAfterVideoRollback(card, shot) {
+    if (!card || !shot) return;
+    card.dataset.status = String(shot.generationStatus ?? 2);
+    card.dataset.videoUrl = shot.videoUrl || '';
+    card.dataset.thumbnailUrl = shot.thumbnailUrl || '';
+    card.dataset.videoSource = shot.videoSource || 'system';
+    card.dataset.generationDuration = shot.generationDuration || '';
+    card.dataset.generationStartTime = shot.generationStartTime || '';
+    updateShotCardVideoPreview(card, shot);
+    syncShotVideoSourceBadge(card, shot.videoSource || 'system');
+    syncShotGenerationDurationBadge(card, shot);
+    updateCompletedShotActions(card, shot);
+    lucide.createIcons();
+}
+
+function markVideoHistoryActive(activeAssetId) {
+    const activeId = String(activeAssetId);
+    document.querySelectorAll('.video-history-card').forEach(card => {
+        const assetId = String(card.dataset.videoAssetId || '');
+        const shotId = card.dataset.shotId || currentVideoHistoryShotId;
+        const isActive = assetId === activeId;
+        card.classList.toggle('ring-2', isActive);
+        card.classList.toggle('ring-emerald-500/50', isActive);
+
+        const header = card.querySelector('.flex.items-center.justify-between.mb-2');
+        if (header) {
+            header.querySelectorAll('.video-active-version-badge').forEach(el => el.remove());
+            if (isActive) {
+                header.insertAdjacentHTML('beforeend', '<span class="video-active-version-badge text-xs text-emerald-400 bg-emerald-500/20 px-2 py-0.5 rounded">当前版本</span>');
+            }
+        }
+
+        const actions = card.querySelector('.video-history-actions');
+        const rollbackButton = card.querySelector('.video-rollback-btn');
+        const locked = isLockedShotCard(document.querySelector(`.shot-card[data-shot-id="${shotId}"]`));
+        if (isActive) {
+            rollbackButton?.remove();
+        } else if (!locked && actions && !rollbackButton && assetId) {
+            actions.insertAdjacentHTML('beforeend', `
+                <button class="video-rollback-btn flex-1 px-3 py-1.5 rounded-lg bg-blue-500/20 text-blue-300 hover:bg-blue-500/30 transition-colors text-xs"
+                        data-shot-id="${shotId}" data-asset-id="${assetId}">
+                    <i data-lucide="undo-2" class="w-3 h-3 inline mr-1"></i>回滚
+                </button>
+            `);
+        } else if (locked) {
+            rollbackButton?.remove();
+        }
+    });
+    lucide.createIcons();
+    bindVideoRollback();
+}
+
 // 绑定视频历史按钮点击事件
 function bindVideoHistoryButtons() {
     document.querySelectorAll('.video-history-btn').forEach(btn => {
+        if (btn.dataset.bound === 'true') return;
+        btn.dataset.bound = 'true';
         btn.addEventListener('click', function(e) {
             e.stopPropagation();
             const shotId = this.dataset.shotId;
-            // 获取分镜编号
-            const shotCard = this.closest('[data-shot-id]');
-            const shotNum = shotCard ? shotCard.querySelector('.text-lg')?.textContent : shotId;
+            const shotCard = this.closest('.shot-card');
+            const shotNum = shotCard ? (shotCard.querySelector('.shot-name-input')?.value || shotId) : shotId;
             showVideoHistory(shotId, shotNum);
         });
     });
@@ -4449,7 +6046,7 @@ function parseGenerationStartTime(value) {
 
 function lockShotGenerationControls(card, activeButton = null) {
     if (!card) return;
-    card.querySelectorAll('.generate-btn, .regenerate-btn').forEach(btn => {
+    card.querySelectorAll('.generate-btn, .regenerate-btn, .manual-video-upload-btn').forEach(btn => {
         if (!btn.dataset.originalHtml) {
             btn.dataset.originalHtml = btn.innerHTML;
         }
@@ -4474,7 +6071,7 @@ function showGeneratingActions(card, startTimeValue = null) {
             child.classList.add('hidden');
         });
         placeholder = document.createElement('span');
-        placeholder.className = 'generating-action-placeholder generating-timer w-full px-3 py-1.5 rounded-lg bg-blue-500/20 text-blue-300 text-xs flex items-center justify-center gap-1.5';
+        placeholder.className = 'generating-action-placeholder generating-timer shot-action-full min-w-0 px-2.5 py-1.5 rounded-lg bg-blue-500/20 text-blue-300 text-xs flex items-center justify-center gap-1.5';
         placeholder.dataset.startTime = parseGenerationStartTime(startTimeValue).toISOString();
         placeholder.innerHTML = '<i data-lucide="loader-2" class="w-3.5 h-3.5 animate-spin"></i><span class="timer-text">0秒</span>';
         actions.prepend(placeholder);
@@ -4500,7 +6097,7 @@ function restoreGeneratingActions(card) {
 
 function unlockShotGenerationControls(card) {
     if (!card) return;
-    card.querySelectorAll('.generate-btn, .regenerate-btn').forEach(btn => {
+    card.querySelectorAll('.generate-btn, .regenerate-btn, .manual-video-upload-btn').forEach(btn => {
         stopTimer(btn);
         btn.disabled = false;
         btn.removeAttribute('aria-disabled');
@@ -4536,6 +6133,7 @@ function updateCardToGenerating(card, activeButton = null, startTimeValue = null
         card.dataset.preGenerationStatus = card.dataset.status || '';
     }
     card.dataset.status = '1';
+    card.dataset.generationStartTime = startTimeValue ? parseGenerationStartTime(startTimeValue).toISOString() : new Date().toISOString();
 
     // 更新状态标签
     const statusSpan = card.querySelector('.generation-status');
@@ -4544,6 +6142,8 @@ function updateCardToGenerating(card, activeButton = null, startTimeValue = null
         statusSpan.innerHTML = '<i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i>生成中';
         lucide.createIcons();
     }
+    syncShotVideoSourceBadge(card, '');
+    refreshShotStats();
     // 更新缩略图显示加载状态
     const thumbContainer = card.querySelector('.shot-thumbnail');
     if (thumbContainer) {
@@ -4579,7 +6179,21 @@ function syncShotGenerationStatus(card, status, startTimeValue = null) {
     }
 
     card.dataset.status = String(nextStatus);
+    refreshShotStats();
     return false;
+}
+
+function syncShotCardDatasetFromApi(card, shot) {
+    if (!card || !shot) return;
+    if (shot.generationStatus !== undefined && shot.generationStatus !== null) {
+        card.dataset.status = String(shot.generationStatus);
+    }
+    card.dataset.videoUrl = shot.videoUrl || '';
+    card.dataset.thumbnailUrl = shot.thumbnailUrl || '';
+    card.dataset.videoSource = shot.videoSource || '';
+    card.dataset.generationDuration = shot.generationDuration || '';
+    card.dataset.generationStartTime = shot.generationStartTime || '';
+    refreshShotStats();
 }
 
 function isAlreadyGeneratingResponse(data) {
@@ -4717,9 +6331,15 @@ lucide.createIcons();
 
 // 单个生成
 document.querySelectorAll('.generate-btn').forEach(btn => {
+        if (btn.dataset.bound === 'true') return;
+        btn.dataset.bound = 'true';
 	    btn.addEventListener('click', async function() {
 	        const shotId = this.dataset.shotId;
 	        const card = this.closest('.shot-card');
+	        if (isLockedShotCard(card)) {
+	            showToast('已锁定分镜只能修改标题', 'warning');
+	            return;
+	        }
 	        if (card && card.dataset.status === '1') {
 	            updateCardToGenerating(card, this);
 	            return;
@@ -4735,29 +6355,7 @@ document.querySelectorAll('.generate-btn').forEach(btn => {
 	        startShotGenerationPolling();
 
         try {
-            // 从编辑器中提取参考图 URL（用户选择的资产）
-            const referenceUrls = [];
-	            // 从场景编辑器提取
-            const sceneEditor = card.querySelector('[data-field="scene"]');
-            if (sceneEditor) {
-                sceneEditor.querySelectorAll('[data-asset-url]').forEach(el => {
-                    const url = el.dataset.assetUrl;
-                    if (url && !referenceUrls.includes(url)) {
-                        referenceUrls.push(url);
-                    }
-                });
-            }
-
-            // 从剧情编辑器提取
-            const descEditor = card.querySelector('[data-field="description"]');
-            if (descEditor) {
-                descEditor.querySelectorAll('[data-asset-url]').forEach(el => {
-                    const url = el.dataset.assetUrl;
-                    if (url && !referenceUrls.includes(url)) {
-                        referenceUrls.push(url);
-                    }
-                });
-            }
+            const referenceUrls = collectShotReferenceUrls(card);
 
             const response = await fetch(`/api/v1/shots/${shotId}/generate-with-references/`, {
                 method: 'POST',
@@ -4785,96 +6383,10 @@ document.querySelectorAll('.generate-btn').forEach(btn => {
 
 // 重新生成
 document.querySelectorAll('.regenerate-btn').forEach(btn => {
-	    btn.addEventListener('click', async function() {
-	        const shotId = this.dataset.shotId;
-	        const card = this.closest('.shot-card');
-	        if (card && card.dataset.status === '1') {
-	            updateCardToGenerating(card, this);
-	            return;
-	        }
-	        this.disabled = true;
-
-	        // 立即更新 UI 为生成中状态，不等后端返回
-	        if (card) {
-	            updateCardToGenerating(card, this);
-	        }
-	        startTimer(this);
-	        // 启动轮询
-	        startShotGenerationPolling();
-
-        try {
-            // 从编辑器中提取参考图 URL（用户选择的资产）
-            const referenceUrls = [];
-	            // 从场景编辑器提取
-            const sceneEditor = card.querySelector('[data-field="scene"]');
-            if (sceneEditor) {
-                sceneEditor.querySelectorAll('[data-asset-url]').forEach(el => {
-                    const url = el.dataset.assetUrl;
-                    if (url && !referenceUrls.includes(url)) {
-                        referenceUrls.push(url);
-                    }
-                });
-            }
-
-            // 从剧情编辑器提取
-            const descEditor = card.querySelector('[data-field="description"]');
-            if (descEditor) {
-                descEditor.querySelectorAll('[data-asset-url]').forEach(el => {
-                    const url = el.dataset.assetUrl;
-                    if (url && !referenceUrls.includes(url)) {
-                        referenceUrls.push(url);
-                    }
-                });
-            }
-
-            const response = await fetch(`/api/v1/shots/${shotId}/generate-with-references/`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-CSRFToken': getCookie('csrftoken')
-                },
-                body: JSON.stringify({ referenceUrls: referenceUrls })
-            });
-	            const data = await readJsonResponse(response);
-	            if (!(data.success || data.code === 200)) {
-	                if (isAlreadyGeneratingResponse(data)) {
-	                    if (card) updateCardToGenerating(card, this);
-	                    return;
-	                }
-	                restoreCardFromGenerating(card);
-	                alert('生成失败: ' + (data.error || data.message));
-	            }
-	        } catch (e) {
-	            restoreCardFromGenerating(card);
-	            alert('请求失败: ' + e.message);
-	        }
-	    });
+	    if (btn.dataset.bound === 'true') return;
+	    btn.dataset.bound = 'true';
+	    btn.addEventListener('click', handleShotRegenerateClick);
 	});
-
-// 审核通过
-document.querySelectorAll('.approve-btn').forEach(btn => {
-    btn.addEventListener('click', async function() {
-        const shotId = this.dataset.shotId;
-        try {
-            const response = await fetch(`/api/v1/shots/${shotId}/review/`, {
-                method: 'POST',
-                headers: {
-                    'X-CSRFToken': getCookie('csrftoken'),
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({ approved: true })
-            });
-            const data = await response.json();
-            if (data.success) {
-                location.reload();
-            } else {
-                alert('审核失败: ' + data.error);
-            }
-        } catch (e) {
-            alert('请求失败: ' + e.message);
-        }
-    });
-});
 
 // ==================== 场景和道具右键菜单 ====================
 let currentContextSceneId = null;
@@ -5841,8 +7353,14 @@ async function refreshShotAssetBindings() {
             if (result.code !== 200 || !Array.isArray(result.data)) return;
 
             result.data.forEach(shot => {
-                const card = document.querySelector(`.shot-card[data-shot-id="${shot.id}"]`);
-                if (!card) return;
+	                const card = document.querySelector(`.shot-card[data-shot-id="${shot.id}"]`);
+	                if (!card) return;
+                syncShotCardDatasetFromApi(card, shot);
+
+                if (shot.videoSource !== undefined) {
+                    const hasCompletedVideo = shot.generationStatus === 2 && !!shot.videoUrl;
+                    syncShotVideoSourceBadge(card, hasCompletedVideo ? (shot.videoSource || 'system') : '');
+                }
 
                 if (shot.characters) {
                     card.dataset.shotCharacters = JSON.stringify(shot.characters);
@@ -5983,6 +7501,10 @@ function syncShotButtonDatasets(card) {
 async function saveShotSettings(shotId, fields) {
     const card = document.querySelector(`.shot-card[data-shot-id="${shotId}"]`);
     if (!card) return;
+    if (isLockedShotCard(card)) {
+        showToast('已锁定分镜只能修改标题', 'warning');
+        return;
+    }
 
     const data = getShotSelectPayload(card, fields);
     if (Object.keys(data).length === 0) return;
@@ -6077,6 +7599,9 @@ function parseShotText(text) {
 async function saveShotInline(shotId) {
     const card = document.querySelector(`.shot-card[data-shot-id="${shotId}"]`);
     if (!card) return;
+    if (isLockedShotCard(card)) {
+        return;
+    }
 
     const descriptionEditor = card.querySelector('[data-field="description"]');
     const sceneEditor = card.querySelector('[data-field="scene"]');
@@ -6838,6 +8363,7 @@ function initInlineEditing() {
 
     cards.forEach(card => {
         const shotId = card.dataset.shotId;
+        const locked = isLockedShotCard(card);
 
         // 剧情编辑器
         const descEditor = card.querySelector('.description-editor');
@@ -6846,37 +8372,49 @@ function initInlineEditing() {
         if (descEditor) {
             // 渲染内容，自动识别资产
             renderDescriptionWithAutoAssets(descEditor);
+            if (locked) {
+                descEditor.setAttribute('contenteditable', 'false');
+                descEditor.dataset.userDirty = 'false';
+            } else {
+                // 初始化@提及
+                try {
+                    initDescriptionMention(descEditor);
+                    descEditor.dataset.mentionBound = 'true';
+                } catch (e) {
+                    console.error('initDescriptionMention error:', e);
+                }
 
-            // 初始化@提及
-            try {
-                initDescriptionMention(descEditor);
-            } catch (e) {
-                console.error('initDescriptionMention error:', e);
+                // 失焦保存
+                descEditor.addEventListener('blur', () => debouncedSave(shotId));
+                descEditor.dataset.blurBound = 'true';
             }
-
-            // 失焦保存
-            descEditor.addEventListener('blur', () => debouncedSave(shotId));
         }
 
         // 场景编辑器
         const sceneEditor = card.querySelector('.scene-editor');
         if (sceneEditor) {
             renderSceneWithAutoAssets(sceneEditor);
+            if (locked) {
+                sceneEditor.setAttribute('contenteditable', 'false');
+                sceneEditor.dataset.userDirty = 'false';
+            } else {
+                // 初始化@提及
+                try {
+                    initDescriptionMention(sceneEditor);
+                    sceneEditor.dataset.mentionBound = 'true';
+                } catch (e) {
+                    console.error('sceneEditor initDescriptionMention error:', e);
+                }
 
-            // 初始化@提及
-            try {
-                initDescriptionMention(sceneEditor);
-            } catch (e) {
-                console.error('sceneEditor initDescriptionMention error:', e);
+                // 失焦保存
+                sceneEditor.addEventListener('blur', () => debouncedSave(shotId));
+                sceneEditor.dataset.blurBound = 'true';
             }
-
-            // 失焦保存
-            sceneEditor.addEventListener('blur', () => debouncedSave(shotId));
         }
 
         // 时长下拉框
         const durationSelect = card.querySelector('.duration-select');
-        if (durationSelect) {
+        if (durationSelect && !locked) {
             durationSelect.addEventListener('change', () => {
                 // 更新积分显示
                 updateShotCreditDisplay(card);
@@ -6886,7 +8424,7 @@ function initInlineEditing() {
 
         // 分辨率下拉框
         const resolutionSelect = card.querySelector('.resolution-select');
-        if (resolutionSelect) {
+        if (resolutionSelect && !locked) {
             resolutionSelect.addEventListener('change', () => {
                 // 更新积分显示
                 updateShotCreditDisplay(card);
@@ -6896,7 +8434,7 @@ function initInlineEditing() {
 
         // 比例下拉框
         const aspectRatioSelect = card.querySelector('.aspect-ratio-select');
-        if (aspectRatioSelect) {
+        if (aspectRatioSelect && !locked) {
             aspectRatioSelect.addEventListener('change', () => {
                 saveShotSettings(shotId, ['aspectRatio']);
             });
@@ -6904,7 +8442,7 @@ function initInlineEditing() {
 
         // 视频模型下拉框
         const videoModelSelect = card.querySelector('.video-model-select');
-        if (videoModelSelect) {
+        if (videoModelSelect && !locked) {
             videoModelSelect.addEventListener('change', () => {
                 // 根据模型更新分辨率选项
                 updateResolutionOptions(card, videoModelSelect.value);
@@ -6963,6 +8501,10 @@ function initInlineEditing() {
                 }
             });
         }
+
+        if (locked) {
+            applyLockedShotCardState(card);
+        }
     });
 
     // 初始化拖拽排序
@@ -7010,78 +8552,82 @@ async function saveShotName(shotId, shotName, shotNumber) {
 
 // 初始化拖拽排序
 function initDragAndDrop() {
-    const shotList = document.getElementById('shotList');
-    if (!shotList) return;
+    bindShotListDragAndDrop(document.getElementById('shotList'), 0);
+    bindShotListDragAndDrop(document.getElementById('lockedShotList'), 1);
+}
 
-    const cards = shotList.querySelectorAll('.shot-card');
-    let draggedCard = null;
-    let originalOrder = [];
+function bindShotListDragAndDrop(list, reviewStatus) {
+    if (!list) return;
+    list.dataset.reviewStatus = String(reviewStatus);
+    list.querySelectorAll('.shot-card').forEach(card => card.setAttribute('draggable', 'false'));
 
-    cards.forEach(card => {
-        const handle = card.querySelector('.drag-handle');
-        if (!handle) return;
+    if (list.dataset.dragBound === 'true') return;
+    list.dataset.dragBound = 'true';
+    list._draggedCard = null;
+    list._originalOrder = [];
 
-        // 通过 mousedown 控制是否允许拖拽
-        // 点击手柄时才启用 draggable，松开后恢复 false
-        // 这样可以避免 SVG 图标导致 closest() 失效的问题
-        card.setAttribute('draggable', 'false');
+    list.addEventListener('mousedown', function(e) {
+        const handle = e.target.closest('.drag-handle');
+        const card = handle?.closest('.shot-card');
+        if (!card || card.parentElement !== list) return;
+        card.setAttribute('draggable', 'true');
+    });
 
-        handle.addEventListener('mousedown', function(e) {
-            card.setAttribute('draggable', 'true');
-        });
+    list.addEventListener('dragstart', function(e) {
+        const card = e.target.closest('.shot-card');
+        if (!card || card.parentElement !== list) return;
+        list._draggedCard = card;
+        list._originalOrder = getShotOrder(list);
+        card.classList.add('dragging');
+        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData('text/plain', card.dataset.shotId);
+    });
 
-        card.addEventListener('dragstart', function(e) {
-            draggedCard = this;
-            originalOrder = getShotOrder();
-            this.classList.add('dragging');
-            e.dataTransfer.effectAllowed = 'move';
-            e.dataTransfer.setData('text/plain', this.dataset.shotId);
-        });
+    list.addEventListener('dragend', function(e) {
+        const card = e.target.closest('.shot-card');
+        if (card) {
+            card.classList.remove('dragging');
+            card.setAttribute('draggable', 'false');
+        }
+        document.querySelectorAll('.shot-card').forEach(c => c.classList.remove('drag-over'));
 
-        // 拖拽结束
-        card.addEventListener('dragend', function() {
-            this.classList.remove('dragging');
-            this.setAttribute('draggable', 'false');
-            document.querySelectorAll('.shot-card').forEach(c => c.classList.remove('drag-over'));
-            draggedCard = null;
+        const originalOrder = list._originalOrder || [];
+        list._draggedCard = null;
+        list._originalOrder = [];
+        const nextOrder = getShotOrder(list);
+        if (!isSameOrder(originalOrder, nextOrder)) {
+            updateShotNumbers();
+            saveShotOrder(list, parseInt(list.dataset.reviewStatus || '0', 10), originalOrder);
+        }
+    });
 
-            const nextOrder = getShotOrder();
-            if (!isSameOrder(originalOrder, nextOrder)) {
-                updateShotNumbers();
-                saveShotOrder(originalOrder);
-            }
-        });
+    list.addEventListener('dragover', function(e) {
+        if (!list._draggedCard) return;
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
 
-        // 拖拽经过
-        card.addEventListener('dragover', function(e) {
-            e.preventDefault();
-            e.dataTransfer.dropEffect = 'move';
+        const targetCard = e.target.closest('.shot-card');
+        if (!targetCard || targetCard.parentElement !== list || targetCard === list._draggedCard) return;
 
-            if (draggedCard && draggedCard !== this) {
-                const rect = this.getBoundingClientRect();
-                const midY = rect.top + rect.height / 2;
+        const rect = targetCard.getBoundingClientRect();
+        const midY = rect.top + rect.height / 2;
+        if (e.clientY < midY) {
+            targetCard.classList.add('drag-over');
+            list.insertBefore(list._draggedCard, targetCard);
+        } else {
+            targetCard.classList.remove('drag-over');
+            list.insertBefore(list._draggedCard, targetCard.nextSibling);
+        }
+    });
 
-                if (e.clientY < midY) {
-                    this.classList.add('drag-over');
-                    this.parentNode.insertBefore(draggedCard, this);
-                } else {
-                    this.classList.remove('drag-over');
-                    this.parentNode.insertBefore(draggedCard, this.nextSibling);
-                }
-            }
-        });
-
-        // 拖拽离开
-        card.addEventListener('dragleave', function() {
-            this.classList.remove('drag-over');
-        });
+    list.addEventListener('dragleave', function(e) {
+        e.target.closest('.shot-card')?.classList.remove('drag-over');
     });
 }
 
-function getShotOrder() {
-    const shotList = document.getElementById('shotList');
-    if (!shotList) return [];
-    return Array.from(shotList.querySelectorAll('.shot-card')).map(card => String(card.dataset.shotId));
+function getShotOrder(list) {
+    if (!list) return [];
+    return Array.from(list.querySelectorAll('.shot-card')).map(card => String(card.dataset.shotId));
 }
 
 function isSameOrder(left, right) {
@@ -7089,27 +8635,25 @@ function isSameOrder(left, right) {
     return left.every((id, index) => id === right[index]);
 }
 
-function restoreShotOrder(order) {
-    const shotList = document.getElementById('shotList');
-    if (!shotList || !order || order.length === 0) return;
+function restoreShotOrder(list, order) {
+    if (!list || !order || order.length === 0) return;
     order.forEach(shotId => {
-        const card = shotList.querySelector(`.shot-card[data-shot-id="${shotId}"]`);
+        const card = list.querySelector(`.shot-card[data-shot-id="${shotId}"]`);
         if (card) {
-            shotList.appendChild(card);
+            list.appendChild(card);
         }
     });
     updateShotNumbers();
 }
 
 // 保存分镜顺序
-async function saveShotOrder(previousOrder = null) {
-    const shotList = document.getElementById('shotList');
-    if (!shotList) {
-        console.error('shotList not found');
+async function saveShotOrder(list, reviewStatus, previousOrder = null) {
+    if (!list) {
+        console.error('shot list not found');
         return;
     }
 
-    const cards = shotList.querySelectorAll('.shot-card');
+    const cards = list.querySelectorAll('.shot-card');
     const shotIds = Array.from(cards).map(card => parseInt(card.dataset.shotId));
 
     try {
@@ -7119,27 +8663,34 @@ async function saveShotOrder(previousOrder = null) {
                 'Content-Type': 'application/json',
                 'X-CSRFToken': getCookie('csrftoken')
             },
-            body: JSON.stringify({ shotIds: shotIds })
+            body: JSON.stringify({ shotIds: shotIds, reviewStatus })
         });
         const result = await response.json();
         if (result.code === 200 || result.success) {
             updateShotNumbers();
         } else if (previousOrder) {
-            console.error('保存顺序失败:', result.message);
-            restoreShotOrder(previousOrder);
+            const message = result.message || result.error || '保存顺序失败';
+            console.error('保存顺序失败:', message);
+            showToast(message, 'error');
+            restoreShotOrder(list, previousOrder);
         }
     } catch (error) {
         console.error('保存顺序失败:', error);
+        showToast('保存顺序失败，请稍后重试', 'error');
         if (previousOrder) {
-            restoreShotOrder(previousOrder);
+            restoreShotOrder(list, previousOrder);
         }
     }
 }
 
 // 页面加载时初始化
 document.addEventListener('DOMContentLoaded', function() {
+    splitShotListsByReviewStatus();
     initInlineEditing();
     initShotManagement();
+    bindShotVideoUploadButtons();
+    bindLockShotButtons();
+    bindUnlockShotButtons();
 });
 
 // 初始化分镜管理（添加/删除）
@@ -7161,37 +8712,16 @@ function initShotManagement() {
         btn.addEventListener('click', function() {
             const modalId = this.dataset.modal;
             if (modalId) {
+                if (modalId === 'shotVideoUploadModal') {
+                    resetShotVideoUploadState();
+                }
                 document.getElementById(modalId).classList.add('hidden');
             }
         });
     });
 
-    // 下载分镜视频按钮
-    document.querySelectorAll('.download-shot-btn').forEach(btn => {
-        btn.addEventListener('click', function() {
-            const shotId = this.dataset.shotId;
-            const filename = (this.dataset.filename || '分镜') + '.mp4';
-            const url = `/api/v1/shots/${shotId}/download/?filename=${encodeURIComponent(filename)}`;
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = filename;
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-        });
-    });
-
-    // 删除分镜按钮
-    document.querySelectorAll('.delete-shot-btn').forEach(btn => {
-        btn.addEventListener('click', function(e) {
-            e.preventDefault();
-            const shotId = this.dataset.shotId;
-            const shotNumber = this.dataset.shotNumber;
-            if (confirm(`确定要删除分镜 ${shotNumber} 吗？`)) {
-                deleteShot(shotId, this.closest('.shot-card'));
-            }
-        });
-    });
+    bindDownloadShotButtons();
+    bindDeleteShotButtons();
 }
 
 // 添加分镜 - 打开弹窗
@@ -7310,6 +8840,7 @@ async function deleteShot(shotId, cardElement) {
                 cardElement.remove();
                 // 更新剩余分镜的编号显示
                 updateShotNumbers();
+                refreshShotListCounts();
             }, 300);
         } else {
             alert('删除失败: ' + (result.message || '未知错误'));
@@ -7322,24 +8853,8 @@ async function deleteShot(shotId, cardElement) {
 
 // 更新分镜编号显示
 function updateShotNumbers() {
-    const cards = document.querySelectorAll('.shot-card');
-    cards.forEach((card, index) => {
-        const shotNumber = index + 1;
-        // 更新分镜名输入框的默认值
-        const nameInput = card.querySelector('.shot-name-input');
-        if (nameInput) {
-            nameInput.dataset.shotNumber = shotNumber;
-            // 如果是默认名称，更新显示
-            if (nameInput.dataset.isDefault === 'true') {
-                nameInput.value = `分镜${shotNumber}`;
-            }
-        }
-        // 更新删除按钮的编号
-        const deleteBtn = card.querySelector('.delete-shot-btn');
-        if (deleteBtn) {
-            deleteBtn.dataset.shotNumber = shotNumber;
-        }
-    });
+    renumberShotListDisplay(document.getElementById('shotList'));
+    renumberShotListDisplay(document.getElementById('lockedShotList'));
 }
 
 function getCookie(name) {

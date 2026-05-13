@@ -1,6 +1,7 @@
 """
 中间件
 """
+from django.http import JsonResponse
 from django.shortcuts import redirect
 from api.backend_client import BackendAPIError
 
@@ -22,6 +23,7 @@ class LoginRequiredMiddleware:
             '/auth/send-code/',
             '/auth/logout/',
             '/favicon.ico',
+            '/api/v1/common/contact-image/',
             '/static/',
             '/media/',
         ]
@@ -29,13 +31,17 @@ class LoginRequiredMiddleware:
     def __call__(self, request):
         # 检查是否是豁免路径
         path = request.path
-        is_exempt = any(path.startswith(exempt) for exempt in self.exempt_paths)
+        is_home_page = path == '/'
+        is_exempt = is_home_page or any(path.startswith(exempt) for exempt in self.exempt_paths)
+        is_api_path = path.startswith('/api/')
 
         # 检查是否已登录
         is_logged_in = request.session.get('token') is not None
 
         # 如果未登录且不是豁免路径，重定向到登录页
         if not is_logged_in and not is_exempt:
+            if is_api_path:
+                return JsonResponse({'code': 401, 'message': '请先登录'}, status=401)
             # 保存原始请求路径，登录后跳转回来
             request.session['next'] = path
             return redirect('/auth/login/')

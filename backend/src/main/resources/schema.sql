@@ -424,6 +424,35 @@ CREATE INDEX IF NOT EXISTS idx_shot_video_asset_metadata_asset_id ON shot_video_
 CREATE INDEX IF NOT EXISTS idx_shot_ref_shot_id ON shot_reference_image(shot_id);
 CREATE INDEX IF NOT EXISTS idx_shot_ref_reference ON shot_reference_image(image_type, reference_id);
 
+-- 主体替换任务表
+CREATE TABLE IF NOT EXISTS subject_replacement_task (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    user_id BIGINT NOT NULL,
+    task_name VARCHAR(100),
+    original_video_url VARCHAR(1024) NOT NULL,
+    output_video_url VARCHAR(1024),
+    thumbnail_url VARCHAR(1024),
+    status VARCHAR(20) NOT NULL DEFAULT 'pending',
+    aspect_ratio VARCHAR(10) DEFAULT '16:9',
+    duration INT DEFAULT 5,
+    generate_audio BOOLEAN DEFAULT TRUE,
+    watermark BOOLEAN DEFAULT FALSE,
+    model VARCHAR(100),
+    prompt CLOB,
+    replacements_json CLOB,
+    volcengine_task_id VARCHAR(100),
+    error_message CLOB,
+    submitted_at TIMESTAMP,
+    completed_at TIMESTAMP,
+    generation_duration INT,
+    seed BIGINT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_subject_replacement_user_created ON subject_replacement_task(user_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_subject_replacement_status ON subject_replacement_task(status);
+
 -- ==================== 分镜表补充字段 ====================
 -- 添加缺失的分镜字段
 ALTER TABLE shot ADD COLUMN IF NOT EXISTS shot_type VARCHAR(50);

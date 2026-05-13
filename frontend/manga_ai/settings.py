@@ -91,7 +91,7 @@ SESSION_COOKIE_SAMESITE = 'Lax'
 
 # 后端 API 配置
 BACKEND_API_URL = os.environ.get('BACKEND_API_URL', 'http://localhost:8081/api')
-BACKEND_API_TIMEOUT = int(os.environ.get('BACKEND_API_TIMEOUT', 60))  # 增加到60秒
+BACKEND_API_TIMEOUT = int(os.environ.get('BACKEND_API_TIMEOUT', 180))  # 支持视频上传等较大的请求
 
 # 文件存储路径
 STORAGE_PATH = os.environ.get('STORAGE_PATH', str(BASE_DIR.parent / 'storage'))

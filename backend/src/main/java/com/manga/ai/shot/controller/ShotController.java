@@ -11,6 +11,7 @@ import com.manga.ai.shot.service.ShotService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.util.HashMap;
 import java.util.List;
@@ -66,6 +67,16 @@ public class ShotController {
     }
 
     /**
+     * 解锁分镜
+     */
+    @PostMapping("/{shotId}/unlock")
+    public Result<Void> unlockShot(@PathVariable Long shotId) {
+        log.info("解锁分镜: shotId={}", shotId);
+        shotService.unlockShot(shotId);
+        return Result.success();
+    }
+
+    /**
      * 生成视频
      */
     @PostMapping("/{shotId}/generate")
@@ -73,6 +84,19 @@ public class ShotController {
         log.info("生成视频: shotId={}", shotId);
         shotService.generateVideo(shotId);
         return Result.success();
+    }
+
+    /**
+     * 手动上传视频
+     */
+    @PostMapping("/{shotId}/upload-video")
+    public Result<ShotDetailVO> uploadVideo(
+            @PathVariable Long shotId,
+            @RequestParam("aspectRatio") String aspectRatio,
+            @RequestParam("file") MultipartFile file) {
+        log.info("手动上传分镜视频: shotId={}, aspectRatio={}", shotId, aspectRatio);
+        ShotDetailVO detail = shotService.uploadVideo(shotId, aspectRatio, file);
+        return Result.success(detail);
     }
 
     /**
@@ -153,10 +177,10 @@ public class ShotController {
      * 回滚到指定视频版本
      */
     @PostMapping("/{shotId}/rollback-video/{assetId}")
-    public Result<Void> rollbackVideo(@PathVariable Long shotId, @PathVariable Long assetId) {
+    public Result<ShotDetailVO> rollbackVideo(@PathVariable Long shotId, @PathVariable Long assetId) {
         log.info("回滚视频版本: shotId={}, assetId={}", shotId, assetId);
-        shotService.rollbackToVersion(shotId, assetId);
-        return Result.success();
+        ShotDetailVO shot = shotService.rollbackToVersion(shotId, assetId);
+        return Result.success(shot);
     }
 
     /**
@@ -197,8 +221,15 @@ public class ShotController {
                     return Long.parseLong(id.toString());
                 })
                 .collect(java.util.stream.Collectors.toList());
-        log.info("重新排序分镜: episodeId={}, shotIds={}", episodeId, shotIds);
-        shotService.reorderShots(episodeId, shotIds);
+        Integer reviewStatus = null;
+        Object rawReviewStatus = body.get("reviewStatus");
+        if (rawReviewStatus instanceof Number) {
+            reviewStatus = ((Number) rawReviewStatus).intValue();
+        } else if (rawReviewStatus != null && !rawReviewStatus.toString().isBlank()) {
+            reviewStatus = Integer.parseInt(rawReviewStatus.toString());
+        }
+        log.info("重新排序分镜: episodeId={}, reviewStatus={}, shotIds={}", episodeId, reviewStatus, shotIds);
+        shotService.reorderShots(episodeId, shotIds, reviewStatus);
         return Result.success();
     }
 }

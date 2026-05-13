@@ -1,0 +1,769 @@
+{% extends "base.html" %}
+
+{% block title %}主体替换 - Manga AI{% endblock %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto py-8">
+    <div class="flex items-start justify-between gap-4 mb-6">
+        <div>
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-400/10 border border-emerald-300/20 text-emerald-200 text-xs font-semibold mb-3">
+                <i data-lucide="sparkle" class="w-3.5 h-3.5"></i>
+                NEW
+            </div>
+            <h1 class="text-3xl font-bold gradient-text">主体替换</h1>
+            <p class="text-white/50 mt-2">上传原视频，为人物或物品添加替换对象组。</p>
+        </div>
+        <a href="/" class="px-4 py-2 rounded-xl bg-white/10 hover:bg-white/15 transition-all text-sm inline-flex items-center gap-2">
+            <i data-lucide="arrow-left" class="w-4 h-4"></i>返回首页
+        </a>
+    </div>
+
+    <div class="grid lg:grid-cols-[minmax(0,1fr)_380px] gap-6">
+        <form id="subjectReplacementForm" class="space-y-6">
+            <section class="glass-card p-6">
+                <div class="flex items-center gap-3 mb-5">
+                    <div class="w-10 h-10 rounded-xl bg-cyan-500/15 text-cyan-200 flex items-center justify-center">
+                        <i data-lucide="video" class="w-5 h-5"></i>
+                    </div>
+                    <div>
+                        <h2 class="text-lg font-semibold">原视频</h2>
+                        <p class="text-white/40 text-sm">视频会作为参考视频提交给火山模型</p>
+                    </div>
+                </div>
+
+                <div id="videoDrop" class="border border-dashed border-white/15 rounded-xl bg-white/[0.03] p-5 transition-all">
+                    <input id="originalVideoInput" type="file" accept="video/mp4,video/webm,video/quicktime,video/x-m4v" class="hidden">
+                    <div id="videoEmpty" class="text-center py-8">
+                        <button type="button" onclick="document.getElementById('originalVideoInput').click()" class="px-5 py-2.5 rounded-xl bg-white/10 hover:bg-white/15 transition-all inline-flex items-center gap-2">
+                            <i data-lucide="upload-cloud" class="w-4 h-4"></i>上传视频
+                        </button>
+                        <p class="text-white/35 text-xs mt-3">支持 MP4、WEBM、MOV、M4V</p>
+                    </div>
+                    <div id="videoPreview" class="hidden grid md:grid-cols-[220px_minmax(0,1fr)] gap-4 items-center">
+                        <video id="originalVideoPreview" controls class="w-full aspect-video rounded-lg bg-black object-contain"></video>
+                        <div class="min-w-0">
+                            <p id="videoFileName" class="font-medium truncate"></p>
+                            <p id="videoUploadStatus" class="text-sm text-white/45 mt-1">等待上传</p>
+                            <button type="button" onclick="document.getElementById('originalVideoInput').click()" class="mt-4 px-4 py-2 rounded-lg bg-white/10 hover:bg-white/15 transition-all text-sm inline-flex items-center gap-2">
+                                <i data-lucide="refresh-cw" class="w-4 h-4"></i>更换视频
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="grid md:grid-cols-2 gap-4 mt-5">
+                    <label class="block">
+                        <span class="block text-sm text-white/65 mb-2">视频生成比例</span>
+                        <select id="aspectRatio" class="input-modern py-3">
+                            <option value="16:9">16:9 横屏</option>
+                            <option value="9:16">9:16 竖屏</option>
+                            <option value="1:1">1:1 方形</option>
+                            <option value="4:3">4:3</option>
+                            <option value="3:4">3:4</option>
+                            <option value="21:9">21:9 宽屏</option>
+                        </select>
+                    </label>
+                    <label class="block">
+                        <span class="block text-sm text-white/65 mb-2">视频时长</span>
+                        <select id="duration" class="input-modern py-3">
+                            <option value="4">4秒</option>
+                            <option value="5" selected>5秒</option>
+                            <option value="6">6秒</option>
+                            <option value="7">7秒</option>
+                            <option value="8">8秒</option>
+                            <option value="9">9秒</option>
+                            <option value="10">10秒</option>
+                            <option value="11">11秒</option>
+                            <option value="12">12秒</option>
+                            <option value="13">13秒</option>
+                            <option value="14">14秒</option>
+                            <option value="15">15秒</option>
+                        </select>
+                    </label>
+                </div>
+            </section>
+
+            <section class="glass-card p-6">
+                <div class="flex items-center justify-between gap-3 mb-5">
+                    <div class="flex items-center gap-3">
+                        <div class="w-10 h-10 rounded-xl bg-emerald-500/15 text-emerald-200 flex items-center justify-center">
+                            <i data-lucide="replace" class="w-5 h-5"></i>
+                        </div>
+                        <div>
+                            <h2 class="text-lg font-semibold">替换对象组</h2>
+                            <p class="text-white/40 text-sm">一组对象对应一张参考图</p>
+                        </div>
+                    </div>
+                    <button type="button" id="addReplacementBtn" class="px-4 py-2 rounded-xl bg-white/10 hover:bg-white/15 transition-all text-sm inline-flex items-center gap-2">
+                        <i data-lucide="plus" class="w-4 h-4"></i>添加一组
+                    </button>
+                </div>
+
+                <div id="replacementList" class="space-y-4"></div>
+            </section>
+
+            <div class="flex items-center justify-end">
+                <button type="submit" id="submitBtn" class="btn-neon inline-flex items-center gap-2">
+                    <i data-lucide="wand-sparkles" class="w-4 h-4"></i>确认生成
+                </button>
+            </div>
+        </form>
+
+        <aside class="space-y-6">
+            <section class="glass-card p-5">
+                <div class="flex items-center justify-between mb-4">
+                    <h2 class="font-semibold">生成状态</h2>
+                    <span id="activeTaskBadge" class="status-badge status-pending hidden">生成中</span>
+                </div>
+                <div id="activeTaskEmpty" class="text-white/40 text-sm py-8 text-center">
+                    提交任务后会在这里显示进度
+                </div>
+                <div id="activeTaskPanel" class="hidden">
+                    <div class="w-full h-2 bg-white/10 rounded-full overflow-hidden">
+                        <div id="activeTaskProgress" class="h-full bg-gradient-to-r from-emerald-400 to-cyan-400 transition-all duration-300" style="width: 10%"></div>
+                    </div>
+                    <p id="activeTaskStatusText" class="text-sm text-white/55 mt-3">排队中</p>
+                    <div id="activeTaskResult" class="hidden mt-4">
+                        <video id="resultVideo" controls class="w-full aspect-video rounded-lg bg-black object-contain"></video>
+                        <a id="resultVideoLink" href="#" target="_blank" class="mt-3 px-4 py-2 rounded-lg bg-emerald-500/15 text-emerald-200 hover:bg-emerald-500/25 transition-all text-sm inline-flex items-center gap-2">
+                            <i data-lucide="external-link" class="w-4 h-4"></i>打开结果视频
+                        </a>
+                    </div>
+                    <div id="activeTaskError" class="hidden mt-4 p-3 rounded-lg bg-red-500/10 border border-red-400/15 text-red-200 text-sm"></div>
+                </div>
+            </section>
+
+            <section class="glass-card p-5">
+                <div class="flex items-center justify-between mb-4">
+                    <h2 class="font-semibold">最近任务</h2>
+                    <button type="button" id="refreshTasksBtn" class="p-2 rounded-lg bg-white/5 hover:bg-white/10 transition-all" title="刷新">
+                        <i data-lucide="refresh-cw" class="w-4 h-4"></i>
+                    </button>
+                </div>
+                <div id="recentTasks" class="space-y-3">
+                    <div class="text-white/40 text-sm text-center py-6">加载中...</div>
+                </div>
+                <div id="recentTaskPager" class="hidden mt-4 flex items-center justify-between gap-2 text-xs text-white/45">
+                    <button type="button" id="recentTaskPrev" class="px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 disabled:opacity-40 disabled:cursor-not-allowed transition-all">上一页</button>
+                    <span id="recentTaskPageInfo">1 / 1</span>
+                    <button type="button" id="recentTaskNext" class="px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 disabled:opacity-40 disabled:cursor-not-allowed transition-all">下一页</button>
+                </div>
+            </section>
+        </aside>
+    </div>
+</div>
+
+<div id="imagePreviewModal" class="hidden fixed inset-0 z-[180] bg-black/80 backdrop-blur-sm p-4">
+    <button type="button" id="imagePreviewClose" class="absolute right-5 top-5 p-2 rounded-xl bg-white/10 hover:bg-white/15 transition-all" title="关闭">
+        <i data-lucide="x" class="w-5 h-5"></i>
+    </button>
+    <div class="w-full h-full flex items-center justify-center">
+        <img id="imagePreviewLarge" class="max-w-full max-h-full object-contain rounded-xl border border-white/10 bg-black" alt="参考图大图">
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+let originalVideoUrl = '';
+let replacementIndex = 0;
+let activeTaskId = null;
+let pollTimer = null;
+let recentTasksCache = [];
+let recentTaskPage = 1;
+const recentTaskPageSize = 5;
+
+const replacementList = document.getElementById('replacementList');
+const originalVideoInput = document.getElementById('originalVideoInput');
+
+const replacementTypeConfigs = {
+    person: {
+        sourcePlaceholder: '例如：画面中央试戴眼镜的女模特',
+        targetPlaceholder: '例如：完整替换为参考图中的同一位成熟女性，脸型、五官、发型、年龄感、服装和气质都以参考图为准',
+        hintPlaceholder: '可选，如 英语、中文、日语'
+    },
+    object: {
+        sourcePlaceholder: '例如：角色手中的红烛',
+        targetPlaceholder: '例如：完整替换为参考图中的同一物品，形状、材质、颜色、纹理和结构都以参考图为准',
+        hintPlaceholder: '可选，如 英语、中文、日语'
+    }
+};
+
+function getReplacementTypeConfig(type) {
+    return replacementTypeConfigs[type] || replacementTypeConfigs.person;
+}
+
+function showToast(message, type = 'info') {
+    const colorClass = type === 'error'
+        ? 'bg-red-500/90 border-red-300/30'
+        : type === 'success'
+            ? 'bg-emerald-500/90 border-emerald-300/30'
+            : 'bg-slate-800/95 border-white/15';
+    const toast = document.createElement('div');
+    toast.className = `fixed top-5 right-5 z-[150] max-w-sm px-4 py-2.5 rounded-xl border text-white text-sm shadow-lg transition-all duration-300 ${colorClass}`;
+    toast.textContent = message;
+    document.body.appendChild(toast);
+    setTimeout(() => {
+        toast.style.opacity = '0';
+        toast.style.transform = 'translateY(-8px)';
+        setTimeout(() => toast.remove(), 300);
+    }, 2600);
+}
+
+async function requestJson(url, options = {}) {
+    const response = await fetch(url, options);
+    const result = await response.json();
+    if (!response.ok || result.code !== 200) {
+        throw new Error(result.message || '请求失败');
+    }
+    return result.data;
+}
+
+function escapeHtml(value) {
+    return String(value || '').replace(/[&<>"']/g, char => ({
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#39;'
+    }[char]));
+}
+
+function normalizeReplacementType(type) {
+    if (['object', 'prop', 'product', 'tool'].includes(type)) {
+        return 'object';
+    }
+    return 'person';
+}
+
+function replacementTemplate(index, item = null) {
+    const type = normalizeReplacementType(item?.replacementType);
+    const config = getReplacementTypeConfig(type);
+    const hasReference = Boolean(item?.referenceImageUrl);
+    return `
+        <div class="replacement-card border border-white/10 rounded-xl bg-white/[0.03] p-4" data-index="${index}">
+            <div class="flex items-center justify-between mb-4">
+                <h3 class="font-medium">替换对象 ${index}</h3>
+                ${index > 1 ? `
+                <button type="button" class="remove-replacement p-2 rounded-lg bg-white/5 hover:bg-red-500/20 hover:text-red-200 transition-all" title="删除">
+                    <i data-lucide="trash-2" class="w-4 h-4"></i>
+                </button>` : ''}
+            </div>
+            <div class="grid lg:grid-cols-[minmax(0,1fr)_180px] gap-4">
+                <div class="space-y-4">
+                    <label class="block">
+                        <span class="block text-sm text-white/65 mb-2">替换类型</span>
+                        <select class="input-modern replacement-type py-3">
+                            <option value="person" ${type === 'person' ? 'selected' : ''}>人物</option>
+                            <option value="object" ${type === 'object' ? 'selected' : ''}>物品</option>
+                        </select>
+                    </label>
+                    <label class="block">
+                        <span class="block text-sm text-white/65 mb-2">原视频中要替换的对象</span>
+                        <textarea class="input-modern source-object min-h-[84px]" placeholder="${config.sourcePlaceholder}">${escapeHtml(item?.sourceObject || '')}</textarea>
+                    </label>
+                    <label class="block">
+                        <span class="block text-sm text-white/65 mb-2">替换成</span>
+                        <textarea class="input-modern target-description min-h-[84px]" placeholder="${config.targetPlaceholder}">${escapeHtml(item?.targetDescription || '')}</textarea>
+                    </label>
+                </div>
+                <div>
+                    <span class="block text-sm text-white/65 mb-2">参考图</span>
+                    <input type="file" accept="image/jpeg,image/png,image/webp" class="reference-input hidden">
+                    <button type="button" class="reference-upload ${hasReference ? 'hidden' : ''} w-full min-h-[180px] rounded-xl border border-dashed border-white/15 bg-white/[0.03] hover:bg-white/[0.06] transition-all flex flex-col items-center justify-center gap-2 text-white/55">
+                        <i data-lucide="image-plus" class="w-6 h-6"></i>
+                        <span class="text-sm">上传参考图</span>
+                    </button>
+                    <div class="reference-preview ${hasReference ? '' : 'hidden'} relative w-full rounded-xl overflow-hidden bg-black/40 border border-white/10 mt-0">
+                        <img class="reference-image w-full h-auto max-h-[260px] object-contain cursor-zoom-in" alt="参考图" title="点击查看大图" src="${escapeHtml(item?.referenceImageUrl || '')}">
+                        <button type="button" class="reference-change absolute right-2 top-2 p-2 rounded-lg bg-black/60 hover:bg-black/75 transition-all" title="更换">
+                            <i data-lucide="refresh-cw" class="w-4 h-4"></i>
+                        </button>
+                    </div>
+                    <p class="reference-status text-xs text-white/35 mt-2">${hasReference ? '已加载历史参考图' : '未上传'}</p>
+                </div>
+            </div>
+            <details class="mt-4">
+                <summary class="cursor-pointer text-sm text-cyan-200/80 hover:text-cyan-100 inline-flex items-center gap-2">
+                    <i data-lucide="sliders-horizontal" class="w-4 h-4"></i>补充定位信息
+                </summary>
+                <div class="grid md:grid-cols-3 gap-3 mt-3">
+                    <label class="block">
+                        <span class="block text-xs text-white/50 mb-1">出现时间</span>
+                        <input class="input-modern py-2.5 text-sm appear-time" placeholder="可选，如 0-8秒" value="${escapeHtml(item?.appearTime || '')}">
+                    </label>
+                    <label class="block">
+                        <span class="block text-xs text-white/50 mb-1">画面位置</span>
+                        <input class="input-modern py-2.5 text-sm screen-position" placeholder="可选，如 画面左侧" value="${escapeHtml(item?.screenPosition || '')}">
+                    </label>
+                    <label class="block">
+                        <span class="block text-xs text-white/50 mb-1">语言</span>
+                        <input class="input-modern py-2.5 text-sm appearance-hint" placeholder="${config.hintPlaceholder}" value="${escapeHtml(item?.appearanceHint || '')}">
+                    </label>
+                </div>
+            </details>
+        </div>
+    `;
+}
+
+function applyReplacementTypeHint(card) {
+    const type = card.querySelector('.replacement-type')?.value || 'person';
+    const config = getReplacementTypeConfig(type);
+    card.querySelector('.source-object').placeholder = config.sourcePlaceholder;
+    card.querySelector('.target-description').placeholder = config.targetPlaceholder;
+    card.querySelector('.appearance-hint').placeholder = config.hintPlaceholder;
+}
+
+function addReplacement() {
+    replacementIndex += 1;
+    replacementList.insertAdjacentHTML('beforeend', replacementTemplate(replacementIndex));
+    const cards = getReplacementCards();
+    applyReplacementTypeHint(cards[cards.length - 1]);
+    safeCreateIcons();
+}
+
+function addReplacementFromTask(item) {
+    replacementIndex += 1;
+    replacementList.insertAdjacentHTML('beforeend', replacementTemplate(replacementIndex, item));
+    const cards = getReplacementCards();
+    const card = cards[cards.length - 1];
+    card.dataset.referenceUrl = item?.referenceImageUrl || '';
+    applyReplacementTypeHint(card);
+}
+
+function resetReplacementList(items = []) {
+    replacementIndex = 0;
+    replacementList.innerHTML = '';
+    if (!items.length) {
+        addReplacement();
+        return;
+    }
+    items.forEach(addReplacementFromTask);
+    safeCreateIcons();
+}
+
+function setSelectValue(selectId, value) {
+    const select = document.getElementById(selectId);
+    if (!select || value === null || value === undefined) return;
+    const normalizedValue = String(value);
+    if (Array.from(select.options).some(option => option.value === normalizedValue)) {
+        select.value = normalizedValue;
+    }
+}
+
+function restoreTaskToForm(task) {
+    originalVideoUrl = task.originalVideoUrl || '';
+    setSelectValue('aspectRatio', task.aspectRatio || '16:9');
+    setSelectValue('duration', task.duration || 5);
+
+    const videoEmpty = document.getElementById('videoEmpty');
+    const videoPreview = document.getElementById('videoPreview');
+    const originalVideoPreview = document.getElementById('originalVideoPreview');
+    const videoFileName = document.getElementById('videoFileName');
+    const videoUploadStatus = document.getElementById('videoUploadStatus');
+
+    if (originalVideoUrl) {
+        videoEmpty.classList.add('hidden');
+        videoPreview.classList.remove('hidden');
+        originalVideoPreview.src = originalVideoUrl;
+        videoFileName.textContent = task.taskName || `主体替换 #${task.id}`;
+        videoUploadStatus.textContent = '已加载历史原视频';
+    } else {
+        videoPreview.classList.add('hidden');
+        videoEmpty.classList.remove('hidden');
+        originalVideoPreview.removeAttribute('src');
+        videoFileName.textContent = '';
+        videoUploadStatus.textContent = '等待上传';
+    }
+
+    resetReplacementList(task.replacements || []);
+}
+
+function getReplacementCards() {
+    return Array.from(document.querySelectorAll('.replacement-card'));
+}
+
+function collectReplacements() {
+    return getReplacementCards().map(card => ({
+        sourceObject: card.querySelector('.source-object').value.trim(),
+        replacementType: card.querySelector('.replacement-type').value,
+        targetDescription: card.querySelector('.target-description').value.trim(),
+        referenceImageUrl: card.dataset.referenceUrl || '',
+        appearTime: card.querySelector('.appear-time').value.trim(),
+        screenPosition: card.querySelector('.screen-position').value.trim(),
+        appearanceHint: card.querySelector('.appearance-hint').value.trim()
+    }));
+}
+
+async function uploadFile(endpoint, file) {
+    const formData = new FormData();
+    formData.append('file', file);
+    const response = await fetch(endpoint, {
+        method: 'POST',
+        body: formData
+    });
+    const result = await response.json();
+    if (!response.ok || result.code !== 200) {
+        throw new Error(result.message || '上传失败');
+    }
+    return result.data.url;
+}
+
+originalVideoInput.addEventListener('change', async event => {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    document.getElementById('videoEmpty').classList.add('hidden');
+    document.getElementById('videoPreview').classList.remove('hidden');
+    document.getElementById('originalVideoPreview').src = URL.createObjectURL(file);
+    document.getElementById('videoFileName').textContent = file.name;
+    document.getElementById('videoUploadStatus').textContent = '上传中...';
+    originalVideoUrl = '';
+
+    try {
+        originalVideoUrl = await uploadFile('/api/v1/subject-replacements/upload-video/', file);
+        document.getElementById('videoUploadStatus').textContent = '上传完成';
+        showToast('原视频上传完成', 'success');
+    } catch (error) {
+        document.getElementById('videoUploadStatus').textContent = error.message;
+        showToast(error.message, 'error');
+    }
+});
+
+replacementList.addEventListener('click', event => {
+    const previewImage = event.target.closest('.reference-image');
+    if (previewImage && previewImage.src) {
+        openImagePreview(previewImage.src);
+        return;
+    }
+
+    const uploadBtn = event.target.closest('.reference-upload, .reference-change');
+    if (uploadBtn) {
+        const card = uploadBtn.closest('.replacement-card');
+        card.querySelector('.reference-input').click();
+        return;
+    }
+
+    const removeBtn = event.target.closest('.remove-replacement');
+    if (removeBtn) {
+        removeBtn.closest('.replacement-card').remove();
+    }
+});
+
+function openImagePreview(url) {
+    document.getElementById('imagePreviewLarge').src = url;
+    document.getElementById('imagePreviewModal').classList.remove('hidden');
+    safeCreateIcons();
+}
+
+function closeImagePreview() {
+    document.getElementById('imagePreviewModal').classList.add('hidden');
+    document.getElementById('imagePreviewLarge').removeAttribute('src');
+}
+
+replacementList.addEventListener('change', async event => {
+    if (event.target.classList.contains('replacement-type')) {
+        applyReplacementTypeHint(event.target.closest('.replacement-card'));
+        return;
+    }
+
+    if (!event.target.classList.contains('reference-input')) return;
+
+    const file = event.target.files[0];
+    if (!file) return;
+
+    const card = event.target.closest('.replacement-card');
+    const status = card.querySelector('.reference-status');
+    status.textContent = '上传中...';
+    card.dataset.referenceUrl = '';
+
+    try {
+        const url = await uploadFile('/api/v1/subject-replacements/upload-reference/', file);
+        card.dataset.referenceUrl = url;
+        card.querySelector('.reference-image').src = URL.createObjectURL(file);
+        card.querySelector('.reference-upload').classList.add('hidden');
+        card.querySelector('.reference-preview').classList.remove('hidden');
+        status.textContent = '上传完成';
+        showToast('参考图上传完成', 'success');
+    } catch (error) {
+        status.textContent = error.message;
+        showToast(error.message, 'error');
+    }
+});
+
+document.getElementById('addReplacementBtn').addEventListener('click', addReplacement);
+
+document.getElementById('subjectReplacementForm').addEventListener('submit', async event => {
+    event.preventDefault();
+    if (!originalVideoUrl) {
+        showToast('请先上传原视频', 'error');
+        return;
+    }
+
+    const replacements = collectReplacements();
+    for (let i = 0; i < replacements.length; i += 1) {
+        const item = replacements[i];
+        if (!item.sourceObject) {
+            showToast(`请填写替换对象 ${i + 1} 的原视频对象描述`, 'error');
+            return;
+        }
+        if (!item.targetDescription) {
+            showToast(`请填写替换对象 ${i + 1} 的替换后描述`, 'error');
+            return;
+        }
+        if (!item.referenceImageUrl) {
+            showToast(`请上传替换对象 ${i + 1} 的参考图`, 'error');
+            return;
+        }
+    }
+
+    const submitBtn = document.getElementById('submitBtn');
+    submitBtn.disabled = true;
+    submitBtn.classList.add('opacity-60', 'cursor-not-allowed');
+
+    try {
+        const response = await fetch('/api/v1/subject-replacements/', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({
+                originalVideoUrl,
+                aspectRatio: document.getElementById('aspectRatio').value,
+                duration: parseInt(document.getElementById('duration').value, 10),
+                generateAudio: true,
+                watermark: false,
+                replacements
+            })
+        });
+        const result = await response.json();
+        if (!response.ok || result.code !== 200) {
+            throw new Error(result.message || '任务创建失败');
+        }
+        showToast('任务已提交，正在生成', 'success');
+        setActiveTask(result.data);
+        loadRecentTasks();
+        startPolling(result.data.id);
+    } catch (error) {
+        showToast(error.message, 'error');
+    } finally {
+        submitBtn.disabled = false;
+        submitBtn.classList.remove('opacity-60', 'cursor-not-allowed');
+    }
+});
+
+function setActiveTask(task) {
+    activeTaskId = task.id;
+    document.getElementById('activeTaskEmpty').classList.add('hidden');
+    document.getElementById('activeTaskPanel').classList.remove('hidden');
+    document.getElementById('activeTaskBadge').classList.remove('hidden');
+    document.getElementById('activeTaskProgress').style.width = `${task.progressPercent || 10}%`;
+    document.getElementById('activeTaskStatusText').textContent = task.statusDesc || '排队中';
+
+    const resultPanel = document.getElementById('activeTaskResult');
+    const errorPanel = document.getElementById('activeTaskError');
+    resultPanel.classList.add('hidden');
+    errorPanel.classList.add('hidden');
+
+    if (task.status === 'succeeded' && task.outputVideoUrl) {
+        resultPanel.classList.remove('hidden');
+        document.getElementById('resultVideo').src = task.outputVideoUrl;
+        document.getElementById('resultVideoLink').href = task.outputVideoUrl;
+        document.getElementById('activeTaskBadge').textContent = '已完成';
+        document.getElementById('activeTaskBadge').className = 'status-badge status-confirmed';
+    } else if (task.status === 'failed') {
+        errorPanel.classList.remove('hidden');
+        errorPanel.textContent = task.errorMessage || '生成失败';
+        document.getElementById('activeTaskBadge').textContent = '失败';
+        document.getElementById('activeTaskBadge').className = 'status-badge status-initializing';
+    } else {
+        document.getElementById('activeTaskBadge').textContent = '生成中';
+        document.getElementById('activeTaskBadge').className = 'status-badge status-pending';
+    }
+    safeCreateIcons();
+}
+
+function startPolling(taskId) {
+    if (pollTimer) clearInterval(pollTimer);
+    pollTimer = setInterval(async () => {
+        try {
+            const response = await fetch(`/api/v1/subject-replacements/${taskId}/?_t=${Date.now()}`);
+            const result = await response.json();
+            if (result.code !== 200) throw new Error(result.message || '查询失败');
+            setActiveTask(result.data);
+            if (['succeeded', 'failed'].includes(result.data.status)) {
+                clearInterval(pollTimer);
+                pollTimer = null;
+                loadRecentTasks();
+            }
+        } catch (error) {
+            console.warn('轮询主体替换状态失败:', error);
+        }
+    }, 5000);
+}
+
+function renderTask(task) {
+    const statusClass = task.status === 'succeeded'
+        ? 'status-confirmed'
+        : task.status === 'failed'
+            ? 'status-initializing'
+            : 'status-pending';
+    const title = task.taskName || `主体替换 #${task.id}`;
+    const created = task.createdAt ? task.createdAt.substring(0, 16).replace('T', ' ') : '';
+    return `
+        <div class="recent-task w-full text-left p-3 rounded-xl bg-white/[0.03] hover:bg-white/[0.06] border border-white/10 transition-all" data-task-id="${task.id}" data-task-name="${escapeHtml(title)}">
+            <div class="flex items-center justify-between gap-2 mb-2">
+                <button type="button" class="recent-task-open min-w-0 flex-1 text-left font-medium text-sm truncate" title="点击回显任务">${escapeHtml(title)}</button>
+                <span class="status-badge ${statusClass} flex-shrink-0">${escapeHtml(task.statusDesc || task.status)}</span>
+            </div>
+            <div class="flex items-center justify-between text-xs text-white/35">
+                <span>${escapeHtml(task.aspectRatio || '')}</span>
+                <span>${escapeHtml(created)}</span>
+            </div>
+            <div class="grid grid-cols-2 gap-2 mt-3">
+                <button type="button" class="rename-task px-2.5 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 transition-all text-xs inline-flex items-center justify-center gap-1">
+                    <i data-lucide="pencil" class="w-3.5 h-3.5"></i>改名
+                </button>
+                <button type="button" class="delete-task px-2.5 py-1.5 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-200 transition-all text-xs inline-flex items-center justify-center gap-1">
+                    <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>删除
+                </button>
+            </div>
+        </div>
+    `;
+}
+
+function renderRecentTaskPage() {
+    const container = document.getElementById('recentTasks');
+    const pager = document.getElementById('recentTaskPager');
+    const pageInfo = document.getElementById('recentTaskPageInfo');
+    const prevBtn = document.getElementById('recentTaskPrev');
+    const nextBtn = document.getElementById('recentTaskNext');
+
+    if (!recentTasksCache.length) {
+        container.innerHTML = '<div class="text-white/40 text-sm text-center py-6">暂无任务</div>';
+        pager.classList.add('hidden');
+        return;
+    }
+
+    const totalPages = Math.max(1, Math.ceil(recentTasksCache.length / recentTaskPageSize));
+    recentTaskPage = Math.min(Math.max(1, recentTaskPage), totalPages);
+    const start = (recentTaskPage - 1) * recentTaskPageSize;
+    const pageTasks = recentTasksCache.slice(start, start + recentTaskPageSize);
+
+    container.innerHTML = pageTasks.map(renderTask).join('');
+    pageInfo.textContent = `${recentTaskPage} / ${totalPages}`;
+    prevBtn.disabled = recentTaskPage <= 1;
+    nextBtn.disabled = recentTaskPage >= totalPages;
+    pager.classList.toggle('hidden', totalPages <= 1);
+    safeCreateIcons();
+}
+
+async function loadRecentTasks() {
+    const container = document.getElementById('recentTasks');
+    try {
+        const response = await fetch('/api/v1/subject-replacements/?limit=50');
+        const result = await response.json();
+        if (result.code !== 200) throw new Error(result.message || '加载失败');
+        recentTasksCache = result.data || [];
+        renderRecentTaskPage();
+    } catch (error) {
+        recentTasksCache = [];
+        document.getElementById('recentTaskPager').classList.add('hidden');
+        container.innerHTML = `<div class="text-red-300 text-sm text-center py-6">${escapeHtml(error.message)}</div>`;
+    }
+}
+
+document.getElementById('recentTasks').addEventListener('click', async event => {
+    const taskBtn = event.target.closest('.recent-task');
+    if (!taskBtn) return;
+    const taskId = taskBtn.dataset.taskId;
+
+    if (event.target.closest('.rename-task')) {
+        const currentName = taskBtn.dataset.taskName || '';
+        const nextName = prompt('请输入新的任务名称', currentName);
+        if (nextName === null) return;
+        const trimmedName = nextName.trim();
+        if (!trimmedName) {
+            showToast('任务名称不能为空', 'error');
+            return;
+        }
+        try {
+            const task = await requestJson(`/api/v1/subject-replacements/${taskId}/name/`, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({taskName: trimmedName})
+            });
+            setActiveTask(task);
+            await loadRecentTasks();
+            showToast('任务名称已更新', 'success');
+        } catch (error) {
+            showToast(error.message, 'error');
+        }
+        return;
+    }
+
+    if (event.target.closest('.delete-task')) {
+        if (!confirm('确定删除这个主体替换任务吗？删除后最近任务里将不再显示。')) return;
+        try {
+            await requestJson(`/api/v1/subject-replacements/${taskId}/delete/`, {method: 'DELETE'});
+            if (String(activeTaskId) === String(taskId)) {
+                if (pollTimer) {
+                    clearInterval(pollTimer);
+                    pollTimer = null;
+                }
+                activeTaskId = null;
+                document.getElementById('activeTaskPanel').classList.add('hidden');
+                document.getElementById('activeTaskBadge').classList.add('hidden');
+                document.getElementById('activeTaskEmpty').classList.remove('hidden');
+            }
+            await loadRecentTasks();
+            showToast('任务已删除', 'success');
+        } catch (error) {
+            showToast(error.message, 'error');
+        }
+        return;
+    }
+
+    try {
+        const task = await requestJson(`/api/v1/subject-replacements/${taskId}/`);
+        restoreTaskToForm(task);
+        setActiveTask(task);
+        showToast('已回显该任务的原视频和替换对象组', 'success');
+        if (['pending', 'running'].includes(task.status)) {
+            startPolling(task.id);
+        }
+    } catch (error) {
+        showToast(error.message, 'error');
+    }
+});
+
+document.getElementById('refreshTasksBtn').addEventListener('click', loadRecentTasks);
+document.getElementById('recentTaskPrev').addEventListener('click', () => {
+    if (recentTaskPage > 1) {
+        recentTaskPage -= 1;
+        renderRecentTaskPage();
+    }
+});
+document.getElementById('recentTaskNext').addEventListener('click', () => {
+    const totalPages = Math.max(1, Math.ceil(recentTasksCache.length / recentTaskPageSize));
+    if (recentTaskPage < totalPages) {
+        recentTaskPage += 1;
+        renderRecentTaskPage();
+    }
+});
+document.getElementById('imagePreviewClose').addEventListener('click', closeImagePreview);
+document.getElementById('imagePreviewModal').addEventListener('click', event => {
+    if (event.target.id === 'imagePreviewModal') {
+        closeImagePreview();
+    }
+});
+document.addEventListener('keydown', event => {
+    if (event.key === 'Escape') {
+        closeImagePreview();
+    }
+});
+
+addReplacement();
+loadRecentTasks();
+safeCreateIcons();
+</script>
+{% endblock %}

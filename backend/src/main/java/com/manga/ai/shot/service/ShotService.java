@@ -5,6 +5,7 @@ import com.manga.ai.shot.dto.ShotDetailVO;
 import com.manga.ai.shot.dto.ShotReviewRequest;
 import com.manga.ai.shot.dto.ShotUpdateRequest;
 import com.manga.ai.shot.dto.ShotVideoAssetVO;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
 import java.util.Map;
@@ -43,10 +44,25 @@ public interface ShotService {
     void reviewShot(Long shotId, ShotReviewRequest request);
 
     /**
+     * 解锁分镜，恢复为待审核状态
+     * @param shotId 分镜ID
+     */
+    void unlockShot(Long shotId);
+
+    /**
      * 异步生成视频
      * @param shotId 分镜ID
      */
     void generateVideo(Long shotId);
+
+    /**
+     * 手动上传分镜视频
+     * @param shotId 分镜ID
+     * @param aspectRatio 视频比例
+     * @param file 视频文件
+     * @return 更新后的分镜详情
+     */
+    ShotDetailVO uploadVideo(Long shotId, String aspectRatio, MultipartFile file);
 
     /**
      * 批量生成视频
@@ -107,7 +123,7 @@ public interface ShotService {
      * @param shotId 分镜ID
      * @param assetId 视频资产ID
      */
-    void rollbackToVersion(Long shotId, Long assetId);
+    ShotDetailVO rollbackToVersion(Long shotId, Long assetId);
 
     /**
      * 创建分镜
@@ -127,8 +143,9 @@ public interface ShotService {
      * 重新排序分镜
      * @param episodeId 剧集ID
      * @param shotIds 分镜ID列表（按新顺序）
+     * @param reviewStatus 分镜审核状态，待审核和已锁定列表分别排序
      */
-    void reorderShots(Long episodeId, List<Long> shotIds);
+    void reorderShots(Long episodeId, List<Long> shotIds, Integer reviewStatus);
 
     /**
      * 获取视频生成积分预览

@@ -12,16 +12,20 @@
         一键生成标准化角色资产，告别重复劳动，让创作更高效
     </p>
     <div class="flex items-center justify-center gap-4">
-        <a href="/init/" class="btn-neon text-lg px-8 py-3 inline-flex items-center gap-2">
+        <a href="/init/" data-login-required="true" class="btn-neon text-lg px-8 py-3 inline-flex items-center gap-2">
             <i data-lucide="plus" class="w-5 h-5"></i>创建新系列
         </a>
-        <a href="/episodes/" class="px-8 py-3 rounded-xl bg-gradient-to-r from-orange-500 to-pink-500 hover:from-orange-600 hover:to-pink-600 transition-all font-medium text-lg inline-flex items-center gap-2">
+        <a href="/episodes/" data-login-required="true" class="px-8 py-3 rounded-xl bg-gradient-to-r from-orange-500 to-pink-500 hover:from-orange-600 hover:to-pink-600 transition-all font-medium text-lg inline-flex items-center gap-2">
             <i data-lucide="film" class="w-5 h-5"></i>剧集制作
         </a>
-        <a href="/assets/library/" class="px-8 py-3 rounded-xl bg-white/10 border border-white/20 hover:bg-white/15 transition-all font-medium text-lg inline-flex items-center gap-2">
+        <a href="/subject-replacement/" data-login-required="true" class="px-8 py-3 rounded-xl bg-gradient-to-r from-emerald-500 to-cyan-500 hover:from-emerald-600 hover:to-cyan-600 transition-all font-medium text-lg inline-flex items-center gap-2">
+            <i data-lucide="replace" class="w-5 h-5"></i>主体替换
+            <span class="ml-0.5 inline-flex h-5 items-center rounded-full bg-white/95 px-2 text-[10px] font-bold tracking-[0.12em] text-emerald-700 shadow-sm shadow-emerald-950/20">NEW</span>
+        </a>
+        <a href="/assets/library/" data-login-required="true" class="px-8 py-3 rounded-xl bg-white/10 border border-white/20 hover:bg-white/15 transition-all font-medium text-lg inline-flex items-center gap-2">
             <i data-lucide="folder-open" class="w-5 h-5"></i>我的资产库
         </a>
-        <a href="/credits/records/" class="px-8 py-3 rounded-xl bg-white/10 border border-white/20 hover:bg-white/15 transition-all font-medium text-lg inline-flex items-center gap-2">
+        <a href="/credits/records/" data-login-required="true" class="px-8 py-3 rounded-xl bg-white/10 border border-white/20 hover:bg-white/15 transition-all font-medium text-lg inline-flex items-center gap-2">
             <i data-lucide="history" class="w-5 h-5"></i>积分记录
         </a>
     </div>
@@ -40,6 +44,167 @@
     <!-- Pagination -->
     <div id="pagination" class="flex justify-center items-center gap-4 mt-8"></div>
 </div>
+
+<!-- Feature Showcase -->
+<section class="mt-16 mb-8">
+    <div class="mb-5 flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+        <div>
+            <div class="mb-3 inline-flex items-center gap-2 rounded-full border border-emerald-300/20 bg-emerald-300/10 px-3 py-1 text-xs font-semibold tracking-[0.18em] text-emerald-100">
+                <i data-lucide="sparkles" class="w-3.5 h-3.5"></i>
+                FEATURE SPOTLIGHT
+            </div>
+            <h2 class="text-2xl md:text-3xl font-bold leading-tight">视频主体替换 - 精准定向修改</h2>
+        </div>
+        <a href="/subject-replacement/" data-login-required="true" class="inline-flex items-center justify-center gap-2 rounded-xl border border-emerald-300/25 bg-emerald-300/10 px-4 py-2.5 text-sm font-semibold text-emerald-100 hover:bg-emerald-300/15 transition-all">
+            打开主体替换
+            <i data-lucide="arrow-right" class="w-4 h-4"></i>
+        </a>
+    </div>
+
+    <div class="overflow-hidden rounded-3xl border border-white/10 bg-[linear-gradient(135deg,rgba(15,23,42,0.74),rgba(13,148,136,0.12))] shadow-2xl shadow-black/25">
+        <div class="grid lg:grid-cols-[280px_minmax(0,1fr)]">
+            <div class="border-b border-white/10 bg-black/[0.18] p-5 lg:border-b-0 lg:border-r">
+                <div class="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.2em] text-white/[0.38]">
+                    <span class="h-px w-8 bg-emerald-200/50"></span>
+                    Precision Edit
+                </div>
+
+                <h3 class="mt-5 text-xl font-semibold leading-tight text-white">只改你指定的主体</h3>
+                <p class="mt-3 text-sm leading-6 text-white/[0.48]">
+                    适合把原视频里的某个演员、道具或商品精准替换成参考图对象，保留原镜头里的运动和构图。
+                </p>
+
+                <div class="mt-5 grid grid-cols-2 gap-2.5">
+                    <div class="rounded-2xl border border-white/10 bg-white/[0.045] p-3">
+                        <p class="text-[11px] font-semibold uppercase tracking-[0.16em] text-cyan-100/70">Mode</p>
+                        <p class="mt-2 text-sm text-white">人物 / 物品</p>
+                    </div>
+                    <div class="rounded-2xl border border-white/10 bg-white/[0.045] p-3">
+                        <p class="text-[11px] font-semibold uppercase tracking-[0.16em] text-emerald-100/70">Output</p>
+                        <p class="mt-2 text-sm text-white">替换后视频</p>
+                    </div>
+                </div>
+
+                <div class="mt-5 space-y-2.5">
+                    <div class="rounded-2xl border border-white/10 bg-slate-950/35 p-3">
+                        <div class="mb-2 flex items-center gap-2 text-xs font-medium text-white/[0.45]">
+                            <i data-lucide="scan-line" class="w-4 h-4 text-cyan-200"></i>
+                            原视频中要替换的对象
+                        </div>
+                        <p class="text-sm text-white/[0.88]">画面中央带眼镜的女主播</p>
+                    </div>
+                    <div class="rounded-2xl border border-emerald-300/[0.15] bg-emerald-300/[0.07] p-3">
+                        <div class="mb-2 flex items-center gap-2 text-xs font-medium text-white/[0.45]">
+                            <i data-lucide="badge-check" class="w-4 h-4 text-emerald-200"></i>
+                            替换成
+                        </div>
+                        <p class="text-sm text-white/[0.88]">欧美人</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="p-4 md:p-6">
+                <div class="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-white/10 bg-white/[0.035] px-4 py-3">
+                    <div class="flex items-center gap-2 text-sm font-semibold text-white/[0.88]">
+                        <i data-lucide="clapperboard" class="w-4 h-4 text-emerald-200"></i>
+                        Demo Preview
+                    </div>
+                    <div class="flex flex-wrap items-center gap-2 text-xs text-white/[0.45]">
+                        <span>BEFORE</span>
+                        <i data-lucide="arrow-right" class="w-3.5 h-3.5 text-white/[0.28]"></i>
+                        <span>REFERENCE</span>
+                        <i data-lucide="arrow-right" class="w-3.5 h-3.5 text-white/[0.28]"></i>
+                        <span class="text-emerald-100">AFTER</span>
+                    </div>
+                </div>
+
+                <div class="grid gap-4 md:grid-cols-[minmax(0,1fr)_172px_minmax(0,1fr)]">
+                    <div class="min-w-0 rounded-2xl border border-white/10 bg-black/25 p-3">
+                        <div class="mb-3 flex items-center justify-between px-1">
+                            <div>
+                                <p class="text-xs font-bold tracking-[0.16em] text-white/[0.42]">BEFORE</p>
+                                <p class="mt-1 text-sm font-medium text-white">替换前视频</p>
+                            </div>
+                            <span class="rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-[11px] text-white/[0.45]">Original</span>
+                        </div>
+                        <div class="relative aspect-video overflow-hidden rounded-xl border border-white/10 bg-[linear-gradient(135deg,rgba(15,23,42,0.94),rgba(30,64,175,0.42))]">
+                            <video
+                                class="absolute inset-0 h-full w-full object-cover"
+                                data-showcase-video="before"
+                                src="/static/videos/subject-replacement-before.mp4"
+                                muted
+                                autoplay
+                                loop
+                                playsinline
+                            ></video>
+                            <div class="absolute bottom-3 right-3 flex items-center gap-2">
+                                <button type="button" class="showcase-audio-toggle inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/20 bg-black/45 text-white shadow-lg backdrop-blur-md transition hover:bg-black/60" data-video-target="before" title="开启声音" aria-label="开启声音">
+                                    <i data-lucide="volume-x" class="w-4 h-4"></i>
+                                </button>
+                                <button type="button" class="showcase-video-expand inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/20 bg-black/45 text-white shadow-lg backdrop-blur-md transition hover:bg-black/60" data-video-target="before" title="放大视频" aria-label="放大视频">
+                                    <i data-lucide="maximize-2" class="w-4 h-4"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="min-w-0 rounded-2xl border border-cyan-200/[0.15] bg-cyan-200/[0.045] p-3">
+                        <div class="mb-3 flex items-center justify-between px-1">
+                            <div>
+                                <p class="text-xs font-bold tracking-[0.16em] text-white/[0.42]">REFERENCE</p>
+                                <p class="mt-1 text-sm font-medium text-white">参考图</p>
+                            </div>
+                            <i data-lucide="image" class="w-4 h-4 text-cyan-100/70"></i>
+                        </div>
+                        <div class="relative aspect-video overflow-hidden rounded-xl border border-white/10 md:aspect-[4/5]">
+                            <img
+                                class="absolute inset-0 h-full w-full object-cover"
+                                src="/static/images/subject-replacement-reference-model.png"
+                                alt="主体替换参考图"
+                            >
+                            <div class="absolute inset-0 bg-gradient-to-t from-black/55 via-transparent to-transparent"></div>
+                        </div>
+                    </div>
+
+                    <div class="min-w-0 rounded-2xl border border-emerald-300/25 bg-emerald-300/[0.06] p-3 shadow-xl shadow-emerald-950/10">
+                        <div class="mb-3 flex items-center justify-between px-1">
+                            <div>
+                                <p class="text-xs font-bold tracking-[0.16em] text-emerald-100">AFTER</p>
+                                <p class="mt-1 text-sm font-medium text-white">替换后视频</p>
+                            </div>
+                            <span class="rounded-full bg-emerald-300/[0.14] px-2.5 py-1 text-[11px] font-semibold text-emerald-100">Generated</span>
+                        </div>
+                        <div class="relative aspect-video overflow-hidden rounded-xl border border-emerald-200/25 bg-[linear-gradient(135deg,rgba(6,78,59,0.72),rgba(8,47,73,0.86))]">
+                            <video
+                                class="absolute inset-0 h-full w-full object-cover"
+                                data-showcase-video="after"
+                                src="/static/videos/subject-replacement-after.mp4"
+                                muted
+                                autoplay
+                                loop
+                                playsinline
+                            ></video>
+                            <div class="absolute bottom-3 right-3 flex items-center gap-2">
+                                <button type="button" class="showcase-audio-toggle inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/20 bg-black/45 text-white shadow-lg backdrop-blur-md transition hover:bg-black/60" data-video-target="after" title="开启声音" aria-label="开启声音">
+                                    <i data-lucide="volume-x" class="w-4 h-4"></i>
+                                </button>
+                                <button type="button" class="showcase-video-expand inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/20 bg-black/45 text-white shadow-lg backdrop-blur-md transition hover:bg-black/60" data-video-target="after" title="放大视频" aria-label="放大视频">
+                                    <i data-lucide="maximize-2" class="w-4 h-4"></i>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="mt-4 flex items-start gap-3 rounded-2xl border border-white/10 bg-white/[0.035] px-4 py-3 text-sm leading-6 text-white/[0.58]">
+                    <i data-lucide="info" class="mt-0.5 h-4 w-4 flex-none text-emerald-100/70"></i>
+                    <p>上传原视频和参考图，只替换指定人物或物品，其余镜头节奏、动作关系和背景氛围尽量保持稳定。</p>
+                </div>
+
+            </div>
+        </div>
+    </div>
+</section>
 {% endblock %}
 
 {% block extra_js %}
@@ -61,6 +226,15 @@
     </div>
 </div>
 
+<div id="showcaseVideoModal" class="fixed inset-0 z-[70] hidden items-center justify-center bg-black/85 p-4 backdrop-blur-sm">
+    <div class="relative w-full max-w-5xl">
+        <button type="button" id="showcaseVideoModalClose" class="absolute -top-12 right-0 inline-flex h-10 w-10 items-center justify-center rounded-full border border-white/15 bg-white/10 text-white transition hover:bg-white/15" title="关闭" aria-label="关闭">
+            <i data-lucide="x" class="w-5 h-5"></i>
+        </button>
+        <video id="showcaseVideoModalPlayer" class="max-h-[82vh] w-full rounded-2xl border border-white/12 bg-black shadow-2xl" controls playsinline></video>
+    </div>
+</div>
+
 <script>
 // 安全调用 lucide.createIcons
 function safeCreateIcons() {
@@ -76,6 +250,9 @@ let stompClient = null;
 const processingSeries = {{ processing_series_ids|safe }};
 let websocketLoading = false;
 let websocketReady = typeof SockJS !== 'undefined' && typeof Stomp !== 'undefined';
+let showcaseExpandedSource = null;
+let showcaseExpandedWasPlaying = false;
+const IS_AUTHENTICATED = {{ request.session.token|yesno:"true,false" }};
 
 // 从 localStorage 恢复进度
 let seriesProgress = JSON.parse(localStorage.getItem('seriesProgress') || '{}');
@@ -83,6 +260,110 @@ let seriesProgress = JSON.parse(localStorage.getItem('seriesProgress') || '{}');
 // 保存进度到 localStorage
 function saveProgress() {
     localStorage.setItem('seriesProgress', JSON.stringify(seriesProgress));
+}
+
+function showLoginRequiredModal() {
+    showLoginExpiredModal('请先登录', '登录后即可使用创建系列、剧集制作、主体替换和资产库等功能。', '去登录', true);
+}
+
+function initLoginRequiredLinks() {
+    document.querySelectorAll('[data-login-required="true"]').forEach(link => {
+        link.addEventListener('click', event => {
+            if (IS_AUTHENTICATED) return;
+            event.preventDefault();
+            showLoginRequiredModal();
+        });
+    });
+}
+
+function renderAnonymousSeriesPrompt() {
+    const container = document.getElementById('seriesList');
+    if (!container) return;
+
+    container.innerHTML = `
+        <div class="glass-card p-8 text-center col-span-full">
+            <div class="w-14 h-14 mx-auto mb-4 rounded-2xl bg-gradient-to-br from-violet-500/25 to-cyan-500/25 border border-white/10 flex items-center justify-center">
+                <i data-lucide="log-in" class="w-7 h-7 text-cyan-100"></i>
+            </div>
+            <h3 class="text-lg font-semibold mb-2">登录后查看你的系列</h3>
+            <p class="text-white/50 text-sm mb-5">当前页面可先浏览功能展示，登录后即可创建短剧、管理资产和使用主体替换。</p>
+            <button type="button" onclick="showLoginRequiredModal()" class="px-5 py-2.5 rounded-xl bg-gradient-to-r from-violet-600 to-blue-600 hover:from-violet-500 hover:to-blue-500 transition-colors font-medium">
+                去登录
+            </button>
+        </div>
+    `;
+    document.getElementById('pagination').innerHTML = '';
+    safeCreateIcons();
+}
+
+function updateShowcaseAudioButton(button, muted) {
+    button.title = muted ? '开启声音' : '静音';
+    button.setAttribute('aria-label', muted ? '开启声音' : '静音');
+    button.innerHTML = `<i data-lucide="${muted ? 'volume-x' : 'volume-2'}" class="w-4 h-4"></i>`;
+    safeCreateIcons();
+}
+
+function getShowcaseVideo(target) {
+    return document.querySelector(`[data-showcase-video="${target}"]`);
+}
+
+function initShowcaseVideoControls() {
+    document.querySelectorAll('.showcase-audio-toggle').forEach(button => {
+        const video = getShowcaseVideo(button.dataset.videoTarget);
+        if (!video) return;
+        video.muted = true;
+        updateShowcaseAudioButton(button, true);
+
+        button.addEventListener('click', () => {
+            video.muted = !video.muted;
+            if (!video.muted) {
+                video.volume = 1;
+                video.play().catch(() => {});
+            }
+            updateShowcaseAudioButton(button, video.muted);
+        });
+    });
+
+    document.querySelectorAll('.showcase-video-expand').forEach(button => {
+        button.addEventListener('click', () => {
+            const video = getShowcaseVideo(button.dataset.videoTarget);
+            const modal = document.getElementById('showcaseVideoModal');
+            const player = document.getElementById('showcaseVideoModalPlayer');
+            if (!video || !modal || !player) return;
+
+            showcaseExpandedSource = video;
+            showcaseExpandedWasPlaying = !video.paused;
+            player.src = video.currentSrc || video.src;
+            player.currentTime = video.currentTime || 0;
+            player.muted = video.muted;
+            player.volume = video.volume || 1;
+            video.pause();
+            modal.classList.remove('hidden');
+            modal.classList.add('flex');
+            player.play().catch(() => {});
+        });
+    });
+}
+
+function closeShowcaseVideoModal() {
+    const modal = document.getElementById('showcaseVideoModal');
+    const player = document.getElementById('showcaseVideoModalPlayer');
+    if (!modal || !player) return;
+
+    if (showcaseExpandedSource) {
+        showcaseExpandedSource.currentTime = player.currentTime || showcaseExpandedSource.currentTime;
+        showcaseExpandedSource.muted = player.muted;
+        if (showcaseExpandedWasPlaying) {
+            showcaseExpandedSource.play().catch(() => {});
+        }
+    }
+    player.pause();
+    player.removeAttribute('src');
+    player.load();
+    modal.classList.add('hidden');
+    modal.classList.remove('flex');
+    showcaseExpandedSource = null;
+    showcaseExpandedWasPlaying = false;
 }
 
 // 监听其他页面的 localStorage 变化，同步进度
@@ -657,7 +938,20 @@ function stopPolling(seriesId) {
 }
 
 document.addEventListener('DOMContentLoaded', function() {
+    initLoginRequiredLinks();
+    initShowcaseVideoControls();
+    if (!IS_AUTHENTICATED) {
+        renderAnonymousSeriesPrompt();
+        return;
+    }
     loadSeries(1);
+});
+
+document.getElementById('showcaseVideoModalClose')?.addEventListener('click', closeShowcaseVideoModal);
+document.getElementById('showcaseVideoModal')?.addEventListener('click', function(event) {
+    if (event.target === this) {
+        closeShowcaseVideoModal();
+    }
 });
 
 // 删除相关函数

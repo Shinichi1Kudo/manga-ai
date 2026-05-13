@@ -252,6 +252,125 @@ def api_progress(request, series_id):
         return JsonResponse({'error': e.message}, status=500)
 
 
+def subject_replacement_page(request):
+    """主体替换页面"""
+    return render(request, 'subject_replacement/index.html')
+
+
+@csrf_exempt
+@require_http_methods(["GET", "POST"])
+def subject_replacement_tasks(request):
+    """主体替换任务列表和创建接口"""
+    client = get_client(request)
+    try:
+        if request.method == 'GET':
+            limit = request.GET.get('limit', 20)
+            result = client.get(f'/v1/subject-replacements?limit={limit}')
+            return JsonResponse({'code': 200, 'data': result})
+
+        data = json.loads(request.body)
+        result = client.post('/v1/subject-replacements', data)
+        return JsonResponse({'code': 200, 'data': result})
+    except BackendAPIError as e:
+        return JsonResponse({'code': 400, 'message': e.message}, status=400)
+    except json.JSONDecodeError:
+        return JsonResponse({'code': 400, 'message': 'Invalid JSON'}, status=400)
+    except Exception as e:
+        return JsonResponse({'code': 500, 'message': str(e)}, status=500)
+
+
+@require_http_methods(["GET"])
+def subject_replacement_task_detail(request, task_id):
+    """主体替换任务详情"""
+    client = get_client(request)
+    try:
+        result = client.get(f'/v1/subject-replacements/{task_id}')
+        return JsonResponse({'code': 200, 'data': result})
+    except BackendAPIError as e:
+        return JsonResponse({'code': 400, 'message': e.message}, status=400)
+    except Exception as e:
+        return JsonResponse({'code': 500, 'message': str(e)}, status=500)
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def subject_replacement_task_rename(request, task_id):
+    """修改主体替换任务名称"""
+    client = get_client(request)
+    try:
+        data = json.loads(request.body)
+        result = client.post(f'/v1/subject-replacements/{task_id}/name', data)
+        return JsonResponse({'code': 200, 'data': result})
+    except BackendAPIError as e:
+        return JsonResponse({'code': 400, 'message': e.message}, status=400)
+    except json.JSONDecodeError:
+        return JsonResponse({'code': 400, 'message': 'Invalid JSON'}, status=400)
+    except Exception as e:
+        return JsonResponse({'code': 500, 'message': str(e)}, status=500)
+
+
+@csrf_exempt
+@require_http_methods(["DELETE"])
+def subject_replacement_task_delete(request, task_id):
+    """删除主体替换任务"""
+    client = get_client(request)
+    try:
+        client.delete(f'/v1/subject-replacements/{task_id}')
+        return JsonResponse({'code': 200, 'data': None})
+    except BackendAPIError as e:
+        return JsonResponse({'code': 400, 'message': e.message}, status=400)
+    except Exception as e:
+        return JsonResponse({'code': 500, 'message': str(e)}, status=500)
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def subject_replacement_upload_video(request):
+    """上传主体替换原视频"""
+    client = get_client(request)
+    try:
+        file = request.FILES.get('file')
+        if not file:
+            return JsonResponse({'code': 400, 'message': '请选择要上传的视频'}, status=400)
+
+        allowed_types = {'video/mp4', 'video/webm', 'video/quicktime', 'video/x-m4v'}
+        filename = (file.name or '').lower()
+        if file.content_type not in allowed_types and not filename.endswith(('.mp4', '.webm', '.mov', '.m4v')):
+            return JsonResponse({'code': 400, 'message': '只支持 MP4、WEBM、MOV、M4V 格式的视频'}, status=400)
+
+        files = {'file': (file.name, file.file, file.content_type or 'application/octet-stream')}
+        result = client.upload('/v1/subject-replacements/upload-video', files)
+        return JsonResponse({'code': 200, 'data': result})
+    except BackendAPIError as e:
+        return JsonResponse({'code': 400, 'message': e.message}, status=400)
+    except Exception as e:
+        return JsonResponse({'code': 500, 'message': str(e)}, status=500)
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def subject_replacement_upload_reference(request):
+    """上传主体替换参考图"""
+    client = get_client(request)
+    try:
+        file = request.FILES.get('file')
+        if not file:
+            return JsonResponse({'code': 400, 'message': '请选择要上传的参考图'}, status=400)
+
+        allowed_types = {'image/jpeg', 'image/png', 'image/webp'}
+        filename = (file.name or '').lower()
+        if file.content_type not in allowed_types and not filename.endswith(('.jpg', '.jpeg', '.png', '.webp')):
+            return JsonResponse({'code': 400, 'message': '只支持 JPG、PNG、WEBP 格式的图片'}, status=400)
+
+        files = {'file': (file.name, file.read(), file.content_type or 'application/octet-stream')}
+        result = client.upload('/v1/subject-replacements/upload-reference', files)
+        return JsonResponse({'code': 200, 'data': result})
+    except BackendAPIError as e:
+        return JsonResponse({'code': 400, 'message': e.message}, status=400)
+    except Exception as e:
+        return JsonResponse({'code': 500, 'message': str(e)}, status=500)
+
+
 @csrf_exempt
 @require_http_methods(["DELETE"])
 def series_delete(request, series_id):
@@ -552,10 +671,13 @@ def episode_detail(request, series_id, episode_id):
         for prop in props
         if prop.get('activeAssetUrl') or prop.get('transparentUrl')
     ]
-    completed_shots = sum(1 for shot in shots if shot.get('generationStatus') == 2)
+    generated_shots = sum(1 for shot in shots if shot.get('generationStatus') == 2)
     pending_shots = sum(1 for shot in shots if shot.get('generationStatus') == 0)
     generating_shots = sum(1 for shot in shots if shot.get('generationStatus') == 1)
-    progress_percent = round(completed_shots / len(shots) * 100) if shots else 0
+    locked_review_shots = [shot for shot in shots if shot.get('status') == 1]
+    pending_review_shots = [shot for shot in shots if shot.get('status') != 1]
+    locked_review_shots_count = len(locked_review_shots)
+    progress_percent = round(locked_review_shots_count / len(shots) * 100) if shots else 0
 
     return render(request, 'episode/episode_detail.html', {
         'series': series,
@@ -566,9 +688,11 @@ def episode_detail(request, series_id, episode_id):
         'roles': all_roles,
         'mention_scenes': mention_scenes,
         'mention_props': mention_props,
-        'completed_shots': completed_shots,
+        'generated_shots': generated_shots,
         'pending_shots': pending_shots,
         'generating_shots': generating_shots,
+        'locked_review_shots_count': locked_review_shots_count,
+        'pending_review_shots_count': len(pending_review_shots),
         'progress_percent': progress_percent,
         'series_id': series_id,
         'episode_id': episode_id,
@@ -597,6 +721,33 @@ def episode_generate_videos(request, episode_id):
         return JsonResponse({'success': True})
     except BackendAPIError as e:
         return JsonResponse({'success': False, 'error': e.message}, status=400)
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def shot_upload_video(request, shot_id):
+    """手动上传分镜视频"""
+    client = get_client(request)
+    try:
+        video_file = request.FILES.get('file')
+        if not video_file:
+            return JsonResponse({'code': 400, 'message': '请选择要上传的视频'}, status=400)
+
+        content_type = video_file.content_type or ''
+        allowed_types = {'video/mp4', 'video/webm', 'video/quicktime', 'video/x-m4v'}
+        if content_type not in allowed_types:
+            filename = (video_file.name or '').lower()
+            if not filename.endswith(('.mp4', '.webm', '.mov', '.m4v')):
+                return JsonResponse({'code': 400, 'message': '只支持 MP4、WEBM、MOV 格式的视频'}, status=400)
+
+        result = client.upload(
+            f'/v1/shots/{shot_id}/upload-video',
+            {'file': (video_file.name, video_file.file, content_type or 'application/octet-stream')},
+            data={'aspectRatio': request.POST.get('aspectRatio') or '16:9'}
+        )
+        return JsonResponse({'code': 200, 'data': result, 'success': True})
+    except BackendAPIError as e:
+        return JsonResponse({'code': 400, 'message': e.message}, status=400)
 
 
 @csrf_exempt
@@ -657,6 +808,18 @@ def shot_review(request, shot_id):
             'approved': data.get('approved', True),
             'comment': data.get('comment', ''),
         })
+        return JsonResponse({'success': True})
+    except BackendAPIError as e:
+        return JsonResponse({'success': False, 'error': e.message}, status=400)
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def shot_unlock(request, shot_id):
+    """解锁分镜，恢复为待审核"""
+    client = get_client(request)
+    try:
+        client.post(f'/v1/shots/{shot_id}/unlock')
         return JsonResponse({'success': True})
     except BackendAPIError as e:
         return JsonResponse({'success': False, 'error': e.message}, status=400)
@@ -1241,8 +1404,8 @@ def shot_video_rollback(request, shot_id, asset_id):
     """回滚到指定视频版本"""
     client = get_client(request)
     try:
-        client.post(f'/v1/shots/{shot_id}/rollback-video/{asset_id}')
-        return JsonResponse({'code': 200, 'success': True})
+        data = client.post(f'/v1/shots/{shot_id}/rollback-video/{asset_id}')
+        return JsonResponse({'code': 200, 'data': data, 'success': True})
     except BackendAPIError as e:
         return JsonResponse({'code': 400, 'message': e.message}, status=400)
 

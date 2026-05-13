@@ -13,6 +13,15 @@ urlpatterns = [
     # 创建新系列
     path('init/', views.series_init, name='init'),
 
+    # 主体替换
+    path('subject-replacement/', views.subject_replacement_page, name='subject_replacement'),
+    path('api/v1/subject-replacements/', views.subject_replacement_tasks, name='subject_replacement_tasks'),
+    path('api/v1/subject-replacements/<int:task_id>/', views.subject_replacement_task_detail, name='subject_replacement_task_detail'),
+    path('api/v1/subject-replacements/<int:task_id>/name/', views.subject_replacement_task_rename, name='subject_replacement_task_rename'),
+    path('api/v1/subject-replacements/<int:task_id>/delete/', views.subject_replacement_task_delete, name='subject_replacement_task_delete'),
+    path('api/v1/subject-replacements/upload-video/', views.subject_replacement_upload_video, name='subject_replacement_upload_video'),
+    path('api/v1/subject-replacements/upload-reference/', views.subject_replacement_upload_reference, name='subject_replacement_upload_reference'),
+
     # 回收站页面
     path('trash/', views.trash_page, name='trash'),
 
@@ -137,9 +146,13 @@ urlpatterns = [
     # 下载分镜视频
     path('api/v1/shots/<int:shot_id>/download/', views.shot_download_video, name='shot_download'),
 
+    # 手动上传分镜视频
+    path('api/v1/shots/<int:shot_id>/upload-video/', views.shot_upload_video, name='shot_upload_video'),
+
     # 审核分镜
     path('api/shots/<int:shot_id>/review/', views.shot_review, name='shot_review'),
     path('api/v1/shots/<int:shot_id>/review/', views.shot_review, name='shot_review_v1'),
+    path('api/v1/shots/<int:shot_id>/unlock/', views.shot_unlock, name='shot_unlock'),
 
     # 更新分镜
     path('api/v1/shots/<int:shot_id>/', views.shot_update, name='shot_update'),

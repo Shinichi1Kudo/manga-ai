@@ -46,6 +46,7 @@ public class ShotDetailVO implements Serializable {
     private Integer status;
     private String statusDesc;
     private String videoModel;
+    private String videoSource;  // manual-手动上传，system-系统生成
     private Boolean descriptionEdited;
     private Boolean sceneEdited;
     private LocalDateTime createdAt;
@@ -97,7 +98,7 @@ public class ShotDetailVO implements Serializable {
         switch (generationStatus) {
             case 0: return "待生成";
             case 1: return "生成中";
-            case 2: return "已完成";
+            case 2: return "已生成";
             case 3: return "生成失败";
             default: return "";
         }

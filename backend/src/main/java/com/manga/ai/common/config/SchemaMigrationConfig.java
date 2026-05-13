@@ -26,6 +26,7 @@ public class SchemaMigrationConfig {
     public ApplicationRunner propAssetEpisodeIdMigrationRunner() {
         return args -> {
             ensurePropAssetEpisodeIdColumn();
+            ensureSubjectReplacementTaskTable();
             ensurePerformanceIndexes();
         };
     }
@@ -83,6 +84,75 @@ public class SchemaMigrationConfig {
         } catch (Exception e) {
             log.warn("性能索引检查失败: {}", e.getMessage());
         }
+    }
+
+    private void ensureSubjectReplacementTaskTable() {
+        try (Connection connection = dataSource.getConnection()) {
+            String productName = connection.getMetaData().getDatabaseProductName();
+            boolean mysql = productName != null && productName.toLowerCase().contains("mysql");
+            try (Statement statement = connection.createStatement()) {
+                statement.execute(mysql ? mysqlSubjectReplacementTaskSql() : genericSubjectReplacementTaskSql());
+            }
+            ensureIndex(connection, "idx_subject_replacement_user_created", "subject_replacement_task", "user_id, created_at");
+            ensureIndex(connection, "idx_subject_replacement_status", "subject_replacement_task", "status");
+        } catch (Exception e) {
+            log.error("数据库迁移失败: subject_replacement_task", e);
+            throw new IllegalStateException("数据库迁移失败: subject_replacement_task", e);
+        }
+    }
+
+    private String mysqlSubjectReplacementTaskSql() {
+        return "CREATE TABLE IF NOT EXISTS subject_replacement_task ("
+                + "id BIGINT AUTO_INCREMENT PRIMARY KEY,"
+                + "user_id BIGINT NOT NULL,"
+                + "task_name VARCHAR(100),"
+                + "original_video_url VARCHAR(1024) NOT NULL,"
+                + "output_video_url VARCHAR(1024),"
+                + "thumbnail_url VARCHAR(1024),"
+                + "status VARCHAR(20) NOT NULL DEFAULT 'pending',"
+                + "aspect_ratio VARCHAR(10) DEFAULT '16:9',"
+                + "duration INT DEFAULT 5,"
+                + "generate_audio TINYINT(1) DEFAULT 1,"
+                + "watermark TINYINT(1) DEFAULT 0,"
+                + "model VARCHAR(100),"
+                + "prompt TEXT,"
+                + "replacements_json TEXT,"
+                + "volcengine_task_id VARCHAR(100),"
+                + "error_message TEXT,"
+                + "submitted_at TIMESTAMP NULL,"
+                + "completed_at TIMESTAMP NULL,"
+                + "generation_duration INT,"
+                + "seed BIGINT,"
+                + "created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,"
+                + "updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
+                + ")";
+    }
+
+    private String genericSubjectReplacementTaskSql() {
+        return "CREATE TABLE IF NOT EXISTS subject_replacement_task ("
+                + "id BIGINT AUTO_INCREMENT PRIMARY KEY,"
+                + "user_id BIGINT NOT NULL,"
+                + "task_name VARCHAR(100),"
+                + "original_video_url VARCHAR(1024) NOT NULL,"
+                + "output_video_url VARCHAR(1024),"
+                + "thumbnail_url VARCHAR(1024),"
+                + "status VARCHAR(20) NOT NULL DEFAULT 'pending',"
+                + "aspect_ratio VARCHAR(10) DEFAULT '16:9',"
+                + "duration INT DEFAULT 5,"
+                + "generate_audio BOOLEAN DEFAULT TRUE,"
+                + "watermark BOOLEAN DEFAULT FALSE,"
+                + "model VARCHAR(100),"
+                + "prompt CLOB,"
+                + "replacements_json CLOB,"
+                + "volcengine_task_id VARCHAR(100),"
+                + "error_message CLOB,"
+                + "submitted_at TIMESTAMP,"
+                + "completed_at TIMESTAMP,"
+                + "generation_duration INT,"
+                + "seed BIGINT,"
+                + "created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,"
+                + "updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
+                + ")";
     }
 
     private void ensureIndex(Connection connection, String indexName, String tableName, String columns) {

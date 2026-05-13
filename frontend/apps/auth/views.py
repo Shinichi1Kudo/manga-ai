@@ -12,6 +12,16 @@ def get_api_url(path):
     return f"{settings.BACKEND_API_URL}{path}"
 
 
+def is_safe_next_url(next_url):
+    """登录后只跳转到页面地址，避免跳到 JSON API。"""
+    return (
+        isinstance(next_url, str)
+        and next_url.startswith('/')
+        and not next_url.startswith('//')
+        and not next_url.startswith('/api/')
+    )
+
+
 def login_view(request):
     """登录页面"""
     # 如果已登录，直接跳转首页
@@ -46,6 +56,8 @@ def login_view(request):
                     messages.success(request, '登录成功')
                     # 登录后跳转到原始请求页面
                     next_url = request.session.pop('next', '/')
+                    if not is_safe_next_url(next_url):
+                        next_url = '/'
                     return redirect(next_url)
                 else:
                     messages.error(request, data.get('message', '登录失败'))
