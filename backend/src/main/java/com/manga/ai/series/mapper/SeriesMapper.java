@@ -66,4 +66,14 @@ public interface SeriesMapper extends BaseMapper<Series> {
      */
     @Update("UPDATE series SET is_deleted = 0, deleted_at = NULL, updated_at = NOW() WHERE id = #{id}")
     void restoreById(Long id);
+
+    /**
+     * 角色解锁后只在系列仍为已锁定时改回待审核，避免读取整条系列长文本。
+     */
+    @Update("UPDATE series SET status = #{targetStatus}, updated_at = #{updatedAt} "
+            + "WHERE id = #{seriesId} AND is_deleted = 0 AND status = #{lockedStatus}")
+    int markLockedSeriesPendingReview(@Param("seriesId") Long seriesId,
+                                      @Param("targetStatus") Integer targetStatus,
+                                      @Param("lockedStatus") Integer lockedStatus,
+                                      @Param("updatedAt") LocalDateTime updatedAt);
 }

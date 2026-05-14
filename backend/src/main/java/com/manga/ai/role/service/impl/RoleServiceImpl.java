@@ -258,7 +258,7 @@ public class RoleServiceImpl implements RoleService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void unlockRole(Long roleId) {
-        Role role = roleMapper.selectById(roleId);
+        Role role = roleMapper.selectUnlockStateById(roleId);
         if (role == null) {
             throw new BusinessException("角色不存在");
         }
@@ -269,17 +269,26 @@ public class RoleServiceImpl implements RoleService {
             throw new BusinessException("当前状态不支持解锁操作");
         }
 
-        // 更新角色状态为待审核
-        role.setStatus(RoleStatus.PENDING_REVIEW.getCode());
-        role.setUpdatedAt(LocalDateTime.now());
-        roleMapper.updateById(role);
+        LocalDateTime now = LocalDateTime.now();
+        int updated = roleMapper.updateStatusIfUnlockable(
+                roleId,
+                RoleStatus.PENDING_REVIEW.getCode(),
+                now,
+                RoleStatus.CONFIRMED.getCode(),
+                RoleStatus.LOCKED.getCode()
+        );
+        if (updated == 0) {
+            throw new BusinessException("当前状态不支持解锁操作");
+        }
 
-        // 同时更新系列状态为待审核
-        Series series = seriesMapper.selectById(role.getSeriesId());
-        if (series != null && SeriesStatus.LOCKED.getCode().equals(series.getStatus())) {
-            series.setStatus(SeriesStatus.PENDING_REVIEW.getCode());
-            series.setUpdatedAt(LocalDateTime.now());
-            seriesMapper.updateById(series);
+        // 同时更新系列状态为待审核，只在系列仍为锁定状态时做轻量条件更新。
+        int seriesUpdated = seriesMapper.markLockedSeriesPendingReview(
+                role.getSeriesId(),
+                SeriesStatus.PENDING_REVIEW.getCode(),
+                SeriesStatus.LOCKED.getCode(),
+                now
+        );
+        if (seriesUpdated > 0) {
             log.info("解锁角色同时更新系列状态: roleId={}, seriesId={}", roleId, role.getSeriesId());
         }
 

@@ -2634,6 +2634,20 @@ function markRolePending(card) {
     updateStats();
 }
 
+function markSeriesPendingAfterUnlock() {
+    const lockedBadge = document.querySelector('.flex.gap-3 > span');
+    if (lockedBadge && lockedBadge.textContent.includes('已锁定')) {
+        lockedBadge.className = 'px-5 py-2.5 rounded-xl bg-amber-500/20 text-amber-300 font-medium flex items-center gap-2';
+        lockedBadge.innerHTML = '<i data-lucide="unlock" class="w-4 h-4"></i>待审核';
+        lucide.createIcons();
+    }
+    const nextBtn = document.getElementById('lockSeriesBtn');
+    if (nextBtn) {
+        nextBtn.disabled = true;
+        nextBtn.classList.add('opacity-50', 'cursor-not-allowed');
+    }
+}
+
 // 初始化按钮状态
 function initButtonStates() {
     document.querySelectorAll('.role-card').forEach(card => {
@@ -2786,6 +2800,9 @@ document.addEventListener('click', function(e) {
     .then(data => {
         if (data.success) {
             markRolePending(card);
+            if (data.seriesStatus === 1) {
+                markSeriesPendingAfterUnlock();
+            }
             showToast('角色已解锁', 'success');
         } else {
             setButtonBusy(unlockBtn, false);

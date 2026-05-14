@@ -120,6 +120,12 @@ def role_unlock(request, role_id):
     client = get_client(request)
     try:
         client.post(f'/v1/roles/{role_id}/unlock')
-        return JsonResponse({'success': True})
+        return JsonResponse({
+            'success': True,
+            'roleStatus': 1,
+            'roleStatusDesc': '待审核',
+            'seriesStatus': 1,
+            'seriesStatusDesc': '待审核',
+        })
     except BackendAPIError as e:
         return JsonResponse({'success': False, 'error': e.message}, status=400)
