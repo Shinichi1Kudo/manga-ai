@@ -402,6 +402,32 @@ def gpt_image2_generate(request):
         return JsonResponse({'code': 500, 'message': str(e)}, status=500)
 
 
+@require_http_methods(["GET"])
+def gpt_image2_task_detail(request, task_id):
+    """首页 GPT-Image2 生图任务详情"""
+    client = get_client(request)
+    try:
+        result = client.get(f'/v1/gpt-image2/{task_id}')
+        return JsonResponse({'code': 200, 'data': result})
+    except BackendAPIError as e:
+        return JsonResponse({'code': 400, 'message': e.message}, status=400)
+    except Exception as e:
+        return JsonResponse({'code': 500, 'message': str(e)}, status=500)
+
+
+@require_http_methods(["GET"])
+def gpt_image2_latest_task(request):
+    """首页 GPT-Image2 最近一次生图任务"""
+    client = get_client(request)
+    try:
+        result = client.get('/v1/gpt-image2/latest')
+        return JsonResponse({'code': 200, 'data': result})
+    except BackendAPIError as e:
+        return JsonResponse({'code': 400, 'message': e.message}, status=400)
+    except Exception as e:
+        return JsonResponse({'code': 500, 'message': str(e)}, status=500)
+
+
 @csrf_exempt
 @require_http_methods(["POST"])
 def gpt_image2_upload_reference(request):

@@ -1,23 +1,26 @@
-package com.manga.ai.gptimage.dto;
+package com.manga.ai.gptimage.entity;
 
-import lombok.AllArgsConstructor;
+import com.baomidou.mybatisplus.annotation.IdType;
+import com.baomidou.mybatisplus.annotation.TableId;
+import com.baomidou.mybatisplus.annotation.TableName;
 import lombok.Data;
-import lombok.NoArgsConstructor;
 
 import java.io.Serializable;
 import java.time.LocalDateTime;
 
 /**
- * GPT-Image2 图片生成响应
+ * GPT-Image2 图片生成任务
  */
 @Data
-@NoArgsConstructor
-@AllArgsConstructor
-public class GptImage2GenerateResponse implements Serializable {
+@TableName("gpt_image2_task")
+public class GptImage2Task implements Serializable {
 
     private static final long serialVersionUID = 1L;
 
+    @TableId(type = IdType.AUTO)
     private Long id;
+
+    private Long userId;
 
     private String prompt;
 
@@ -27,11 +30,10 @@ public class GptImage2GenerateResponse implements Serializable {
 
     private String imageUrl;
 
+    /**
+     * pending / running / succeeded / failed
+     */
     private String status;
-
-    private String statusDesc;
-
-    private Integer progressPercent;
 
     private String model;
 
@@ -48,10 +50,4 @@ public class GptImage2GenerateResponse implements Serializable {
     private LocalDateTime createdAt;
 
     private LocalDateTime updatedAt;
-
-    public GptImage2GenerateResponse(String imageUrl, String model, String mode) {
-        this.imageUrl = imageUrl;
-        this.model = model;
-        this.mode = mode;
-    }
 }

@@ -3,15 +3,19 @@ package com.manga.ai.gptimage.service.impl;
 import com.alibaba.fastjson2.JSON;
 import com.alibaba.fastjson2.JSONArray;
 import com.alibaba.fastjson2.JSONObject;
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.manga.ai.common.exception.BusinessException;
 import com.manga.ai.common.service.OssService;
 import com.manga.ai.gptimage.dto.GptImage2GenerateRequest;
 import com.manga.ai.gptimage.dto.GptImage2GenerateResponse;
+import com.manga.ai.gptimage.entity.GptImage2Task;
+import com.manga.ai.gptimage.mapper.GptImage2TaskMapper;
 import com.manga.ai.gptimage.service.GptImage2Service;
 import com.manga.ai.user.service.UserService;
 import com.manga.ai.user.service.impl.UserServiceImpl.UserContextHolder;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpHeaders;
@@ -27,9 +31,11 @@ import org.springframework.web.client.RestTemplate;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
+import java.time.LocalDateTime;
 import java.util.Arrays;
 import java.util.Base64;
 import java.util.List;
+import java.util.concurrent.Executor;
 
 /**
  * GPT-Image2 图片生成服务实现
@@ -48,6 +54,8 @@ public class GptImage2ServiceImpl implements GptImage2Service {
 
     private final OssService ossService;
     private final UserService userService;
+    private final GptImage2TaskMapper taskMapper;
+    private final Executor imageGenerateExecutor;
     private final RestTemplate restTemplate;
 
     @Value("${gpt-image2.api-key:${GPT_IMAGE2_API_KEY:}}")
@@ -63,9 +71,13 @@ public class GptImage2ServiceImpl implements GptImage2Service {
     public GptImage2ServiceImpl(
             OssService ossService,
             UserService userService,
+            GptImage2TaskMapper taskMapper,
+            @Qualifier("imageGenerateExecutor") Executor imageGenerateExecutor,
             @Value("${gpt-image2.timeout:300000}") int timeout) {
         this.ossService = ossService;
         this.userService = userService;
+        this.taskMapper = taskMapper;
+        this.imageGenerateExecutor = imageGenerateExecutor;
         SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
         factory.setConnectTimeout(30000);
         factory.setReadTimeout(timeout);
@@ -73,7 +85,15 @@ public class GptImage2ServiceImpl implements GptImage2Service {
     }
 
     public GptImage2ServiceImpl(OssService ossService, UserService userService) {
-        this(ossService, userService, 300000);
+        this(ossService, userService, null, Runnable::run, 300000);
+    }
+
+    public GptImage2ServiceImpl(
+            OssService ossService,
+            UserService userService,
+            GptImage2TaskMapper taskMapper,
+            Executor imageGenerateExecutor) {
+        this(ossService, userService, taskMapper, imageGenerateExecutor, 300000);
     }
 
     @Override
@@ -91,29 +111,95 @@ public class GptImage2ServiceImpl implements GptImage2Service {
 
         String aspectRatio = normalizeAspectRatio(request.getAspectRatio());
         String mode = hasText(request.getReferenceImageUrl()) ? "image-to-image" : "text-to-image";
+        GptImage2Task task = new GptImage2Task();
+        task.setUserId(userId);
+        task.setPrompt(request.getPrompt().trim());
+        task.setAspectRatio(aspectRatio);
+        task.setReferenceImageUrl(hasText(request.getReferenceImageUrl()) ? request.getReferenceImageUrl().trim() : null);
+        task.setStatus("pending");
+        task.setModel(model);
+        task.setMode(mode);
+        task.setCreatedAt(LocalDateTime.now());
+        task.setUpdatedAt(LocalDateTime.now());
+        taskMapper.insert(task);
+
+        imageGenerateExecutor.execute(() -> executeTask(task.getId()));
+        return toResponse(task);
+    }
+
+    public void executeTask(Long taskId) {
+        if (taskId == null) {
+            return;
+        }
+        GptImage2Task task = taskMapper.selectById(taskId);
+        if (task == null) {
+            log.warn("GPT-Image2任务不存在: taskId={}", taskId);
+            return;
+        }
+
+        long startTime = System.currentTimeMillis();
         JSONObject requestBody = new JSONObject();
-        requestBody.put("model", model);
-        requestBody.put("prompt", request.getPrompt().trim());
-        requestBody.put("size", convertAspectRatioToSize(aspectRatio));
+        requestBody.put("model", hasText(task.getModel()) ? task.getModel() : model);
+        requestBody.put("prompt", task.getPrompt());
+        requestBody.put("size", convertAspectRatioToSize(task.getAspectRatio()));
         requestBody.put("n", 1);
         requestBody.put("response_format", "url");
         requestBody.put("stream", false);
         requestBody.put("watermark", false);
-        if (hasText(request.getReferenceImageUrl())) {
-            requestBody.put("image", request.getReferenceImageUrl().trim());
+        if (hasText(task.getReferenceImageUrl())) {
+            requestBody.put("image", task.getReferenceImageUrl().trim());
         }
 
         try {
+            task.setStatus("running");
+            task.setSubmittedAt(LocalDateTime.now());
+            task.setUpdatedAt(LocalDateTime.now());
+            taskMapper.updateById(task);
+
             String responseBody = callGenerateApi(requestBody);
             String outputUrl = extractImageUrl(responseBody);
             String ossUrl = persistGeneratedImage(outputUrl);
-            return new GptImage2GenerateResponse(ossUrl, model, mode);
+            task.setStatus("succeeded");
+            task.setImageUrl(ossUrl);
+            task.setGenerationDuration((int) ((System.currentTimeMillis() - startTime) / 1000));
+            task.setCompletedAt(LocalDateTime.now());
+            log.info("GPT-Image2任务完成: taskId={}", taskId);
         } catch (BusinessException e) {
-            throw e;
+            task.setStatus("failed");
+            task.setErrorMessage(e.getMessage());
+            task.setCompletedAt(LocalDateTime.now());
+            log.warn("GPT-Image2任务失败: taskId={}, error={}", taskId, e.getMessage());
         } catch (Exception e) {
-            log.error("GPT-Image2生成失败: userId={}, mode={}", userId, mode, e);
-            throw new BusinessException(500, "GPT-Image2生成失败，请稍后重试");
+            log.error("GPT-Image2任务异常: taskId={}, userId={}, mode={}", taskId, task.getUserId(), task.getMode(), e);
+            task.setStatus("failed");
+            task.setErrorMessage(friendlyExceptionMessage(e));
+            task.setCompletedAt(LocalDateTime.now());
+        } finally {
+            task.setUpdatedAt(LocalDateTime.now());
+            taskMapper.updateById(task);
         }
+    }
+
+    @Override
+    public GptImage2GenerateResponse getTask(Long taskId) {
+        if (taskId == null) {
+            throw new BusinessException(400, "任务ID不能为空");
+        }
+        return toResponse(getOwnedTask(taskId));
+    }
+
+    @Override
+    public GptImage2GenerateResponse getLatestTask() {
+        Long userId = UserContextHolder.getUserId();
+        if (userId == null) {
+            throw new BusinessException(401, "未登录");
+        }
+        LambdaQueryWrapper<GptImage2Task> wrapper = new LambdaQueryWrapper<>();
+        wrapper.eq(GptImage2Task::getUserId, userId)
+                .orderByDesc(GptImage2Task::getCreatedAt)
+                .last("LIMIT 1");
+        GptImage2Task task = taskMapper.selectOne(wrapper);
+        return task == null ? null : toResponse(task);
     }
 
     @Override
@@ -180,7 +266,10 @@ public class GptImage2ServiceImpl implements GptImage2Service {
         throw new BusinessException(500, "GPT-Image2未返回可用图片地址");
     }
 
-    private String persistGeneratedImage(String imageUrl) {
+    String persistGeneratedImage(String imageUrl) {
+        if (isDataImageUrl(imageUrl)) {
+            return uploadDataImage(imageUrl);
+        }
         if (imageUrl != null && imageUrl.contains("aliyuncs.com")) {
             return ossService.refreshUrl(imageUrl);
         }
@@ -189,6 +278,33 @@ public class GptImage2ServiceImpl implements GptImage2Service {
             throw new BusinessException("生成图片保存失败");
         }
         return ossUrl;
+    }
+
+    private String uploadDataImage(String dataUrl) {
+        int commaIndex = dataUrl.indexOf(',');
+        if (commaIndex < 0) {
+            throw new BusinessException(500, "GPT-Image2返回的图片数据格式异常");
+        }
+        String metadata = dataUrl.substring(0, commaIndex);
+        String base64Data = dataUrl.substring(commaIndex + 1);
+        String contentType = "image/png";
+        String extension = "png";
+        int colonIndex = metadata.indexOf(':');
+        int semicolonIndex = metadata.indexOf(';');
+        if (colonIndex >= 0 && semicolonIndex > colonIndex) {
+            contentType = metadata.substring(colonIndex + 1, semicolonIndex);
+            extension = extensionFromContentType(contentType);
+        }
+        byte[] bytes = Base64.getDecoder().decode(base64Data);
+        String ossUrl = ossService.uploadImage(bytes, "gpt-image2/results", contentType, extension);
+        if (!hasText(ossUrl)) {
+            throw new BusinessException("生成图片保存失败");
+        }
+        return ossUrl;
+    }
+
+    private boolean isDataImageUrl(String imageUrl) {
+        return imageUrl != null && imageUrl.startsWith("data:image/") && imageUrl.contains(";base64,");
     }
 
     private void validateImageFile(MultipartFile file) {
@@ -253,6 +369,73 @@ public class GptImage2ServiceImpl implements GptImage2Service {
         return "GPT-Image2生成失败，请调整提示词或参考图后重试";
     }
 
+    private String friendlyExceptionMessage(Exception e) {
+        String message = e.getMessage();
+        if (hasText(message) && message.contains("Unexpected end of file")) {
+            return "GPT-Image2服务连接中断，请稍后重试";
+        }
+        if (hasText(message) && message.toLowerCase().contains("timeout")) {
+            return "GPT-Image2服务响应超时，请稍后重试";
+        }
+        return "GPT-Image2生成失败，请稍后重试";
+    }
+
+    private GptImage2Task getOwnedTask(Long taskId) {
+        Long userId = UserContextHolder.getUserId();
+        if (userId == null) {
+            throw new BusinessException(401, "未登录");
+        }
+        GptImage2Task task = taskMapper.selectById(taskId);
+        if (task == null || !userId.equals(task.getUserId())) {
+            throw new BusinessException(404, "任务不存在");
+        }
+        return task;
+    }
+
+    private GptImage2GenerateResponse toResponse(GptImage2Task task) {
+        GptImage2GenerateResponse response = new GptImage2GenerateResponse();
+        response.setId(task.getId());
+        response.setPrompt(task.getPrompt());
+        response.setAspectRatio(task.getAspectRatio());
+        response.setReferenceImageUrl(task.getReferenceImageUrl());
+        response.setImageUrl(task.getImageUrl());
+        response.setStatus(task.getStatus());
+        response.setStatusDesc(statusDesc(task.getStatus()));
+        response.setProgressPercent(progressPercent(task.getStatus()));
+        response.setModel(task.getModel());
+        response.setMode(task.getMode());
+        response.setErrorMessage(task.getErrorMessage());
+        response.setSubmittedAt(task.getSubmittedAt());
+        response.setCompletedAt(task.getCompletedAt());
+        response.setGenerationDuration(task.getGenerationDuration());
+        response.setCreatedAt(task.getCreatedAt());
+        response.setUpdatedAt(task.getUpdatedAt());
+        return response;
+    }
+
+    private String statusDesc(String status) {
+        if ("succeeded".equals(status)) {
+            return "已生成";
+        }
+        if ("failed".equals(status)) {
+            return "生成失败";
+        }
+        if ("running".equals(status)) {
+            return "生成中";
+        }
+        return "排队中";
+    }
+
+    private Integer progressPercent(String status) {
+        if ("succeeded".equals(status) || "failed".equals(status)) {
+            return 100;
+        }
+        if ("running".equals(status)) {
+            return 35;
+        }
+        return 5;
+    }
+
     private String firstText(JSONObject json, String... keys) {
         for (String key : keys) {
             Object value = json.get(key);
@@ -281,6 +464,16 @@ public class GptImage2ServiceImpl implements GptImage2Service {
             return "png";
         }
         return extension;
+    }
+
+    private String extensionFromContentType(String contentType) {
+        if ("image/jpeg".equals(contentType)) {
+            return "jpg";
+        }
+        if ("image/webp".equals(contentType)) {
+            return "webp";
+        }
+        return "png";
     }
 
     private boolean hasText(String value) {

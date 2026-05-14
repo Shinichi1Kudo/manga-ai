@@ -27,6 +27,7 @@ public class SchemaMigrationConfig {
         return args -> {
             ensurePropAssetEpisodeIdColumn();
             ensureSubjectReplacementTaskTable();
+            ensureGptImage2TaskTable();
             ensurePerformanceIndexes();
         };
     }
@@ -99,6 +100,21 @@ public class SchemaMigrationConfig {
         } catch (Exception e) {
             log.error("数据库迁移失败: subject_replacement_task", e);
             throw new IllegalStateException("数据库迁移失败: subject_replacement_task", e);
+        }
+    }
+
+    private void ensureGptImage2TaskTable() {
+        try (Connection connection = dataSource.getConnection()) {
+            String productName = connection.getMetaData().getDatabaseProductName();
+            boolean mysql = productName != null && productName.toLowerCase().contains("mysql");
+            try (Statement statement = connection.createStatement()) {
+                statement.execute(mysql ? mysqlGptImage2TaskSql() : genericGptImage2TaskSql());
+            }
+            ensureIndex(connection, "idx_gpt_image2_user_created", "gpt_image2_task", "user_id, created_at");
+            ensureIndex(connection, "idx_gpt_image2_status", "gpt_image2_task", "status");
+        } catch (Exception e) {
+            log.error("数据库迁移失败: gpt_image2_task", e);
+            throw new IllegalStateException("数据库迁移失败: gpt_image2_task", e);
         }
     }
 
@@ -176,6 +192,46 @@ public class SchemaMigrationConfig {
                 + "seed BIGINT,"
                 + "deducted_credits INT DEFAULT NULL,"
                 + "credits_refunded BOOLEAN DEFAULT FALSE,"
+                + "created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,"
+                + "updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
+                + ")";
+    }
+
+    private String mysqlGptImage2TaskSql() {
+        return "CREATE TABLE IF NOT EXISTS gpt_image2_task ("
+                + "id BIGINT AUTO_INCREMENT PRIMARY KEY,"
+                + "user_id BIGINT NOT NULL,"
+                + "prompt TEXT NOT NULL,"
+                + "aspect_ratio VARCHAR(10) DEFAULT '1:1',"
+                + "reference_image_url VARCHAR(1024),"
+                + "image_url VARCHAR(1024),"
+                + "status VARCHAR(20) NOT NULL DEFAULT 'pending',"
+                + "model VARCHAR(100),"
+                + "mode VARCHAR(30),"
+                + "error_message TEXT,"
+                + "submitted_at TIMESTAMP NULL,"
+                + "completed_at TIMESTAMP NULL,"
+                + "generation_duration INT,"
+                + "created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,"
+                + "updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
+                + ")";
+    }
+
+    private String genericGptImage2TaskSql() {
+        return "CREATE TABLE IF NOT EXISTS gpt_image2_task ("
+                + "id BIGINT AUTO_INCREMENT PRIMARY KEY,"
+                + "user_id BIGINT NOT NULL,"
+                + "prompt CLOB NOT NULL,"
+                + "aspect_ratio VARCHAR(10) DEFAULT '1:1',"
+                + "reference_image_url VARCHAR(1024),"
+                + "image_url VARCHAR(1024),"
+                + "status VARCHAR(20) NOT NULL DEFAULT 'pending',"
+                + "model VARCHAR(100),"
+                + "mode VARCHAR(30),"
+                + "error_message CLOB,"
+                + "submitted_at TIMESTAMP,"
+                + "completed_at TIMESTAMP,"
+                + "generation_duration INT,"
                 + "created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,"
                 + "updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
                 + ")";

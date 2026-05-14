@@ -7,6 +7,8 @@ import com.manga.ai.gptimage.dto.GptImage2UploadResult;
 import com.manga.ai.gptimage.service.GptImage2Service;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -29,6 +31,16 @@ public class GptImage2Controller {
     public Result<GptImage2GenerateResponse> generate(@RequestBody GptImage2GenerateRequest request) {
         log.info("GPT-Image2生成请求: hasReference={}", request != null && hasText(request.getReferenceImageUrl()));
         return Result.success(gptImage2Service.generate(request));
+    }
+
+    @GetMapping("/{taskId}")
+    public Result<GptImage2GenerateResponse> getTask(@PathVariable Long taskId) {
+        return Result.success(gptImage2Service.getTask(taskId));
+    }
+
+    @GetMapping("/latest")
+    public Result<GptImage2GenerateResponse> getLatestTask() {
+        return Result.success(gptImage2Service.getLatestTask());
     }
 
     @PostMapping("/upload-reference")

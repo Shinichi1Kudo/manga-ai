@@ -11,5 +11,9 @@ public interface GptImage2Service {
 
     GptImage2GenerateResponse generate(GptImage2GenerateRequest request);
 
+    GptImage2GenerateResponse getTask(Long taskId);
+
+    GptImage2GenerateResponse getLatestTask();
+
     String uploadReference(MultipartFile file);
 }

@@ -351,6 +351,8 @@ let showcaseExpandedSource = null;
 let showcaseExpandedWasPlaying = false;
 let gptImage2ReferenceUrl = '';
 let gptImage2ReferenceObjectUrl = '';
+let gptImage2CurrentTaskId = null;
+let gptImage2PollTimer = null;
 const IS_AUTHENTICATED = {{ request.session.token|yesno:"true,false" }};
 
 // 从 localStorage 恢复进度
@@ -395,6 +397,90 @@ function setGptImage2Busy(isBusy) {
         uploadButton.disabled = isBusy;
     }
     safeCreateIcons();
+}
+
+function renderGptImage2Result(imageUrl) {
+    if (!imageUrl) return;
+    document.getElementById('gptImage2ResultEmpty')?.classList.add('hidden');
+    document.getElementById('gptImage2ResultWrap')?.classList.remove('hidden');
+    document.getElementById('gptImage2ResultImage').src = imageUrl;
+    document.getElementById('gptImage2ResultLink').href = imageUrl;
+}
+
+function applyGptImage2TaskState(task) {
+    if (!task || !task.id) return;
+    gptImage2CurrentTaskId = task.id;
+    const status = task.status || 'pending';
+    const progress = Number.isFinite(Number(task.progressPercent)) ? Number(task.progressPercent) : (status === 'running' ? 35 : 5);
+    if (task.imageUrl) {
+        renderGptImage2Result(task.imageUrl);
+    }
+    if (status === 'succeeded') {
+        stopGptImage2Polling();
+        setGptImage2Busy(false);
+        setGptImage2Status(task.generationDuration ? `图片已生成并保存，本次耗时${task.generationDuration}秒。` : '图片已生成并保存。', 'success');
+        return;
+    }
+    if (status === 'failed') {
+        stopGptImage2Polling();
+        setGptImage2Busy(false);
+        setGptImage2Status(task.errorMessage || 'GPT-Image2生成失败，请稍后重试', 'error');
+        return;
+    }
+    setGptImage2Busy(true);
+    setGptImage2Status(`${task.statusDesc || '生成中'}，当前进度${progress}%...`);
+}
+
+function stopGptImage2Polling() {
+    if (gptImage2PollTimer) {
+        clearInterval(gptImage2PollTimer);
+        gptImage2PollTimer = null;
+    }
+}
+
+async function fetchGptImage2Task(taskId) {
+    const response = await fetch(`/api/v1/gpt-image2/${taskId}/`, {
+        headers: {'X-Requested-With': 'XMLHttpRequest'},
+    });
+    const result = await response.json();
+    if (!response.ok || result.code !== 200) {
+        throw new Error(result.message || '获取生图任务状态失败');
+    }
+    return result.data;
+}
+
+function pollGptImage2Task(taskId) {
+    if (!taskId) return;
+    stopGptImage2Polling();
+    gptImage2PollTimer = setInterval(async () => {
+        try {
+            const task = await fetchGptImage2Task(taskId);
+            applyGptImage2TaskState(task);
+        } catch (error) {
+            stopGptImage2Polling();
+            setGptImage2Busy(false);
+            setGptImage2Status(error.message || '获取生图任务状态失败', 'error');
+        }
+    }, 2500);
+}
+
+async function loadLatestGptImage2Task() {
+    if (!IS_AUTHENTICATED) return;
+    try {
+        const response = await fetch('/api/v1/gpt-image2/latest/', {
+            headers: {'X-Requested-With': 'XMLHttpRequest'},
+        });
+        const result = await response.json();
+        if (!response.ok || result.code !== 200 || !result.data) {
+            return;
+        }
+        applyGptImage2TaskState(result.data);
+        if (['pending', 'running'].includes(result.data.status)) {
+            pollGptImage2Task(result.data.id);
+        }
+    } catch (error) {
+        console.warn('恢复 GPT-Image2 最近任务失败:', error);
+    }
 }
 
 function resetGptImage2Reference() {
@@ -525,18 +611,14 @@ function initGptImage2Generator() {
             if (!response.ok || result.code !== 200) {
                 throw new Error(result.message || '生成失败');
             }
-            const imageUrl = result.data?.imageUrl || result.data?.url;
-            if (!imageUrl) {
-                throw new Error('生成成功但未返回图片地址');
+            const task = result.data;
+            if (!task?.id) {
+                throw new Error('任务创建成功但未返回任务ID');
             }
-            document.getElementById('gptImage2ResultEmpty')?.classList.add('hidden');
-            document.getElementById('gptImage2ResultWrap')?.classList.remove('hidden');
-            document.getElementById('gptImage2ResultImage').src = imageUrl;
-            document.getElementById('gptImage2ResultLink').href = imageUrl;
-            setGptImage2Status('图片已生成并保存。', 'success');
+            applyGptImage2TaskState(task);
+            pollGptImage2Task(task.id);
         } catch (error) {
             setGptImage2Status(error.message || '生成失败，请稍后重试', 'error');
-        } finally {
             setGptImage2Busy(false);
         }
     });
@@ -1260,6 +1342,7 @@ function stopPolling(seriesId) {
 document.addEventListener('DOMContentLoaded', function() {
     initLoginRequiredLinks();
     initGptImage2Generator();
+    loadLatestGptImage2Task();
     loadShowcaseAssets();
     initShowcaseVideoControls();
     if (!IS_AUTHENTICATED) {

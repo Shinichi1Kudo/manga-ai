@@ -22,6 +22,8 @@ urlpatterns = [
     path('api/v1/subject-replacements/upload-video/', views.subject_replacement_upload_video, name='subject_replacement_upload_video'),
     path('api/v1/subject-replacements/upload-reference/', views.subject_replacement_upload_reference, name='subject_replacement_upload_reference'),
     path('api/v1/gpt-image2/generate/', views.gpt_image2_generate, name='gpt_image2_generate'),
+    path('api/v1/gpt-image2/latest/', views.gpt_image2_latest_task, name='gpt_image2_latest_task'),
+    path('api/v1/gpt-image2/<int:task_id>/', views.gpt_image2_task_detail, name='gpt_image2_task_detail'),
     path('api/v1/gpt-image2/upload-reference/', views.gpt_image2_upload_reference, name='gpt_image2_upload_reference'),
 
     # 回收站页面

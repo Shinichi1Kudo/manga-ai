@@ -135,6 +135,9 @@ class GptImage2HomeTests(TestCase):
         self.assertIn('GPT-Image2 生图', template)
         self.assertIn('/api/v1/gpt-image2/generate/', template)
         self.assertIn('/api/v1/gpt-image2/upload-reference/', template)
+        self.assertIn('/api/v1/gpt-image2/latest/', template)
+        self.assertIn('pollGptImage2Task', template)
+        self.assertIn('loadLatestGptImage2Task', template)
         self.assertIn('referenceImageUrl', template)
 
     def test_gpt_image2_generate_forwards_to_backend(self):
@@ -143,7 +146,7 @@ class GptImage2HomeTests(TestCase):
         session.save()
 
         backend_client = Mock()
-        backend_client.post.return_value = {'imageUrl': 'https://oss.example.com/result.png'}
+        backend_client.post.return_value = {'id': 12, 'status': 'pending', 'progressPercent': 5}
 
         with patch('apps.series.views.get_client', return_value=backend_client):
             response = self.client.post(
@@ -157,9 +160,32 @@ class GptImage2HomeTests(TestCase):
             )
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json()['data']['imageUrl'], 'https://oss.example.com/result.png')
+        self.assertEqual(response.json()['data']['id'], 12)
+        self.assertEqual(response.json()['data']['status'], 'pending')
         backend_client.post.assert_called_once_with('/v1/gpt-image2/generate', {
             'prompt': '古风少女海报',
             'aspectRatio': '1:1',
             'referenceImageUrl': 'https://oss.example.com/ref.png',
         })
+
+    def test_gpt_image2_task_detail_and_latest_forward_to_backend(self):
+        session = self.client.session
+        session['token'] = 'token-1'
+        session.save()
+
+        backend_client = Mock()
+        backend_client.get.side_effect = [
+            {'id': 12, 'status': 'running'},
+            {'id': 12, 'status': 'succeeded', 'imageUrl': 'https://oss.example.com/result.png'},
+        ]
+
+        with patch('apps.series.views.get_client', return_value=backend_client):
+            detail_response = self.client.get('/api/v1/gpt-image2/12/')
+            latest_response = self.client.get('/api/v1/gpt-image2/latest/')
+
+        self.assertEqual(detail_response.status_code, 200)
+        self.assertEqual(detail_response.json()['data']['status'], 'running')
+        self.assertEqual(latest_response.status_code, 200)
+        self.assertEqual(latest_response.json()['data']['imageUrl'], 'https://oss.example.com/result.png')
+        backend_client.get.assert_any_call('/v1/gpt-image2/12')
+        backend_client.get.assert_any_call('/v1/gpt-image2/latest')
