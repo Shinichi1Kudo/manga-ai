@@ -119,7 +119,10 @@
 
             <div class="flex items-center justify-end">
                 <button type="submit" id="submitBtn" class="btn-neon inline-flex items-center gap-2">
-                    <i data-lucide="wand-sparkles" class="w-4 h-4"></i>确认生成
+                    <i data-lucide="wand-sparkles" class="w-4 h-4"></i>
+                    <span>确认生成</span>
+                    <span class="text-white/60">·</span>
+                    <span id="submitCreditText">扣除160积分</span>
                 </button>
             </div>
         </form>
@@ -224,6 +227,7 @@ function updateCreditPreview() {
     const estimatedCredits = getEstimatedCredits();
     document.getElementById('creditsPerSecond').textContent = subjectReplacementCreditsPerSecond;
     document.getElementById('estimatedCredits').textContent = estimatedCredits;
+    document.getElementById('submitCreditText').textContent = `扣除${estimatedCredits}积分`;
 
     const currentCreditsEl = document.getElementById('currentCredits');
     const sufficientEl = document.getElementById('creditSufficientText');

@@ -100,3 +100,13 @@ class SiteBrandingTests(TestCase):
         self.assertIn('海带 AI 智能短剧制作系统', combined)
         self.assertNotIn('Manga AI', combined)
         self.assertNotIn('>AI 智能短剧制作系统<', combined)
+
+
+class SubjectReplacementCreditButtonTests(TestCase):
+    def test_submit_button_shows_estimated_credit_deduction(self):
+        template_path = Path(settings.BASE_DIR) / 'templates/subject_replacement/index.html'
+        template = template_path.read_text(encoding='utf-8')
+
+        self.assertIn('id="submitCreditText"', template)
+        self.assertIn('扣除160积分', template)
+        self.assertIn("document.getElementById('submitCreditText').textContent = `扣除${estimatedCredits}积分`", template)
