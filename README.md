@@ -59,8 +59,15 @@
 - ✅ 火山引擎错误码友好提示
 - ✅ 演示素材接入 OSS（替换前视频、参考图、替换后视频）
 
+### GPT-Image2 生图（已完成）
+- ✅ 首页内嵌 GPT-Image2 生图工具
+- ✅ 支持文生图和上传参考图后的图生图
+- ✅ 参考图与生成结果自动上传 OSS
+- ✅ 未登录用户可浏览入口，上传/生成前统一提示登录
+
 ## 近期更新
 
+- 首页新增 GPT-Image2 生图工具：支持提示词文生图和参考图图生图，生成结果保存到 OSS。
 - 首页匿名访问：未登录用户可以浏览营销内容，业务按钮统一提示先登录。
 - 登录跳转修复：匿名 API 请求不再污染登录后的 `next`，避免登录后跳到 JSON 页面。
 - 联系我们二维码修复：公共二维码接口匿名可访问，并增加加载失败/重试状态。
@@ -88,6 +95,7 @@ manga-ai/
 │       ├── asset/              # 资产管理模块
 │       ├── common/             # 通用配置、枚举、工具类
 │       ├── episode/            # 剧集管理模块
+│       ├── gptimage/           # GPT-Image2 生图模块
 │       ├── image/              # 图片生成服务
 │       ├── llm/                # LLM服务（豆包）
 │       ├── nlp/                # NLP处理模块
@@ -134,6 +142,7 @@ manga-ai/
 - 火山引擎 Seedream（图片生成）
 - 火山引擎 Seedance 2.0（视频生成）
 - 火山引擎豆包大模型（剧本解析）
+- GPT-Image2（首页生图）
 
 ### 前端
 - Python 3.x
@@ -326,6 +335,11 @@ volcengine:
   llm:
     api-key: ${VOLCENGINE_LLM_API_KEY}
     model: doubao-pro-32k
+
+gpt-image2:
+  api-key: ${GPT_IMAGE2_API_KEY}
+  base-url: https://api.airiver.cn/v1
+  model: gpt-image-2
 ```
 
 ### 前端配置

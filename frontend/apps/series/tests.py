@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 from unittest.mock import Mock, patch
 
@@ -123,3 +124,42 @@ class SubjectReplacementCreditButtonTests(TestCase):
         self.assertIn('id="submitCreditText"', template)
         self.assertIn('扣除160积分', template)
         self.assertIn("document.getElementById('submitCreditText').textContent = `扣除${estimatedCredits}积分`", template)
+
+
+class GptImage2HomeTests(TestCase):
+    def test_home_page_contains_gpt_image2_generator_panel(self):
+        template_path = Path(settings.BASE_DIR) / 'templates/series/series_list.html'
+        template = template_path.read_text(encoding='utf-8')
+
+        self.assertIn('id="gptImage2Form"', template)
+        self.assertIn('GPT-Image2 生图', template)
+        self.assertIn('/api/v1/gpt-image2/generate/', template)
+        self.assertIn('/api/v1/gpt-image2/upload-reference/', template)
+        self.assertIn('referenceImageUrl', template)
+
+    def test_gpt_image2_generate_forwards_to_backend(self):
+        session = self.client.session
+        session['token'] = 'token-1'
+        session.save()
+
+        backend_client = Mock()
+        backend_client.post.return_value = {'imageUrl': 'https://oss.example.com/result.png'}
+
+        with patch('apps.series.views.get_client', return_value=backend_client):
+            response = self.client.post(
+                '/api/v1/gpt-image2/generate/',
+                data=json.dumps({
+                    'prompt': '古风少女海报',
+                    'aspectRatio': '1:1',
+                    'referenceImageUrl': 'https://oss.example.com/ref.png',
+                }),
+                content_type='application/json',
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['data']['imageUrl'], 'https://oss.example.com/result.png')
+        backend_client.post.assert_called_once_with('/v1/gpt-image2/generate', {
+            'prompt': '古风少女海报',
+            'aspectRatio': '1:1',
+            'referenceImageUrl': 'https://oss.example.com/ref.png',
+        })

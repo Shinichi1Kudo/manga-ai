@@ -378,6 +378,57 @@ def subject_replacement_upload_reference(request):
 
 
 @csrf_exempt
+@require_http_methods(["POST"])
+def gpt_image2_generate(request):
+    """首页 GPT-Image2 生图接口"""
+    client = get_client(request)
+    try:
+        data = json.loads(request.body)
+        payload = {
+            'prompt': (data.get('prompt') or '').strip(),
+            'aspectRatio': data.get('aspectRatio') or '1:1',
+        }
+        reference_image_url = (data.get('referenceImageUrl') or '').strip()
+        if reference_image_url:
+            payload['referenceImageUrl'] = reference_image_url
+
+        result = client.post('/v1/gpt-image2/generate', payload)
+        return JsonResponse({'code': 200, 'data': result})
+    except BackendAPIError as e:
+        return JsonResponse({'code': 400, 'message': e.message}, status=400)
+    except json.JSONDecodeError:
+        return JsonResponse({'code': 400, 'message': 'Invalid JSON'}, status=400)
+    except Exception as e:
+        return JsonResponse({'code': 500, 'message': str(e)}, status=500)
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def gpt_image2_upload_reference(request):
+    """首页 GPT-Image2 参考图上传接口"""
+    client = get_client(request)
+    try:
+        file = request.FILES.get('file')
+        if not file:
+            return JsonResponse({'code': 400, 'message': '请选择要上传的参考图'}, status=400)
+
+        allowed_types = {'image/jpeg', 'image/png', 'image/webp'}
+        filename = (file.name or '').lower()
+        if file.content_type not in allowed_types and not filename.endswith(('.jpg', '.jpeg', '.png', '.webp')):
+            return JsonResponse({'code': 400, 'message': '只支持 JPG、PNG、WEBP 格式的图片'}, status=400)
+        if file.size and file.size > 10 * 1024 * 1024:
+            return JsonResponse({'code': 400, 'message': '参考图大小不能超过10MB'}, status=400)
+
+        files = {'file': (file.name, file.read(), file.content_type or 'application/octet-stream')}
+        result = client.upload('/v1/gpt-image2/upload-reference', files)
+        return JsonResponse({'code': 200, 'data': result})
+    except BackendAPIError as e:
+        return JsonResponse({'code': 400, 'message': e.message}, status=400)
+    except Exception as e:
+        return JsonResponse({'code': 500, 'message': str(e)}, status=500)
+
+
+@csrf_exempt
 @require_http_methods(["DELETE"])
 def series_delete(request, series_id):
     """删除系列（移入回收站）"""

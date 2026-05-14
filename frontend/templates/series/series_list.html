@@ -48,6 +48,102 @@
     <div id="pagination" class="flex justify-center items-center gap-4 mt-8"></div>
 </div>
 
+<!-- GPT-Image2 Generator -->
+<section class="mt-16">
+    <div class="mb-5 flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+        <div>
+            <div class="mb-3 inline-flex items-center gap-2 rounded-full border border-sky-300/20 bg-sky-300/10 px-3 py-1 text-xs font-semibold tracking-[0.18em] text-sky-100">
+                <i data-lucide="wand-sparkles" class="w-3.5 h-3.5"></i>
+                IMAGE LAB
+            </div>
+            <h2 class="text-2xl md:text-3xl font-bold leading-tight">GPT-Image2 生图</h2>
+            <p class="mt-2 max-w-2xl text-sm leading-6 text-white/48">输入提示词即可文生图，也可以上传参考图进行图生图，生成结果会保存为可访问的 OSS 图片。</p>
+        </div>
+    </div>
+
+    <div class="overflow-hidden rounded-3xl border border-white/10 bg-[linear-gradient(135deg,rgba(14,21,38,0.82),rgba(14,165,233,0.10),rgba(16,185,129,0.08))] shadow-2xl shadow-black/25">
+        <div class="grid gap-0 lg:grid-cols-[minmax(0,420px)_minmax(0,1fr)]">
+            <form id="gptImage2Form" class="border-b border-white/10 bg-black/[0.14] p-5 md:p-6 lg:border-b-0 lg:border-r">
+                <div class="space-y-5">
+                    <label class="block">
+                        <span class="mb-2 block text-sm font-semibold text-white/80">提示词</span>
+                        <textarea id="gptImage2Prompt" rows="6" class="w-full resize-none rounded-2xl border border-white/10 bg-slate-950/45 px-4 py-3 text-sm leading-6 text-white outline-none transition placeholder:text-white/28 focus:border-sky-300/40 focus:bg-slate-950/60" placeholder="例如：超精细3D动漫风格，古风少女站在月光庭院中，电影级光影，细节丰富"></textarea>
+                    </label>
+
+                    <div class="grid gap-4 sm:grid-cols-[minmax(0,1fr)_150px]">
+                        <label class="block">
+                            <span class="mb-2 block text-sm font-semibold text-white/80">参考图（可选）</span>
+                            <div class="flex flex-wrap items-center gap-3">
+                                <input id="gptImage2ReferenceInput" type="file" accept="image/png,image/jpeg,image/webp" class="hidden">
+                                <button id="gptImage2ReferenceButton" type="button" class="inline-flex items-center gap-2 rounded-xl border border-white/12 bg-white/[0.06] px-4 py-2.5 text-sm font-medium text-white transition hover:bg-white/[0.10]">
+                                    <i data-lucide="image-plus" class="w-4 h-4"></i>
+                                    上传参考图
+                                </button>
+                                <button id="gptImage2ClearReference" type="button" class="hidden rounded-xl border border-white/10 px-3 py-2 text-sm text-white/55 transition hover:bg-white/[0.08]">清除</button>
+                            </div>
+                        </label>
+
+                        <label class="block">
+                            <span class="mb-2 block text-sm font-semibold text-white/80">图片比例</span>
+                            <select id="gptImage2AspectRatio" class="h-[42px] w-full rounded-xl border border-white/10 bg-slate-950/45 px-3 text-sm text-white outline-none focus:border-sky-300/40">
+                                <option value="1:1">1:1 方图</option>
+                                <option value="16:9">16:9 横图</option>
+                                <option value="9:16">9:16 竖图</option>
+                                <option value="4:3">4:3 横图</option>
+                                <option value="3:4">3:4 竖图</option>
+                            </select>
+                        </label>
+                    </div>
+
+                    <div id="gptImage2ReferencePreview" class="hidden rounded-2xl border border-sky-200/15 bg-sky-200/[0.045] p-3">
+                        <div class="flex items-center gap-3">
+                            <img id="gptImage2ReferenceImage" class="h-16 w-16 rounded-xl object-cover" alt="GPT-Image2 参考图">
+                            <div class="min-w-0">
+                                <p class="text-sm font-medium text-white">参考图已上传</p>
+                                <p id="gptImage2ReferenceName" class="mt-1 truncate text-xs text-white/42"></p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div id="gptImage2Status" class="hidden rounded-2xl border border-white/10 bg-white/[0.045] px-4 py-3 text-sm text-white/62"></div>
+
+                    <button id="gptImage2GenerateButton" type="submit" class="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-sky-500 to-emerald-400 px-5 py-3 text-sm font-bold text-slate-950 shadow-lg shadow-sky-950/20 transition hover:from-sky-400 hover:to-emerald-300 disabled:cursor-not-allowed disabled:opacity-60">
+                        <i data-lucide="sparkles" class="w-4 h-4"></i>
+                        生成图片
+                    </button>
+                </div>
+            </form>
+
+            <div class="p-5 md:p-6">
+                <div id="gptImage2ResultEmpty" class="flex min-h-[360px] items-center justify-center rounded-2xl border border-dashed border-white/12 bg-white/[0.025] p-6 text-center">
+                    <div>
+                        <div class="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl border border-sky-200/15 bg-sky-200/[0.08]">
+                            <i data-lucide="image" class="w-7 h-7 text-sky-100"></i>
+                        </div>
+                        <p class="text-base font-semibold text-white">生成结果会显示在这里</p>
+                        <p class="mt-2 max-w-sm text-sm leading-6 text-white/42">支持纯提示词生成，也支持参考图辅助生成。未登录用户可以浏览入口，生成前会提示登录。</p>
+                    </div>
+                </div>
+                <div id="gptImage2ResultWrap" class="hidden">
+                    <div class="mb-3 flex items-center justify-between gap-3">
+                        <div class="flex items-center gap-2 text-sm font-semibold text-white/82">
+                            <i data-lucide="badge-check" class="w-4 h-4 text-emerald-200"></i>
+                            生成结果
+                        </div>
+                        <a id="gptImage2ResultLink" href="#" target="_blank" rel="noopener" class="inline-flex items-center gap-1.5 rounded-xl border border-white/10 bg-white/[0.055] px-3 py-2 text-xs font-medium text-white/70 transition hover:bg-white/[0.09]">
+                            查看大图
+                            <i data-lucide="external-link" class="w-3.5 h-3.5"></i>
+                        </a>
+                    </div>
+                    <div class="overflow-hidden rounded-2xl border border-white/10 bg-black/24">
+                        <img id="gptImage2ResultImage" class="max-h-[620px] w-full object-contain" alt="GPT-Image2 生成结果">
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</section>
+
 <!-- Feature Showcase -->
 <section class="mt-16 mb-8">
     <div class="mb-5 flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
@@ -253,6 +349,8 @@ let websocketLoading = false;
 let websocketReady = typeof SockJS !== 'undefined' && typeof Stomp !== 'undefined';
 let showcaseExpandedSource = null;
 let showcaseExpandedWasPlaying = false;
+let gptImage2ReferenceUrl = '';
+let gptImage2ReferenceObjectUrl = '';
 const IS_AUTHENTICATED = {{ request.session.token|yesno:"true,false" }};
 
 // 从 localStorage 恢复进度
@@ -265,6 +363,183 @@ function saveProgress() {
 
 function showLoginRequiredModal() {
     showLoginExpiredModal('请先登录', '登录后即可使用创建系列、剧集制作、主体替换和资产库等功能。', '去登录', true);
+}
+
+function setGptImage2Status(message, type = 'info') {
+    const status = document.getElementById('gptImage2Status');
+    if (!status) return;
+    if (!message) {
+        status.classList.add('hidden');
+        status.textContent = '';
+        return;
+    }
+    status.textContent = message;
+    status.classList.remove('hidden', 'border-red-300/20', 'bg-red-300/10', 'text-red-100', 'border-emerald-300/20', 'bg-emerald-300/10', 'text-emerald-100');
+    if (type === 'error') {
+        status.classList.add('border-red-300/20', 'bg-red-300/10', 'text-red-100');
+    } else if (type === 'success') {
+        status.classList.add('border-emerald-300/20', 'bg-emerald-300/10', 'text-emerald-100');
+    }
+}
+
+function setGptImage2Busy(isBusy) {
+    const button = document.getElementById('gptImage2GenerateButton');
+    const uploadButton = document.getElementById('gptImage2ReferenceButton');
+    if (button) {
+        button.disabled = isBusy;
+        button.innerHTML = isBusy
+            ? '<span class="spinner !w-4 !h-4 !border-2"></span>生成中...'
+            : '<i data-lucide="sparkles" class="w-4 h-4"></i>生成图片';
+    }
+    if (uploadButton) {
+        uploadButton.disabled = isBusy;
+    }
+    safeCreateIcons();
+}
+
+function resetGptImage2Reference() {
+    gptImage2ReferenceUrl = '';
+    if (gptImage2ReferenceObjectUrl) {
+        URL.revokeObjectURL(gptImage2ReferenceObjectUrl);
+        gptImage2ReferenceObjectUrl = '';
+    }
+    const input = document.getElementById('gptImage2ReferenceInput');
+    const preview = document.getElementById('gptImage2ReferencePreview');
+    const image = document.getElementById('gptImage2ReferenceImage');
+    const name = document.getElementById('gptImage2ReferenceName');
+    const button = document.getElementById('gptImage2ReferenceButton');
+    const clearButton = document.getElementById('gptImage2ClearReference');
+    if (input) input.value = '';
+    if (preview) preview.classList.add('hidden');
+    if (image) image.removeAttribute('src');
+    if (name) name.textContent = '';
+    if (button) button.innerHTML = '<i data-lucide="image-plus" class="w-4 h-4"></i>上传参考图';
+    if (clearButton) clearButton.classList.add('hidden');
+    safeCreateIcons();
+}
+
+function initGptImage2Generator() {
+    const form = document.getElementById('gptImage2Form');
+    const fileInput = document.getElementById('gptImage2ReferenceInput');
+    const uploadButton = document.getElementById('gptImage2ReferenceButton');
+    const clearButton = document.getElementById('gptImage2ClearReference');
+    if (!form || !fileInput || !uploadButton) return;
+
+    uploadButton.addEventListener('click', () => {
+        if (!IS_AUTHENTICATED) {
+            showLoginRequiredModal();
+            return;
+        }
+        fileInput.click();
+    });
+
+    clearButton?.addEventListener('click', resetGptImage2Reference);
+
+    fileInput.addEventListener('change', async () => {
+        const file = fileInput.files && fileInput.files[0];
+        if (!file) return;
+        if (!IS_AUTHENTICATED) {
+            resetGptImage2Reference();
+            showLoginRequiredModal();
+            return;
+        }
+        if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
+            resetGptImage2Reference();
+            setGptImage2Status('只支持 JPG、PNG、WEBP 格式的参考图', 'error');
+            return;
+        }
+        if (file.size > 10 * 1024 * 1024) {
+            resetGptImage2Reference();
+            setGptImage2Status('参考图大小不能超过10MB', 'error');
+            return;
+        }
+
+        const formData = new FormData();
+        formData.append('file', file);
+        uploadButton.disabled = true;
+        uploadButton.innerHTML = '<span class="spinner !w-4 !h-4 !border-2"></span>上传中...';
+        setGptImage2Status('正在上传参考图...');
+        try {
+            const response = await fetch('/api/v1/gpt-image2/upload-reference/', {
+                method: 'POST',
+                headers: {'X-CSRFToken': getCookie('csrftoken')},
+                body: formData,
+            });
+            const result = await response.json();
+            if (!response.ok || result.code !== 200) {
+                throw new Error(result.message || '参考图上传失败');
+            }
+            gptImage2ReferenceUrl = result.data?.url || result.data?.imageUrl || '';
+            if (!gptImage2ReferenceUrl) {
+                throw new Error('参考图上传后未返回图片地址');
+            }
+            if (gptImage2ReferenceObjectUrl) {
+                URL.revokeObjectURL(gptImage2ReferenceObjectUrl);
+            }
+            gptImage2ReferenceObjectUrl = URL.createObjectURL(file);
+            document.getElementById('gptImage2ReferenceImage').src = gptImage2ReferenceObjectUrl;
+            document.getElementById('gptImage2ReferenceName').textContent = file.name;
+            document.getElementById('gptImage2ReferencePreview').classList.remove('hidden');
+            document.getElementById('gptImage2ClearReference')?.classList.remove('hidden');
+            uploadButton.innerHTML = '<i data-lucide="refresh-cw" class="w-4 h-4"></i>重新上传参考图';
+            setGptImage2Status('参考图已上传，可以开始图生图。', 'success');
+        } catch (error) {
+            resetGptImage2Reference();
+            setGptImage2Status(error.message || '参考图上传失败', 'error');
+        } finally {
+            uploadButton.disabled = false;
+            safeCreateIcons();
+        }
+    });
+
+    form.addEventListener('submit', async event => {
+        event.preventDefault();
+        if (!IS_AUTHENTICATED) {
+            showLoginRequiredModal();
+            return;
+        }
+
+        const prompt = document.getElementById('gptImage2Prompt')?.value.trim() || '';
+        const aspectRatio = document.getElementById('gptImage2AspectRatio')?.value || '1:1';
+        if (!prompt) {
+            setGptImage2Status('请输入提示词', 'error');
+            return;
+        }
+
+        setGptImage2Busy(true);
+        setGptImage2Status(gptImage2ReferenceUrl ? '正在进行图生图，请稍候...' : '正在进行文生图，请稍候...');
+        try {
+            const response = await fetch('/api/v1/gpt-image2/generate/', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': getCookie('csrftoken'),
+                },
+                body: JSON.stringify({
+                    prompt,
+                    aspectRatio,
+                    referenceImageUrl: gptImage2ReferenceUrl,
+                }),
+            });
+            const result = await response.json();
+            if (!response.ok || result.code !== 200) {
+                throw new Error(result.message || '生成失败');
+            }
+            const imageUrl = result.data?.imageUrl || result.data?.url;
+            if (!imageUrl) {
+                throw new Error('生成成功但未返回图片地址');
+            }
+            document.getElementById('gptImage2ResultEmpty')?.classList.add('hidden');
+            document.getElementById('gptImage2ResultWrap')?.classList.remove('hidden');
+            document.getElementById('gptImage2ResultImage').src = imageUrl;
+            document.getElementById('gptImage2ResultLink').href = imageUrl;
+            setGptImage2Status('图片已生成并保存。', 'success');
+        } catch (error) {
+            setGptImage2Status(error.message || '生成失败，请稍后重试', 'error');
+        } finally {
+            setGptImage2Busy(false);
+        }
+    });
 }
 
 function initLoginRequiredLinks() {
@@ -984,6 +1259,7 @@ function stopPolling(seriesId) {
 
 document.addEventListener('DOMContentLoaded', function() {
     initLoginRequiredLinks();
+    initGptImage2Generator();
     loadShowcaseAssets();
     initShowcaseVideoControls();
     if (!IS_AUTHENTICATED) {

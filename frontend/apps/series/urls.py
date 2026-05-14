@@ -21,6 +21,8 @@ urlpatterns = [
     path('api/v1/subject-replacements/<int:task_id>/delete/', views.subject_replacement_task_delete, name='subject_replacement_task_delete'),
     path('api/v1/subject-replacements/upload-video/', views.subject_replacement_upload_video, name='subject_replacement_upload_video'),
     path('api/v1/subject-replacements/upload-reference/', views.subject_replacement_upload_reference, name='subject_replacement_upload_reference'),
+    path('api/v1/gpt-image2/generate/', views.gpt_image2_generate, name='gpt_image2_generate'),
+    path('api/v1/gpt-image2/upload-reference/', views.gpt_image2_upload_reference, name='gpt_image2_upload_reference'),
 
     # 回收站页面
     path('trash/', views.trash_page, name='trash'),
