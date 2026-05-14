@@ -27,6 +27,7 @@ import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.HttpServerErrorException;
+import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestTemplate;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -51,6 +52,7 @@ public class GptImage2ServiceImpl implements GptImage2Service {
             "1:1", "16:9", "9:16", "4:3", "3:4"
     );
     private static final long MAX_IMAGE_SIZE = 10L * 1024 * 1024;
+    private static final int MAX_GENERATE_ATTEMPTS = 3;
 
     private final OssService ossService;
     private final UserService userService;
@@ -228,16 +230,26 @@ public class GptImage2ServiceImpl implements GptImage2Service {
 
         HttpEntity<String> entity = new HttpEntity<>(requestBody.toJSONString(), headers);
         String url = baseUrl.replaceAll("/+$", "") + "/images/generations";
-        try {
-            ResponseEntity<String> response = restTemplate.exchange(url, HttpMethod.POST, entity, String.class);
-            if (response.getStatusCode() == HttpStatus.OK && hasText(response.getBody())) {
-                return response.getBody();
+        for (int attempt = 1; attempt <= MAX_GENERATE_ATTEMPTS; attempt++) {
+            try {
+                ResponseEntity<String> response = restTemplate.exchange(url, HttpMethod.POST, entity, String.class);
+                if (response.getStatusCode() == HttpStatus.OK && hasText(response.getBody())) {
+                    return response.getBody();
+                }
+                throw new BusinessException(500, "GPT-Image2生成失败: " + response.getStatusCode());
+            } catch (HttpClientErrorException | HttpServerErrorException e) {
+                log.warn("GPT-Image2 API返回错误: status={}, body={}", e.getStatusCode(), e.getResponseBodyAsString());
+                throw new BusinessException((int) e.getStatusCode().value(), friendlyApiError(e.getResponseBodyAsString()));
+            } catch (RestClientException e) {
+                if (attempt < MAX_GENERATE_ATTEMPTS && isRetryableGenerateException(e)) {
+                    log.warn("GPT-Image2请求连接中断，准备重试: attempt={}/{}, error={}",
+                            attempt, MAX_GENERATE_ATTEMPTS, collectThrowableMessages(e));
+                    continue;
+                }
+                throw e;
             }
-            throw new BusinessException(500, "GPT-Image2生成失败: " + response.getStatusCode());
-        } catch (HttpClientErrorException | HttpServerErrorException e) {
-            log.warn("GPT-Image2 API返回错误: status={}, body={}", e.getStatusCode(), e.getResponseBodyAsString());
-            throw new BusinessException((int) e.getStatusCode().value(), friendlyApiError(e.getResponseBodyAsString()));
         }
+        throw new BusinessException(500, "GPT-Image2服务连接中断，请稍后重试");
     }
 
     private String extractImageUrl(String responseBody) {
@@ -370,14 +382,41 @@ public class GptImage2ServiceImpl implements GptImage2Service {
     }
 
     private String friendlyExceptionMessage(Exception e) {
-        String message = e.getMessage();
-        if (hasText(message) && message.contains("Unexpected end of file")) {
+        String message = collectThrowableMessages(e);
+        String lowerMessage = message.toLowerCase();
+        if (lowerMessage.contains("premature eof") || lowerMessage.contains("unexpected end of file")
+                || lowerMessage.contains("connection reset") || lowerMessage.contains("connection prematurely closed")) {
             return "GPT-Image2服务连接中断，请稍后重试";
         }
-        if (hasText(message) && message.toLowerCase().contains("timeout")) {
+        if (lowerMessage.contains("timeout") || lowerMessage.contains("timed out")) {
             return "GPT-Image2服务响应超时，请稍后重试";
         }
         return "GPT-Image2生成失败，请稍后重试";
+    }
+
+    private boolean isRetryableGenerateException(RestClientException e) {
+        String message = collectThrowableMessages(e).toLowerCase();
+        return message.contains("premature eof")
+                || message.contains("unexpected end of file")
+                || message.contains("connection reset")
+                || message.contains("connection prematurely closed")
+                || message.contains("timeout")
+                || message.contains("timed out");
+    }
+
+    private String collectThrowableMessages(Throwable throwable) {
+        StringBuilder builder = new StringBuilder();
+        Throwable current = throwable;
+        while (current != null) {
+            if (hasText(current.getMessage())) {
+                if (builder.length() > 0) {
+                    builder.append(" | ");
+                }
+                builder.append(current.getMessage());
+            }
+            current = current.getCause();
+        }
+        return builder.toString();
     }
 
     private GptImage2Task getOwnedTask(Long taskId) {

@@ -353,6 +353,7 @@ let gptImage2ReferenceUrl = '';
 let gptImage2ReferenceObjectUrl = '';
 let gptImage2CurrentTaskId = null;
 let gptImage2PollTimer = null;
+const GPT_IMAGE2_TASK_STORAGE_KEY = 'gptImage2LatestTask';
 const IS_AUTHENTICATED = {{ request.session.token|yesno:"true,false" }};
 
 // 从 localStorage 恢复进度
@@ -407,9 +408,49 @@ function renderGptImage2Result(imageUrl) {
     document.getElementById('gptImage2ResultLink').href = imageUrl;
 }
 
+function persistGptImage2TaskState(task) {
+    if (!task || !task.id || !IS_AUTHENTICATED) return;
+    try {
+        localStorage.setItem(GPT_IMAGE2_TASK_STORAGE_KEY, JSON.stringify({
+            ...task,
+            savedAt: Date.now()
+        }));
+    } catch (error) {
+        console.warn('保存 GPT-Image2 任务状态失败:', error);
+    }
+}
+
+function readGptImage2StoredTask() {
+    try {
+        const raw = localStorage.getItem(GPT_IMAGE2_TASK_STORAGE_KEY);
+        if (!raw) return null;
+        const task = JSON.parse(raw);
+        if (!task || !task.id) {
+            localStorage.removeItem(GPT_IMAGE2_TASK_STORAGE_KEY);
+            return null;
+        }
+        return task;
+    } catch (error) {
+        localStorage.removeItem(GPT_IMAGE2_TASK_STORAGE_KEY);
+        return null;
+    }
+}
+
+function restoreGptImage2TaskFromStorage() {
+    if (!IS_AUTHENTICATED) return null;
+    const task = readGptImage2StoredTask();
+    if (!task) return null;
+    applyGptImage2TaskState(task);
+    if (['pending', 'running'].includes(task.status)) {
+        pollGptImage2Task(task.id);
+    }
+    return task;
+}
+
 function applyGptImage2TaskState(task) {
     if (!task || !task.id) return;
     gptImage2CurrentTaskId = task.id;
+    persistGptImage2TaskState(task);
     const status = task.status || 'pending';
     const progress = Number.isFinite(Number(task.progressPercent)) ? Number(task.progressPercent) : (status === 'running' ? 35 : 5);
     if (task.imageUrl) {
@@ -463,6 +504,17 @@ function pollGptImage2Task(taskId) {
         }
     }, 2500);
 }
+
+window.addEventListener('storage', function(e) {
+    if (e.key === GPT_IMAGE2_TASK_STORAGE_KEY && e.newValue && IS_AUTHENTICATED) {
+        const task = readGptImage2StoredTask();
+        if (!task) return;
+        applyGptImage2TaskState(task);
+        if (['pending', 'running'].includes(task.status)) {
+            pollGptImage2Task(task.id);
+        }
+    }
+});
 
 async function loadLatestGptImage2Task() {
     if (!IS_AUTHENTICATED) return;
@@ -1342,6 +1394,7 @@ function stopPolling(seriesId) {
 document.addEventListener('DOMContentLoaded', function() {
     initLoginRequiredLinks();
     initGptImage2Generator();
+    restoreGptImage2TaskFromStorage();
     loadLatestGptImage2Task();
     loadShowcaseAssets();
     initShowcaseVideoControls();

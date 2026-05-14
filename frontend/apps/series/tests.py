@@ -189,3 +189,13 @@ class GptImage2HomeTests(TestCase):
         self.assertEqual(latest_response.json()['data']['imageUrl'], 'https://oss.example.com/result.png')
         backend_client.get.assert_any_call('/v1/gpt-image2/12')
         backend_client.get.assert_any_call('/v1/gpt-image2/latest')
+
+    def test_gpt_image2_running_task_restores_from_local_storage(self):
+        template_path = Path(settings.BASE_DIR) / 'templates/series/series_list.html'
+        template = template_path.read_text(encoding='utf-8')
+
+        self.assertIn("GPT_IMAGE2_TASK_STORAGE_KEY = 'gptImage2LatestTask'", template)
+        self.assertIn('function restoreGptImage2TaskFromStorage()', template)
+        self.assertIn('persistGptImage2TaskState(task)', template)
+        self.assertIn("if (e.key === GPT_IMAGE2_TASK_STORAGE_KEY", template)
+        self.assertIn('restoreGptImage2TaskFromStorage();\n    loadLatestGptImage2Task();', template)
