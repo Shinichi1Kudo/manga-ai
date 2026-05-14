@@ -21,6 +21,10 @@ urlpatterns = [
     path('api/v1/subject-replacements/<int:task_id>/delete/', views.subject_replacement_task_delete, name='subject_replacement_task_delete'),
     path('api/v1/subject-replacements/upload-video/', views.subject_replacement_upload_video, name='subject_replacement_upload_video'),
     path('api/v1/subject-replacements/upload-reference/', views.subject_replacement_upload_reference, name='subject_replacement_upload_reference'),
+
+    # GPT-Image2 生图
+    path('gpt-image2/', views.gpt_image2_page, name='gpt_image2_page'),
+    path('api/v1/gpt-image2/', views.gpt_image2_tasks, name='gpt_image2_tasks'),
     path('api/v1/gpt-image2/generate/', views.gpt_image2_generate, name='gpt_image2_generate'),
     path('api/v1/gpt-image2/latest/', views.gpt_image2_latest_task, name='gpt_image2_latest_task'),
     path('api/v1/gpt-image2/<int:task_id>/', views.gpt_image2_task_detail, name='gpt_image2_task_detail'),
@@ -191,10 +195,15 @@ urlpatterns = [
 
     # 联系我们图片
     path('api/v1/common/contact-image/', views.contact_image, name='contact_image'),
+    path('api/v1/common/site-logo/', views.site_logo, name='site_logo'),
     path('api/v1/common/showcase-assets/', views.showcase_assets, name='showcase_assets'),
 
     # 积分记录页面
     path('credits/records/', views.credit_records, name='credit_records'),
+
+    # 工藤新一专属积分管理后台
+    path('admin/credits/', views.credit_admin_dashboard, name='credit_admin_dashboard'),
+    path('api/admin/credits/dashboard/', views.credit_admin_dashboard_api, name='credit_admin_dashboard_api'),
 
     # 积分记录API
     path('api/credits/records/', views.credit_records_api, name='credit_records_api'),

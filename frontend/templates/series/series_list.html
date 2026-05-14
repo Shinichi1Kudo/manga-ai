@@ -5,6 +5,7 @@
 {% block content %}
 <!-- Hero Section -->
 <div class="text-center py-12">
+    <img src="/api/v1/common/site-logo/" alt="海带 AI 智能短剧制作系统 Logo" class="brand-logo-img hero-site-logo mx-auto mb-5">
     <h1 class="mb-4">
         <span class="brand-wordmark hero-brand-wordmark" aria-label="海带 AI 智能短剧制作系统">
             <span class="brand-name">海带</span>
@@ -14,23 +15,49 @@
     <p class="text-white/50 max-w-2xl mx-auto mb-8">
         一键生成标准化角色资产，告别重复劳动，让创作更高效
     </p>
-    <div class="flex items-center justify-center gap-4">
-        <a href="/init/" data-login-required="true" class="btn-neon text-lg px-8 py-3 inline-flex items-center gap-2">
-            <i data-lucide="plus" class="w-5 h-5"></i>创建新系列
-        </a>
-        <a href="/episodes/" data-login-required="true" class="px-8 py-3 rounded-xl bg-gradient-to-r from-orange-500 to-pink-500 hover:from-orange-600 hover:to-pink-600 transition-all font-medium text-lg inline-flex items-center gap-2">
-            <i data-lucide="film" class="w-5 h-5"></i>剧集制作
-        </a>
-        <a href="/subject-replacement/" data-login-required="true" class="px-8 py-3 rounded-xl bg-gradient-to-r from-emerald-500 to-cyan-500 hover:from-emerald-600 hover:to-cyan-600 transition-all font-medium text-lg inline-flex items-center gap-2">
-            <i data-lucide="replace" class="w-5 h-5"></i>主体替换
-            <span class="ml-0.5 inline-flex h-5 items-center rounded-full bg-white/95 px-2 text-[10px] font-bold tracking-[0.12em] text-emerald-700 shadow-sm shadow-emerald-950/20">NEW</span>
-        </a>
-        <a href="/assets/library/" data-login-required="true" class="px-8 py-3 rounded-xl bg-white/10 border border-white/20 hover:bg-white/15 transition-all font-medium text-lg inline-flex items-center gap-2">
-            <i data-lucide="folder-open" class="w-5 h-5"></i>我的资产库
-        </a>
-        <a href="/credits/records/" data-login-required="true" class="px-8 py-3 rounded-xl bg-white/10 border border-white/20 hover:bg-white/15 transition-all font-medium text-lg inline-flex items-center gap-2">
-            <i data-lucide="history" class="w-5 h-5"></i>积分记录
-        </a>
+    <div class="home-action-board">
+        <div class="home-action-group">
+            <div class="home-action-label">基础工作台</div>
+            <div class="home-action-row">
+                <a href="/init/" data-login-required="true" class="home-action home-action-primary">
+                    <i data-lucide="plus" class="w-5 h-5"></i>
+                    <span>创建新系列</span>
+                </a>
+                <a href="/episodes/" data-login-required="true" class="home-action home-action-warm">
+                    <i data-lucide="film" class="w-5 h-5"></i>
+                    <span>剧集制作</span>
+                </a>
+            </div>
+        </div>
+
+        <div class="home-action-group home-action-group-accent">
+            <div class="home-action-label">AI 工具</div>
+            <div class="home-action-row">
+                <a href="/subject-replacement/" data-login-required="true" class="home-action home-action-emerald">
+                    <i data-lucide="replace" class="w-5 h-5"></i>
+                    <span>主体替换</span>
+                    <span class="home-new-badge">NEW</span>
+                </a>
+                <a href="/gpt-image2/" data-login-required="true" class="home-action home-action-sky">
+                    <i data-lucide="wand-sparkles" class="w-5 h-5"></i>
+                    <span>GPT-Image2 生图</span>
+                    <span class="home-new-badge">NEW</span>
+                </a>
+            </div>
+        </div>
+
+        <div class="home-action-group">
+            <div class="home-action-label">资产与账户</div>
+            <div class="home-action-row">
+                <a href="/assets/library/" data-login-required="true" class="home-action home-action-muted">
+                    <i data-lucide="folder-open" class="w-5 h-5"></i>
+                    <span>我的资产库</span>
+                </a>
+                <a href="/credits/records/" data-login-required="true" class="home-action home-action-muted">
+                    <span>积分记录</span>
+                </a>
+            </div>
+        </div>
     </div>
 </div>
 
@@ -47,102 +74,6 @@
     <!-- Pagination -->
     <div id="pagination" class="flex justify-center items-center gap-4 mt-8"></div>
 </div>
-
-<!-- GPT-Image2 Generator -->
-<section class="mt-16">
-    <div class="mb-5 flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
-        <div>
-            <div class="mb-3 inline-flex items-center gap-2 rounded-full border border-sky-300/20 bg-sky-300/10 px-3 py-1 text-xs font-semibold tracking-[0.18em] text-sky-100">
-                <i data-lucide="wand-sparkles" class="w-3.5 h-3.5"></i>
-                IMAGE LAB
-            </div>
-            <h2 class="text-2xl md:text-3xl font-bold leading-tight">GPT-Image2 生图</h2>
-            <p class="mt-2 max-w-2xl text-sm leading-6 text-white/48">输入提示词即可文生图，也可以上传参考图进行图生图，生成结果会保存为可访问的 OSS 图片。</p>
-        </div>
-    </div>
-
-    <div class="overflow-hidden rounded-3xl border border-white/10 bg-[linear-gradient(135deg,rgba(14,21,38,0.82),rgba(14,165,233,0.10),rgba(16,185,129,0.08))] shadow-2xl shadow-black/25">
-        <div class="grid gap-0 lg:grid-cols-[minmax(0,420px)_minmax(0,1fr)]">
-            <form id="gptImage2Form" class="border-b border-white/10 bg-black/[0.14] p-5 md:p-6 lg:border-b-0 lg:border-r">
-                <div class="space-y-5">
-                    <label class="block">
-                        <span class="mb-2 block text-sm font-semibold text-white/80">提示词</span>
-                        <textarea id="gptImage2Prompt" rows="6" class="w-full resize-none rounded-2xl border border-white/10 bg-slate-950/45 px-4 py-3 text-sm leading-6 text-white outline-none transition placeholder:text-white/28 focus:border-sky-300/40 focus:bg-slate-950/60" placeholder="例如：超精细3D动漫风格，古风少女站在月光庭院中，电影级光影，细节丰富"></textarea>
-                    </label>
-
-                    <div class="grid gap-4 sm:grid-cols-[minmax(0,1fr)_150px]">
-                        <label class="block">
-                            <span class="mb-2 block text-sm font-semibold text-white/80">参考图（可选）</span>
-                            <div class="flex flex-wrap items-center gap-3">
-                                <input id="gptImage2ReferenceInput" type="file" accept="image/png,image/jpeg,image/webp" class="hidden">
-                                <button id="gptImage2ReferenceButton" type="button" class="inline-flex items-center gap-2 rounded-xl border border-white/12 bg-white/[0.06] px-4 py-2.5 text-sm font-medium text-white transition hover:bg-white/[0.10]">
-                                    <i data-lucide="image-plus" class="w-4 h-4"></i>
-                                    上传参考图
-                                </button>
-                                <button id="gptImage2ClearReference" type="button" class="hidden rounded-xl border border-white/10 px-3 py-2 text-sm text-white/55 transition hover:bg-white/[0.08]">清除</button>
-                            </div>
-                        </label>
-
-                        <label class="block">
-                            <span class="mb-2 block text-sm font-semibold text-white/80">图片比例</span>
-                            <select id="gptImage2AspectRatio" class="h-[42px] w-full rounded-xl border border-white/10 bg-slate-950/45 px-3 text-sm text-white outline-none focus:border-sky-300/40">
-                                <option value="1:1">1:1 方图</option>
-                                <option value="16:9">16:9 横图</option>
-                                <option value="9:16">9:16 竖图</option>
-                                <option value="4:3">4:3 横图</option>
-                                <option value="3:4">3:4 竖图</option>
-                            </select>
-                        </label>
-                    </div>
-
-                    <div id="gptImage2ReferencePreview" class="hidden rounded-2xl border border-sky-200/15 bg-sky-200/[0.045] p-3">
-                        <div class="flex items-center gap-3">
-                            <img id="gptImage2ReferenceImage" class="h-16 w-16 rounded-xl object-cover" alt="GPT-Image2 参考图">
-                            <div class="min-w-0">
-                                <p class="text-sm font-medium text-white">参考图已上传</p>
-                                <p id="gptImage2ReferenceName" class="mt-1 truncate text-xs text-white/42"></p>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div id="gptImage2Status" class="hidden rounded-2xl border border-white/10 bg-white/[0.045] px-4 py-3 text-sm text-white/62"></div>
-
-                    <button id="gptImage2GenerateButton" type="submit" class="inline-flex w-full items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-sky-500 to-emerald-400 px-5 py-3 text-sm font-bold text-slate-950 shadow-lg shadow-sky-950/20 transition hover:from-sky-400 hover:to-emerald-300 disabled:cursor-not-allowed disabled:opacity-60">
-                        <i data-lucide="sparkles" class="w-4 h-4"></i>
-                        生成图片
-                    </button>
-                </div>
-            </form>
-
-            <div class="p-5 md:p-6">
-                <div id="gptImage2ResultEmpty" class="flex min-h-[360px] items-center justify-center rounded-2xl border border-dashed border-white/12 bg-white/[0.025] p-6 text-center">
-                    <div>
-                        <div class="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl border border-sky-200/15 bg-sky-200/[0.08]">
-                            <i data-lucide="image" class="w-7 h-7 text-sky-100"></i>
-                        </div>
-                        <p class="text-base font-semibold text-white">生成结果会显示在这里</p>
-                        <p class="mt-2 max-w-sm text-sm leading-6 text-white/42">支持纯提示词生成，也支持参考图辅助生成。未登录用户可以浏览入口，生成前会提示登录。</p>
-                    </div>
-                </div>
-                <div id="gptImage2ResultWrap" class="hidden">
-                    <div class="mb-3 flex items-center justify-between gap-3">
-                        <div class="flex items-center gap-2 text-sm font-semibold text-white/82">
-                            <i data-lucide="badge-check" class="w-4 h-4 text-emerald-200"></i>
-                            生成结果
-                        </div>
-                        <a id="gptImage2ResultLink" href="#" target="_blank" rel="noopener" class="inline-flex items-center gap-1.5 rounded-xl border border-white/10 bg-white/[0.055] px-3 py-2 text-xs font-medium text-white/70 transition hover:bg-white/[0.09]">
-                            查看大图
-                            <i data-lucide="external-link" class="w-3.5 h-3.5"></i>
-                        </a>
-                    </div>
-                    <div class="overflow-hidden rounded-2xl border border-white/10 bg-black/24">
-                        <img id="gptImage2ResultImage" class="max-h-[620px] w-full object-contain" alt="GPT-Image2 生成结果">
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-</section>
 
 <!-- Feature Showcase -->
 <section class="mt-16 mb-8">
@@ -349,11 +280,6 @@ let websocketLoading = false;
 let websocketReady = typeof SockJS !== 'undefined' && typeof Stomp !== 'undefined';
 let showcaseExpandedSource = null;
 let showcaseExpandedWasPlaying = false;
-let gptImage2ReferenceUrl = '';
-let gptImage2ReferenceObjectUrl = '';
-let gptImage2CurrentTaskId = null;
-let gptImage2PollTimer = null;
-const GPT_IMAGE2_TASK_STORAGE_KEY = 'gptImage2LatestTask';
 const IS_AUTHENTICATED = {{ request.session.token|yesno:"true,false" }};
 
 // 从 localStorage 恢复进度
@@ -366,314 +292,6 @@ function saveProgress() {
 
 function showLoginRequiredModal() {
     showLoginExpiredModal('请先登录', '登录后即可使用创建系列、剧集制作、主体替换和资产库等功能。', '去登录', true);
-}
-
-function setGptImage2Status(message, type = 'info') {
-    const status = document.getElementById('gptImage2Status');
-    if (!status) return;
-    if (!message) {
-        status.classList.add('hidden');
-        status.textContent = '';
-        return;
-    }
-    status.textContent = message;
-    status.classList.remove('hidden', 'border-red-300/20', 'bg-red-300/10', 'text-red-100', 'border-emerald-300/20', 'bg-emerald-300/10', 'text-emerald-100');
-    if (type === 'error') {
-        status.classList.add('border-red-300/20', 'bg-red-300/10', 'text-red-100');
-    } else if (type === 'success') {
-        status.classList.add('border-emerald-300/20', 'bg-emerald-300/10', 'text-emerald-100');
-    }
-}
-
-function setGptImage2Busy(isBusy) {
-    const button = document.getElementById('gptImage2GenerateButton');
-    const uploadButton = document.getElementById('gptImage2ReferenceButton');
-    if (button) {
-        button.disabled = isBusy;
-        button.innerHTML = isBusy
-            ? '<span class="spinner !w-4 !h-4 !border-2"></span>生成中...'
-            : '<i data-lucide="sparkles" class="w-4 h-4"></i>生成图片';
-    }
-    if (uploadButton) {
-        uploadButton.disabled = isBusy;
-    }
-    safeCreateIcons();
-}
-
-function renderGptImage2Result(imageUrl) {
-    if (!imageUrl) return;
-    document.getElementById('gptImage2ResultEmpty')?.classList.add('hidden');
-    document.getElementById('gptImage2ResultWrap')?.classList.remove('hidden');
-    document.getElementById('gptImage2ResultImage').src = imageUrl;
-    document.getElementById('gptImage2ResultLink').href = imageUrl;
-}
-
-function persistGptImage2TaskState(task) {
-    if (!task || !task.id || !IS_AUTHENTICATED) return;
-    try {
-        localStorage.setItem(GPT_IMAGE2_TASK_STORAGE_KEY, JSON.stringify({
-            ...task,
-            savedAt: Date.now()
-        }));
-    } catch (error) {
-        console.warn('保存 GPT-Image2 任务状态失败:', error);
-    }
-}
-
-function readGptImage2StoredTask() {
-    try {
-        const raw = localStorage.getItem(GPT_IMAGE2_TASK_STORAGE_KEY);
-        if (!raw) return null;
-        const task = JSON.parse(raw);
-        if (!task || !task.id) {
-            localStorage.removeItem(GPT_IMAGE2_TASK_STORAGE_KEY);
-            return null;
-        }
-        return task;
-    } catch (error) {
-        localStorage.removeItem(GPT_IMAGE2_TASK_STORAGE_KEY);
-        return null;
-    }
-}
-
-function restoreGptImage2TaskFromStorage() {
-    if (!IS_AUTHENTICATED) return null;
-    const task = readGptImage2StoredTask();
-    if (!task) return null;
-    applyGptImage2TaskState(task);
-    if (['pending', 'running'].includes(task.status)) {
-        pollGptImage2Task(task.id);
-    }
-    return task;
-}
-
-function applyGptImage2TaskState(task) {
-    if (!task || !task.id) return;
-    gptImage2CurrentTaskId = task.id;
-    persistGptImage2TaskState(task);
-    const status = task.status || 'pending';
-    const progress = Number.isFinite(Number(task.progressPercent)) ? Number(task.progressPercent) : (status === 'running' ? 35 : 5);
-    if (task.imageUrl) {
-        renderGptImage2Result(task.imageUrl);
-    }
-    if (status === 'succeeded') {
-        stopGptImage2Polling();
-        setGptImage2Busy(false);
-        setGptImage2Status(task.generationDuration ? `图片已生成并保存，本次耗时${task.generationDuration}秒。` : '图片已生成并保存。', 'success');
-        return;
-    }
-    if (status === 'failed') {
-        stopGptImage2Polling();
-        setGptImage2Busy(false);
-        setGptImage2Status(task.errorMessage || 'GPT-Image2生成失败，请稍后重试', 'error');
-        return;
-    }
-    setGptImage2Busy(true);
-    setGptImage2Status(`${task.statusDesc || '生成中'}，当前进度${progress}%...`);
-}
-
-function stopGptImage2Polling() {
-    if (gptImage2PollTimer) {
-        clearInterval(gptImage2PollTimer);
-        gptImage2PollTimer = null;
-    }
-}
-
-async function fetchGptImage2Task(taskId) {
-    const response = await fetch(`/api/v1/gpt-image2/${taskId}/`, {
-        headers: {'X-Requested-With': 'XMLHttpRequest'},
-    });
-    const result = await response.json();
-    if (!response.ok || result.code !== 200) {
-        throw new Error(result.message || '获取生图任务状态失败');
-    }
-    return result.data;
-}
-
-function pollGptImage2Task(taskId) {
-    if (!taskId) return;
-    stopGptImage2Polling();
-    gptImage2PollTimer = setInterval(async () => {
-        try {
-            const task = await fetchGptImage2Task(taskId);
-            applyGptImage2TaskState(task);
-        } catch (error) {
-            stopGptImage2Polling();
-            setGptImage2Busy(false);
-            setGptImage2Status(error.message || '获取生图任务状态失败', 'error');
-        }
-    }, 2500);
-}
-
-window.addEventListener('storage', function(e) {
-    if (e.key === GPT_IMAGE2_TASK_STORAGE_KEY && e.newValue && IS_AUTHENTICATED) {
-        const task = readGptImage2StoredTask();
-        if (!task) return;
-        applyGptImage2TaskState(task);
-        if (['pending', 'running'].includes(task.status)) {
-            pollGptImage2Task(task.id);
-        }
-    }
-});
-
-async function loadLatestGptImage2Task() {
-    if (!IS_AUTHENTICATED) return;
-    try {
-        const response = await fetch('/api/v1/gpt-image2/latest/', {
-            headers: {'X-Requested-With': 'XMLHttpRequest'},
-        });
-        const result = await response.json();
-        if (!response.ok || result.code !== 200 || !result.data) {
-            return;
-        }
-        applyGptImage2TaskState(result.data);
-        if (['pending', 'running'].includes(result.data.status)) {
-            pollGptImage2Task(result.data.id);
-        }
-    } catch (error) {
-        console.warn('恢复 GPT-Image2 最近任务失败:', error);
-    }
-}
-
-function resetGptImage2Reference() {
-    gptImage2ReferenceUrl = '';
-    if (gptImage2ReferenceObjectUrl) {
-        URL.revokeObjectURL(gptImage2ReferenceObjectUrl);
-        gptImage2ReferenceObjectUrl = '';
-    }
-    const input = document.getElementById('gptImage2ReferenceInput');
-    const preview = document.getElementById('gptImage2ReferencePreview');
-    const image = document.getElementById('gptImage2ReferenceImage');
-    const name = document.getElementById('gptImage2ReferenceName');
-    const button = document.getElementById('gptImage2ReferenceButton');
-    const clearButton = document.getElementById('gptImage2ClearReference');
-    if (input) input.value = '';
-    if (preview) preview.classList.add('hidden');
-    if (image) image.removeAttribute('src');
-    if (name) name.textContent = '';
-    if (button) button.innerHTML = '<i data-lucide="image-plus" class="w-4 h-4"></i>上传参考图';
-    if (clearButton) clearButton.classList.add('hidden');
-    safeCreateIcons();
-}
-
-function initGptImage2Generator() {
-    const form = document.getElementById('gptImage2Form');
-    const fileInput = document.getElementById('gptImage2ReferenceInput');
-    const uploadButton = document.getElementById('gptImage2ReferenceButton');
-    const clearButton = document.getElementById('gptImage2ClearReference');
-    if (!form || !fileInput || !uploadButton) return;
-
-    uploadButton.addEventListener('click', () => {
-        if (!IS_AUTHENTICATED) {
-            showLoginRequiredModal();
-            return;
-        }
-        fileInput.click();
-    });
-
-    clearButton?.addEventListener('click', resetGptImage2Reference);
-
-    fileInput.addEventListener('change', async () => {
-        const file = fileInput.files && fileInput.files[0];
-        if (!file) return;
-        if (!IS_AUTHENTICATED) {
-            resetGptImage2Reference();
-            showLoginRequiredModal();
-            return;
-        }
-        if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
-            resetGptImage2Reference();
-            setGptImage2Status('只支持 JPG、PNG、WEBP 格式的参考图', 'error');
-            return;
-        }
-        if (file.size > 10 * 1024 * 1024) {
-            resetGptImage2Reference();
-            setGptImage2Status('参考图大小不能超过10MB', 'error');
-            return;
-        }
-
-        const formData = new FormData();
-        formData.append('file', file);
-        uploadButton.disabled = true;
-        uploadButton.innerHTML = '<span class="spinner !w-4 !h-4 !border-2"></span>上传中...';
-        setGptImage2Status('正在上传参考图...');
-        try {
-            const response = await fetch('/api/v1/gpt-image2/upload-reference/', {
-                method: 'POST',
-                headers: {'X-CSRFToken': getCookie('csrftoken')},
-                body: formData,
-            });
-            const result = await response.json();
-            if (!response.ok || result.code !== 200) {
-                throw new Error(result.message || '参考图上传失败');
-            }
-            gptImage2ReferenceUrl = result.data?.url || result.data?.imageUrl || '';
-            if (!gptImage2ReferenceUrl) {
-                throw new Error('参考图上传后未返回图片地址');
-            }
-            if (gptImage2ReferenceObjectUrl) {
-                URL.revokeObjectURL(gptImage2ReferenceObjectUrl);
-            }
-            gptImage2ReferenceObjectUrl = URL.createObjectURL(file);
-            document.getElementById('gptImage2ReferenceImage').src = gptImage2ReferenceObjectUrl;
-            document.getElementById('gptImage2ReferenceName').textContent = file.name;
-            document.getElementById('gptImage2ReferencePreview').classList.remove('hidden');
-            document.getElementById('gptImage2ClearReference')?.classList.remove('hidden');
-            uploadButton.innerHTML = '<i data-lucide="refresh-cw" class="w-4 h-4"></i>重新上传参考图';
-            setGptImage2Status('参考图已上传，可以开始图生图。', 'success');
-        } catch (error) {
-            resetGptImage2Reference();
-            setGptImage2Status(error.message || '参考图上传失败', 'error');
-        } finally {
-            uploadButton.disabled = false;
-            safeCreateIcons();
-        }
-    });
-
-    form.addEventListener('submit', async event => {
-        event.preventDefault();
-        if (!IS_AUTHENTICATED) {
-            showLoginRequiredModal();
-            return;
-        }
-
-        const prompt = document.getElementById('gptImage2Prompt')?.value.trim() || '';
-        const aspectRatio = document.getElementById('gptImage2AspectRatio')?.value || '1:1';
-        if (!prompt) {
-            setGptImage2Status('请输入提示词', 'error');
-            return;
-        }
-
-        setGptImage2Busy(true);
-        setGptImage2Status(gptImage2ReferenceUrl ? '正在进行图生图，请稍候...' : '正在进行文生图，请稍候...');
-        try {
-            const response = await fetch('/api/v1/gpt-image2/generate/', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-CSRFToken': getCookie('csrftoken'),
-                },
-                body: JSON.stringify({
-                    prompt,
-                    aspectRatio,
-                    referenceImageUrl: gptImage2ReferenceUrl,
-                }),
-            });
-            const result = await response.json();
-            if (!response.ok || result.code !== 200) {
-                throw new Error(result.message || '生成失败');
-            }
-            const task = result.data;
-            if (!task?.id) {
-                throw new Error('任务创建成功但未返回任务ID');
-            }
-            applyGptImage2TaskState(task);
-            pollGptImage2Task(task.id);
-        } catch (error) {
-            setGptImage2Status(error.message || '生成失败，请稍后重试', 'error');
-            setGptImage2Busy(false);
-        }
-    });
 }
 
 function initLoginRequiredLinks() {
@@ -1393,9 +1011,6 @@ function stopPolling(seriesId) {
 
 document.addEventListener('DOMContentLoaded', function() {
     initLoginRequiredLinks();
-    initGptImage2Generator();
-    restoreGptImage2TaskFromStorage();
-    loadLatestGptImage2Task();
     loadShowcaseAssets();
     initShowcaseVideoControls();
     if (!IS_AUTHENTICATED) {
@@ -1477,6 +1092,126 @@ function getCookie(name) {
 
 .series-card {
     min-height: 180px;
+}
+
+.home-action-board {
+    display: grid;
+    grid-template-columns: minmax(0, 1.25fr) minmax(0, 1.25fr) minmax(210px, 0.72fr);
+    gap: 14px;
+    max-width: 1120px;
+    margin: 0 auto;
+    text-align: left;
+}
+
+.home-action-group {
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 18px;
+    background: rgba(255, 255, 255, 0.045);
+    padding: 12px;
+    box-shadow: 0 18px 42px rgba(0, 0, 0, 0.14);
+}
+
+.home-action-group-accent {
+    background: linear-gradient(135deg, rgba(16, 185, 129, 0.11), rgba(14, 165, 233, 0.09));
+    border-color: rgba(125, 211, 252, 0.18);
+}
+
+.home-action-label {
+    margin: 0 0 9px 2px;
+    color: rgba(255, 255, 255, 0.48);
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 1;
+}
+
+.home-action-row {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+}
+
+.home-action {
+    min-height: 48px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    border-radius: 14px;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    padding: 0 14px;
+    color: white;
+    font-size: 15px;
+    font-weight: 700;
+    line-height: 1.15;
+    transition: transform 160ms ease, border-color 160ms ease, background 160ms ease, box-shadow 160ms ease;
+    white-space: nowrap;
+}
+
+.home-action:hover {
+    transform: translateY(-1px);
+}
+
+.home-action-primary {
+    background: linear-gradient(135deg, rgba(124, 58, 237, 0.96), rgba(37, 99, 235, 0.95));
+    box-shadow: 0 12px 28px rgba(79, 70, 229, 0.26);
+}
+
+.home-action-warm {
+    background: linear-gradient(135deg, rgba(249, 115, 22, 0.95), rgba(236, 72, 153, 0.95));
+    box-shadow: 0 12px 28px rgba(236, 72, 153, 0.18);
+}
+
+.home-action-emerald {
+    background: linear-gradient(135deg, rgba(16, 185, 129, 0.96), rgba(6, 182, 212, 0.92));
+    color: rgb(240, 253, 250);
+    box-shadow: 0 12px 28px rgba(20, 184, 166, 0.22);
+}
+
+.home-action-sky {
+    background: linear-gradient(135deg, rgba(14, 165, 233, 0.95), rgba(45, 212, 191, 0.9));
+    color: rgb(240, 249, 255);
+    box-shadow: 0 12px 28px rgba(14, 165, 233, 0.2);
+}
+
+.home-action-muted {
+    background: rgba(255, 255, 255, 0.065);
+    color: rgba(255, 255, 255, 0.86);
+}
+
+.home-action-muted:hover {
+    background: rgba(255, 255, 255, 0.1);
+}
+
+.home-new-badge {
+    display: inline-flex;
+    height: 18px;
+    align-items: center;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.96);
+    padding: 0 7px;
+    color: rgb(4, 120, 87);
+    font-size: 10px;
+    font-weight: 900;
+    letter-spacing: 0;
+    box-shadow: 0 8px 18px rgba(6, 78, 59, 0.18);
+}
+
+@media (max-width: 980px) {
+    .home-action-board {
+        grid-template-columns: 1fr;
+        max-width: 640px;
+    }
+}
+
+@media (max-width: 560px) {
+    .home-action-row {
+        grid-template-columns: 1fr;
+    }
+
+    .home-action {
+        justify-content: flex-start;
+        padding: 0 16px;
+    }
 }
 
 /* 进度条闪烁动画 */

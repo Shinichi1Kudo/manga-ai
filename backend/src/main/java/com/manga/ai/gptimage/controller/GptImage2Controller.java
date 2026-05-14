@@ -16,6 +16,8 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.util.List;
+
 /**
  * GPT-Image2 图片生成控制器
  */
@@ -31,6 +33,11 @@ public class GptImage2Controller {
     public Result<GptImage2GenerateResponse> generate(@RequestBody GptImage2GenerateRequest request) {
         log.info("GPT-Image2生成请求: hasReference={}", request != null && hasText(request.getReferenceImageUrl()));
         return Result.success(gptImage2Service.generate(request));
+    }
+
+    @GetMapping("")
+    public Result<List<GptImage2GenerateResponse>> listTasks(@RequestParam(value = "limit", required = false) Integer limit) {
+        return Result.success(gptImage2Service.listMyTasks(limit));
     }
 
     @GetMapping("/{taskId}")

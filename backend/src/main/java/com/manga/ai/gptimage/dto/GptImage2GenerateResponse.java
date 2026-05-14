@@ -23,6 +23,8 @@ public class GptImage2GenerateResponse implements Serializable {
 
     private String aspectRatio;
 
+    private String resolution;
+
     private String referenceImageUrl;
 
     private String imageUrl;
@@ -36,6 +38,8 @@ public class GptImage2GenerateResponse implements Serializable {
     private String model;
 
     private String mode;
+
+    private Integer creditCost;
 
     private String errorMessage;
 

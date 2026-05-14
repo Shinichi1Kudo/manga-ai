@@ -26,6 +26,8 @@ public class GptImage2Task implements Serializable {
 
     private String aspectRatio;
 
+    private String resolution;
+
     private String referenceImageUrl;
 
     private String imageUrl;
@@ -38,6 +40,10 @@ public class GptImage2Task implements Serializable {
     private String model;
 
     private String mode;
+
+    private Integer creditCost;
+
+    private Boolean creditsRefunded;
 
     private String errorMessage;
 

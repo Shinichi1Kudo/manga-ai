@@ -110,6 +110,7 @@ public class SchemaMigrationConfig {
             try (Statement statement = connection.createStatement()) {
                 statement.execute(mysql ? mysqlGptImage2TaskSql() : genericGptImage2TaskSql());
             }
+            ensureGptImage2TaskColumns(connection, mysql);
             ensureIndex(connection, "idx_gpt_image2_user_created", "gpt_image2_task", "user_id, created_at");
             ensureIndex(connection, "idx_gpt_image2_status", "gpt_image2_task", "status");
         } catch (Exception e) {
@@ -123,6 +124,18 @@ public class SchemaMigrationConfig {
                 "INT DEFAULT NULL COMMENT '已扣除的积分（用于生成失败时返还）'",
                 "INT DEFAULT NULL");
         ensureColumn(connection, mysql, "subject_replacement_task", "credits_refunded",
+                "TINYINT(1) DEFAULT 0 COMMENT '积分是否已返还'",
+                "BOOLEAN DEFAULT FALSE");
+    }
+
+    private void ensureGptImage2TaskColumns(Connection connection, boolean mysql) throws Exception {
+        ensureColumn(connection, mysql, "gpt_image2_task", "resolution",
+                "VARCHAR(10) DEFAULT '2k' COMMENT '清晰度：1k/2k/4k'",
+                "VARCHAR(10) DEFAULT '2k'");
+        ensureColumn(connection, mysql, "gpt_image2_task", "credit_cost",
+                "INT DEFAULT 12 COMMENT '本次生成扣除积分'",
+                "INT DEFAULT 12");
+        ensureColumn(connection, mysql, "gpt_image2_task", "credits_refunded",
                 "TINYINT(1) DEFAULT 0 COMMENT '积分是否已返还'",
                 "BOOLEAN DEFAULT FALSE");
     }
@@ -203,11 +216,14 @@ public class SchemaMigrationConfig {
                 + "user_id BIGINT NOT NULL,"
                 + "prompt TEXT NOT NULL,"
                 + "aspect_ratio VARCHAR(10) DEFAULT '1:1',"
+                + "resolution VARCHAR(10) DEFAULT '2k' COMMENT '清晰度：1k/2k/4k',"
                 + "reference_image_url VARCHAR(1024),"
                 + "image_url VARCHAR(1024),"
                 + "status VARCHAR(20) NOT NULL DEFAULT 'pending',"
                 + "model VARCHAR(100),"
                 + "mode VARCHAR(30),"
+                + "credit_cost INT DEFAULT 12 COMMENT '本次生成扣除积分',"
+                + "credits_refunded TINYINT(1) DEFAULT 0 COMMENT '积分是否已返还',"
                 + "error_message TEXT,"
                 + "submitted_at TIMESTAMP NULL,"
                 + "completed_at TIMESTAMP NULL,"
@@ -223,11 +239,14 @@ public class SchemaMigrationConfig {
                 + "user_id BIGINT NOT NULL,"
                 + "prompt CLOB NOT NULL,"
                 + "aspect_ratio VARCHAR(10) DEFAULT '1:1',"
+                + "resolution VARCHAR(10) DEFAULT '2k',"
                 + "reference_image_url VARCHAR(1024),"
                 + "image_url VARCHAR(1024),"
                 + "status VARCHAR(20) NOT NULL DEFAULT 'pending',"
                 + "model VARCHAR(100),"
                 + "mode VARCHAR(30),"
+                + "credit_cost INT DEFAULT 12,"
+                + "credits_refunded BOOLEAN DEFAULT FALSE,"
                 + "error_message CLOB,"
                 + "submitted_at TIMESTAMP,"
                 + "completed_at TIMESTAMP,"

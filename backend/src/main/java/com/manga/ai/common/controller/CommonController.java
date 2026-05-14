@@ -34,6 +34,18 @@ public class CommonController {
     }
 
     /**
+     * 获取网站 Logo 图片 URL
+     */
+    @GetMapping("/site-logo")
+    public Result<Map<String, String>> getSiteLogo() {
+        String url = ossService.getPresignedUrl("brand/site-logo.png");
+        if (url != null) {
+            return Result.success(Map.of("url", url));
+        }
+        return Result.error("获取 Logo 失败");
+    }
+
+    /**
      * 获取首页主体替换演示素材URL
      */
     @GetMapping("/showcase-assets")

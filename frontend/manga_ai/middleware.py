@@ -24,6 +24,7 @@ class LoginRequiredMiddleware:
             '/auth/logout/',
             '/favicon.ico',
             '/api/v1/common/contact-image/',
+            '/api/v1/common/site-logo/',
             '/api/v1/common/showcase-assets/',
             '/static/',
             '/media/',

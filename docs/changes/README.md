@@ -89,6 +89,10 @@
 | 2026-05-14 | CHG-20260514-017 | GPT-Image2 任务状态持久化与 data URL 兼容 | 状态一致性/稳定性修复 | 已测试并重启 | [查看明细](./2026-05-14-gpt-image2-task-status-and-data-url.md) |
 | 2026-05-14 | CHG-20260514-018 | 系列详情角色解锁性能优化 | 性能/交互优化 | 已测试并重启 | [查看明细](./2026-05-14-role-unlock-performance.md) |
 | 2026-05-15 | CHG-20260515-001 | GPT-Image2 瞬断重试与跨标签生成中恢复 | 稳定性/状态一致性修复 | 已测试并重启 | [查看明细](./2026-05-15-gpt-image2-retry-and-cross-tab-restore.md) |
+| 2026-05-15 | CHG-20260515-002 | 首页入口重排与 GPT-Image2 独立工作台 | 功能/前端体验优化 | 已测试并重启 | [查看明细](./2026-05-15-home-action-layout-and-gpt-image2-modal.md) |
+| 2026-05-15 | CHG-20260515-003 | GPT-Image2 清晰度选择与按比例预览 | 功能/前端体验优化 | 已测试并重启 | [查看明细](./2026-05-15-gpt-image2-resolution-and-aspect-preview.md) |
+| 2026-05-15 | CHG-20260515-004 | 站点 Logo OSS 化与积分管理后台 | 品牌/运营后台增强 | 已测试并重启 | [查看明细](./2026-05-15-site-logo-and-credit-admin.md) |
+| 2026-05-15 | CHG-20260515-005 | GPT-Image2 12 积分计费与失败返还 | 积分/账务修复 | 已测试并重启 | [查看明细](./2026-05-15-gpt-image2-credit-cost.md) |
 
 ## 使用方式
 

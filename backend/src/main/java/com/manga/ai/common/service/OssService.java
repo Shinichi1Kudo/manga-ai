@@ -231,6 +231,34 @@ public class OssService {
     }
 
     /**
+     * 上传图片字节数组到固定 OSS 对象键，用于站点 Logo 等稳定资源。
+     * @param data 图片字节数据
+     * @param objectKey OSS对象键
+     * @param contentType 图片 MIME 类型
+     * @return OSS签名访问URL
+     */
+    public String uploadImageToKey(byte[] data, String objectKey, String contentType) {
+        try {
+            ObjectMetadata metadata = new ObjectMetadata();
+            metadata.setContentType(contentType == null || contentType.isBlank() ? "image/png" : contentType);
+            metadata.setContentLength(data.length);
+
+            ByteArrayInputStream inputStream = new ByteArrayInputStream(data);
+            ossClient.putObject(bucketName, objectKey, inputStream, metadata);
+
+            Date expiration = new Date(System.currentTimeMillis() + (long) urlExpirationYears * 365 * 24 * 60 * 60 * 1000L);
+            URL ossUrl = ossClient.generatePresignedUrl(bucketName, objectKey, expiration);
+
+            log.info("图片上传成功: {}", objectKey);
+            return toHttpsUrl(ossUrl.toString());
+
+        } catch (Exception e) {
+            log.error("上传图片到OSS失败: {}", objectKey, e);
+            return null;
+        }
+    }
+
+    /**
      * 获取文件的签名访问URL（有效期10年）
      * @param objectKey OSS对象键（如 contact/联系我.jpg）
      * @return 签名URL

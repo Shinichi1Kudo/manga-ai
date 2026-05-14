@@ -4,6 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{% block title %}海带 AI 智能短剧制作系统{% endblock %}</title>
+    <link rel="icon" type="image/png" href="/api/v1/common/site-logo/">
+    <link rel="apple-touch-icon" href="/api/v1/common/site-logo/">
 
     <!-- Google Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -271,12 +273,43 @@
             text-shadow: 0 8px 24px rgba(15, 23, 42, 0.45);
         }
 
+        .brand-logo-img {
+            display: block;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .brand-logo-shell {
+            position: relative;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+            border: 1px solid rgba(103, 232, 249, 0.22);
+            background: rgba(2, 6, 23, 0.7);
+            box-shadow:
+                0 18px 40px rgba(20, 184, 166, 0.24),
+                inset 0 1px 0 rgba(255, 255, 255, 0.08);
+        }
+
         .nav-brand-wordmark .brand-name {
             font-size: 26px;
         }
 
         .nav-brand-wordmark .brand-subtitle {
             font-size: 15px;
+        }
+
+        .nav-brand-logo {
+            width: 44px;
+            height: 44px;
+            border-radius: 14px;
+            transition: transform 0.25s ease;
+        }
+
+        .group:hover .nav-brand-logo {
+            transform: scale(1.08);
         }
 
         .hero-brand-wordmark {
@@ -291,6 +324,16 @@
 
         .hero-brand-wordmark .brand-subtitle {
             font-size: 34px;
+        }
+
+        .hero-site-logo {
+            width: 112px;
+            height: 112px;
+            border-radius: 28px;
+            border: 1px solid rgba(103, 232, 249, 0.24);
+            box-shadow:
+                0 28px 70px rgba(20, 184, 166, 0.26),
+                0 0 0 8px rgba(15, 23, 42, 0.36);
         }
 
         /* Neon Button */
@@ -584,6 +627,11 @@
                 gap: 7px;
             }
 
+            .nav-brand-logo {
+                width: 40px;
+                height: 40px;
+            }
+
             .nav-brand-wordmark .brand-name {
                 font-size: 22px;
             }
@@ -604,6 +652,12 @@
 
             .hero-brand-wordmark .brand-subtitle {
                 font-size: 24px;
+            }
+
+            .hero-site-logo {
+                width: 88px;
+                height: 88px;
+                border-radius: 22px;
             }
 
             .image-grid {
@@ -631,8 +685,8 @@
     <nav class="fixed top-0 left-0 right-0 z-50 px-6 py-4">
         <div class="max-w-7xl mx-auto flex items-center justify-between">
             <a href="/" class="flex items-center gap-3 group">
-                <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-violet-500 to-blue-500 flex items-center justify-center group-hover:scale-110 transition-transform">
-                    <i data-lucide="clapperboard" class="w-5 h-5"></i>
+                <div class="brand-logo-shell nav-brand-logo">
+                    <img src="/api/v1/common/site-logo/" alt="海带 AI 智能短剧制作系统 Logo" class="brand-logo-img">
                 </div>
                 <span class="brand-wordmark nav-brand-wordmark" aria-label="海带 AI 智能短剧制作系统">
                     <span class="brand-name">海带</span>
@@ -670,6 +724,12 @@
                                 <i data-lucide="history" class="w-4 h-4"></i>
                                 <span>积分记录</span>
                             </a>
+                            {% if request.session.nickname == '工藤新一' or request.session.email == '1198693014@qq.com' %}
+                            <a href="/admin/credits/" class="flex items-center gap-2 px-4 py-2 hover:bg-white/10 transition-colors text-cyan-100">
+                                <i data-lucide="bar-chart-3" class="w-4 h-4"></i>
+                                <span>积分后台</span>
+                            </a>
+                            {% endif %}
                             <hr class="border-white/10 my-1">
                             <a href="/auth/logout/" class="flex items-center gap-2 px-4 py-2 hover:bg-white/10 transition-colors text-red-400">
                                 <i data-lucide="log-out" class="w-4 h-4"></i>

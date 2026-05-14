@@ -1,0 +1,762 @@
+{% extends "base.html" %}
+
+{% block title %}GPT-Image2 生图 - 海带 AI 智能短剧制作系统{% endblock %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto py-8">
+    <div class="mb-6 flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+        <div>
+            <div class="mb-3 inline-flex items-center gap-2 rounded-full border border-sky-300/20 bg-sky-300/10 px-3 py-1 text-xs font-semibold text-sky-100">
+                <i data-lucide="wand-sparkles" class="h-3.5 w-3.5"></i>
+                IMAGE LAB
+            </div>
+            <h1 class="text-3xl font-bold gradient-text">GPT-Image2 生图</h1>
+            <p class="mt-2 max-w-2xl text-white/50">输入提示词即可文生图，也可以上传参考图进行图生图。任务在后台生成，刷新或新开标签页后仍可在最近任务里查看状态。</p>
+        </div>
+        <a href="/" class="inline-flex items-center gap-2 rounded-xl bg-white/10 px-4 py-2 text-sm transition-all hover:bg-white/15">
+            <i data-lucide="arrow-left" class="h-4 w-4"></i>
+            返回首页
+        </a>
+    </div>
+
+    <div class="grid gap-6 lg:grid-cols-[minmax(0,0.92fr)_minmax(420px,1.08fr)]">
+        <form id="gptImage2Form" class="glass-card p-6">
+            <div class="mb-5 flex items-center gap-3">
+                <div class="flex h-10 w-10 items-center justify-center rounded-xl bg-sky-500/15 text-sky-100">
+                    <i data-lucide="sparkles" class="h-5 w-5"></i>
+                </div>
+                <div>
+                    <h2 class="text-lg font-semibold">生成设置</h2>
+                    <p class="text-sm text-white/40">文生图和图生图共用一个后台任务流</p>
+                </div>
+            </div>
+
+            <div class="space-y-5">
+                <label class="block">
+                    <span class="mb-2 block text-sm text-white/65">提示词</span>
+                    <textarea id="gptImage2Prompt" rows="8" class="input-modern min-h-[210px] resize-y py-3 leading-6" placeholder="例如：超精细3D动漫风格，古风少女站在月光庭院中，电影级光影，细节丰富"></textarea>
+                </label>
+
+                <div class="grid gap-4 sm:grid-cols-[minmax(0,1fr)_140px_140px]">
+                    <label class="block">
+                        <span class="mb-2 block text-sm text-white/65">参考图（可选）</span>
+                        <input id="gptImage2ReferenceInput" type="file" accept="image/png,image/jpeg,image/webp" class="hidden">
+                        <div class="flex flex-wrap items-center gap-3">
+                            <button id="gptImage2ReferenceButton" type="button" class="inline-flex items-center gap-2 rounded-xl bg-white/10 px-4 py-2.5 text-sm transition-all hover:bg-white/15">
+                                <i data-lucide="image-plus" class="h-4 w-4"></i>
+                                上传参考图
+                            </button>
+                            <button id="gptImage2ClearReference" type="button" class="hidden rounded-xl border border-white/10 px-3 py-2 text-sm text-white/55 transition-all hover:bg-white/10">清除</button>
+                        </div>
+                    </label>
+
+                    <label class="block">
+                        <span class="mb-2 block text-sm text-white/65">图片比例</span>
+                        <select id="gptImage2AspectRatio" class="input-modern py-3">
+                            <option value="1:1">1:1 方图</option>
+                            <option value="16:9">16:9 横图</option>
+                            <option value="9:16">9:16 竖图</option>
+                            <option value="4:3">4:3 横图</option>
+                            <option value="3:4">3:4 竖图</option>
+                        </select>
+                    </label>
+
+                    <label class="block">
+                        <span class="mb-2 block text-sm text-white/65">清晰度</span>
+                        <select id="gptImage2Resolution" class="input-modern py-3">
+                            <option value="1k">1K</option>
+                            <option value="2k" selected>2K</option>
+                            <option value="4k">4K</option>
+                        </select>
+                    </label>
+                </div>
+
+                <div id="gptImage2ReferencePreview" class="hidden rounded-2xl border border-sky-200/15 bg-sky-200/[0.045] p-3">
+                    <div class="flex items-center gap-3">
+                        <img id="gptImage2ReferenceImage" class="h-20 w-20 rounded-xl object-cover" alt="GPT-Image2 参考图">
+                        <div class="min-w-0">
+                            <p class="text-sm font-medium text-white">参考图已上传</p>
+                            <p id="gptImage2ReferenceName" class="mt-1 truncate text-xs text-white/42"></p>
+                            <p class="mt-2 text-xs text-white/35">图片已保存到 OSS，后台生成时会直接使用该地址。</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="gptImage2Status" class="hidden rounded-2xl border border-white/10 bg-white/[0.045] px-4 py-3 text-sm text-white/62"></div>
+
+                <div class="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-amber-200/15 bg-amber-200/[0.055] px-4 py-3 text-sm text-amber-50/82">
+                    <span class="inline-flex items-center gap-2">
+                        <i data-lucide="coins" class="h-4 w-4 text-amber-200"></i>
+                        本次提交扣除12积分
+                    </span>
+                    <span class="text-xs text-amber-100/58">失败自动返还</span>
+                </div>
+
+                <button id="gptImage2GenerateButton" type="submit" class="btn-neon inline-flex w-full items-center justify-center gap-2">
+                    <i data-lucide="sparkles" class="h-4 w-4"></i>
+                    提交后台生成 · 扣除12积分
+                </button>
+            </div>
+        </form>
+
+        <section class="glass-card p-6">
+            <div class="mb-5 flex items-center justify-between gap-3">
+                <div>
+                    <h2 class="text-lg font-semibold">最近任务</h2>
+                    <p class="text-sm text-white/40">最多保存最近 50 条，一页最多 3 条，生成中的任务会自动刷新</p>
+                </div>
+                <button id="gptImage2RefreshButton" type="button" class="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-white/10 transition-all hover:bg-white/15" title="刷新" aria-label="刷新">
+                    <i data-lucide="refresh-cw" class="h-4 w-4"></i>
+                </button>
+            </div>
+            <div id="gptImage2TaskList" class="space-y-4">
+                <div class="rounded-2xl border border-white/10 bg-white/[0.03] p-6 text-center text-sm text-white/42">加载中...</div>
+            </div>
+            <div id="gptImage2Pagination" class="mt-5 hidden items-center justify-between gap-3 rounded-2xl border border-white/10 bg-white/[0.03] px-3 py-3">
+                <button id="gptImage2PrevPage" type="button" class="inline-flex items-center gap-2 rounded-xl bg-white/8 px-3 py-2 text-sm text-white/70 transition hover:bg-white/12 disabled:cursor-not-allowed disabled:opacity-40">
+                    <i data-lucide="chevron-left" class="h-4 w-4"></i>
+                    上一页
+                </button>
+                <span id="gptImage2PageInfo" class="text-sm text-white/50">第 1 / 1 页</span>
+                <button id="gptImage2NextPage" type="button" class="inline-flex items-center gap-2 rounded-xl bg-white/8 px-3 py-2 text-sm text-white/70 transition hover:bg-white/12 disabled:cursor-not-allowed disabled:opacity-40">
+                    下一页
+                    <i data-lucide="chevron-right" class="h-4 w-4"></i>
+                </button>
+            </div>
+        </section>
+    </div>
+</div>
+
+<div id="gptImage2ImagePreviewModal" class="fixed inset-0 z-[180] hidden flex-col bg-black/88 p-4 backdrop-blur-sm">
+    <div class="mb-3 flex flex-wrap items-center justify-end gap-2">
+        <button type="button" id="gptImage2ImagePreviewZoomOut" class="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-white/15 bg-white/10 text-white transition hover:bg-white/15" title="缩小" aria-label="缩小">
+            <i data-lucide="minus" class="h-4 w-4"></i>
+        </button>
+        <span id="gptImage2ImagePreviewScale" class="min-w-14 rounded-xl border border-white/10 bg-white/10 px-3 py-2 text-center text-sm text-white/80">100%</span>
+        <button type="button" id="gptImage2ImagePreviewZoomIn" class="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-white/15 bg-white/10 text-white transition hover:bg-white/15" title="放大" aria-label="放大">
+            <i data-lucide="plus" class="h-4 w-4"></i>
+        </button>
+        <button type="button" id="gptImage2ImagePreviewReset" class="inline-flex h-10 items-center gap-2 rounded-xl border border-white/15 bg-white/10 px-3 text-sm text-white transition hover:bg-white/15" title="重置" aria-label="重置">
+            <i data-lucide="rotate-ccw" class="h-4 w-4"></i>
+            重置
+        </button>
+        <button type="button" id="gptImage2ImagePreviewDownload" class="inline-flex h-10 items-center gap-2 rounded-xl border border-emerald-200/20 bg-emerald-300/12 px-3 text-sm text-emerald-100 transition hover:bg-emerald-300/18" title="下载" aria-label="下载">
+            <i data-lucide="download" class="h-4 w-4"></i>
+            下载
+        </button>
+        <button type="button" id="gptImage2ImagePreviewClose" class="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-white/15 bg-white/10 text-white transition hover:bg-white/15" title="关闭" aria-label="关闭">
+            <i data-lucide="x" class="h-5 w-5"></i>
+        </button>
+    </div>
+    <div id="gptImage2ImagePreviewCanvas" class="flex min-h-0 flex-1 items-center justify-center overflow-auto rounded-2xl border border-white/10 bg-black/35 p-4">
+        <img id="gptImage2ImagePreviewLarge" class="max-h-full max-w-full cursor-zoom-in rounded-xl object-contain shadow-2xl transition-transform duration-200" alt="GPT-Image2 图片预览">
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+let gptImage2ReferenceUrl = '';
+let gptImage2ReferenceObjectUrl = '';
+let gptImage2PollTimer = null;
+let gptImage2Tasks = [];
+let gptImage2CurrentPage = 1;
+let gptImage2PreviewImageUrl = '';
+let gptImage2PreviewScale = 1;
+const GPT_IMAGE2_TASK_STORAGE_KEY = 'gptImage2LatestTask';
+const GPT_IMAGE2_TASKS_PER_PAGE = 3;
+const GPT_IMAGE2_CREDIT_COST = 12;
+
+function showGptImage2Toast(message, type = 'info') {
+    const colorClass = type === 'error'
+        ? 'bg-red-500/90 border-red-300/30'
+        : type === 'success'
+            ? 'bg-emerald-500/90 border-emerald-300/30'
+            : 'bg-slate-800/95 border-white/15';
+    const toast = document.createElement('div');
+    toast.className = `fixed right-5 top-5 z-[190] max-w-sm rounded-xl border px-4 py-2.5 text-sm text-white shadow-lg transition-all duration-300 ${colorClass}`;
+    toast.textContent = message;
+    document.body.appendChild(toast);
+    setTimeout(() => {
+        toast.style.opacity = '0';
+        toast.style.transform = 'translateY(-8px)';
+        setTimeout(() => toast.remove(), 300);
+    }, 2600);
+}
+
+async function requestGptImage2Json(url, options = {}) {
+    const response = await fetch(url, options);
+    const result = await response.json();
+    if (!response.ok || result.code !== 200) {
+        throw new Error(result.message || '请求失败');
+    }
+    return result.data;
+}
+
+function escapeGptImage2Html(value) {
+    return String(value || '').replace(/[&<>"']/g, char => ({
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#39;'
+    }[char]));
+}
+
+function formatGptImage2Time(value) {
+    if (!value) return '刚刚';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return String(value).replace('T', ' ');
+    return date.toLocaleString('zh-CN', {hour12: false});
+}
+
+function formatGptImage2Resolution(value) {
+    const normalized = String(value || '2k').toLowerCase();
+    if (normalized === '4k') return '4K';
+    if (normalized === '1k') return '1K';
+    return '2K';
+}
+
+function formatGptImage2ModelLabel(model) {
+    const normalized = String(model || 'gpt-image-2').trim();
+    if (normalized.toLowerCase() === 'gpt-image-2') return 'GPT-Image 2';
+    return normalized;
+}
+
+function getGptImage2CreditCost(task) {
+    const creditCost = Number(task?.creditCost);
+    return Number.isFinite(creditCost) && creditCost > 0 ? creditCost : GPT_IMAGE2_CREDIT_COST;
+}
+
+function getGptImage2AspectStyle(aspectRatio) {
+    const ratioMap = {
+        '16:9': '16 / 9',
+        '9:16': '9 / 16',
+        '4:3': '4 / 3',
+        '3:4': '3 / 4',
+        '1:1': '1 / 1'
+    };
+    return `aspect-ratio:${ratioMap[aspectRatio] || '1 / 1'};`;
+}
+
+function isGptImage2Running(task) {
+    return ['pending', 'running'].includes(task?.status);
+}
+
+function gptImage2StatusClass(status) {
+    if (status === 'succeeded') return 'border-emerald-300/25 bg-emerald-300/10 text-emerald-100';
+    if (status === 'failed') return 'border-red-300/25 bg-red-300/10 text-red-100';
+    return 'border-sky-300/25 bg-sky-300/10 text-sky-100';
+}
+
+function setGptImage2Status(message, type = 'info') {
+    const status = document.getElementById('gptImage2Status');
+    if (!status) return;
+    if (!message) {
+        status.classList.add('hidden');
+        status.textContent = '';
+        return;
+    }
+    status.textContent = message;
+    status.classList.remove('hidden', 'border-red-300/20', 'bg-red-300/10', 'text-red-100', 'border-emerald-300/20', 'bg-emerald-300/10', 'text-emerald-100');
+    if (type === 'error') {
+        status.classList.add('border-red-300/20', 'bg-red-300/10', 'text-red-100');
+    } else if (type === 'success') {
+        status.classList.add('border-emerald-300/20', 'bg-emerald-300/10', 'text-emerald-100');
+    }
+}
+
+function setGptImage2Busy(isBusy) {
+    const button = document.getElementById('gptImage2GenerateButton');
+    if (button) {
+        button.disabled = isBusy;
+        button.innerHTML = isBusy
+            ? '<span class="spinner !h-4 !w-4 !border-2"></span>提交中...'
+            : '<i data-lucide="sparkles" class="h-4 w-4"></i>提交后台生成 · 扣除12积分';
+    }
+    lucide.createIcons();
+}
+
+function persistGptImage2TaskState(task) {
+    if (!task || !task.id) return;
+    try {
+        localStorage.setItem(GPT_IMAGE2_TASK_STORAGE_KEY, JSON.stringify({
+            ...task,
+            savedAt: Date.now()
+        }));
+    } catch (error) {
+        console.warn('保存 GPT-Image2 任务状态失败:', error);
+    }
+}
+
+function readGptImage2StoredTask() {
+    try {
+        const raw = localStorage.getItem(GPT_IMAGE2_TASK_STORAGE_KEY);
+        if (!raw) return null;
+        const task = JSON.parse(raw);
+        if (!task || !task.id) {
+            localStorage.removeItem(GPT_IMAGE2_TASK_STORAGE_KEY);
+            return null;
+        }
+        return task;
+    } catch (error) {
+        localStorage.removeItem(GPT_IMAGE2_TASK_STORAGE_KEY);
+        return null;
+    }
+}
+
+function mergeGptImage2Task(task) {
+    if (!task || !task.id) return;
+    const index = gptImage2Tasks.findIndex(item => item.id === task.id);
+    if (index >= 0) {
+        gptImage2Tasks[index] = task;
+    } else {
+        gptImage2Tasks.unshift(task);
+    }
+    gptImage2Tasks = gptImage2Tasks.slice(0, 50);
+    persistGptImage2TaskState(task);
+    renderGptImage2Tasks();
+}
+
+function restoreGptImage2TaskFromStorage() {
+    const task = readGptImage2StoredTask();
+    if (!task) return null;
+    mergeGptImage2Task(task);
+    if (isGptImage2Running(task)) {
+        startGptImage2Polling();
+    }
+    return task;
+}
+
+function renderGptImage2Tasks() {
+    const list = document.getElementById('gptImage2TaskList');
+    if (!list) return;
+    if (!gptImage2Tasks.length) {
+        list.innerHTML = '<div class="rounded-2xl border border-white/10 bg-white/[0.03] p-8 text-center text-sm text-white/42">还没有生图任务</div>';
+        renderGptImage2Pagination();
+        lucide.createIcons();
+        return;
+    }
+    const totalPages = getGptImage2TotalPages();
+    gptImage2CurrentPage = Math.max(1, Math.min(gptImage2CurrentPage, totalPages));
+    const startIndex = (gptImage2CurrentPage - 1) * GPT_IMAGE2_TASKS_PER_PAGE;
+    const pageTasks = gptImage2Tasks.slice(startIndex, startIndex + GPT_IMAGE2_TASKS_PER_PAGE);
+    list.innerHTML = pageTasks.map(task => {
+        const progress = Number.isFinite(Number(task.progressPercent)) ? Number(task.progressPercent) : (task.status === 'running' ? 35 : 5);
+        const imageUrl = task.imageUrl || '';
+        const referenceImageUrl = task.referenceImageUrl || '';
+        const hasError = task.status === 'failed';
+        const modeLabel = task.mode === 'image-to-image' ? '图生图' : '文生图';
+        const aspectStyle = getGptImage2AspectStyle(task.aspectRatio);
+        const creditCost = getGptImage2CreditCost(task);
+        return `
+            <article class="rounded-2xl border border-white/10 bg-white/[0.035] p-4">
+                <div class="flex flex-col gap-4 md:flex-row">
+                    <div class="min-w-0 flex-1">
+                        <div class="mb-3 flex flex-wrap items-center gap-2">
+                            <span class="rounded-full border px-2.5 py-1 text-xs font-semibold ${gptImage2StatusClass(task.status)}">${escapeGptImage2Html(task.statusDesc || '排队中')}</span>
+                            <span class="rounded-full border border-white/10 bg-white/[0.05] px-2.5 py-1 text-xs text-white/55">${modeLabel}</span>
+                            <span class="text-xs text-white/35">#${task.id}</span>
+                        </div>
+                        <p class="line-clamp-3 text-sm leading-6 text-white/82">${escapeGptImage2Html(task.prompt || '未填写提示词')}</p>
+                        <div class="mt-3 flex flex-wrap items-center gap-2">
+                            <span class="gpt-image-model-badge inline-flex items-center gap-1.5 rounded-full border border-sky-200/18 bg-sky-300/[0.11] px-2.5 py-1 text-xs font-semibold text-sky-50 shadow-[0_0_20px_rgba(56,189,248,0.12)]">
+                                <i data-lucide="cpu" class="h-3.5 w-3.5 text-sky-200"></i>
+                                ${escapeGptImage2Html(formatGptImage2ModelLabel(task.model))}
+                            </span>
+                            <span class="gpt-image-credit-badge inline-flex items-center gap-1.5 rounded-full border border-amber-200/18 bg-amber-300/[0.11] px-2.5 py-1 text-xs font-semibold text-amber-50">
+                                <i data-lucide="coins" class="h-3.5 w-3.5 text-amber-200"></i>
+                                消耗 ${creditCost} 积分
+                            </span>
+                        </div>
+                        <div class="mt-3 grid gap-2 text-xs text-white/42 sm:grid-cols-2">
+                            <span>比例：${escapeGptImage2Html(task.aspectRatio || '1:1')}</span>
+                            <span>创建：${formatGptImage2Time(task.createdAt)}</span>
+                            <span>清晰度：${escapeGptImage2Html(formatGptImage2Resolution(task.resolution))}</span>
+                            ${task.generationDuration ? `<span>耗时：${task.generationDuration}秒</span>` : '<span>耗时：生成完成后显示</span>'}
+                        </div>
+                        ${isGptImage2Running(task) ? `
+                            <div class="mt-4">
+                                <div class="h-2 overflow-hidden rounded-full bg-white/10">
+                                    <div class="h-full bg-gradient-to-r from-sky-400 to-emerald-300 transition-all" style="width:${progress}%"></div>
+                                </div>
+                                <p class="mt-2 text-xs text-sky-100/75">后台生成中，当前进度${progress}%...</p>
+                            </div>
+                        ` : ''}
+                        ${hasError ? `<div class="mt-4 rounded-xl border border-red-300/20 bg-red-300/10 px-3 py-2 text-sm text-red-100">${escapeGptImage2Html(task.errorMessage || 'GPT-Image2生成失败，请稍后重试')}</div>` : ''}
+                        <div class="mt-4 flex flex-wrap gap-2">
+                            ${imageUrl ? `<button type="button" class="gpt-image-preview-btn rounded-xl bg-emerald-300/12 px-3 py-2 text-sm text-emerald-100 transition hover:bg-emerald-300/18" data-image-url="${escapeGptImage2Html(imageUrl)}">查看大图</button>` : ''}
+                            ${imageUrl ? `<button type="button" class="gpt-image-download-btn rounded-xl bg-white/8 px-3 py-2 text-sm text-white/65 transition hover:bg-white/12" data-image-url="${escapeGptImage2Html(imageUrl)}">下载</button>` : ''}
+                            ${referenceImageUrl ? `<button type="button" class="gpt-image-preview-btn rounded-xl bg-sky-300/10 px-3 py-2 text-sm text-sky-100 transition hover:bg-sky-300/15" data-image-url="${escapeGptImage2Html(referenceImageUrl)}">查看参考图</button>` : ''}
+                        </div>
+                    </div>
+                    <div class="grid w-full grid-cols-2 gap-3 md:w-72">
+                        ${referenceImageUrl ? `
+                            <button type="button" class="gpt-image-preview-btn gpt-image-aspect-frame group flex items-center justify-center overflow-hidden rounded-xl border border-white/10 bg-black/25 p-2 transition hover:border-sky-200/35" style="${aspectStyle}" data-image-url="${escapeGptImage2Html(referenceImageUrl)}" title="查看参考图大图" aria-label="查看参考图大图">
+                                <img src="${escapeGptImage2Html(referenceImageUrl)}" class="max-h-full max-w-full object-contain transition-transform group-hover:scale-[1.02]" alt="参考图">
+                            </button>
+                        ` : `<div class="gpt-image-aspect-frame flex items-center justify-center overflow-hidden rounded-xl border border-white/10 bg-black/25 p-2" style="${aspectStyle}">
+                            <div class="flex h-full w-full items-center justify-center text-xs text-white/30">无参考图</div>
+                        </div>`}
+                        ${imageUrl ? `
+                            <button type="button" class="gpt-image-preview-btn gpt-image-aspect-frame group flex items-center justify-center overflow-hidden rounded-xl border border-white/10 bg-black/25 p-2 transition hover:border-emerald-200/35" style="${aspectStyle}" data-image-url="${escapeGptImage2Html(imageUrl)}" title="查看生成结果大图" aria-label="查看生成结果大图">
+                                <img src="${escapeGptImage2Html(imageUrl)}" class="max-h-full max-w-full object-contain transition-transform group-hover:scale-[1.02]" alt="生成结果">
+                            </button>
+                        ` : `<div class="gpt-image-aspect-frame flex items-center justify-center overflow-hidden rounded-xl border border-white/10 bg-black/25 p-2" style="${aspectStyle}">
+                            <div class="flex h-full w-full items-center justify-center text-xs text-white/30">等待结果</div>
+                        </div>`}
+                    </div>
+                </div>
+            </article>
+        `;
+    }).join('');
+    renderGptImage2Pagination();
+    lucide.createIcons();
+}
+
+function getGptImage2TotalPages() {
+    return Math.max(1, Math.ceil(gptImage2Tasks.length / GPT_IMAGE2_TASKS_PER_PAGE));
+}
+
+function renderGptImage2Pagination() {
+    const pagination = document.getElementById('gptImage2Pagination');
+    const pageInfo = document.getElementById('gptImage2PageInfo');
+    const prevButton = document.getElementById('gptImage2PrevPage');
+    const nextButton = document.getElementById('gptImage2NextPage');
+    if (!pagination || !pageInfo || !prevButton || !nextButton) return;
+    if (gptImage2Tasks.length <= GPT_IMAGE2_TASKS_PER_PAGE) {
+        pagination.classList.add('hidden');
+        pagination.classList.remove('flex');
+        return;
+    }
+    const totalPages = getGptImage2TotalPages();
+    gptImage2CurrentPage = Math.max(1, Math.min(gptImage2CurrentPage, totalPages));
+    pagination.classList.remove('hidden');
+    pagination.classList.add('flex');
+    pageInfo.textContent = `第 ${gptImage2CurrentPage} / ${totalPages} 页`;
+    prevButton.disabled = gptImage2CurrentPage <= 1;
+    nextButton.disabled = gptImage2CurrentPage >= totalPages;
+}
+
+function changeGptImage2Page(delta) {
+    const totalPages = getGptImage2TotalPages();
+    const nextPage = Math.max(1, Math.min(totalPages, gptImage2CurrentPage + delta));
+    if (nextPage === gptImage2CurrentPage) return;
+    gptImage2CurrentPage = nextPage;
+    renderGptImage2Tasks();
+}
+
+async function loadGptImage2Tasks() {
+    try {
+        const tasks = await requestGptImage2Json('/api/v1/gpt-image2/?limit=50', {
+            headers: {'X-Requested-With': 'XMLHttpRequest'}
+        });
+        gptImage2Tasks = Array.isArray(tasks) ? tasks : [];
+        gptImage2CurrentPage = Math.max(1, Math.min(gptImage2CurrentPage, getGptImage2TotalPages()));
+        renderGptImage2Tasks();
+        const runningTasks = gptImage2Tasks.filter(isGptImage2Running);
+        if (runningTasks.length) {
+            persistGptImage2TaskState(runningTasks[0]);
+            startGptImage2Polling();
+        } else {
+            stopGptImage2Polling();
+        }
+    } catch (error) {
+        document.getElementById('gptImage2TaskList').innerHTML = `<div class="rounded-2xl border border-red-300/20 bg-red-300/10 p-6 text-sm text-red-100">${escapeGptImage2Html(error.message || '最近任务加载失败')}</div>`;
+    }
+}
+
+async function fetchGptImage2Task(taskId) {
+    return requestGptImage2Json(`/api/v1/gpt-image2/${taskId}/`, {
+        headers: {'X-Requested-With': 'XMLHttpRequest'}
+    });
+}
+
+function stopGptImage2Polling() {
+    if (gptImage2PollTimer) {
+        clearInterval(gptImage2PollTimer);
+        gptImage2PollTimer = null;
+    }
+}
+
+function startGptImage2Polling() {
+    const runningTasks = gptImage2Tasks.filter(isGptImage2Running);
+    if (!runningTasks.length) {
+        stopGptImage2Polling();
+        return;
+    }
+    if (gptImage2PollTimer) return;
+    stopGptImage2Polling();
+    gptImage2PollTimer = setInterval(async () => {
+        try {
+            const runningTasks = gptImage2Tasks.filter(isGptImage2Running);
+            if (!runningTasks.length) {
+                stopGptImage2Polling();
+                loadGptImage2Tasks();
+                return;
+            }
+
+            const refreshedTasks = await Promise.all(runningTasks.map(task => fetchGptImage2Task(task.id)));
+            refreshedTasks.forEach(mergeGptImage2Task);
+            const stillRunning = refreshedTasks.some(isGptImage2Running) || gptImage2Tasks.some(isGptImage2Running);
+            if (!stillRunning) {
+                stopGptImage2Polling();
+                const latestFinishedTask = refreshedTasks[0];
+                if (latestFinishedTask) {
+                    setGptImage2Status(
+                        latestFinishedTask.status === 'succeeded' ? '图片已生成并保存。' : (latestFinishedTask.errorMessage || 'GPT-Image2生成失败，请稍后重试'),
+                        latestFinishedTask.status === 'succeeded' ? 'success' : 'error'
+                    );
+                }
+                loadGptImage2Tasks();
+            }
+        } catch (error) {
+            stopGptImage2Polling();
+            setGptImage2Status(error.message || '获取生图任务状态失败', 'error');
+        }
+    }, 3000);
+}
+
+function pollGptImage2Task(taskId) {
+    if (!taskId) return;
+    startGptImage2Polling();
+}
+
+function resetGptImage2Reference() {
+    gptImage2ReferenceUrl = '';
+    if (gptImage2ReferenceObjectUrl) {
+        URL.revokeObjectURL(gptImage2ReferenceObjectUrl);
+        gptImage2ReferenceObjectUrl = '';
+    }
+    const input = document.getElementById('gptImage2ReferenceInput');
+    const preview = document.getElementById('gptImage2ReferencePreview');
+    const image = document.getElementById('gptImage2ReferenceImage');
+    const name = document.getElementById('gptImage2ReferenceName');
+    const button = document.getElementById('gptImage2ReferenceButton');
+    const clearButton = document.getElementById('gptImage2ClearReference');
+    if (input) input.value = '';
+    if (preview) preview.classList.add('hidden');
+    if (image) image.removeAttribute('src');
+    if (name) name.textContent = '';
+    if (button) button.innerHTML = '<i data-lucide="image-plus" class="h-4 w-4"></i>上传参考图';
+    if (clearButton) clearButton.classList.add('hidden');
+    lucide.createIcons();
+}
+
+function openGptImage2ImagePreview(imageUrl) {
+    const modal = document.getElementById('gptImage2ImagePreviewModal');
+    const image = document.getElementById('gptImage2ImagePreviewLarge');
+    if (!modal || !image || !imageUrl) return;
+    gptImage2PreviewImageUrl = imageUrl;
+    image.src = imageUrl;
+    modal.classList.remove('hidden');
+    modal.classList.add('flex');
+    document.body.classList.add('overflow-hidden');
+    setGptImage2PreviewScale(1);
+}
+
+function closeGptImage2ImagePreview() {
+    const modal = document.getElementById('gptImage2ImagePreviewModal');
+    const image = document.getElementById('gptImage2ImagePreviewLarge');
+    if (!modal || !image) return;
+    modal.classList.add('hidden');
+    modal.classList.remove('flex');
+    image.removeAttribute('src');
+    gptImage2PreviewImageUrl = '';
+    setGptImage2PreviewScale(1);
+    document.body.classList.remove('overflow-hidden');
+}
+
+function setGptImage2PreviewScale(scale) {
+    const image = document.getElementById('gptImage2ImagePreviewLarge');
+    const label = document.getElementById('gptImage2ImagePreviewScale');
+    const nextScale = Math.max(0.5, Math.min(4, Number(scale) || 1));
+    gptImage2PreviewScale = nextScale;
+    if (image) {
+        image.style.transform = `scale(${nextScale})`;
+        image.classList.toggle('cursor-zoom-out', nextScale > 1);
+        image.classList.toggle('cursor-zoom-in', nextScale <= 1);
+    }
+    if (label) {
+        label.textContent = `${Math.round(nextScale * 100)}%`;
+    }
+}
+
+function zoomGptImage2Preview(delta) {
+    setGptImage2PreviewScale(gptImage2PreviewScale + delta);
+}
+
+function toggleGptImage2PreviewZoom() {
+    setGptImage2PreviewScale(gptImage2PreviewScale > 1 ? 1 : 2);
+}
+
+async function downloadGptImage2Image(imageUrl) {
+    if (!imageUrl) return;
+    try {
+        const response = await fetch(imageUrl);
+        if (!response.ok) {
+            throw new Error('下载失败');
+        }
+        const blob = await response.blob();
+        const objectUrl = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = objectUrl;
+        link.download = `gpt-image2-${Date.now()}.png`;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        URL.revokeObjectURL(objectUrl);
+    } catch (error) {
+        const link = document.createElement('a');
+        link.href = imageUrl;
+        link.download = `gpt-image2-${Date.now()}.png`;
+        link.target = '_blank';
+        link.rel = 'noopener';
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+    }
+}
+
+function initGptImage2Generator() {
+    const form = document.getElementById('gptImage2Form');
+    const fileInput = document.getElementById('gptImage2ReferenceInput');
+    const uploadButton = document.getElementById('gptImage2ReferenceButton');
+    const clearButton = document.getElementById('gptImage2ClearReference');
+
+    uploadButton?.addEventListener('click', () => fileInput?.click());
+    clearButton?.addEventListener('click', resetGptImage2Reference);
+
+    fileInput?.addEventListener('change', async () => {
+        const file = fileInput.files && fileInput.files[0];
+        if (!file) return;
+        if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
+            resetGptImage2Reference();
+            setGptImage2Status('只支持 JPG、PNG、WEBP 格式的参考图', 'error');
+            return;
+        }
+        if (file.size > 10 * 1024 * 1024) {
+            resetGptImage2Reference();
+            setGptImage2Status('参考图大小不能超过10MB', 'error');
+            return;
+        }
+
+        const formData = new FormData();
+        formData.append('file', file);
+        uploadButton.disabled = true;
+        uploadButton.innerHTML = '<span class="spinner !h-4 !w-4 !border-2"></span>上传中...';
+        setGptImage2Status('正在上传参考图...');
+        try {
+            const result = await requestGptImage2Json('/api/v1/gpt-image2/upload-reference/', {
+                method: 'POST',
+                headers: {'X-CSRFToken': getCookie('csrftoken')},
+                body: formData
+            });
+            gptImage2ReferenceUrl = result?.url || result?.imageUrl || '';
+            if (!gptImage2ReferenceUrl) {
+                throw new Error('参考图上传后未返回图片地址');
+            }
+            if (gptImage2ReferenceObjectUrl) {
+                URL.revokeObjectURL(gptImage2ReferenceObjectUrl);
+            }
+            gptImage2ReferenceObjectUrl = URL.createObjectURL(file);
+            document.getElementById('gptImage2ReferenceImage').src = gptImage2ReferenceObjectUrl;
+            document.getElementById('gptImage2ReferenceName').textContent = file.name;
+            document.getElementById('gptImage2ReferencePreview').classList.remove('hidden');
+            document.getElementById('gptImage2ClearReference')?.classList.remove('hidden');
+            uploadButton.innerHTML = '<i data-lucide="refresh-cw" class="h-4 w-4"></i>重新上传参考图';
+            setGptImage2Status('参考图已上传，可以开始图生图。', 'success');
+        } catch (error) {
+            resetGptImage2Reference();
+            setGptImage2Status(error.message || '参考图上传失败', 'error');
+        } finally {
+            uploadButton.disabled = false;
+            lucide.createIcons();
+        }
+    });
+
+    form?.addEventListener('submit', async event => {
+        event.preventDefault();
+        const prompt = document.getElementById('gptImage2Prompt')?.value.trim() || '';
+        const aspectRatio = document.getElementById('gptImage2AspectRatio')?.value || '1:1';
+        const resolution = document.getElementById('gptImage2Resolution')?.value || '2k';
+        if (!prompt) {
+            setGptImage2Status('请输入提示词', 'error');
+            return;
+        }
+
+        setGptImage2Busy(true);
+        setGptImage2Status(`正在提交任务，本次将扣除${GPT_IMAGE2_CREDIT_COST}积分...`);
+        try {
+            const task = await requestGptImage2Json('/api/v1/gpt-image2/generate/', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': getCookie('csrftoken')
+                },
+                body: JSON.stringify({
+                    prompt,
+                    aspectRatio,
+                    resolution,
+                    referenceImageUrl: gptImage2ReferenceUrl
+                })
+            });
+            if (!task?.id) {
+                throw new Error('任务创建成功但未返回任务ID');
+            }
+            mergeGptImage2Task(task);
+            startGptImage2Polling();
+            setGptImage2Busy(false);
+            setGptImage2Status(`任务已提交，已扣除${getGptImage2CreditCost(task)}积分，可继续创建下一张。`, 'success');
+            showGptImage2Toast(`任务已提交，扣除${getGptImage2CreditCost(task)}积分`, 'success');
+        } catch (error) {
+            setGptImage2Status(error.message || '生成失败，请稍后重试', 'error');
+            setGptImage2Busy(false);
+        }
+    });
+}
+
+document.addEventListener('click', event => {
+    const previewButton = event.target.closest('.gpt-image-preview-btn');
+    if (previewButton) {
+        openGptImage2ImagePreview(previewButton.dataset.imageUrl);
+        return;
+    }
+    const downloadButton = event.target.closest('.gpt-image-download-btn');
+    if (downloadButton) {
+        downloadGptImage2Image(downloadButton.dataset.imageUrl);
+    }
+});
+
+window.addEventListener('storage', function(e) {
+    if (e.key === GPT_IMAGE2_TASK_STORAGE_KEY && e.newValue) {
+        const task = readGptImage2StoredTask();
+        if (!task) return;
+        mergeGptImage2Task(task);
+        if (isGptImage2Running(task)) {
+            startGptImage2Polling();
+        }
+    }
+});
+
+document.addEventListener('DOMContentLoaded', function() {
+    initGptImage2Generator();
+    restoreGptImage2TaskFromStorage();
+    loadGptImage2Tasks();
+    document.getElementById('gptImage2RefreshButton')?.addEventListener('click', loadGptImage2Tasks);
+    document.getElementById('gptImage2PrevPage')?.addEventListener('click', () => changeGptImage2Page(-1));
+    document.getElementById('gptImage2NextPage')?.addEventListener('click', () => changeGptImage2Page(1));
+    document.getElementById('gptImage2ImagePreviewClose')?.addEventListener('click', closeGptImage2ImagePreview);
+    document.getElementById('gptImage2ImagePreviewZoomOut')?.addEventListener('click', () => zoomGptImage2Preview(-0.25));
+    document.getElementById('gptImage2ImagePreviewZoomIn')?.addEventListener('click', () => zoomGptImage2Preview(0.25));
+    document.getElementById('gptImage2ImagePreviewReset')?.addEventListener('click', () => setGptImage2PreviewScale(1));
+    document.getElementById('gptImage2ImagePreviewDownload')?.addEventListener('click', () => downloadGptImage2Image(gptImage2PreviewImageUrl));
+    document.getElementById('gptImage2ImagePreviewLarge')?.addEventListener('click', toggleGptImage2PreviewZoom);
+    document.getElementById('gptImage2ImagePreviewModal')?.addEventListener('click', function(event) {
+        if (event.target === this) {
+            closeGptImage2ImagePreview();
+        }
+    });
+});
+</script>
+{% endblock %}

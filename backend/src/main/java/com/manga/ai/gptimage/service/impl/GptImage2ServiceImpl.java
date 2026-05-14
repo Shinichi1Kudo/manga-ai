@@ -4,6 +4,7 @@ import com.alibaba.fastjson2.JSON;
 import com.alibaba.fastjson2.JSONArray;
 import com.alibaba.fastjson2.JSONObject;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.manga.ai.common.enums.CreditUsageType;
 import com.manga.ai.common.exception.BusinessException;
 import com.manga.ai.common.service.OssService;
 import com.manga.ai.gptimage.dto.GptImage2GenerateRequest;
@@ -35,8 +36,10 @@ import java.io.IOException;
 import java.time.LocalDateTime;
 import java.util.Arrays;
 import java.util.Base64;
+import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.Executor;
+import java.util.stream.Collectors;
 
 /**
  * GPT-Image2 图片生成服务实现
@@ -51,8 +54,13 @@ public class GptImage2ServiceImpl implements GptImage2Service {
     private static final List<String> ALLOWED_ASPECT_RATIOS = Arrays.asList(
             "1:1", "16:9", "9:16", "4:3", "3:4"
     );
+    private static final List<String> ALLOWED_RESOLUTIONS = Arrays.asList(
+            "1k", "2k", "4k"
+    );
     private static final long MAX_IMAGE_SIZE = 10L * 1024 * 1024;
     private static final int MAX_GENERATE_ATTEMPTS = 3;
+    private static final int GENERATE_CREDIT_COST = 12;
+    private static final String CREDIT_REFERENCE_TYPE = "GPT_IMAGE2_TASK";
 
     private final OssService ossService;
     private final UserService userService;
@@ -112,18 +120,34 @@ public class GptImage2ServiceImpl implements GptImage2Service {
         }
 
         String aspectRatio = normalizeAspectRatio(request.getAspectRatio());
+        String resolution = normalizeResolution(request.getResolution());
         String mode = hasText(request.getReferenceImageUrl()) ? "image-to-image" : "text-to-image";
         GptImage2Task task = new GptImage2Task();
         task.setUserId(userId);
         task.setPrompt(request.getPrompt().trim());
         task.setAspectRatio(aspectRatio);
+        task.setResolution(resolution);
         task.setReferenceImageUrl(hasText(request.getReferenceImageUrl()) ? request.getReferenceImageUrl().trim() : null);
         task.setStatus("pending");
         task.setModel(model);
         task.setMode(mode);
+        task.setCreditCost(GENERATE_CREDIT_COST);
+        task.setCreditsRefunded(false);
         task.setCreatedAt(LocalDateTime.now());
         task.setUpdatedAt(LocalDateTime.now());
         taskMapper.insert(task);
+
+        try {
+            userService.deductCredits(userId, GENERATE_CREDIT_COST, CreditUsageType.IMAGE_GENERATION.getCode(),
+                    "GPT-Image2生图-任务" + task.getId(), task.getId(), CREDIT_REFERENCE_TYPE);
+        } catch (RuntimeException e) {
+            task.setStatus("failed");
+            task.setErrorMessage(e.getMessage());
+            task.setCompletedAt(LocalDateTime.now());
+            task.setUpdatedAt(LocalDateTime.now());
+            taskMapper.updateById(task);
+            throw e;
+        }
 
         imageGenerateExecutor.execute(() -> executeTask(task.getId()));
         return toResponse(task);
@@ -143,7 +167,7 @@ public class GptImage2ServiceImpl implements GptImage2Service {
         JSONObject requestBody = new JSONObject();
         requestBody.put("model", hasText(task.getModel()) ? task.getModel() : model);
         requestBody.put("prompt", task.getPrompt());
-        requestBody.put("size", convertAspectRatioToSize(task.getAspectRatio()));
+        requestBody.put("size", convertAspectRatioToSize(task.getAspectRatio(), task.getResolution()));
         requestBody.put("n", 1);
         requestBody.put("response_format", "url");
         requestBody.put("stream", false);
@@ -170,12 +194,14 @@ public class GptImage2ServiceImpl implements GptImage2Service {
             task.setStatus("failed");
             task.setErrorMessage(e.getMessage());
             task.setCompletedAt(LocalDateTime.now());
+            refundCreditsIfNeeded(task);
             log.warn("GPT-Image2任务失败: taskId={}, error={}", taskId, e.getMessage());
         } catch (Exception e) {
             log.error("GPT-Image2任务异常: taskId={}, userId={}, mode={}", taskId, task.getUserId(), task.getMode(), e);
             task.setStatus("failed");
             task.setErrorMessage(friendlyExceptionMessage(e));
             task.setCompletedAt(LocalDateTime.now());
+            refundCreditsIfNeeded(task);
         } finally {
             task.setUpdatedAt(LocalDateTime.now());
             taskMapper.updateById(task);
@@ -188,6 +214,24 @@ public class GptImage2ServiceImpl implements GptImage2Service {
             throw new BusinessException(400, "任务ID不能为空");
         }
         return toResponse(getOwnedTask(taskId));
+    }
+
+    @Override
+    public List<GptImage2GenerateResponse> listMyTasks(Integer limit) {
+        Long userId = UserContextHolder.getUserId();
+        if (userId == null) {
+            throw new BusinessException(401, "未登录");
+        }
+        int safeLimit = limit == null ? 50 : Math.max(1, Math.min(limit, 50));
+        LambdaQueryWrapper<GptImage2Task> wrapper = new LambdaQueryWrapper<>();
+        wrapper.eq(GptImage2Task::getUserId, userId)
+                .orderByDesc(GptImage2Task::getCreatedAt)
+                .last("LIMIT " + safeLimit);
+        List<GptImage2Task> tasks = taskMapper.selectList(wrapper);
+        if (tasks == null || tasks.isEmpty()) {
+            return Collections.emptyList();
+        }
+        return tasks.stream().map(this::toResponse).collect(Collectors.toList());
     }
 
     @Override
@@ -348,19 +392,48 @@ public class GptImage2ServiceImpl implements GptImage2Service {
         return ratio;
     }
 
-    private String convertAspectRatioToSize(String aspectRatio) {
-        switch (aspectRatio) {
-            case "16:9":
-                return "1536x864";
-            case "9:16":
-                return "864x1536";
-            case "4:3":
-                return "1344x1008";
-            case "3:4":
-                return "1008x1344";
-            case "1:1":
+    private String normalizeResolution(String resolution) {
+        if (!hasText(resolution)) {
+            return "2k";
+        }
+        String normalized = resolution.trim().toLowerCase();
+        if (!ALLOWED_RESOLUTIONS.contains(normalized)) {
+            throw new BusinessException(400, "不支持的图片清晰度");
+        }
+        return normalized;
+    }
+
+    private String convertAspectRatioToSize(String aspectRatio, String resolution) {
+        String normalizedResolution = normalizeResolution(resolution);
+        switch (normalizedResolution) {
+            case "1k":
+                switch (aspectRatio) {
+                    case "16:9": return "1536x864";
+                    case "9:16": return "864x1536";
+                    case "4:3": return "1344x1008";
+                    case "3:4": return "1008x1344";
+                    case "1:1":
+                    default: return "1024x1024";
+                }
+            case "4k":
+                switch (aspectRatio) {
+                    case "16:9": return "4032x2268";
+                    case "9:16": return "2268x4032";
+                    case "4:3": return "3584x2688";
+                    case "3:4": return "2016x2688";
+                    case "1:1":
+                    default: return "4096x4096";
+                }
+            case "2k":
             default:
-                return "1024x1024";
+                switch (aspectRatio) {
+                    case "16:9": return "2848x1600";
+                    case "9:16": return "1600x2848";
+                    case "4:3": return "2304x1728";
+                    case "3:4": return "1728x2304";
+                    case "1:1":
+                    default: return "2048x2048";
+                }
         }
     }
 
@@ -436,6 +509,7 @@ public class GptImage2ServiceImpl implements GptImage2Service {
         response.setId(task.getId());
         response.setPrompt(task.getPrompt());
         response.setAspectRatio(task.getAspectRatio());
+        response.setResolution(hasText(task.getResolution()) ? task.getResolution() : "2k");
         response.setReferenceImageUrl(task.getReferenceImageUrl());
         response.setImageUrl(task.getImageUrl());
         response.setStatus(task.getStatus());
@@ -443,6 +517,7 @@ public class GptImage2ServiceImpl implements GptImage2Service {
         response.setProgressPercent(progressPercent(task.getStatus()));
         response.setModel(task.getModel());
         response.setMode(task.getMode());
+        response.setCreditCost(task.getCreditCost() == null ? GENERATE_CREDIT_COST : task.getCreditCost());
         response.setErrorMessage(task.getErrorMessage());
         response.setSubmittedAt(task.getSubmittedAt());
         response.setCompletedAt(task.getCompletedAt());
@@ -450,6 +525,21 @@ public class GptImage2ServiceImpl implements GptImage2Service {
         response.setCreatedAt(task.getCreatedAt());
         response.setUpdatedAt(task.getUpdatedAt());
         return response;
+    }
+
+    private void refundCreditsIfNeeded(GptImage2Task task) {
+        if (task == null || userService == null) {
+            return;
+        }
+        Integer creditCost = task.getCreditCost();
+        if (creditCost == null || creditCost <= 0 || Boolean.TRUE.equals(task.getCreditsRefunded())) {
+            return;
+        }
+        userService.refundCredits(task.getUserId(), creditCost,
+                "GPT-Image2生图失败返还-任务" + task.getId(), task.getId(), CREDIT_REFERENCE_TYPE);
+        task.setCreditsRefunded(true);
+        log.info("GPT-Image2任务失败返还积分: userId={}, taskId={}, credits={}",
+                task.getUserId(), task.getId(), creditCost);
     }
 
     private String statusDesc(String status) {

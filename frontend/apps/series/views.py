@@ -1,5 +1,5 @@
 from django.shortcuts import render, redirect
-from django.http import JsonResponse
+from django.http import JsonResponse, HttpResponseForbidden
 from django.views.decorators.http import require_http_methods
 from django.views.decorators.csrf import csrf_exempt
 from django.contrib import messages
@@ -257,6 +257,11 @@ def subject_replacement_page(request):
     return render(request, 'subject_replacement/index.html')
 
 
+def gpt_image2_page(request):
+    """GPT-Image2 生图工作台"""
+    return render(request, 'series/gpt_image2.html')
+
+
 @csrf_exempt
 @require_http_methods(["GET", "POST"])
 def subject_replacement_tasks(request):
@@ -377,6 +382,20 @@ def subject_replacement_upload_reference(request):
         return JsonResponse({'code': 500, 'message': str(e)}, status=500)
 
 
+@require_http_methods(["GET"])
+def gpt_image2_tasks(request):
+    """GPT-Image2 生图任务列表"""
+    client = get_client(request)
+    limit = request.GET.get('limit', '50')
+    try:
+        result = client.get(f'/v1/gpt-image2?limit={limit}')
+        return JsonResponse({'code': 200, 'data': result})
+    except BackendAPIError as e:
+        return JsonResponse({'code': 400, 'message': e.message}, status=400)
+    except Exception as e:
+        return JsonResponse({'code': 500, 'message': str(e)}, status=500)
+
+
 @csrf_exempt
 @require_http_methods(["POST"])
 def gpt_image2_generate(request):
@@ -387,6 +406,7 @@ def gpt_image2_generate(request):
         payload = {
             'prompt': (data.get('prompt') or '').strip(),
             'aspectRatio': data.get('aspectRatio') or '1:1',
+            'resolution': data.get('resolution') or '2k',
         }
         reference_image_url = (data.get('referenceImageUrl') or '').strip()
         if reference_image_url:
@@ -1541,6 +1561,19 @@ def contact_image(request):
         return JsonResponse({'code': 400, 'message': e.message}, status=400)
 
 
+def site_logo(request):
+    """获取网站 Logo 图片URL"""
+    client = BackendClient()
+    try:
+        result = client.get('/v1/common/site-logo')
+        url = result.get('url') if isinstance(result, dict) else None
+        if url:
+            return redirect(url)
+        return JsonResponse({'code': 500, 'message': '获取 Logo 失败'}, status=500)
+    except BackendAPIError as e:
+        return JsonResponse({'code': 400, 'message': e.message}, status=400)
+
+
 def showcase_assets(request):
     """获取首页主体替换演示素材URL"""
     client = get_client(request)
@@ -1554,6 +1587,36 @@ def showcase_assets(request):
 def credit_records(request):
     """积分记录页面"""
     return render(request, 'credits/credit_records.html')
+
+
+def _is_credit_admin_session(request):
+    nickname = (request.session.get('nickname') or '').strip()
+    email = (request.session.get('email') or '').strip().lower()
+    return bool(request.session.get('token')) and (nickname == '工藤新一' or email == '1198693014@qq.com')
+
+
+def credit_admin_dashboard(request):
+    """工藤新一专属积分管理后台"""
+    if not _is_credit_admin_session(request):
+        return HttpResponseForbidden('无权访问积分管理后台')
+    return render(request, 'credits/admin_dashboard.html')
+
+
+def credit_admin_dashboard_api(request):
+    """积分管理后台API代理"""
+    if not _is_credit_admin_session(request):
+        return JsonResponse({'code': 403, 'message': '无权访问积分管理后台'}, status=403)
+
+    hours = request.GET.get('hours', 24)
+    record_page = request.GET.get('recordPage', 1)
+    record_page_size = request.GET.get('recordPageSize', 20)
+
+    client = get_client(request)
+    try:
+        result = client.get(f'/v1/admin/credits/dashboard?hours={hours}&recordPage={record_page}&recordPageSize={record_page_size}')
+        return JsonResponse({'code': 200, 'data': result})
+    except BackendAPIError as e:
+        return JsonResponse({'code': e.status_code, 'message': e.message}, status=400)
 
 
 def credit_records_api(request):

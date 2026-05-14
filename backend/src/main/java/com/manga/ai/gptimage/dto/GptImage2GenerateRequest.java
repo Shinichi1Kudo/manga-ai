@@ -23,6 +23,11 @@ public class GptImage2GenerateRequest implements Serializable {
     private String aspectRatio;
 
     /**
+     * 清晰度：1k / 2k / 4k
+     */
+    private String resolution;
+
+    /**
      * 可选参考图 URL，存在时执行图生图
      */
     private String referenceImageUrl;

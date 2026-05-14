@@ -19,6 +19,17 @@ class AnonymousPublicEndpointTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()['data']['url'], 'https://example.com/contact.jpg')
 
+    def test_site_logo_endpoint_is_public(self):
+        backend_client = Mock()
+        backend_client.get.return_value = {'url': 'https://oss.example.com/brand/site-logo.png'}
+
+        with patch('apps.series.views.BackendClient', return_value=backend_client):
+            response = self.client.get('/api/v1/common/site-logo/')
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response['Location'], 'https://oss.example.com/brand/site-logo.png')
+        backend_client.get.assert_called_once_with('/v1/common/site-logo')
+
     def test_private_api_request_does_not_store_login_next(self):
         response = self.client.get('/api/user/info/')
 
@@ -115,6 +126,21 @@ class SiteBrandingTests(TestCase):
         self.assertIn('brand-name">海带</span>', combined)
         self.assertIn('brand-subtitle">AI 智能短剧制作系统</span>', combined)
 
+    def test_brand_uses_oss_backed_logo_image(self):
+        template_root = Path(settings.BASE_DIR) / 'templates'
+        combined = '\n'.join([
+            (template_root / 'base.html').read_text(encoding='utf-8'),
+            (template_root / 'series/series_list.html').read_text(encoding='utf-8'),
+            (template_root / 'auth/login.html').read_text(encoding='utf-8'),
+            (template_root / 'auth/register.html').read_text(encoding='utf-8'),
+        ])
+
+        self.assertIn('src="/api/v1/common/site-logo/"', combined)
+        self.assertIn('rel="icon" type="image/png" href="/api/v1/common/site-logo/"', combined)
+        self.assertIn('class="brand-logo-img', combined)
+        nav_brand = combined.split('<a href="/" class="flex items-center gap-3 group">', 1)[1].split('</a>', 1)[0]
+        self.assertNotIn('data-lucide=', nav_brand)
+
 
 class SubjectReplacementCreditButtonTests(TestCase):
     def test_submit_button_shows_estimated_credit_deduction(self):
@@ -127,18 +153,53 @@ class SubjectReplacementCreditButtonTests(TestCase):
 
 
 class GptImage2HomeTests(TestCase):
-    def test_home_page_contains_gpt_image2_generator_panel(self):
+    def test_home_page_links_to_gpt_image2_workspace(self):
         template_path = Path(settings.BASE_DIR) / 'templates/series/series_list.html'
+        template = template_path.read_text(encoding='utf-8')
+
+        self.assertIn('href="/gpt-image2/"', template)
+        self.assertIn('<span>GPT-Image2 生图</span>\n                    <span class="home-new-badge">NEW</span>', template)
+        self.assertIn('AI 工具', template)
+        self.assertIn('基础工作台', template)
+        self.assertIn('资产与账户', template)
+        self.assertNotIn('id="gptImage2Modal"', template)
+        self.assertNotIn('function openGptImage2Modal()', template)
+
+    def test_credit_records_home_button_has_no_leading_icon(self):
+        template_path = Path(settings.BASE_DIR) / 'templates/series/series_list.html'
+        template = template_path.read_text(encoding='utf-8')
+        credit_button = template.split('href="/credits/records/"', 1)[1].split('</a>', 1)[0]
+
+        self.assertIn('<span>积分记录</span>', credit_button)
+        self.assertNotIn('data-lucide=', credit_button)
+
+    def test_gpt_image2_page_contains_generator_and_recent_tasks(self):
+        template_path = Path(settings.BASE_DIR) / 'templates/series/gpt_image2.html'
         template = template_path.read_text(encoding='utf-8')
 
         self.assertIn('id="gptImage2Form"', template)
         self.assertIn('GPT-Image2 生图', template)
+        self.assertIn('最近任务', template)
+        self.assertIn('id="gptImage2TaskList"', template)
         self.assertIn('/api/v1/gpt-image2/generate/', template)
         self.assertIn('/api/v1/gpt-image2/upload-reference/', template)
-        self.assertIn('/api/v1/gpt-image2/latest/', template)
+        self.assertIn('/api/v1/gpt-image2/?limit=50', template)
         self.assertIn('pollGptImage2Task', template)
-        self.assertIn('loadLatestGptImage2Task', template)
+        self.assertIn('loadGptImage2Tasks', template)
         self.assertIn('referenceImageUrl', template)
+        self.assertIn('id="gptImage2Resolution"', template)
+        self.assertIn('<option value="1k">1K</option>', template)
+        self.assertIn('<option value="2k" selected>2K</option>', template)
+        self.assertIn('<option value="4k">4K</option>', template)
+        self.assertIn('gpt-image-aspect-frame', template)
+        self.assertIn('getGptImage2AspectStyle(task.aspectRatio)', template)
+        self.assertIn('清晰度：${escapeGptImage2Html(formatGptImage2Resolution(task.resolution))}', template)
+        self.assertIn('const GPT_IMAGE2_CREDIT_COST = 12;', template)
+        self.assertIn('扣除12积分', template)
+        self.assertIn('失败自动返还', template)
+        self.assertIn('gpt-image-model-badge', template)
+        self.assertIn('formatGptImage2ModelLabel(task.model)', template)
+        self.assertIn('getGptImage2CreditCost(task)', template)
 
     def test_gpt_image2_generate_forwards_to_backend(self):
         session = self.client.session
@@ -154,6 +215,7 @@ class GptImage2HomeTests(TestCase):
                 data=json.dumps({
                     'prompt': '古风少女海报',
                     'aspectRatio': '1:1',
+                    'resolution': '4k',
                     'referenceImageUrl': 'https://oss.example.com/ref.png',
                 }),
                 content_type='application/json',
@@ -165,6 +227,7 @@ class GptImage2HomeTests(TestCase):
         backend_client.post.assert_called_once_with('/v1/gpt-image2/generate', {
             'prompt': '古风少女海报',
             'aspectRatio': '1:1',
+            'resolution': '4k',
             'referenceImageUrl': 'https://oss.example.com/ref.png',
         })
 
@@ -190,12 +253,143 @@ class GptImage2HomeTests(TestCase):
         backend_client.get.assert_any_call('/v1/gpt-image2/12')
         backend_client.get.assert_any_call('/v1/gpt-image2/latest')
 
+    def test_gpt_image2_task_list_forwards_to_backend(self):
+        session = self.client.session
+        session['token'] = 'token-1'
+        session.save()
+
+        backend_client = Mock()
+        backend_client.get.return_value = [
+            {'id': 12, 'status': 'running'},
+            {'id': 11, 'status': 'succeeded', 'imageUrl': 'https://oss.example.com/result.png'},
+        ]
+
+        with patch('apps.series.views.get_client', return_value=backend_client):
+            response = self.client.get('/api/v1/gpt-image2/?limit=50')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(response.json()['data']), 2)
+        backend_client.get.assert_called_once_with('/v1/gpt-image2?limit=50')
+
     def test_gpt_image2_running_task_restores_from_local_storage(self):
-        template_path = Path(settings.BASE_DIR) / 'templates/series/series_list.html'
+        template_path = Path(settings.BASE_DIR) / 'templates/series/gpt_image2.html'
         template = template_path.read_text(encoding='utf-8')
 
         self.assertIn("GPT_IMAGE2_TASK_STORAGE_KEY = 'gptImage2LatestTask'", template)
         self.assertIn('function restoreGptImage2TaskFromStorage()', template)
         self.assertIn('persistGptImage2TaskState(task)', template)
         self.assertIn("if (e.key === GPT_IMAGE2_TASK_STORAGE_KEY", template)
-        self.assertIn('restoreGptImage2TaskFromStorage();\n    loadLatestGptImage2Task();', template)
+
+    def test_gpt_image2_submit_does_not_block_while_background_generates(self):
+        template_path = Path(settings.BASE_DIR) / 'templates/series/gpt_image2.html'
+        template = template_path.read_text(encoding='utf-8')
+
+        self.assertIn('提交中...', template)
+        self.assertNotIn('已提交后台生成', template)
+        self.assertIn("setGptImage2Busy(false);", template)
+        self.assertIn('startGptImage2Polling();', template)
+        self.assertIn('const runningTasks = gptImage2Tasks.filter(isGptImage2Running);', template)
+        self.assertIn('restoreGptImage2TaskFromStorage();\n    loadGptImage2Tasks();', template)
+
+    def test_gpt_image2_result_preview_supports_zoom_and_download(self):
+        template_path = Path(settings.BASE_DIR) / 'templates/series/gpt_image2.html'
+        template = template_path.read_text(encoding='utf-8')
+
+        self.assertIn('查看大图', template)
+        self.assertIn('downloadGptImage2Image(imageUrl)', template)
+        self.assertIn('function setGptImage2PreviewScale(scale)', template)
+        self.assertIn('function zoomGptImage2Preview(delta)', template)
+        self.assertIn('function toggleGptImage2PreviewZoom()', template)
+        self.assertIn('id="gptImage2ImagePreviewDownload"', template)
+        self.assertIn("document.getElementById('gptImage2ImagePreviewLarge')?.addEventListener('click', toggleGptImage2PreviewZoom);", template)
+        self.assertIn('<button type="button" class="gpt-image-preview-btn gpt-image-aspect-frame', template)
+        self.assertIn('<img src="${escapeGptImage2Html(imageUrl)}" class="max-h-full max-w-full object-contain transition-transform group-hover:scale-[1.02]" alt="生成结果">', template)
+        self.assertNotIn('查看结果', template)
+        self.assertNotIn('打开原图', template)
+
+    def test_gpt_image2_recent_tasks_are_paginated_three_per_page(self):
+        template_path = Path(settings.BASE_DIR) / 'templates/series/gpt_image2.html'
+        template = template_path.read_text(encoding='utf-8')
+
+        self.assertIn('const GPT_IMAGE2_TASKS_PER_PAGE = 3;', template)
+        self.assertIn('let gptImage2CurrentPage = 1;', template)
+        self.assertIn('const pageTasks = gptImage2Tasks.slice(startIndex, startIndex + GPT_IMAGE2_TASKS_PER_PAGE);', template)
+        self.assertIn('id="gptImage2Pagination"', template)
+        self.assertIn('id="gptImage2PrevPage"', template)
+        self.assertIn('id="gptImage2NextPage"', template)
+        self.assertIn('function renderGptImage2Pagination()', template)
+        self.assertIn('function changeGptImage2Page(delta)', template)
+        self.assertIn('一页最多 3 条', template)
+
+
+class CreditAdminDashboardTests(TestCase):
+    def test_credit_admin_page_is_only_visible_to_kudo_shinichi(self):
+        response = self.client.get('/admin/credits/')
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response['Location'], '/auth/login/')
+
+        session = self.client.session
+        session['token'] = 'token-2'
+        session['nickname'] = '普通用户'
+        session['email'] = 'creator@example.com'
+        session.save()
+
+        response = self.client.get('/admin/credits/')
+        self.assertEqual(response.status_code, 403)
+
+        session = self.client.session
+        session['token'] = 'token-1'
+        session['nickname'] = '工藤新一'
+        session['email'] = '1198693014@qq.com'
+        session.save()
+
+        response = self.client.get('/admin/credits/')
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, '积分管理后台')
+
+    def test_credit_admin_dashboard_api_forwards_to_backend(self):
+        session = self.client.session
+        session['token'] = 'token-1'
+        session['nickname'] = '工藤新一'
+        session['email'] = '1198693014@qq.com'
+        session.save()
+
+        backend_client = Mock()
+        backend_client.get.return_value = {
+            'totalUsers': 2,
+            'totalBalance': 10928,
+            'hourlyUsage': [],
+            'recentRecords': [],
+        }
+
+        with patch('apps.series.views.get_client', return_value=backend_client):
+            response = self.client.get('/api/admin/credits/dashboard/?hours=24&recordPage=2&recordPageSize=15')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['data']['totalBalance'], 10928)
+        backend_client.get.assert_called_once_with('/v1/admin/credits/dashboard?hours=24&recordPage=2&recordPageSize=15')
+
+    def test_credit_admin_template_contains_chart_and_tables(self):
+        template_path = Path(settings.BASE_DIR) / 'templates/credits/admin_dashboard.html'
+        template = template_path.read_text(encoding='utf-8')
+
+        self.assertIn('id="creditUsageChart"', template)
+        self.assertIn('drawCreditUsageChart', template)
+        self.assertIn('用户积分余额', template)
+        self.assertIn('最近积分流水', template)
+        self.assertIn('近 3 天', template)
+        self.assertIn('id="creditRecordPagination"', template)
+        self.assertIn('function changeCreditRecordPage(delta)', template)
+        self.assertIn('changeCreditRecordPage(1)', template)
+        self.assertIn('renderTodayDeductedDetails', template)
+        self.assertIn('id="todayDeductedDetails"', template)
+
+    def test_credit_admin_chart_is_responsive_and_labeled(self):
+        template_path = Path(settings.BASE_DIR) / 'templates/credits/admin_dashboard.html'
+        template = template_path.read_text(encoding='utf-8')
+
+        self.assertIn('resizeCreditUsageCanvas', template)
+        self.assertIn('window.devicePixelRatio', template)
+        self.assertIn('drawYAxisLabels', template)
+        self.assertIn('drawXAxisLabels', template)
+        self.assertIn('window.addEventListener(\'resize\'', template)
