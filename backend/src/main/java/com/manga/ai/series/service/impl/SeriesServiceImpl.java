@@ -111,11 +111,37 @@ public class SeriesServiceImpl implements SeriesService {
     @Value("${storage.project-path:./storage/projects}")
     private String projectPath;
 
+    private Long requireCurrentUserId() {
+        Long userId = UserContextHolder.getUserId();
+        if (userId == null) {
+            throw new BusinessException(401, "请先登录");
+        }
+        return userId;
+    }
+
+    private Series getOwnedSeriesOrThrow(Long seriesId) {
+        Long userId = requireCurrentUserId();
+        Series series = seriesMapper.selectById(seriesId);
+        if (series == null || !userId.equals(series.getUserId())) {
+            throw new BusinessException(404, "系列不存在");
+        }
+        return series;
+    }
+
+    private Series getOwnedSeriesIncludeDeletedOrThrow(Long seriesId) {
+        Long userId = requireCurrentUserId();
+        Series series = seriesMapper.selectByIdIncludeDeleted(seriesId);
+        if (series == null || !userId.equals(series.getUserId())) {
+            throw new BusinessException(404, "系列不存在");
+        }
+        return series;
+    }
+
     @Override
     @Transactional(rollbackFor = Exception.class)
     public SeriesDetailVO initSeries(SeriesInitRequest request) {
         // 获取当前用户ID
-        Long userId = UserContextHolder.getUserId();
+        Long userId = requireCurrentUserId();
 
         // 1. 创建系列记录
         Series series = new Series();
@@ -160,10 +186,7 @@ public class SeriesServiceImpl implements SeriesService {
 
     @Override
     public SeriesDetailVO getSeriesDetail(Long seriesId) {
-        Series series = seriesMapper.selectById(seriesId);
-        if (series == null) {
-            throw new BusinessException("系列不存在");
-        }
+        Series series = getOwnedSeriesOrThrow(seriesId);
 
         SeriesDetailVO vo = convertToVO(series);
 
@@ -193,28 +216,24 @@ public class SeriesServiceImpl implements SeriesService {
 
     @Override
     public List<SeriesDetailVO> getSeriesList(Integer page, Integer pageSize) {
-        Long userId = UserContextHolder.getUserId();
+        Long userId = requireCurrentUserId();
         int offset = (page - 1) * pageSize;
         return seriesMapper.selectSeriesListCards(userId, pageSize, offset);
     }
 
     @Override
     public Integer getSeriesCount() {
-        Long userId = UserContextHolder.getUserId();
+        Long userId = requireCurrentUserId();
         LambdaQueryWrapper<Series> wrapper = new LambdaQueryWrapper<>();
-        if (userId != null) {
-            wrapper.eq(Series::getUserId, userId);
-        }
+        wrapper.eq(Series::getUserId, userId);
         return Math.toIntExact(seriesMapper.selectCount(wrapper));
     }
 
     @Override
     public List<SeriesDetailVO> getAllSeries() {
-        Long userId = UserContextHolder.getUserId();
+        Long userId = requireCurrentUserId();
         LambdaQueryWrapper<Series> wrapper = new LambdaQueryWrapper<>();
-        if (userId != null) {
-            wrapper.eq(Series::getUserId, userId);
-        }
+        wrapper.eq(Series::getUserId, userId);
         wrapper.orderByDesc(Series::getCreatedAt);
         List<Series> seriesList = seriesMapper.selectList(wrapper);
 
@@ -241,10 +260,7 @@ public class SeriesServiceImpl implements SeriesService {
 
     @Override
     public SeriesProgressVO getSeriesProgress(Long seriesId) {
-        Series series = seriesMapper.selectById(seriesId);
-        if (series == null) {
-            throw new BusinessException("系列不存在");
-        }
+        Series series = getOwnedSeriesOrThrow(seriesId);
 
         SeriesProgressVO progress = new SeriesProgressVO();
         progress.setSeriesId(seriesId);
@@ -290,10 +306,7 @@ public class SeriesServiceImpl implements SeriesService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void lockSeries(Long seriesId) {
-        Series series = seriesMapper.selectById(seriesId);
-        if (series == null) {
-            throw new BusinessException("系列不存在");
-        }
+        Series series = getOwnedSeriesOrThrow(seriesId);
 
         if (SeriesStatus.LOCKED.getCode().equals(series.getStatus())) {
             throw new BusinessException("系列已锁定");
@@ -325,10 +338,7 @@ public class SeriesServiceImpl implements SeriesService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void updateSeries(Long seriesId, String seriesName, String outline, String background, String styleKeywords) {
-        Series series = seriesMapper.selectById(seriesId);
-        if (series == null) {
-            throw new BusinessException("系列不存在");
-        }
+        Series series = getOwnedSeriesOrThrow(seriesId);
 
         // 标题、背景设定、剧本大纲不受锁定限制，始终可修改
         if (seriesName != null && !seriesName.trim().isEmpty()) {
@@ -705,11 +715,9 @@ public class SeriesServiceImpl implements SeriesService {
 
     @Override
     public List<SeriesDetailVO> getLockedSeries() {
-        Long userId = UserContextHolder.getUserId();
+        Long userId = requireCurrentUserId();
         LambdaQueryWrapper<Series> wrapper = new LambdaQueryWrapper<>();
-        if (userId != null) {
-            wrapper.eq(Series::getUserId, userId);
-        }
+        wrapper.eq(Series::getUserId, userId);
         // 状态为 LOCKED(2) 或 LOCKED(3，角色锁定后系列状态)
         wrapper.in(Series::getStatus, SeriesStatus.LOCKED.getCode(), 3)
                 .orderByDesc(Series::getCreatedAt);
@@ -738,10 +746,7 @@ public class SeriesServiceImpl implements SeriesService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void deleteSeries(Long seriesId) {
-        Series series = seriesMapper.selectById(seriesId);
-        if (series == null) {
-            throw new BusinessException("系列不存在");
-        }
+        getOwnedSeriesOrThrow(seriesId);
         // 使用自定义SQL绕过@TableLogic拦截
         seriesMapper.softDeleteById(seriesId, LocalDateTime.now());
         log.info("系列已移入回收站: seriesId={}", seriesId);
@@ -749,13 +754,8 @@ public class SeriesServiceImpl implements SeriesService {
 
     @Override
     public List<SeriesDetailVO> getTrashList() {
-        Long userId = UserContextHolder.getUserId();
-        List<Series> seriesList;
-        if (userId != null) {
-            seriesList = seriesMapper.selectTrashListByUserId(userId);
-        } else {
-            seriesList = seriesMapper.selectTrashList();
-        }
+        Long userId = requireCurrentUserId();
+        List<Series> seriesList = seriesMapper.selectTrashListByUserId(userId);
 
         // 批量查询角色数量
         java.util.Map<Long, Integer> roleCountMap = new java.util.HashMap<>();
@@ -780,10 +780,7 @@ public class SeriesServiceImpl implements SeriesService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void restoreSeries(Long seriesId) {
-        Series series = seriesMapper.selectByIdIncludeDeleted(seriesId);
-        if (series == null) {
-            throw new BusinessException("系列不存在");
-        }
+        getOwnedSeriesIncludeDeletedOrThrow(seriesId);
         // 使用自定义SQL绕过@TableLogic拦截
         seriesMapper.restoreById(seriesId);
         log.info("系列已恢复: seriesId={}", seriesId);
@@ -792,6 +789,7 @@ public class SeriesServiceImpl implements SeriesService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public void permanentDeleteSeries(Long seriesId) {
+        getOwnedSeriesIncludeDeletedOrThrow(seriesId);
         seriesMapper.realDeleteById(seriesId);
         log.info("系列已彻底删除: seriesId={}", seriesId);
     }
@@ -799,10 +797,7 @@ public class SeriesServiceImpl implements SeriesService {
     @Override
     public SeriesVideoAssetsVO getSeriesVideoAssets(Long seriesId) {
         // 1. 获取系列信息
-        Series series = seriesMapper.selectById(seriesId);
-        if (series == null) {
-            throw new BusinessException("系列不存在");
-        }
+        Series series = getOwnedSeriesOrThrow(seriesId);
 
         // 2. 获取该系列下所有剧集（@TableLogic会自动过滤已删除的）
         LambdaQueryWrapper<Episode> episodeWrapper = new LambdaQueryWrapper<>();

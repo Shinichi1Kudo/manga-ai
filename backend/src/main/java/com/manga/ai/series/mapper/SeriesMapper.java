@@ -26,12 +26,6 @@ public interface SeriesMapper extends BaseMapper<Series> {
                                                @Param("offset") Integer offset);
 
     /**
-     * 查询回收站列表（已删除的系列）
-     */
-    @Select("SELECT * FROM series WHERE is_deleted = 1 ORDER BY deleted_at DESC")
-    List<Series> selectTrashList();
-
-    /**
      * 查询回收站列表（按用户过滤）
      */
     @Select("SELECT * FROM series WHERE is_deleted = 1 AND user_id = #{userId} ORDER BY deleted_at DESC")

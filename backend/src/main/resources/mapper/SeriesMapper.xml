@@ -16,9 +16,7 @@
             ON r.series_id = s.id
             AND r.is_deleted = 0
         WHERE s.is_deleted = 0
-        <if test="userId != null">
             AND s.user_id = #{userId}
-        </if>
         GROUP BY
             s.id,
             s.series_name,

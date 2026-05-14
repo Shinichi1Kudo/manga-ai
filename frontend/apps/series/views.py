@@ -86,7 +86,8 @@ def series_list(request):
             response['Expires'] = '0'
             return response
         except BackendAPIError as e:
-            return JsonResponse({'data': [], 'error': e.message}, status=500)
+            status = 401 if e.status_code == 401 else 500
+            return JsonResponse({'code': e.status_code, 'message': e.message, 'data': []}, status=status)
 
     return render(request, 'series/series_list.html', {
         'processing_series_ids': json.dumps([]),

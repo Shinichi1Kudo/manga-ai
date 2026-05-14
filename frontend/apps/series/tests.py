@@ -103,6 +103,51 @@ class SeriesListWebSocketTests(TestCase):
         self.assertNotIn('localhost:8081/api/ws', template)
 
 
+class SeriesListIsolationTests(TestCase):
+    def test_series_list_api_forwards_session_token_to_backend(self):
+        session = self.client.session
+        session['token'] = 'token-7'
+        session.save()
+
+        backend_client = Mock()
+        backend_client.get.return_value = {
+            'list': [{'id': 1, 'seriesName': '自己的系列'}],
+            'total': 1,
+            'page': 1,
+            'pageSize': 9,
+        }
+
+        with patch('apps.series.views.BackendClient', return_value=backend_client) as backend_client_cls:
+            response = self.client.get('/api/series/list/?page=1&pageSize=9')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['data']['total'], 1)
+        backend_client_cls.assert_called_once_with(token='token-7')
+        backend_client.get.assert_called_once_with('/v1/series/list?page=1&pageSize=9')
+
+    def test_series_list_api_returns_401_when_backend_reports_unauthenticated(self):
+        session = self.client.session
+        session['token'] = 'expired-token'
+        session.save()
+
+        backend_client = Mock()
+        backend_client.get.side_effect = BackendAPIError(401, '请先登录', {'code': 401})
+
+        with patch('apps.series.views.get_client', return_value=backend_client):
+            response = self.client.get('/api/series/list/?page=1&pageSize=9')
+
+        self.assertEqual(response.status_code, 401)
+        self.assertEqual(response.json()['message'], '请先登录')
+
+    def test_home_template_handles_series_list_unauthenticated_state(self):
+        template_path = Path(settings.BASE_DIR) / 'templates/series/series_list.html'
+        template = template_path.read_text(encoding='utf-8')
+
+        self.assertIn('response.status === 401', template)
+        self.assertIn('登录后查看我的系列', template)
+        self.assertIn('前往登录', template)
+
+
 class SiteBrandingTests(TestCase):
     def test_visible_templates_use_haidai_site_name(self):
         template_root = Path(settings.BASE_DIR) / 'templates'

@@ -237,6 +237,21 @@ class GptImage2ServiceImplTest {
     }
 
     @Test
+    void persistGeneratedImageReuploadsExternalOssUrlToOwnBucket() {
+        OssService ossService = mock(OssService.class);
+        String externalOssUrl = "https://airiver-bucket.oss-cn-beijing.aliyuncs.com/chatgpt/a71c3ba1-result.png";
+        when(ossService.uploadImageFromUrl(externalOssUrl, "gpt-image2/results"))
+                .thenReturn("https://movie-agent.oss-cn-beijing.aliyuncs.com/gpt-image2/results/owned.png");
+        GptImage2ServiceImpl service = new GptImage2ServiceImpl(ossService, mock(UserService.class), null, directExecutor());
+
+        String result = service.persistGeneratedImage(externalOssUrl);
+
+        assertThat(result).contains("gpt-image2/results/owned.png");
+        verify(ossService).uploadImageFromUrl(externalOssUrl, "gpt-image2/results");
+        verify(ossService, never()).refreshUrl(anyString());
+    }
+
+    @Test
     void executeTaskRetriesPrematureEofBeforeMarkingTaskFailed() {
         GptImage2TaskMapper mapper = mock(GptImage2TaskMapper.class);
         RestTemplate restTemplate = mock(RestTemplate.class);

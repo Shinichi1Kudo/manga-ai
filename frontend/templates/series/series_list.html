@@ -313,10 +313,10 @@ function renderAnonymousSeriesPrompt() {
             <div class="w-14 h-14 mx-auto mb-4 rounded-2xl bg-gradient-to-br from-violet-500/25 to-cyan-500/25 border border-white/10 flex items-center justify-center">
                 <i data-lucide="log-in" class="w-7 h-7 text-cyan-100"></i>
             </div>
-            <h3 class="text-lg font-semibold mb-2">登录后查看你的系列</h3>
+            <h3 class="text-lg font-semibold mb-2">登录后查看我的系列</h3>
             <p class="text-white/50 text-sm mb-5">当前页面可先浏览功能展示，登录后即可创建短剧、管理资产和使用主体替换。</p>
             <button type="button" onclick="showLoginRequiredModal()" class="px-5 py-2.5 rounded-xl bg-gradient-to-r from-violet-600 to-blue-600 hover:from-violet-500 hover:to-blue-500 transition-colors font-medium">
-                去登录
+                前往登录
             </button>
         </div>
     `;
@@ -526,7 +526,16 @@ function loadSeries(page) {
 
     // 添加时间戳防止缓存
     fetch(`/api/series/list/?page=${page}&pageSize=${pageSize}&_t=${Date.now()}`)
-        .then(response => response.json())
+        .then(response => {
+            if (response.status === 401) {
+                return response.json().then(result => {
+                    const error = new Error(result.message || '请先登录');
+                    error.status = 401;
+                    throw error;
+                });
+            }
+            return response.json();
+        })
         .then(result => {
             if (result.data && result.data.list && result.data.list.length > 0) {
                 totalSeries = result.data.total;
@@ -545,6 +554,10 @@ function loadSeries(page) {
             }
         })
         .catch(err => {
+            if (err.status === 401) {
+                renderAnonymousSeriesPrompt();
+                return;
+            }
             container.innerHTML = '<div class="glass-card p-8 text-center col-span-full"><p class="text-red-400">加载失败: ' + err.message + '</p></div>';
         });
 }

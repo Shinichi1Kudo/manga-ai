@@ -326,9 +326,6 @@ public class GptImage2ServiceImpl implements GptImage2Service {
         if (isDataImageUrl(imageUrl)) {
             return uploadDataImage(imageUrl);
         }
-        if (imageUrl != null && imageUrl.contains("aliyuncs.com")) {
-            return ossService.refreshUrl(imageUrl);
-        }
         String ossUrl = ossService.uploadImageFromUrl(imageUrl, "gpt-image2/results");
         if (!hasText(ossUrl)) {
             throw new BusinessException("生成图片保存失败");
