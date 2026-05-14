@@ -8,7 +8,7 @@
     <!-- Google Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Noto+Sans+SC:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Noto+Sans+SC:wght@300;400;500;600;700&family=Noto+Serif+SC:wght@700;900&display=swap" rel="stylesheet">
 
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
@@ -228,6 +228,69 @@
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
             background-clip: text;
+        }
+
+        .brand-wordmark {
+            display: inline-flex;
+            align-items: baseline;
+            gap: 10px;
+            line-height: 1;
+            white-space: nowrap;
+        }
+
+        .brand-name {
+            position: relative;
+            display: inline-block;
+            font-family: 'Noto Serif SC', 'Songti SC', 'STSong', serif;
+            font-weight: 900;
+            letter-spacing: 0;
+            background: linear-gradient(135deg, #ffffff 0%, #7dd3fc 36%, #34d399 72%, #fde68a 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            text-shadow: 0 10px 26px rgba(20, 184, 166, 0.28);
+        }
+
+        .brand-name::after {
+            content: '';
+            position: absolute;
+            left: 8%;
+            right: 8%;
+            bottom: -0.14em;
+            height: 2px;
+            border-radius: 999px;
+            background: linear-gradient(90deg, rgba(45, 212, 191, 0), rgba(45, 212, 191, 0.9), rgba(253, 230, 138, 0.75), rgba(45, 212, 191, 0));
+            box-shadow: 0 0 16px rgba(45, 212, 191, 0.45);
+        }
+
+        .brand-subtitle {
+            font-family: 'Inter', 'Noto Sans SC', sans-serif;
+            font-weight: 700;
+            letter-spacing: 0;
+            color: rgba(226, 232, 240, 0.82);
+            text-shadow: 0 8px 24px rgba(15, 23, 42, 0.45);
+        }
+
+        .nav-brand-wordmark .brand-name {
+            font-size: 26px;
+        }
+
+        .nav-brand-wordmark .brand-subtitle {
+            font-size: 15px;
+        }
+
+        .hero-brand-wordmark {
+            justify-content: center;
+            gap: 14px;
+            white-space: normal;
+        }
+
+        .hero-brand-wordmark .brand-name {
+            font-size: 56px;
+        }
+
+        .hero-brand-wordmark .brand-subtitle {
+            font-size: 34px;
         }
 
         /* Neon Button */
@@ -517,6 +580,32 @@
 
         /* Responsive */
         @media (max-width: 768px) {
+            .nav-brand-wordmark {
+                gap: 7px;
+            }
+
+            .nav-brand-wordmark .brand-name {
+                font-size: 22px;
+            }
+
+            .nav-brand-wordmark .brand-subtitle {
+                display: none;
+            }
+
+            .hero-brand-wordmark {
+                flex-direction: column;
+                align-items: center;
+                gap: 12px;
+            }
+
+            .hero-brand-wordmark .brand-name {
+                font-size: 48px;
+            }
+
+            .hero-brand-wordmark .brand-subtitle {
+                font-size: 24px;
+            }
+
             .image-grid {
                 grid-template-columns: repeat(2, 1fr);
             }
@@ -545,7 +634,10 @@
                 <div class="w-10 h-10 rounded-xl bg-gradient-to-br from-violet-500 to-blue-500 flex items-center justify-center group-hover:scale-110 transition-transform">
                     <i data-lucide="clapperboard" class="w-5 h-5"></i>
                 </div>
-                <span class="text-xl font-bold gradient-text">海带 AI 智能短剧制作系统</span>
+                <span class="brand-wordmark nav-brand-wordmark" aria-label="海带 AI 智能短剧制作系统">
+                    <span class="brand-name">海带</span>
+                    <span class="brand-subtitle">AI 智能短剧制作系统</span>
+                </span>
             </a>
 
             <div class="flex items-center gap-4">

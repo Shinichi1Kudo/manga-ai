@@ -8,7 +8,7 @@
     <!-- Google Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Noto+Sans+SC:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Noto+Sans+SC:wght@300;400;500;600;700&family=Noto+Serif+SC:wght@700;900&display=swap" rel="stylesheet">
 
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
@@ -199,13 +199,51 @@
         }
 
         .logo-text {
-            font-size: 32px;
-            font-weight: 700;
-            background: linear-gradient(135deg, #fff 0%, #c4b5fd 50%, #67e8f9 100%);
+            display: flex;
+            justify-content: center;
+        }
+
+        .brand-wordmark {
+            display: inline-flex;
+            align-items: baseline;
+            justify-content: center;
+            gap: 10px;
+            line-height: 1;
+            white-space: nowrap;
+        }
+
+        .brand-name {
+            position: relative;
+            display: inline-block;
+            font-family: 'Noto Serif SC', 'Songti SC', 'STSong', serif;
+            font-size: 38px;
+            font-weight: 900;
+            letter-spacing: 0;
+            background: linear-gradient(135deg, #ffffff 0%, #c4b5fd 34%, #67e8f9 72%, #fde68a 100%);
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
             background-clip: text;
-            letter-spacing: -0.5px;
+            text-shadow: 0 12px 28px rgba(34, 211, 238, 0.24);
+        }
+
+        .brand-name::after {
+            content: '';
+            position: absolute;
+            left: 8%;
+            right: 8%;
+            bottom: -0.14em;
+            height: 2px;
+            border-radius: 999px;
+            background: linear-gradient(90deg, rgba(34, 211, 238, 0), rgba(34, 211, 238, 0.85), rgba(253, 230, 138, 0.72), rgba(34, 211, 238, 0));
+            box-shadow: 0 0 16px rgba(34, 211, 238, 0.36);
+        }
+
+        .brand-subtitle {
+            font-family: 'Inter', 'Noto Sans SC', sans-serif;
+            font-size: 20px;
+            font-weight: 700;
+            letter-spacing: 0;
+            color: rgba(226, 232, 240, 0.84);
         }
 
         /* 标题 */
@@ -424,6 +462,18 @@
                 margin: 16px;
                 padding: 32px 24px;
             }
+
+            .brand-wordmark {
+                gap: 8px;
+            }
+
+            .brand-name {
+                font-size: 34px;
+            }
+
+            .brand-subtitle {
+                font-size: 16px;
+            }
         }
     </style>
 </head>
@@ -450,7 +500,12 @@
             <div class="logo-icon-wrap">
                 <i data-lucide="sparkles" class="w-7 h-7"></i>
             </div>
-            <div class="logo-text">海带 AI 智能短剧制作系统</div>
+            <div class="logo-text">
+                <span class="brand-wordmark" aria-label="海带 AI 智能短剧制作系统">
+                    <span class="brand-name">海带</span>
+                    <span class="brand-subtitle">AI 智能短剧制作系统</span>
+                </span>
+            </div>
         </div>
 
         <h1 class="auth-title">欢迎回来</h1>

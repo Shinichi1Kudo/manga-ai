@@ -99,7 +99,20 @@ class SiteBrandingTests(TestCase):
 
         self.assertIn('海带 AI 智能短剧制作系统', combined)
         self.assertNotIn('Manga AI', combined)
-        self.assertNotIn('>AI 智能短剧制作系统<', combined)
+        self.assertIn('aria-label="海带 AI 智能短剧制作系统"', combined)
+
+    def test_haidai_brand_wordmark_has_distinct_styling(self):
+        template_root = Path(settings.BASE_DIR) / 'templates'
+        combined = '\n'.join([
+            (template_root / 'base.html').read_text(encoding='utf-8'),
+            (template_root / 'series/series_list.html').read_text(encoding='utf-8'),
+            (template_root / 'auth/login.html').read_text(encoding='utf-8'),
+            (template_root / 'auth/register.html').read_text(encoding='utf-8'),
+        ])
+
+        self.assertIn('brand-wordmark', combined)
+        self.assertIn('brand-name">海带</span>', combined)
+        self.assertIn('brand-subtitle">AI 智能短剧制作系统</span>', combined)
 
 
 class SubjectReplacementCreditButtonTests(TestCase):
