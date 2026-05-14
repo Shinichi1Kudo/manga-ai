@@ -80,3 +80,23 @@ class SeriesListWebSocketTests(TestCase):
 
         self.assertIn("new SockJS('/api/ws')", template)
         self.assertNotIn('localhost:8081/api/ws', template)
+
+
+class SiteBrandingTests(TestCase):
+    def test_visible_templates_use_haidai_site_name(self):
+        template_root = Path(settings.BASE_DIR) / 'templates'
+        templates = [
+            template_root / 'base.html',
+            template_root / 'series/series_list.html',
+            template_root / 'auth/login.html',
+            template_root / 'auth/register.html',
+            template_root / 'subject_replacement/index.html',
+            template_root / 'credits/credit_records.html',
+            template_root / 'asset/library.html',
+            template_root / 'user/settings.html',
+        ]
+        combined = '\n'.join(path.read_text(encoding='utf-8') for path in templates)
+
+        self.assertIn('海带 AI 智能短剧制作系统', combined)
+        self.assertNotIn('Manga AI', combined)
+        self.assertNotIn('>AI 智能短剧制作系统<', combined)
