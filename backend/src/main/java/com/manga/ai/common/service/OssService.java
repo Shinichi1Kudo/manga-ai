@@ -2,8 +2,10 @@ package com.manga.ai.common.service;
 
 import com.aliyun.oss.OSS;
 import com.aliyun.oss.OSSClientBuilder;
+import com.aliyun.oss.model.GeneratePresignedUrlRequest;
 import com.aliyun.oss.model.ObjectMetadata;
 import com.aliyun.oss.model.PutObjectRequest;
+import com.aliyun.oss.model.ResponseHeaderOverrides;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -271,6 +273,28 @@ public class OssService {
             return toHttpsUrl(url.toString());
         } catch (Exception e) {
             log.error("生成签名URL失败: {}", objectKey, e);
+            return null;
+        }
+    }
+
+    /**
+     * 获取适合 img/favicon 直接展示的签名URL，覆盖 OSS 对象上的下载响应头。
+     */
+    public String getInlineImagePresignedUrl(String objectKey, String contentType) {
+        try {
+            Date expiration = new Date(System.currentTimeMillis() + (long) urlExpirationYears * 365 * 24 * 60 * 60 * 1000L);
+            GeneratePresignedUrlRequest request = new GeneratePresignedUrlRequest(bucketName, objectKey);
+            request.setExpiration(expiration);
+
+            ResponseHeaderOverrides headers = new ResponseHeaderOverrides();
+            headers.setContentDisposition("inline");
+            request.setResponseHeaders(headers);
+
+            URL url = ossClient.generatePresignedUrl(request);
+            log.info("生成图片内联签名URL成功: {}", objectKey);
+            return toHttpsUrl(url.toString());
+        } catch (Exception e) {
+            log.error("生成图片内联签名URL失败: {}", objectKey, e);
             return null;
         }
     }

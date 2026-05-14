@@ -1,6 +1,7 @@
 package com.manga.ai.common.service;
 
 import com.aliyun.oss.OSS;
+import com.aliyun.oss.model.GeneratePresignedUrlRequest;
 import org.junit.jupiter.api.Test;
 
 import java.lang.reflect.Field;
@@ -10,6 +11,7 @@ import java.util.Date;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
@@ -46,6 +48,28 @@ class OssServiceTest {
 
         assertThat(url).startsWith("https://movie-agent.oss-cn-beijing.aliyuncs.com/brand/site-logo.png");
         verify(ossClient).putObject(eq("movie-agent"), eq("brand/site-logo.png"), any(ByteArrayInputStream.class), any());
+    }
+
+    @Test
+    void getInlineImagePresignedUrlForcesImageHeadersForImgTags() throws Exception {
+        OssService service = new OssService();
+        OSS ossClient = mock(OSS.class);
+        when(ossClient.generatePresignedUrl(any(GeneratePresignedUrlRequest.class)))
+                .thenReturn(new URL("http://movie-agent.oss-cn-beijing.aliyuncs.com/brand/site-logo.png?response-content-disposition=inline"));
+        setField(service, "ossClient", ossClient);
+        setField(service, "bucketName", "movie-agent");
+        setField(service, "urlExpirationYears", 10);
+
+        String url = service.getInlineImagePresignedUrl("brand/site-logo.png", "image/png");
+
+        assertThat(url).startsWith("https://movie-agent.oss-cn-beijing.aliyuncs.com/brand/site-logo.png");
+        verify(ossClient).generatePresignedUrl(argThat(request ->
+                "movie-agent".equals(request.getBucketName())
+                        && "brand/site-logo.png".equals(request.getKey())
+                        && request.getResponseHeaders() != null
+                        && request.getResponseHeaders().getContentType() == null
+                        && "inline".equals(request.getResponseHeaders().getContentDisposition())
+        ));
     }
 
     private static void setField(Object target, String fieldName, Object value) throws Exception {

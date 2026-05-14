@@ -38,7 +38,7 @@ public class CommonController {
      */
     @GetMapping("/site-logo")
     public Result<Map<String, String>> getSiteLogo() {
-        String url = ossService.getPresignedUrl("brand/site-logo.png");
+        String url = ossService.getInlineImagePresignedUrl("brand/site-logo.png", "image/png");
         if (url != null) {
             return Result.success(Map.of("url", url));
         }

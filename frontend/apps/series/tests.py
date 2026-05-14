@@ -22,13 +22,22 @@ class AnonymousPublicEndpointTests(TestCase):
     def test_site_logo_endpoint_is_public(self):
         backend_client = Mock()
         backend_client.get.return_value = {'url': 'https://oss.example.com/brand/site-logo.png'}
+        logo_response = Mock()
+        logo_response.status_code = 200
+        logo_response.content = b'png-bytes'
+        logo_response.headers = {'Content-Type': 'image/png'}
 
-        with patch('apps.series.views.BackendClient', return_value=backend_client):
+        with patch('apps.series.views.BackendClient', return_value=backend_client), \
+                patch('apps.series.views.requests.get', return_value=logo_response) as requests_get:
             response = self.client.get('/api/v1/common/site-logo/')
 
-        self.assertEqual(response.status_code, 302)
-        self.assertEqual(response['Location'], 'https://oss.example.com/brand/site-logo.png')
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.content, b'png-bytes')
+        self.assertEqual(response['Content-Type'], 'image/png')
+        self.assertEqual(response['Content-Disposition'], 'inline; filename="site-logo.png"')
+        self.assertEqual(response['Cache-Control'], 'public, max-age=86400')
         backend_client.get.assert_called_once_with('/v1/common/site-logo')
+        requests_get.assert_called_once_with('https://oss.example.com/brand/site-logo.png', timeout=15)
 
     def test_private_api_request_does_not_store_login_next(self):
         response = self.client.get('/api/user/info/')
