@@ -6,8 +6,8 @@
 
 ## 改动
 
-- 新增后端 `GET /v1/common/site-logo`，返回 `brand/site-logo.png` 的 OSS 签名 URL。
-- 前端新增 `/api/v1/common/site-logo/` 代理，导航、首页 Logo、登录/注册页品牌图和 favicon 均使用该公共入口。
+- 新增后端 `GET /v1/common/site-logo`，返回 `brand/haidai-logo.png` 的 OSS 签名 URL。
+- 前端新增 `/site-logo.png` 图片代理，导航、首页 Logo、登录/注册页品牌图和 favicon 均使用该公共入口，避免服务器把 `/api/v1/common/site-logo/` 转发到后端 JSON 接口导致图片裂开。
 - 新增工藤新一专属积分管理后台 `/admin/credits/`。
 - 后端新增 `GET /v1/admin/credits/dashboard`，聚合用户余额、今日消耗用户明细、近 3 天积分流水、分页信息和趋势数据。
 - 前端后台页新增趋势图、用户余额列表、今日消耗详情和最近流水分页。

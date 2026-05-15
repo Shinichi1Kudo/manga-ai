@@ -38,16 +38,16 @@ class OssServiceTest {
     void uploadImageToKeyStoresStableObjectKey() throws Exception {
         OssService service = new OssService();
         OSS ossClient = mock(OSS.class);
-        when(ossClient.generatePresignedUrl(eq("movie-agent"), eq("brand/site-logo.png"), any(Date.class)))
-                .thenReturn(new URL("http://movie-agent.oss-cn-beijing.aliyuncs.com/brand/site-logo.png?Expires=1"));
+        when(ossClient.generatePresignedUrl(eq("movie-agent"), eq("brand/haidai-logo.png"), any(Date.class)))
+                .thenReturn(new URL("http://movie-agent.oss-cn-beijing.aliyuncs.com/brand/haidai-logo.png?Expires=1"));
         setField(service, "ossClient", ossClient);
         setField(service, "bucketName", "movie-agent");
         setField(service, "urlExpirationYears", 10);
 
-        String url = service.uploadImageToKey(new byte[]{1, 2, 3}, "brand/site-logo.png", "image/png");
+        String url = service.uploadImageToKey(new byte[]{1, 2, 3}, "brand/haidai-logo.png", "image/png");
 
-        assertThat(url).startsWith("https://movie-agent.oss-cn-beijing.aliyuncs.com/brand/site-logo.png");
-        verify(ossClient).putObject(eq("movie-agent"), eq("brand/site-logo.png"), any(ByteArrayInputStream.class), any());
+        assertThat(url).startsWith("https://movie-agent.oss-cn-beijing.aliyuncs.com/brand/haidai-logo.png");
+        verify(ossClient).putObject(eq("movie-agent"), eq("brand/haidai-logo.png"), any(ByteArrayInputStream.class), any());
     }
 
     @Test
@@ -55,17 +55,17 @@ class OssServiceTest {
         OssService service = new OssService();
         OSS ossClient = mock(OSS.class);
         when(ossClient.generatePresignedUrl(any(GeneratePresignedUrlRequest.class)))
-                .thenReturn(new URL("http://movie-agent.oss-cn-beijing.aliyuncs.com/brand/site-logo.png?response-content-disposition=inline"));
+                .thenReturn(new URL("http://movie-agent.oss-cn-beijing.aliyuncs.com/brand/haidai-logo.png?response-content-disposition=inline"));
         setField(service, "ossClient", ossClient);
         setField(service, "bucketName", "movie-agent");
         setField(service, "urlExpirationYears", 10);
 
-        String url = service.getInlineImagePresignedUrl("brand/site-logo.png", "image/png");
+        String url = service.getInlineImagePresignedUrl("brand/haidai-logo.png", "image/png");
 
-        assertThat(url).startsWith("https://movie-agent.oss-cn-beijing.aliyuncs.com/brand/site-logo.png");
+        assertThat(url).startsWith("https://movie-agent.oss-cn-beijing.aliyuncs.com/brand/haidai-logo.png");
         verify(ossClient).generatePresignedUrl(argThat(request ->
                 "movie-agent".equals(request.getBucketName())
-                        && "brand/site-logo.png".equals(request.getKey())
+                        && "brand/haidai-logo.png".equals(request.getKey())
                         && request.getResponseHeaders() != null
                         && request.getResponseHeaders().getContentType() == null
                         && "inline".equals(request.getResponseHeaders().getContentDisposition())

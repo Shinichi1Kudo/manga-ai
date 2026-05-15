@@ -194,6 +194,7 @@ urlpatterns = [
     path('api/v1/shots/episode/<int:episode_id>/reorder', views.shot_reorder, name='shot_reorder'),
 
     # 联系我们图片
+    path('site-logo.png', views.site_logo, name='site_logo_png'),
     path('api/v1/common/contact-image/', views.contact_image, name='contact_image'),
     path('api/v1/common/site-logo/', views.site_logo, name='site_logo'),
     path('api/v1/common/showcase-assets/', views.showcase_assets, name='showcase_assets'),

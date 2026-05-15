@@ -17,6 +17,8 @@ import java.util.Map;
 @RequiredArgsConstructor
 public class CommonController {
 
+    static final String SITE_LOGO_OBJECT_KEY = "brand/haidai-logo.png";
+
     private final OssService ossService;
 
     /**
@@ -38,7 +40,7 @@ public class CommonController {
      */
     @GetMapping("/site-logo")
     public Result<Map<String, String>> getSiteLogo() {
-        String url = ossService.getInlineImagePresignedUrl("brand/site-logo.png", "image/png");
+        String url = ossService.getInlineImagePresignedUrl(SITE_LOGO_OBJECT_KEY, "image/png");
         if (url != null) {
             return Result.success(Map.of("url", url));
         }

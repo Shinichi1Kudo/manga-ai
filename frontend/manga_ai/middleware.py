@@ -23,6 +23,7 @@ class LoginRequiredMiddleware:
             '/auth/send-code/',
             '/auth/logout/',
             '/favicon.ico',
+            '/site-logo.png',
             '/api/v1/common/contact-image/',
             '/api/v1/common/site-logo/',
             '/api/v1/common/showcase-assets/',

@@ -19,4 +19,9 @@ class CommonControllerTest {
         assertThat(rootMapping.value()).containsExactly("/v1/common");
         assertThat(siteLogo.getAnnotation(GetMapping.class).value()).containsExactly("/site-logo");
     }
+
+    @Test
+    void siteLogoUsesStableHaidaiLogoObjectKey() {
+        assertThat(CommonController.SITE_LOGO_OBJECT_KEY).isEqualTo("brand/haidai-logo.png");
+    }
 }
