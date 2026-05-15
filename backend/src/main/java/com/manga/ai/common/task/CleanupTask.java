@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.manga.ai.common.enums.EpisodeStatus;
 import com.manga.ai.episode.entity.Episode;
 import com.manga.ai.episode.mapper.EpisodeMapper;
+import com.manga.ai.gptimage.service.GptImage2Service;
 import com.manga.ai.prop.entity.Prop;
 import com.manga.ai.prop.mapper.PropMapper;
 import com.manga.ai.scene.entity.Scene;
@@ -28,6 +29,7 @@ public class CleanupTask {
     private final EpisodeMapper episodeMapper;
     private final SceneMapper sceneMapper;
     private final PropMapper propMapper;
+    private final GptImage2Service gptImage2Service;
 
     /**
      * 每天凌晨3点清理过期的回收站系列
@@ -105,6 +107,19 @@ public class CleanupTask {
             }
         } catch (Exception e) {
             log.error("清理卡住的道具失败", e);
+        }
+    }
+
+    /**
+     * 每分钟检查一次卡住的GPT-Image2生图任务
+     * 如果任务超过配置的卡住超时时间仍未完成，标记失败并返还积分。
+     */
+    @Scheduled(fixedRate = 60000)
+    public void cleanupStuckGptImage2Tasks() {
+        try {
+            gptImage2Service.failStaleRunningTasks();
+        } catch (Exception e) {
+            log.error("清理卡住的GPT-Image2生图任务失败", e);
         }
     }
 }

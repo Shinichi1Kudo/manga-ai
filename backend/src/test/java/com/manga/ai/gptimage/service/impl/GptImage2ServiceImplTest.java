@@ -14,6 +14,7 @@ import org.springframework.test.util.ReflectionTestUtils;
 
 import java.nio.charset.StandardCharsets;
 import java.io.IOException;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.Executor;
@@ -21,6 +22,8 @@ import java.util.concurrent.Executor;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.argThat;
@@ -216,6 +219,122 @@ class GptImage2ServiceImplTest {
     }
 
     @Test
+    void listMyTasksShowsElapsedProgressForLongRunningTask() {
+        GptImage2TaskMapper mapper = mock(GptImage2TaskMapper.class);
+        GptImage2Task running = new GptImage2Task();
+        running.setId(12L);
+        running.setUserId(7L);
+        running.setPrompt("灵感");
+        running.setAspectRatio("1:1");
+        running.setResolution("2k");
+        running.setStatus("running");
+        running.setModel("gpt-image-2");
+        running.setMode("text-to-image");
+        running.setCreditCost(12);
+        running.setSubmittedAt(LocalDateTime.now().minusMinutes(10));
+        running.setUpdatedAt(LocalDateTime.now());
+        when(mapper.selectList(any(Wrapper.class))).thenReturn(List.of(running));
+        GptImage2ServiceImpl service = new GptImage2ServiceImpl(
+                mock(OssService.class),
+                mock(UserService.class),
+                mapper,
+                directExecutor()
+        );
+
+        UserContextHolder.setUserId(7L);
+        try {
+            List<GptImage2GenerateResponse> tasks = service.listMyTasks(50);
+
+            assertThat(tasks).hasSize(1);
+            assertThat(tasks.get(0).getProgressPercent()).isGreaterThan(35);
+            assertThat(tasks.get(0).getProgressPercent()).isLessThanOrEqualTo(95);
+        } finally {
+            UserContextHolder.clear();
+        }
+    }
+
+    @Test
+    void getTaskMarksStaleRunningTaskFailedBeforeReturningIt() {
+        GptImage2TaskMapper mapper = mock(GptImage2TaskMapper.class);
+        UserService userService = mock(UserService.class);
+        GptImage2Task stale = new GptImage2Task();
+        stale.setId(12L);
+        stale.setUserId(7L);
+        stale.setPrompt("灵感");
+        stale.setAspectRatio("1:1");
+        stale.setResolution("2k");
+        stale.setStatus("running");
+        stale.setModel("gpt-image-2");
+        stale.setMode("text-to-image");
+        stale.setCreditCost(12);
+        stale.setCreditsRefunded(false);
+        stale.setSubmittedAt(LocalDateTime.now().minusMinutes(31));
+        stale.setUpdatedAt(LocalDateTime.now().minusMinutes(31));
+        when(mapper.selectById(12L)).thenReturn(stale);
+        GptImage2ServiceImpl service = new GptImage2ServiceImpl(
+                mock(OssService.class),
+                userService,
+                mapper,
+                directExecutor()
+        );
+
+        UserContextHolder.setUserId(7L);
+        try {
+            GptImage2GenerateResponse response = service.getTask(12L);
+
+            assertThat(response.getStatus()).isEqualTo("failed");
+            assertThat(response.getStatusDesc()).isEqualTo("生成失败");
+            assertThat(response.getErrorMessage()).contains("生成任务超时");
+            assertThat(response.getProgressPercent()).isEqualTo(100);
+        } finally {
+            UserContextHolder.clear();
+        }
+
+        verify(userService).refundCredits(7L, 12, "GPT-Image2生图失败返还-任务12", 12L, "GPT_IMAGE2_TASK");
+        verify(mapper).updateById(stale);
+    }
+
+    @Test
+    void getTaskKeepsLongRunningTaskAliveBeforeStaleWindow() {
+        GptImage2TaskMapper mapper = mock(GptImage2TaskMapper.class);
+        UserService userService = mock(UserService.class);
+        GptImage2Task running = new GptImage2Task();
+        running.setId(12L);
+        running.setUserId(7L);
+        running.setPrompt("灵感");
+        running.setAspectRatio("1:1");
+        running.setResolution("2k");
+        running.setStatus("running");
+        running.setModel("gpt-image-2");
+        running.setMode("text-to-image");
+        running.setCreditCost(12);
+        running.setCreditsRefunded(false);
+        running.setSubmittedAt(LocalDateTime.now().minusMinutes(16));
+        running.setUpdatedAt(LocalDateTime.now().minusMinutes(16));
+        when(mapper.selectById(12L)).thenReturn(running);
+        GptImage2ServiceImpl service = new GptImage2ServiceImpl(
+                mock(OssService.class),
+                userService,
+                mapper,
+                directExecutor()
+        );
+
+        UserContextHolder.setUserId(7L);
+        try {
+            GptImage2GenerateResponse response = service.getTask(12L);
+
+            assertThat(response.getStatus()).isEqualTo("running");
+            assertThat(response.getStatusDesc()).isEqualTo("生成中");
+            assertThat(response.getProgressPercent()).isBetween(35, 95);
+        } finally {
+            UserContextHolder.clear();
+        }
+
+        verify(userService, never()).refundCredits(anyLong(), anyInt(), anyString(), anyLong(), anyString());
+        verify(mapper, never()).updateById(running);
+    }
+
+    @Test
     void persistGeneratedImageUploadsDataUrlDirectlyToOss() {
         OssService ossService = mock(OssService.class);
         when(ossService.uploadImage(any(byte[].class), eq("gpt-image2/results"), eq("image/png"), eq("png")))
@@ -337,7 +456,85 @@ class GptImage2ServiceImplTest {
 
         assertThat(task.getStatus()).isEqualTo("failed");
         assertThat(task.getErrorMessage()).contains("超时");
+        verify(restTemplate).exchange(anyString(), eq(HttpMethod.POST), any(HttpEntity.class), eq(String.class));
         verify(userService).refundCredits(7L, 12, "GPT-Image2生图失败返还-任务12", 12L, "GPT_IMAGE2_TASK");
+    }
+
+    @Test
+    void executeTaskDoesNotRetryReadTimeoutForMinutes() {
+        GptImage2TaskMapper mapper = mock(GptImage2TaskMapper.class);
+        RestTemplate restTemplate = mock(RestTemplate.class);
+        UserService userService = mock(UserService.class);
+        GptImage2Task task = new GptImage2Task();
+        task.setId(12L);
+        task.setUserId(7L);
+        task.setPrompt("古风少女海报");
+        task.setAspectRatio("1:1");
+        task.setResolution("2k");
+        task.setStatus("pending");
+        task.setModel("gpt-image-2");
+        task.setMode("text-to-image");
+        task.setCreditCost(12);
+        when(mapper.selectById(12L)).thenReturn(task);
+        when(restTemplate.exchange(anyString(), eq(HttpMethod.POST), any(HttpEntity.class), eq(String.class)))
+                .thenThrow(new RestClientException("Read timed out"));
+
+        GptImage2ServiceImpl service = new GptImage2ServiceImpl(
+                mock(OssService.class),
+                userService,
+                mapper,
+                directExecutor()
+        );
+        ReflectionTestUtils.setField(service, "apiKey", "test-key");
+        ReflectionTestUtils.setField(service, "model", "gpt-image-2");
+        ReflectionTestUtils.setField(service, "baseUrl", "https://api.airiver.cn/v1");
+        ReflectionTestUtils.setField(service, "restTemplate", restTemplate);
+
+        service.executeTask(12L);
+
+        assertThat(task.getStatus()).isEqualTo("failed");
+        verify(restTemplate).exchange(anyString(), eq(HttpMethod.POST), any(HttpEntity.class), eq(String.class));
+        verify(userService).refundCredits(7L, 12, "GPT-Image2生图失败返还-任务12", 12L, "GPT_IMAGE2_TASK");
+    }
+
+    @Test
+    void failStaleRunningTasksMarksExpiredTasksFailedAndRefundsCredits() {
+        GptImage2TaskMapper mapper = mock(GptImage2TaskMapper.class);
+        UserService userService = mock(UserService.class);
+        GptImage2Task stale = new GptImage2Task();
+        stale.setId(12L);
+        stale.setUserId(7L);
+        stale.setStatus("running");
+        stale.setCreditCost(12);
+        stale.setCreditsRefunded(false);
+        stale.setSubmittedAt(LocalDateTime.now().minusMinutes(31));
+        stale.setCreatedAt(LocalDateTime.now().minusMinutes(31));
+        GptImage2Task fresh = new GptImage2Task();
+        fresh.setId(13L);
+        fresh.setUserId(7L);
+        fresh.setStatus("running");
+        fresh.setCreditCost(12);
+        fresh.setCreditsRefunded(false);
+        fresh.setSubmittedAt(LocalDateTime.now().minusMinutes(2));
+        fresh.setCreatedAt(LocalDateTime.now().minusMinutes(2));
+        when(mapper.selectList(any(Wrapper.class))).thenReturn(List.of(stale, fresh));
+        GptImage2ServiceImpl service = new GptImage2ServiceImpl(
+                mock(OssService.class),
+                userService,
+                mapper,
+                directExecutor()
+        );
+
+        int failedCount = service.failStaleRunningTasks();
+
+        assertThat(failedCount).isEqualTo(1);
+        assertThat(stale.getStatus()).isEqualTo("failed");
+        assertThat(stale.getErrorMessage()).contains("生成任务超时");
+        assertThat(stale.getCompletedAt()).isNotNull();
+        assertThat(fresh.getStatus()).isEqualTo("running");
+        verify(userService).refundCredits(7L, 12, "GPT-Image2生图失败返还-任务12", 12L, "GPT_IMAGE2_TASK");
+        verify(mapper).updateById(stale);
+        verify(mapper, never()).updateById(fresh);
     }
 
     private static Executor directExecutor() {

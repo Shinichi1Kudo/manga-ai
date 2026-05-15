@@ -4,7 +4,40 @@
 
 {% block content %}
 <!-- Hero Section -->
-<div class="text-center py-12">
+<div class="home-hero text-center py-12">
+    <div class="home-announcement" role="region" aria-label="今日更新公告">
+        <div class="home-announcement-header">
+            <div class="home-announcement-badge">
+                <span class="home-announcement-signal" aria-hidden="true">
+                    <span></span>
+                    <span></span>
+                    <span></span>
+                </span>
+                <i data-lucide="megaphone" class="w-4 h-4"></i>
+                <span>今日更新</span>
+            </div>
+            <div class="home-announcement-date">2026.05.16</div>
+        </div>
+        <div class="home-announcement-meta">模型能力升级 / 今日上线</div>
+        <div class="home-announcement-scroll" aria-label="Seedance 2.0 正式全面上线；原生支持真人人脸表现；新接入可灵 Kling v3 Omni 模型。">
+            <div class="home-announcement-story">
+                <p><span class="home-announcement-index">01</span><span>Seedance 2.0 正式全面上线，生成效果与镜头表现完成升级。</span></p>
+                <p><span class="home-announcement-index">02</span><span>原生支持真人人脸表现，更适合真人短剧和角色特写。</span></p>
+                <p><span class="home-announcement-index">03</span><span>新接入可灵 Kling v3 Omni 模型，分镜生成多一个高表现选择。</span></p>
+            </div>
+            <div class="home-announcement-story" aria-hidden="true">
+                <p><span class="home-announcement-index">01</span><span>Seedance 2.0 正式全面上线，生成效果与镜头表现完成升级。</span></p>
+                <p><span class="home-announcement-index">02</span><span>原生支持真人人脸表现，更适合真人短剧和角色特写。</span></p>
+                <p><span class="home-announcement-index">03</span><span>新接入可灵 Kling v3 Omni 模型，分镜生成多一个高表现选择。</span></p>
+            </div>
+        </div>
+        <div class="home-announcement-chip-row" aria-hidden="true">
+            <span>Seedance 2.0</span>
+            <span>真人人脸</span>
+            <span>Kling v3 Omni</span>
+        </div>
+    </div>
+
     <img src="/site-logo.png?v=20260515" alt="海带 AI 智能短剧制作系统 Logo" class="brand-logo-img hero-site-logo mx-auto mb-5">
     <h1 class="mb-4">
         <span class="brand-wordmark hero-brand-wordmark" aria-label="海带 AI 智能短剧制作系统">
@@ -15,6 +48,7 @@
     <p class="text-white/50 max-w-2xl mx-auto mb-8">
         一键生成标准化角色资产，告别重复劳动，让创作更高效
     </p>
+
     <div class="home-action-board">
         <div class="home-action-group">
             <div class="home-action-label">基础工作台</div>
@@ -1107,6 +1141,199 @@ function getCookie(name) {
     min-height: 180px;
 }
 
+.home-hero {
+    position: relative;
+}
+
+.home-announcement {
+    position: absolute;
+    top: 54px;
+    left: -40px;
+    width: 400px;
+    height: 224px;
+    padding: 14px 14px 12px;
+    overflow: hidden;
+    border: 1px solid rgba(125, 211, 252, 0.28);
+    border-radius: 20px;
+    background:
+        linear-gradient(135deg, rgba(8, 47, 73, 0.82), rgba(15, 23, 42, 0.64) 44%, rgba(6, 78, 59, 0.5)),
+        linear-gradient(90deg, rgba(45, 212, 191, 0.17), rgba(14, 165, 233, 0.1));
+    box-shadow:
+        0 24px 58px rgba(2, 6, 23, 0.32),
+        0 0 34px rgba(20, 184, 166, 0.11),
+        inset 0 1px 0 rgba(255, 255, 255, 0.13);
+    backdrop-filter: blur(18px);
+    -webkit-backdrop-filter: blur(18px);
+    text-align: left;
+}
+
+.home-announcement::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.08), transparent);
+    transform: translateX(-100%);
+    animation: announcement-sheen 5.5s ease-in-out infinite;
+    pointer-events: none;
+}
+
+.home-announcement::after {
+    content: '';
+    position: absolute;
+    left: 18px;
+    right: 18px;
+    bottom: 0;
+    height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(125, 211, 252, 0.72), rgba(52, 211, 153, 0.62), transparent);
+    pointer-events: none;
+}
+
+.home-announcement-header {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+.home-announcement-badge {
+    position: relative;
+    z-index: 1;
+    display: inline-flex;
+    height: 30px;
+    align-items: center;
+    gap: 7px;
+    border-radius: 999px;
+    background: linear-gradient(135deg, rgba(45, 212, 191, 0.98), rgba(14, 165, 233, 0.94));
+    padding: 0 12px 0 9px;
+    color: white;
+    font-size: 12px;
+    font-weight: 800;
+    line-height: 1;
+    box-shadow: 0 12px 28px rgba(14, 165, 233, 0.26);
+    white-space: nowrap;
+}
+
+.home-announcement-signal {
+    display: inline-flex;
+    align-items: flex-end;
+    gap: 2px;
+    height: 12px;
+}
+
+.home-announcement-signal span {
+    display: block;
+    width: 3px;
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.92);
+    box-shadow: 0 0 10px rgba(255, 255, 255, 0.42);
+}
+
+.home-announcement-signal span:nth-child(1) { height: 5px; }
+.home-announcement-signal span:nth-child(2) { height: 9px; }
+.home-announcement-signal span:nth-child(3) { height: 12px; }
+
+.home-announcement-date {
+    position: relative;
+    z-index: 1;
+    display: inline-flex;
+    height: 28px;
+    align-items: center;
+    border-radius: 999px;
+    border: 1px solid rgba(255, 255, 255, 0.13);
+    background: rgba(2, 6, 23, 0.28);
+    padding: 0 10px;
+    color: rgba(224, 242, 254, 0.86);
+    font-size: 11px;
+    font-weight: 800;
+    line-height: 1;
+    white-space: nowrap;
+}
+
+.home-announcement-meta {
+    position: relative;
+    z-index: 1;
+    margin-top: 10px;
+    color: rgba(186, 230, 253, 0.72);
+    font-size: 11px;
+    font-weight: 800;
+    line-height: 1;
+}
+
+.home-announcement-scroll {
+    position: relative;
+    z-index: 1;
+    height: 108px;
+    margin-top: 11px;
+    overflow: hidden;
+    color: rgba(255, 255, 255, 0.8);
+    font-size: 12px;
+    font-weight: 600;
+    line-height: 1.58;
+    mask-image: linear-gradient(180deg, transparent 0, black 12px, black calc(100% - 18px), transparent 100%);
+}
+
+.home-announcement-scroll:hover .home-announcement-story {
+    animation-play-state: paused;
+}
+
+.home-announcement-story {
+    display: grid;
+    gap: 8px;
+    padding-bottom: 14px;
+    animation: announcement-scroll-y 12s linear infinite;
+}
+
+.home-announcement-story p {
+    display: grid;
+    grid-template-columns: 30px minmax(0, 1fr);
+    align-items: start;
+    gap: 9px;
+    margin: 0;
+    border: 1px solid rgba(255, 255, 255, 0.075);
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.045);
+    padding: 8px 9px;
+}
+
+.home-announcement-index {
+    display: inline-flex;
+    height: 20px;
+    align-items: center;
+    justify-content: center;
+    border-radius: 999px;
+    background: rgba(94, 234, 212, 0.16);
+    color: rgb(153, 246, 228);
+    font-size: 10px;
+    font-weight: 900;
+    line-height: 1;
+    box-shadow: inset 0 0 0 1px rgba(94, 234, 212, 0.28);
+}
+
+.home-announcement-chip-row {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 7px;
+    margin-top: 10px;
+}
+
+.home-announcement-chip-row span {
+    display: inline-flex;
+    height: 24px;
+    align-items: center;
+    border-radius: 999px;
+    border: 1px solid rgba(125, 211, 252, 0.2);
+    background: rgba(2, 6, 23, 0.26);
+    padding: 0 9px;
+    color: rgba(224, 242, 254, 0.78);
+    font-size: 10px;
+    font-weight: 800;
+    line-height: 1;
+}
+
 .home-action-board {
     display: grid;
     grid-template-columns: minmax(0, 1.25fr) minmax(0, 1.25fr) minmax(210px, 0.72fr);
@@ -1214,9 +1441,29 @@ function getCookie(name) {
         grid-template-columns: 1fr;
         max-width: 640px;
     }
+
+    .home-announcement {
+        position: relative;
+        top: auto;
+        left: auto;
+        width: min(100%, 440px);
+        height: 224px;
+        margin: 0 auto 22px;
+    }
 }
 
 @media (max-width: 560px) {
+    .home-announcement {
+        width: 100%;
+        height: 224px;
+        padding: 12px;
+    }
+
+    .home-announcement-scroll {
+        height: 106px;
+        margin-top: 10px;
+    }
+
     .home-action-row {
         grid-template-columns: 1fr;
     }
@@ -1225,6 +1472,32 @@ function getCookie(name) {
         justify-content: flex-start;
         padding: 0 16px;
     }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .home-announcement::before,
+    .home-announcement-story {
+        animation: none;
+    }
+
+    .home-announcement-scroll {
+        overflow-y: auto;
+        mask-image: none;
+    }
+
+    .home-announcement-story[aria-hidden="true"] {
+        display: none;
+    }
+}
+
+@keyframes announcement-scroll-y {
+    0%, 9% { transform: translateY(0); }
+    100% { transform: translateY(-50%); }
+}
+
+@keyframes announcement-sheen {
+    0%, 45% { transform: translateX(-100%); }
+    70%, 100% { transform: translateX(100%); }
 }
 
 /* 进度条闪烁动画 */

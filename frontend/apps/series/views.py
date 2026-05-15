@@ -1484,7 +1484,14 @@ def shot_generate_with_references(request, shot_id):
     try:
         data = json.loads(request.body)
         reference_urls = data.get('referenceUrls', [])
-        client.post(f'/v1/shots/{shot_id}/generate-with-references', {'referenceUrls': reference_urls})
+        payload = {'referenceUrls': reference_urls}
+        if 'referenceImages' in data:
+            payload['referenceImages'] = data.get('referenceImages') or []
+        if 'shotUpdate' in data:
+            payload['shotUpdate'] = data.get('shotUpdate') or {}
+        if 'generationStartTime' in data:
+            payload['generationStartTime'] = data.get('generationStartTime')
+        client.post(f'/v1/shots/{shot_id}/generate-with-references', payload)
         return JsonResponse({'code': 200, 'success': True})
     except BackendAPIError as e:
         return JsonResponse({'code': 400, 'message': e.message}, status=400)

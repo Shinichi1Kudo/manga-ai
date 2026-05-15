@@ -223,6 +223,31 @@ class SubjectReplacementCreditButtonTests(TestCase):
 
 
 class GptImage2HomeTests(TestCase):
+    def test_home_page_has_today_update_announcement(self):
+        template_path = Path(settings.BASE_DIR) / 'templates/series/series_list.html'
+        template = template_path.read_text(encoding='utf-8')
+
+        self.assertIn('home-hero', template)
+        self.assertIn('home-announcement', template)
+        self.assertIn('home-announcement-scroll', template)
+        self.assertIn('home-announcement-story', template)
+        self.assertIn('home-announcement-index', template)
+        self.assertIn('announcement-scroll-y', template)
+        self.assertIn('animation: announcement-scroll-y 12s linear infinite;', template)
+        self.assertIn('top: 54px;', template)
+        self.assertIn('left: -40px;', template)
+        self.assertIn('width: 400px;', template)
+        self.assertIn('home-announcement-signal', template)
+        self.assertIn('home-announcement-meta', template)
+        self.assertIn('home-announcement-chip-row', template)
+        self.assertIn('backdrop-filter: blur(18px);', template)
+        self.assertIn('今日更新', template)
+        self.assertIn('2026.05.16', template)
+        self.assertIn('Seedance 2.0 正式全面上线', template)
+        self.assertIn('原生支持真人人脸表现', template)
+        self.assertIn('新接入可灵 Kling v3 Omni 模型', template)
+        self.assertNotIn('后续我们会继续补充更多视频模型', template)
+
     def test_home_page_links_to_gpt_image2_workspace(self):
         template_path = Path(settings.BASE_DIR) / 'templates/series/series_list.html'
         template = template_path.read_text(encoding='utf-8')
@@ -390,6 +415,124 @@ class GptImage2HomeTests(TestCase):
         self.assertIn('function renderGptImage2Pagination()', template)
         self.assertIn('function changeGptImage2Page(delta)', template)
         self.assertIn('一页最多 3 条', template)
+
+
+class EpisodeDetailShotCreditTests(TestCase):
+    def test_unlocked_shot_rebinds_model_select_and_refreshes_regenerate_credit(self):
+        template_path = Path(settings.BASE_DIR) / 'templates/episode/episode_detail.html'
+        template = template_path.read_text(encoding='utf-8')
+
+        self.assertIn('function bindShotSelectControls(card)', template)
+        apply_pending_body = template.split('function applyPendingShotCardState(card)', 1)[1].split('function splitShotListsByReviewStatus()', 1)[0]
+        self.assertIn('bindShotSelectControls(card);', apply_pending_body)
+        self.assertIn('updateShotCreditDisplay(card);', apply_pending_body)
+
+        bind_body = template.split('function bindShotSelectControls(card)', 1)[1].split('// 初始化内联编辑', 1)[0]
+        self.assertIn("videoModelSelect.dataset.creditBound = 'true';", bind_body)
+        self.assertIn('updateResolutionOptions(card, videoModelSelect.value);', bind_body)
+        self.assertIn('updateShotCreditDisplay(card);', bind_body)
+        self.assertIn("saveShotSettings(shotId, ['videoModel', 'resolution']);", bind_body)
+
+    def test_regenerate_saves_current_reference_images_before_submit(self):
+        template_path = Path(settings.BASE_DIR) / 'templates/episode/episode_detail.html'
+        template = template_path.read_text(encoding='utf-8')
+
+        self.assertIn('function collectShotReferenceImages(card)', template)
+        submit_body = template.split('async function submitShotGeneration(button)', 1)[1].split('async function handleShotRegenerateClick()', 1)[0]
+        self.assertIn('const referenceImages = collectShotReferenceImages(card);', submit_body)
+        self.assertIn('body: JSON.stringify({ referenceUrls, referenceImages, shotUpdate, generationStartTime })', submit_body)
+
+        regenerate_body = template.split('async function handleShotRegenerateClick()', 1)[1].split('async function uploadShotVideoFile()', 1)[0]
+        self.assertIn('return submitShotGeneration(this);', regenerate_body)
+
+    def test_generate_uses_same_reference_image_submit_flow_as_regenerate(self):
+        template_path = Path(settings.BASE_DIR) / 'templates/episode/episode_detail.html'
+        template = template_path.read_text(encoding='utf-8')
+
+        self.assertIn('async function submitShotGeneration(button)', template)
+        submit_body = template.split('async function submitShotGeneration(button)', 1)[1].split('async function handleShotRegenerateClick()', 1)[0]
+        self.assertIn('const shotUpdate = buildShotGenerationUpdatePayload(card);', submit_body)
+        self.assertIn('const referenceImages = collectShotReferenceImages(card);', submit_body)
+        self.assertIn('body: JSON.stringify({ referenceUrls, referenceImages, shotUpdate, generationStartTime })', submit_body)
+
+        generate_bind_body = template.split('// 单个生成', 1)[1].split('// 重新生成', 1)[0]
+        self.assertIn("btn.addEventListener('click', function() {", generate_bind_body)
+        self.assertIn('submitShotGeneration(this);', generate_bind_body)
+
+    def test_generation_enters_generating_immediately_and_posts_start_time(self):
+        template_path = Path(settings.BASE_DIR) / 'templates/episode/episode_detail.html'
+        template = template_path.read_text(encoding='utf-8')
+        submit_body = template.split('async function submitShotGeneration(button)', 1)[1].split('async function handleShotRegenerateClick()', 1)[0]
+        before_submit_fetch = submit_body.split("const response = await fetch(`/api/v1/shots/${shotId}/generate-with-references/`", 1)[0]
+        after_result_success = submit_body.split('if (!(data.success || data.code === 200))', 1)[1]
+        new_submit_body = before_submit_fetch.split("button.disabled = true;", 1)[1]
+
+        self.assertNotIn('startTimer(button);', submit_body)
+        self.assertNotIn('updateCardToSubmitting(card, button);', submit_body)
+        self.assertNotIn('startSubmittingTimer(button);', submit_body)
+        self.assertNotIn('stopSubmittingTimer(button);', submit_body)
+        self.assertNotIn('await saveShotInline(shotId);', submit_body)
+        self.assertNotIn('await persistShotReferenceImagesForGeneration(shotId, card);', submit_body)
+        self.assertIn('const generationStartTime = formatBackendLocalDateTime(new Date());', submit_body)
+        self.assertIn('const shotUpdate = buildShotGenerationUpdatePayload(card);', submit_body)
+        self.assertIn('updateCardToGenerating(card, button, generationStartTime);', new_submit_body)
+        self.assertIn('startShotGenerationPolling();', new_submit_body)
+        self.assertIn('body: JSON.stringify({ referenceUrls, referenceImages, shotUpdate, generationStartTime })', submit_body)
+        self.assertIn('submittedShot = await fetchShotGenerationState(shotId);', after_result_success)
+        self.assertIn('markShotGenerationUpdateSaved(card, shotUpdate);', submit_body)
+
+    def test_generation_timer_resyncs_when_backend_start_time_changes(self):
+        template_path = Path(settings.BASE_DIR) / 'templates/episode/episode_detail.html'
+        template = template_path.read_text(encoding='utf-8')
+        timer_body = template.split('function startGeneratingTimers()', 1)[1].split('// Helper functions for form modals', 1)[0]
+        show_actions_body = template.split('function showGeneratingActions(card, startTimeValue = null)', 1)[1].split('function restoreGeneratingActions(card)', 1)[0]
+
+        self.assertIn("const startTimeStr = timer.dataset.startTime || timer.dataset.resolvedStartTime;", timer_body)
+        self.assertIn('timer.dataset.resolvedStartTime = startTime.toISOString();', timer_body)
+        self.assertIn('if (timer.dataset.timerActive ===', timer_body)
+        self.assertIn('updateGeneratingTimer(timer);', timer_body)
+        self.assertIn('return;', timer_body)
+        self.assertIn('function updateGeneratingTimer(timer)', template)
+        self.assertNotIn("if (timer.dataset.timerActive === 'true') return;", timer_body)
+        self.assertIn("placeholder.dataset.startTime = parseGenerationStartTime(startTimeValue).toISOString();", show_actions_body)
+        self.assertNotIn("placeholder.dataset.timerActive = 'false';", show_actions_body)
+
+    def test_shot_generate_proxy_forwards_reference_images(self):
+        session = self.client.session
+        session['token'] = 'token-1'
+        session.save()
+
+        backend_client = Mock()
+        payload = {
+            'referenceUrls': ['https://oss.example.com/scene.png'],
+            'generationStartTime': '2026-05-16T05:30:00',
+            'shotUpdate': {
+                'duration': 8,
+                'resolution': '720p',
+                'aspectRatio': '16:9',
+                'videoModel': 'kling-v3-omni',
+            },
+            'referenceImages': [
+                {
+                    'imageType': 'role',
+                    'referenceId': 148,
+                    'referenceName': '沈清欢',
+                    'imageUrl': 'https://oss.example.com/role.png',
+                    'displayOrder': 0,
+                    'isUserAdded': True,
+                }
+            ],
+        }
+
+        with patch('apps.series.views.get_client', return_value=backend_client):
+            response = self.client.post(
+                '/api/v1/shots/629/generate-with-references/',
+                data=json.dumps(payload),
+                content_type='application/json',
+            )
+
+        self.assertEqual(response.status_code, 200)
+        backend_client.post.assert_called_once_with('/v1/shots/629/generate-with-references', payload)
 
 
 class CreditAdminDashboardTests(TestCase):

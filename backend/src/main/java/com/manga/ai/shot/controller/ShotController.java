@@ -13,6 +13,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -156,11 +157,33 @@ public class ShotController {
     @PostMapping("/{shotId}/generate-with-references")
     public Result<Void> generateVideoWithReferences(@PathVariable Long shotId, @RequestBody(required = false) java.util.Map<String, Object> body) {
         java.util.List<String> referenceUrls = null;
+        java.util.List<ReferenceImageDTO> referenceImages = null;
+        ShotUpdateRequest shotUpdate = null;
+        LocalDateTime generationStartTime = null;
         if (body != null && body.get("referenceUrls") != null) {
             referenceUrls = (java.util.List<String>) body.get("referenceUrls");
         }
-        log.info("带参考图生成视频: shotId={}, referenceUrls={}", shotId, referenceUrls);
-        shotService.generateVideoWithReferences(shotId, referenceUrls);
+        if (body != null && body.get("referenceImages") != null) {
+            referenceImages = com.alibaba.fastjson2.JSON.parseArray(
+                    com.alibaba.fastjson2.JSON.toJSONString(body.get("referenceImages")),
+                    ReferenceImageDTO.class
+            );
+        }
+        if (body != null && body.get("shotUpdate") != null) {
+            shotUpdate = com.alibaba.fastjson2.JSON.parseObject(
+                    com.alibaba.fastjson2.JSON.toJSONString(body.get("shotUpdate")),
+                    ShotUpdateRequest.class
+            );
+        }
+        if (body != null && body.get("generationStartTime") != null) {
+            String startTimeText = String.valueOf(body.get("generationStartTime"));
+            if (!startTimeText.isBlank()) {
+                generationStartTime = LocalDateTime.parse(startTimeText.replace("Z", "").replace(" ", "T"));
+            }
+        }
+        log.info("带参考图生成视频: shotId={}, referenceUrls={}, referenceImages={}",
+                shotId, referenceUrls, referenceImages != null ? referenceImages.size() : 0);
+        shotService.generateVideoWithReferences(shotId, referenceUrls, referenceImages, shotUpdate, generationStartTime);
         return Result.success();
     }
 

@@ -25,6 +25,8 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Seedance视频生成服务实现
@@ -32,6 +34,10 @@ import java.util.List;
 @Slf4j
 @Service
 public class SeedanceServiceImpl implements SeedanceService {
+
+    private static final String FAST_VIP_MODEL = "doubao-seedance-2-0-fast-260128";
+    private static final String VIP_MODEL = "doubao-seedance-2-0-260128";
+    private static final String KLING_V3_OMNI_MODEL = "kling-v3-omni";
 
     @Value("${volcengine.seedance.api-key}")
     private String apiKey;
@@ -41,6 +47,12 @@ public class SeedanceServiceImpl implements SeedanceService {
 
     @Value("${volcengine.seedance.base-url:https://ark.cn-beijing.volces.com/api/v3}")
     private String baseUrl;
+
+    @Value("${volcengine.seedance.fast-api-key:${volcengine.seedance.api-key}}")
+    private String fastApiKey;
+
+    @Value("${volcengine.seedance.fast-base-url:https://toapis.com/v1}")
+    private String fastBaseUrl;
 
     @Value("${volcengine.seedance.timeout:300000}")
     private int timeout;
@@ -54,6 +66,7 @@ public class SeedanceServiceImpl implements SeedanceService {
     private final SceneMapper sceneMapper;
     private final RoleMapper roleMapper;
     private final OssService ossService;
+    private final Map<String, Boolean> fastTaskById = new ConcurrentHashMap<>();
 
     public SeedanceServiceImpl(ShotMapper shotMapper, ShotCharacterMapper shotCharacterMapper,
                                SceneMapper sceneMapper, RoleMapper roleMapper, OssService ossService) {
@@ -80,68 +93,17 @@ public class SeedanceServiceImpl implements SeedanceService {
                 useModel, request.getDuration(),
                 request.getContents() != null ? request.getContents().size() : 0);
 
+        boolean toapisModel = isToapisModel(useModel);
+        JSONObject requestBody = toapisModel ? buildToapisRequestBody(request, useModel) : buildVolcengineRequestBody(request, useModel);
+        String url = toapisModel
+                ? trimTrailingSlash(fastBaseUrl) + "/videos/generations"
+                : trimTrailingSlash(baseUrl) + "/contents/generations/tasks";
+        String authorizationApiKey = toapisModel ? fastApiKey : apiKey;
+
         try {
-            JSONObject requestBody = new JSONObject();
-            String url;
-
-            // 使用请求中指定的模型
-            requestBody.put("model", useModel);
-
-            // 构建 content 数组
-            JSONArray contentArray = new JSONArray();
-
-            // 1. 添加文本 prompt
-            JSONObject textContent = new JSONObject();
-            textContent.put("type", "text");
-            textContent.put("text", request.getPrompt());
-            contentArray.add(textContent);
-
-            // 2. 添加参考图（如果有）
-            if (request.getContents() != null && !request.getContents().isEmpty()) {
-                for (SeedanceRequest.ReferenceContent content : request.getContents()) {
-                    if ("image_url".equals(content.getType()) && content.getImageUrl() != null) {
-                        JSONObject imageContent = new JSONObject();
-                        imageContent.put("type", "image_url");
-                        imageContent.put("role", "reference_image");
-
-                        JSONObject imageUrl = new JSONObject();
-                        imageUrl.put("url", content.getImageUrl().getUrl());
-                        imageContent.put("image_url", imageUrl);
-
-                        contentArray.add(imageContent);
-                    } else if ("video_url".equals(content.getType()) && content.getVideoUrl() != null) {
-                        JSONObject videoContent = new JSONObject();
-                        videoContent.put("type", "video_url");
-                        videoContent.put("role", content.getRole() != null ? content.getRole() : "reference_video");
-
-                        JSONObject videoUrl = new JSONObject();
-                        videoUrl.put("url", content.getVideoUrl().getUrl());
-                        videoContent.put("video_url", videoUrl);
-
-                        contentArray.add(videoContent);
-                    }
-                }
-            }
-
-            // 官方示例用 content (单数)
-            requestBody.put("content", contentArray);
-            requestBody.put("duration", request.getDuration());
-            requestBody.put("ratio", request.getRatio() != null ? request.getRatio() : "16:9");
-            requestBody.put("watermark", request.getWatermark() != null ? request.getWatermark() : false);
-            if (request.getGenerateAudio() != null) {
-                requestBody.put("generate_audio", request.getGenerateAudio());
-            }
-
-            // 统一使用新的 API 端点
-            url = baseUrl + "/contents/generations/tasks";
-
-            if (request.getSeed() != null) {
-                requestBody.put("seed", request.getSeed());
-            }
-
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.APPLICATION_JSON);
-            headers.set("Authorization", "Bearer " + apiKey);
+            headers.set("Authorization", "Bearer " + authorizationApiKey);
 
             HttpEntity<String> entity = new HttpEntity<>(requestBody.toJSONString(), headers);
 
@@ -150,11 +112,17 @@ public class SeedanceServiceImpl implements SeedanceService {
             ResponseEntity<String> response = restTemplate.exchange(url, HttpMethod.POST, entity, String.class);
 
             if (response.getStatusCode() == HttpStatus.OK && response.getBody() != null) {
-                return parseSubmitResponse(response.getBody());
+                SeedanceResponse submitResponse = parseSubmitResponse(response.getBody());
+                applySubmitRequestMetadata(submitResponse, url, requestBody.toJSONString(), useModel);
+                if (submitResponse.getTaskId() != null) {
+                    fastTaskById.put(submitResponse.getTaskId(), toapisModel);
+                }
+                return submitResponse;
             } else {
                 SeedanceResponse errorResponse = new SeedanceResponse();
                 errorResponse.setStatus("failed");
                 errorResponse.setErrorMessage("视频生成任务提交失败: " + response.getStatusCode());
+                applySubmitRequestMetadata(errorResponse, url, requestBody.toJSONString(), useModel);
                 return errorResponse;
             }
         } catch (org.springframework.web.client.HttpStatusCodeException e) {
@@ -166,12 +134,14 @@ public class SeedanceServiceImpl implements SeedanceService {
             String errorBody = e.getResponseBodyAsString();
             String friendlyError = parseApiError(errorBody);
             errorResponse.setErrorMessage(friendlyError);
+            applySubmitRequestMetadata(errorResponse, url, requestBody.toJSONString(), useModel);
             return errorResponse;
         } catch (Exception e) {
             log.error("视频生成任务提交异常", e);
             SeedanceResponse errorResponse = new SeedanceResponse();
             errorResponse.setStatus("failed");
             errorResponse.setErrorMessage(e.getMessage());
+            applySubmitRequestMetadata(errorResponse, url, requestBody.toJSONString(), useModel);
             return errorResponse;
         }
     }
@@ -181,11 +151,13 @@ public class SeedanceServiceImpl implements SeedanceService {
         try {
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.APPLICATION_JSON);
-            headers.set("Authorization", "Bearer " + apiKey);
+            boolean fastVip = Boolean.TRUE.equals(fastTaskById.get(taskId));
+            headers.set("Authorization", "Bearer " + (fastVip ? fastApiKey : apiKey));
 
             HttpEntity<String> entity = new HttpEntity<>(headers);
-            // 使用新的查询端点
-            String url = baseUrl + "/contents/generations/tasks/" + taskId;
+            String url = fastVip
+                    ? trimTrailingSlash(fastBaseUrl) + "/videos/generations/" + taskId
+                    : trimTrailingSlash(baseUrl) + "/contents/generations/tasks/" + taskId;
 
             log.info("查询任务状态: taskId={}", taskId);
             ResponseEntity<String> response = restTemplate.exchange(url, HttpMethod.GET, entity, String.class);
@@ -220,6 +192,9 @@ public class SeedanceServiceImpl implements SeedanceService {
 
         // 提交任务
         SeedanceResponse response = submitVideoGeneration(request);
+        String submitRequestUrl = response.getSubmitRequestUrl();
+        String submitRequestBody = response.getSubmitRequestBody();
+        String submitModel = response.getSubmitModel();
         // 如果提交失败（有错误信息），直接返回
         if ("failed".equals(response.getStatus()) && response.getErrorMessage() != null) {
             return response;
@@ -243,6 +218,7 @@ public class SeedanceServiceImpl implements SeedanceService {
             }
 
             response = queryTaskStatus(taskId);
+            applySubmitRequestMetadata(response, submitRequestUrl, submitRequestBody, submitModel);
             log.info("轮询任务状态: taskId={}, status={}", taskId, response.getStatus());
 
             if ("completed".equals(response.getStatus()) || "succeeded".equals(response.getStatus())) {
@@ -250,6 +226,7 @@ public class SeedanceServiceImpl implements SeedanceService {
 
                 // 上传视频到OSS
                 if (response.getVideoUrl() != null) {
+                    response.setProviderVideoUrl(response.getVideoUrl());
                     String ossUrl = ossService.uploadVideoFromUrl(response.getVideoUrl(), "videos");
                     if (ossUrl != null) {
                         response.setVideoUrl(ossUrl);
@@ -266,6 +243,7 @@ public class SeedanceServiceImpl implements SeedanceService {
         SeedanceResponse timeoutResponse = new SeedanceResponse();
         timeoutResponse.setStatus("failed");
         timeoutResponse.setErrorMessage("视频生成超时");
+        applySubmitRequestMetadata(timeoutResponse, submitRequestUrl, submitRequestBody, submitModel);
         return timeoutResponse;
     }
 
@@ -329,7 +307,7 @@ public class SeedanceServiceImpl implements SeedanceService {
         log.info("解析提交响应: {}", responseBody);
         JSONObject json = JSON.parseObject(responseBody);
         SeedanceResponse response = new SeedanceResponse();
-        response.setTaskId(json.getString("id"));
+        response.setTaskId(firstNonBlank(json.getString("id"), json.getString("task_id")));
         // 提交成功后默认为 pending 状态
         response.setStatus(json.getString("status"));
         if (response.getStatus() == null) {
@@ -346,7 +324,7 @@ public class SeedanceServiceImpl implements SeedanceService {
         log.info("解析查询响应: {}", responseBody);
         JSONObject json = JSON.parseObject(responseBody);
         SeedanceResponse response = new SeedanceResponse();
-        response.setTaskId(json.getString("id"));
+        response.setTaskId(firstNonBlank(json.getString("id"), json.getString("task_id")));
         response.setStatus(json.getString("status"));
         response.setSeed(json.getLong("seed"));
 
@@ -380,11 +358,251 @@ public class SeedanceServiceImpl implements SeedanceService {
                     response.setThumbnailUrl(thumbnailUrl);
                 }
             }
+            if (response.getVideoUrl() == null) {
+                response.setVideoUrl(firstNonBlank(json.getString("video_url"), json.getString("url")));
+            }
+            JSONObject metadata = json.getJSONObject("metadata");
+            if (metadata != null && response.getVideoUrl() == null) {
+                response.setVideoUrl(firstNonBlank(metadata.getString("video_url"), metadata.getString("url")));
+            }
+            JSONObject result = json.getJSONObject("result");
+            if (result != null && response.getVideoUrl() == null) {
+                JSONArray resultData = result.getJSONArray("data");
+                if (resultData != null && !resultData.isEmpty()) {
+                    JSONObject videoData = resultData.getJSONObject(0);
+                    response.setVideoUrl(firstNonBlank(videoData.getString("url"), videoData.getString("video_url")));
+                    response.setThumbnailUrl(firstNonBlank(
+                            videoData.getString("cover_url"),
+                            videoData.getString("thumbnail_url"),
+                            videoData.getString("poster_url")
+                    ));
+                }
+            }
+            JSONObject data = json.getJSONObject("data");
+            if (data != null && response.getVideoUrl() == null) {
+                JSONObject taskResult = data.getJSONObject("task_result");
+                if (taskResult != null) {
+                    JSONArray videos = taskResult.getJSONArray("videos");
+                    if (videos != null && !videos.isEmpty()) {
+                        JSONObject video = videos.getJSONObject(0);
+                        response.setVideoUrl(firstNonBlank(video.getString("url"), video.getString("video_url")));
+                        response.setThumbnailUrl(firstNonBlank(
+                                video.getString("cover_url"),
+                                video.getString("thumbnail_url"),
+                                video.getString("poster_url")
+                        ));
+                    }
+                }
+            }
+            if (response.getThumbnailUrl() == null) {
+                response.setThumbnailUrl(firstNonBlank(
+                        json.getString("thumbnail_url"),
+                        json.getString("cover_url"),
+                        json.getString("poster_url")
+                ));
+            }
         } else if ("failed".equals(response.getStatus())) {
             response.setErrorMessage(toFriendlyApiError(json.get("error")));
         }
 
         return response;
+    }
+
+    private JSONObject buildVolcengineRequestBody(SeedanceRequest request, String useModel) {
+        JSONObject requestBody = new JSONObject();
+        requestBody.put("model", useModel);
+
+        JSONArray contentArray = new JSONArray();
+        JSONObject textContent = new JSONObject();
+        textContent.put("type", "text");
+        textContent.put("text", request.getPrompt());
+        contentArray.add(textContent);
+
+        if (request.getContents() != null && !request.getContents().isEmpty()) {
+            for (SeedanceRequest.ReferenceContent content : request.getContents()) {
+                if ("image_url".equals(content.getType()) && content.getImageUrl() != null) {
+                    JSONObject imageContent = new JSONObject();
+                    imageContent.put("type", "image_url");
+                    imageContent.put("role", "reference_image");
+
+                    JSONObject imageUrl = new JSONObject();
+                    imageUrl.put("url", content.getImageUrl().getUrl());
+                    imageContent.put("image_url", imageUrl);
+
+                    contentArray.add(imageContent);
+                } else if ("video_url".equals(content.getType()) && content.getVideoUrl() != null) {
+                    JSONObject videoContent = new JSONObject();
+                    videoContent.put("type", "video_url");
+                    videoContent.put("role", content.getRole() != null ? content.getRole() : "reference_video");
+
+                    JSONObject videoUrl = new JSONObject();
+                    videoUrl.put("url", content.getVideoUrl().getUrl());
+                    videoContent.put("video_url", videoUrl);
+
+                    contentArray.add(videoContent);
+                }
+            }
+        }
+
+        requestBody.put("content", contentArray);
+        requestBody.put("duration", request.getDuration());
+        requestBody.put("ratio", request.getRatio() != null ? request.getRatio() : "16:9");
+        requestBody.put("watermark", request.getWatermark() != null ? request.getWatermark() : false);
+        if (request.getGenerateAudio() != null) {
+            requestBody.put("generate_audio", request.getGenerateAudio());
+        }
+        if (request.getSeed() != null) {
+            requestBody.put("seed", request.getSeed());
+        }
+        return requestBody;
+    }
+
+    private JSONObject buildToapisRequestBody(SeedanceRequest request, String useModel) {
+        if (isKlingOmniModel(useModel)) {
+            return buildKlingOmniRequestBody(request);
+        }
+
+        JSONObject requestBody = new JSONObject();
+        requestBody.put("model", useModel);
+        requestBody.put("prompt", request.getPrompt());
+        requestBody.put("duration", request.getDuration());
+        requestBody.put("aspect_ratio", request.getRatio() != null ? request.getRatio() : "16:9");
+        requestBody.put("watermark", request.getWatermark() != null ? request.getWatermark() : false);
+        if (request.getSeed() != null) {
+            requestBody.put("seed", request.getSeed());
+        }
+
+        JSONObject metadata = new JSONObject();
+        metadata.put("resolution", resolutionFromSize(request.getWidth(), request.getHeight()));
+        if (request.getGenerateAudio() != null) {
+            metadata.put("generate_audio", request.getGenerateAudio());
+        }
+        requestBody.put("metadata", metadata);
+
+        JSONArray imageWithRoles = new JSONArray();
+        JSONArray videoWithRoles = new JSONArray();
+        if (request.getContents() != null) {
+            for (SeedanceRequest.ReferenceContent content : request.getContents()) {
+                if ("image_url".equals(content.getType()) && content.getImageUrl() != null) {
+                    JSONObject image = new JSONObject();
+                    image.put("role", content.getRole() != null ? content.getRole() : "reference_image");
+                    image.put("url", content.getImageUrl().getUrl());
+                    imageWithRoles.add(image);
+                } else if ("video_url".equals(content.getType()) && content.getVideoUrl() != null) {
+                    JSONObject video = new JSONObject();
+                    video.put("role", content.getRole() != null ? content.getRole() : "reference_video");
+                    video.put("url", content.getVideoUrl().getUrl());
+                    videoWithRoles.add(video);
+                }
+            }
+        }
+        if (!imageWithRoles.isEmpty()) {
+            requestBody.put("image_with_roles", imageWithRoles);
+        }
+        if (!videoWithRoles.isEmpty()) {
+            requestBody.put("video_with_roles", videoWithRoles);
+        }
+        return requestBody;
+    }
+
+    private JSONObject buildKlingOmniRequestBody(SeedanceRequest request) {
+        JSONObject requestBody = new JSONObject();
+        requestBody.put("model", KLING_V3_OMNI_MODEL);
+        requestBody.put("model_name", KLING_V3_OMNI_MODEL);
+        requestBody.put("multi_shot", false);
+        requestBody.put("prompt", request.getPrompt());
+        requestBody.put("sound", "on");
+        requestBody.put("audio", true);
+        requestBody.put("mode", klingModeFromRequest(request));
+        requestBody.put("aspect_ratio", request.getRatio() != null ? request.getRatio() : "16:9");
+        requestBody.put("duration", request.getDuration() != null ? request.getDuration() : 5);
+
+        JSONObject watermarkInfo = new JSONObject();
+        watermarkInfo.put("enabled", Boolean.TRUE.equals(request.getWatermark()));
+        requestBody.put("watermark_info", watermarkInfo);
+
+        JSONArray imageList = new JSONArray();
+        if (request.getContents() != null) {
+            for (SeedanceRequest.ReferenceContent content : request.getContents()) {
+                if ("image_url".equals(content.getType()) && content.getImageUrl() != null
+                        && content.getImageUrl().getUrl() != null && !content.getImageUrl().getUrl().isBlank()) {
+                    JSONObject image = new JSONObject();
+                    image.put("image_url", normalizePublicUrl(content.getImageUrl().getUrl()));
+                    imageList.add(image);
+                }
+            }
+        }
+        if (!imageList.isEmpty()) {
+            JSONObject metadata = new JSONObject();
+            metadata.put("image_list", imageList);
+            requestBody.put("metadata", metadata);
+        }
+        return requestBody;
+    }
+
+    private String normalizePublicUrl(String url) {
+        if (url == null) {
+            return null;
+        }
+        return url.replaceFirst("^http://", "https://");
+    }
+
+    private boolean isFastVipModel(String useModel) {
+        return FAST_VIP_MODEL.equals(useModel) || "seedance-2.0-fast".equals(useModel);
+    }
+
+    private boolean isToapisModel(String useModel) {
+        return isFastVipModel(useModel) || VIP_MODEL.equals(useModel) || "seedance-2.0".equals(useModel) || isKlingOmniModel(useModel);
+    }
+
+    private boolean isKlingOmniModel(String useModel) {
+        return KLING_V3_OMNI_MODEL.equals(useModel);
+    }
+
+    private String trimTrailingSlash(String value) {
+        if (value == null || value.isBlank()) {
+            return "";
+        }
+        return value.replaceAll("/+$", "");
+    }
+
+    private String resolutionFromSize(Integer width, Integer height) {
+        int longSide = Math.max(width == null ? 0 : width, height == null ? 0 : height);
+        if (longSide >= 1800) {
+            return "1080p";
+        }
+        if (longSide <= 960) {
+            return "480p";
+        }
+        return "720p";
+    }
+
+    private String modeFromSize(Integer width, Integer height) {
+        String resolution = resolutionFromSize(width, height);
+        if ("1080p".equals(resolution)) {
+            return "4k";
+        }
+        if ("480p".equals(resolution)) {
+            return "std";
+        }
+        return "pro";
+    }
+
+    private String klingModeFromRequest(SeedanceRequest request) {
+        String mode = modeFromSize(request.getWidth(), request.getHeight());
+        if ("std".equals(mode)) {
+            return "pro";
+        }
+        return mode;
+    }
+
+    private void applySubmitRequestMetadata(SeedanceResponse response, String requestUrl, String requestBody, String submitModel) {
+        if (response == null) {
+            return;
+        }
+        response.setSubmitRequestUrl(requestUrl);
+        response.setSubmitRequestBody(requestBody);
+        response.setSubmitModel(submitModel);
     }
 
     /**
@@ -457,16 +675,17 @@ public class SeedanceServiceImpl implements SeedanceService {
             return "内容可能触发平台审核，请调整视频、参考图或替换描述后重试。";
         }
         if (containsAny(combined, "authenticationerror", "invalidapikey")) {
-            return "火山引擎鉴权失败，请检查 API Key 或 AK/SK 配置。";
+            return "视频生成服务鉴权失败，请检查 API Key 配置。";
         }
         if (containsAny(combined, "invalidaccountstatus")) {
-            return "火山引擎账号状态异常，请检查账号状态或联系管理员。";
+            return "视频生成服务账号状态异常，请检查账号状态或联系管理员。";
         }
-        if (containsAny(combined, "serviceoverdue", "accountoverdueerror", "insufficientbalance", "overdue")) {
-            return "火山引擎账号欠费或余额不足，请充值后重试。";
+        if (containsAny(combined, "serviceoverdue", "accountoverdueerror", "insufficientbalance", "overdue",
+                "quota is not enough", "quota not enough", "user quota")) {
+            return "视频生成服务账号欠费或余额不足，请充值后重试。";
         }
         if (containsAny(combined, "servicenotopen", "modelnotopen")) {
-            return "模型服务未开通，请在火山方舟控制台开通对应模型后重试。";
+            return "模型服务未开通，请开通对应模型后重试。";
         }
         if (containsAny(combined, "accessdenied", "permissiondenied", "invalidsubscription")) {
             return "当前账号没有访问该模型或资源的权限，请检查权限、白名单或套餐状态。";
@@ -477,14 +696,14 @@ public class SeedanceServiceImpl implements SeedanceService {
         if (containsAny(combined, "rateLimit".toLowerCase(), "quotaexceeded", "serveroverloaded",
                 "requestbursttoofast", "setlimitexceeded", "inflightbatchsizeexceeded",
                 "accountratelimitexceeded", "too many requests")) {
-            return "当前请求过多或额度已达上限，请稍后重试，或检查火山引擎额度和并发限制。";
+            return "当前请求过多或额度已达上限，请稍后重试，或检查视频生成服务额度和并发限制。";
         }
         if (containsAny(combined, "closedendpoint")) {
             return "推理接入点暂时不可用，请稍后重试或检查接入点状态。";
         }
         if (containsAny(combined, "internalserviceerror", "internalerror", "unknownerror",
                 "internal error", "internalservererror")) {
-            return "火山引擎服务内部异常，请稍后重试。";
+            return "视频生成服务内部异常，请稍后重试。";
         }
         if (containsAny(combined, "invaliddata", "invalidjson", "invalidjsonl")) {
             return "输入数据格式不符合要求，请检查素材或请求内容后重试。";
@@ -556,8 +775,9 @@ public class SeedanceServiceImpl implements SeedanceService {
         if (message == null) {
             return "";
         }
-        return message.replaceAll("(?i)\\s*Request\\s*ID\\s*:\\s*[^;\\n。]*", "")
-                .replaceAll("(?i)\\s*Request\\s*id\\s*:\\s*[^;\\n。]*", "")
+        return message.replaceAll("(?i)\\s*\\(?\\s*Request\\s*ID\\s*:\\s*[^;)\\n。]*\\)?", "")
+                .replaceAll("(?i)\\s*\\(?\\s*Request\\s*id\\s*:\\s*[^;)\\n。]*\\)?", "")
+                .replaceAll("\\s*[（(]\\s*[）)]\\s*", "")
                 .trim();
     }
 }

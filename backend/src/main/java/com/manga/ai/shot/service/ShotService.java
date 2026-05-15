@@ -99,6 +99,25 @@ public interface ShotService {
     void generateVideoWithReferences(Long shotId, java.util.List<String> referenceUrls);
 
     /**
+     * 带参考图生成视频，并同步当前页面选择的参考图
+     * @param shotId 分镜ID
+     * @param referenceUrls 参考图URL列表（前端传入）
+     * @param referenceImages 当前页面选择的参考图明细
+     */
+    void generateVideoWithReferences(Long shotId, java.util.List<String> referenceUrls, java.util.List<ReferenceImageDTO> referenceImages);
+
+    /**
+     * 带参考图生成视频，并在同一事务里保存分镜设置和生成开始时间
+     * @param shotId 分镜ID
+     * @param referenceUrls 参考图URL列表（前端传入）
+     * @param referenceImages 当前页面选择的参考图明细
+     * @param shotUpdate 当前页面分镜设置
+     * @param generationStartTime 用户点击生成的时间
+     */
+    void generateVideoWithReferences(Long shotId, java.util.List<String> referenceUrls, java.util.List<ReferenceImageDTO> referenceImages,
+                                     ShotUpdateRequest shotUpdate, java.time.LocalDateTime generationStartTime);
+
+    /**
      * 异步执行视频生成（内部方法）
      * @param shotId 分镜ID
      */

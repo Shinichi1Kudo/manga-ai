@@ -30,4 +30,14 @@ public class ShotVideoAssetVO implements Serializable {
      * 生成提示词
      */
     private String prompt;
+
+    /**
+     * 参考图URLs
+     */
+    private String referenceUrls;
+
+    /**
+     * 完整生成参数
+     */
+    private String generationParams;
 }

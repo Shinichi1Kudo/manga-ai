@@ -9,9 +9,12 @@ import com.manga.ai.subject.entity.SubjectReplacementTask;
 import com.manga.ai.subject.mapper.SubjectReplacementTaskMapper;
 import com.manga.ai.user.service.UserService;
 import com.manga.ai.user.service.impl.UserServiceImpl.UserContextHolder;
+import com.manga.ai.video.dto.SeedanceRequest;
 import com.manga.ai.video.dto.SeedanceResponse;
 import com.manga.ai.video.service.SeedanceService;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
+import org.springframework.test.util.ReflectionTestUtils;
 
 import java.lang.reflect.Method;
 import java.util.List;
@@ -98,6 +101,31 @@ class SubjectReplacementServiceImplTest {
     }
 
     @Test
+    void createTaskNormalizesLegacySubjectReplacementModelToToapisVipModel() {
+        SubjectReplacementTaskMapper mapper = mock(SubjectReplacementTaskMapper.class);
+        UserService userService = mock(UserService.class);
+        SubjectReplacementServiceImpl service = new SubjectReplacementServiceImpl(
+                mapper, null, null, userService, command -> {});
+        ReflectionTestUtils.setField(service, "subjectReplacementModel", "seedance-1.0-pro");
+        SubjectReplacementCreateRequest request = createRequest(5);
+        when(mapper.insert(any(SubjectReplacementTask.class))).thenAnswer(invocation -> {
+            invocation.<SubjectReplacementTask>getArgument(0).setId(9L);
+            return 1;
+        });
+
+        UserContextHolder.setUserId(7L);
+        try {
+            service.createTask(request);
+        } finally {
+            UserContextHolder.clear();
+        }
+
+        verify(mapper).insert(argThat(task ->
+                "doubao-seedance-2-0-260128".equals(task.getModel())
+        ));
+    }
+
+    @Test
     void createTaskDeletesInsertedTaskWhenCreditDeductionFails() {
         SubjectReplacementTaskMapper mapper = mock(SubjectReplacementTaskMapper.class);
         UserService userService = mock(UserService.class);
@@ -155,6 +183,47 @@ class SubjectReplacementServiceImplTest {
         verify(userService).refundCredits(7L, 160, "主体替换失败返还-任务9", 9L, "SUBJECT_REPLACEMENT");
         assertThat(task.getCreditsRefunded()).isTrue();
         assertThat(task.getStatus()).isEqualTo("failed");
+    }
+
+    @Test
+    void executeTaskNormalizesLegacyStoredModelAndKeepsReferenceVideoForNewApi() {
+        SubjectReplacementTaskMapper mapper = mock(SubjectReplacementTaskMapper.class);
+        SeedanceService seedanceService = mock(SeedanceService.class);
+        UserService userService = mock(UserService.class);
+        SubjectReplacementTask task = createTask();
+        task.setId(9L);
+        task.setUserId(7L);
+        task.setModel("seedance-1.0-pro");
+        when(mapper.selectById(9L)).thenReturn(task);
+
+        SeedanceResponse response = new SeedanceResponse();
+        response.setStatus("completed");
+        response.setVideoUrl("https://example.com/out.mp4");
+        response.setTaskId("task-new-api");
+        when(seedanceService.generateVideo(any())).thenReturn(response);
+
+        SubjectReplacementServiceImpl service = new SubjectReplacementServiceImpl(
+                mapper, null, seedanceService, userService, directExecutor());
+
+        service.executeTask(9L);
+
+        ArgumentCaptor<SeedanceRequest> captor = ArgumentCaptor.forClass(SeedanceRequest.class);
+        verify(seedanceService).generateVideo(captor.capture());
+        SeedanceRequest request = captor.getValue();
+        assertThat(request.getModel()).isEqualTo("doubao-seedance-2-0-260128");
+        assertThat(request.getContents())
+                .anySatisfy(content -> {
+                    assertThat(content.getType()).isEqualTo("video_url");
+                    assertThat(content.getRole()).isEqualTo("reference_video");
+                    assertThat(content.getVideoUrl().getUrl()).isEqualTo("https://example.com/input.mp4");
+                })
+                .anySatisfy(content -> {
+                    assertThat(content.getType()).isEqualTo("image_url");
+                    assertThat(content.getRole()).isEqualTo("reference_image");
+                    assertThat(content.getImageUrl().getUrl()).isEqualTo("https://example.com/ref.png");
+                });
+        assertThat(task.getModel()).isEqualTo("doubao-seedance-2-0-260128");
+        assertThat(task.getStatus()).isEqualTo("succeeded");
     }
 
     @Test

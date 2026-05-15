@@ -42,6 +42,10 @@
 - ✅ 分镜视频下载
 - ✅ 剧集删除
 - ✅ Redis Token 管理
+- ✅ Seedance 2.0 Fast VIP / VIP 底层切换到 Toapis 视频生成接口
+- ✅ Kling v3 Omni 视频模型接入，支持参考图占位符、自动带音频生成
+- ✅ 分镜生成提交即进入生成中，生成开始时间与参考图状态写入后端，刷新/新标签页保持一致
+- ✅ 视频生成请求元数据留存，可在历史版本中回溯提交模型、接口地址和请求体
 - ✅ 分镜生成耗时按版本记录与回滚同步
 - ✅ 分镜编辑状态标记与保存一致性保护
 - ✅ 场景/道具资产手动上传、裁剪、历史版本与回滚
@@ -59,6 +63,7 @@
 - ✅ 参考图大图预览
 - ✅ 火山引擎错误码友好提示
 - ✅ 演示素材接入 OSS（替换前视频、参考图、替换后视频）
+- ✅ 主体替换视频生成切换到 Toapis `/v1/videos/generations` 接口
 
 ### GPT-Image2 生图（已完成）
 - ✅ 首页 GPT-Image2 生图入口与独立工作台
@@ -76,10 +81,15 @@
 - ✅ 站点 Logo 与 favicon 走 OSS 签名 URL，部署后不依赖本地临时文件
 - ✅ 首页基础工作台、AI 工具、资产与账户分组排版
 - ✅ 首页我的系列卡片科技感视觉优化
+- ✅ 首页“今日更新”公告栏，展示 Seedance 2.0、真人人脸与 Kling v3 Omni 更新
 - ✅ 工藤新一专属积分管理后台，支持查看全站余额、今日消耗明细、近 3 天流水分页和使用趋势
 
 ## 近期更新
 
+- 视频生成链路升级：Seedance 2.0 Fast VIP、Seedance 2.0 VIP、主体替换视频生成统一切换到 Toapis `/v1/videos/generations`，新增提交请求元数据记录，方便排查实际入参。
+- Kling v3 Omni 接入：分镜生成新增 `Kling v3 Omni` 选项，按 Omni 规则构造 `image_list` 与 `<<<image_N>>>` 引用，默认 `audio=true` 且不传 `video_list`，避免音频互斥问题。
+- 分镜生成状态同步：点击生成后直接进入“生成中”，生成开始时间、参考图、模型、分辨率等参数随请求写入后端，新标签页和刷新后可恢复一致状态。
+- 首页今日更新公告栏：左侧新增科技感滚动公告卡片，展示 Seedance 2.0 正式上线、真人人脸支持和 Kling v3 Omni 接入，并适配首页背景光影。
 - 数据隔离与图片持久化修复：我的系列、系列详情、回收站、锁定列表、影视资产等系列级接口按当前登录用户强制过滤；GPT-Image2 生成图不再信任上游 OSS URL，一律重新上传到自有 `gpt-image2/results/` 目录，避免跨 bucket 裂图。
 - GPT-Image2 计费上线：提交后台生成一次扣除 12 积分，生成失败自动返还，最近任务卡片同步展示模型徽章和积分消耗。
 - GPT-Image2 独立工作台：从首页弹窗改为独立页面，支持 1K/2K/4K 清晰度、最近任务分页、按比例预览、点击图片查看大图与下载。
@@ -161,7 +171,8 @@ manga-ai/
 
 ### AI 服务
 - 火山引擎 Seedream（图片生成）
-- 火山引擎 Seedance 2.0（视频生成）
+- Toapis 视频生成接口（Seedance 2.0 Fast VIP / VIP、Kling v3 Omni、主体替换视频生成）
+- 火山引擎 Seedance 2.0（保留兼容配置）
 - 火山引擎豆包大模型（剧本解析）
 - GPT-Image2（首页生图）
 
@@ -316,6 +327,7 @@ python manage.py runserver 8000
 |------|------|------|-------|
 | Seedance 2.0 VIP | 15/秒 | 32/秒 | 69/秒 |
 | Seedance 2.0 Fast | 12/秒 | 25/秒 | 不支持 |
+| Kling v3 Omni | 15/秒 | 32/秒 | 69/秒 |
 
 其他操作：普通图片生成 6 积分/张，GPT-Image2 生图 12 积分/次，剧本解析 2 积分/次。主体替换按 32 积分/秒计费，生成失败自动返还。
 
@@ -363,7 +375,10 @@ volcengine:
   # 视频生成
   seedance:
     api-key: ${VOLCENGINE_SEEDANCE_API_KEY}
+    fast-api-key: ${VOLCENGINE_SEEDANCE_FAST_API_KEY}
+    fast-base-url: https://toapis.com/v1
     model: seedance-2.0
+    subject-replacement-model: doubao-seedance-2-0-260128
 
   # LLM
   llm:
@@ -433,11 +448,14 @@ BACKEND_API_URL = 'http://localhost:8081/api'
 - [x] 图片自动上传 OSS（防止临时 URL 过期）
 - [x] 剧集管理基础架构
 - [x] LLM 剧本解析服务
-- [x] Seedance 2.0 / 2.0 Fast 视频生成服务
+- [x] Seedance 2.0 / 2.0 Fast / Kling v3 Omni 视频生成服务
+- [x] 主体替换视频生成 Toapis 接口切换
 - [x] 分镜管理基础架构
 - [x] 视频版本管理与回滚（含耗时同步）
+- [x] 视频生成请求元数据记录
 - [x] 待审核/已锁定分镜列表
 - [x] 分镜手动上传视频、锁定、解锁和排序
+- [x] 分镜生成中状态跨标签页同步
 - [x] 分镜文本格式化存储
 - [x] 中文错误信息提示
 - [x] 分镜分辨率与模型选择
@@ -463,6 +481,7 @@ BACKEND_API_URL = 'http://localhost:8081/api'
 - [x] 海带品牌 Logo OSS 化与站点 favicon 接入
 - [x] 视频主体替换功能与首页演示区
 - [x] GPT-Image2 独立生图工作台、清晰度选择、任务分页与 12 积分计费
+- [x] 首页今日更新公告栏
 - [x] 变更文档目录
 
 ### 进行中

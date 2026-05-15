@@ -85,7 +85,7 @@ public class Shot implements Serializable {
     private String resolution;
 
     /**
-     * 视频生成模型: seedance-2.0-fast (Seedance 2.0 Fast VIP), seedance-2.0 (Seedance 2.0 VIP)
+     * 视频生成模型: seedance-2.0-fast (Seedance 2.0 Fast VIP), seedance-2.0 (Seedance 2.0 VIP), kling-v3-omni
      */
     private String videoModel;
 

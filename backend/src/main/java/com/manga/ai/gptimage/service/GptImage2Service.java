@@ -20,4 +20,6 @@ public interface GptImage2Service {
     GptImage2GenerateResponse getLatestTask();
 
     String uploadReference(MultipartFile file);
+
+    int failStaleRunningTasks();
 }

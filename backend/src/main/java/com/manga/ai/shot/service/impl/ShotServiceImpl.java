@@ -68,6 +68,7 @@ import java.util.Arrays;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -208,7 +209,7 @@ public class ShotServiceImpl implements ShotService {
 
     /**
      * 将前端模型标识转换为API模型名称
-     * @param videoModel 前端模型标识 (seedance-2.0-fast, seedance-2.0)
+     * @param videoModel 前端模型标识 (seedance-2.0-fast, seedance-2.0, kling-v3-omni)
      * @return API模型名称
      */
     private String convertToApiModel(String videoModel) {
@@ -219,6 +220,8 @@ public class ShotServiceImpl implements ShotService {
             case "seedance-2.0":
             case "doubao-seedance-2-0-260128":
                 return "doubao-seedance-2-0-260128"; // VIP 模型
+            case "kling-v3-omni":
+                return "kling-v3-omni"; // Kling v3 Omni 模型
             case "seedance-2.0-fast":
             case "doubao-seedance-2-0-fast-260128":
             default:
@@ -408,60 +411,58 @@ public class ShotServiceImpl implements ShotService {
         }
         ensureShotCanBeModified(shot);
 
+        LambdaUpdateWrapper<Shot> updateWrapper = new LambdaUpdateWrapper<>();
+        updateWrapper.eq(Shot::getId, shotId);
         if (request.getDescription() != null) {
-            shot.setDescription(request.getDescription());
+            updateWrapper.set(Shot::getDescription, request.getDescription());
         }
         if (request.getDescriptionEdited() != null) {
-            shot.setDescriptionEdited(request.getDescriptionEdited());
+            updateWrapper.set(Shot::getDescriptionEdited, request.getDescriptionEdited());
         }
         if (request.getStartTime() != null) {
-            shot.setStartTime(request.getStartTime());
+            updateWrapper.set(Shot::getStartTime, request.getStartTime());
         }
         if (request.getEndTime() != null) {
-            shot.setEndTime(request.getEndTime());
+            updateWrapper.set(Shot::getEndTime, request.getEndTime());
         }
         if (request.getDuration() != null) {
-            shot.setDuration(Math.min(request.getDuration(), 15));  // 最大15秒
+            updateWrapper.set(Shot::getDuration, Math.min(request.getDuration(), 15));  // 最大15秒
         }
         if (request.getResolution() != null) {
-            shot.setResolution(request.getResolution());
+            updateWrapper.set(Shot::getResolution, request.getResolution());
         }
         if (request.getAspectRatio() != null) {
-            shot.setAspectRatio(request.getAspectRatio());
+            updateWrapper.set(Shot::getAspectRatio, request.getAspectRatio());
         }
         if (request.getShotType() != null) {
-            shot.setShotType(request.getShotType());
+            updateWrapper.set(Shot::getShotType, request.getShotType());
         }
         if (request.getCameraAngle() != null) {
-            shot.setCameraAngle(request.getCameraAngle());
+            updateWrapper.set(Shot::getCameraAngle, request.getCameraAngle());
         }
         if (request.getCameraMovement() != null) {
-            shot.setCameraMovement(request.getCameraMovement());
+            updateWrapper.set(Shot::getCameraMovement, request.getCameraMovement());
         }
         if (request.getSoundEffect() != null) {
-            shot.setSoundEffect(request.getSoundEffect());
+            updateWrapper.set(Shot::getSoundEffect, request.getSoundEffect());
         }
         if (request.getShotName() != null) {
-            shot.setShotName(normalizeShotName(request.getShotName()));
+            updateWrapper.set(Shot::getShotName, normalizeShotName(request.getShotName()));
         }
         if (request.getSceneName() != null) {
-            shot.setSceneName(request.getSceneName());
+            updateWrapper.set(Shot::getSceneName, request.getSceneName());
         }
         if (request.getSceneEdited() != null) {
-            shot.setSceneEdited(request.getSceneEdited());
+            updateWrapper.set(Shot::getSceneEdited, request.getSceneEdited());
         }
         if (request.getUserPrompt() != null) {
-            shot.setUserPrompt(request.getUserPrompt());
-        }
-        if (request.getGenerationStatus() != null) {
-            shot.setGenerationStatus(request.getGenerationStatus());
+            updateWrapper.set(Shot::getUserPrompt, request.getUserPrompt());
         }
         if (request.getVideoModel() != null) {
-            shot.setVideoModel(request.getVideoModel());
+            updateWrapper.set(Shot::getVideoModel, request.getVideoModel());
         }
-
-        shot.setUpdatedAt(LocalDateTime.now());
-        shotMapper.updateById(shot);
+        updateWrapper.set(Shot::getUpdatedAt, LocalDateTime.now());
+        shotMapper.update(null, updateWrapper);
         log.info("更新分镜: shotId={}", shotId);
     }
 
@@ -779,31 +780,34 @@ public class ShotServiceImpl implements ShotService {
             request.setDuration(shot.getDuration() != null ? shot.getDuration() : 5);
             request.setShotId(shotId);
             request.setModel(convertToApiModel(shot.getVideoModel()));
+            request.setGenerateAudio(true);
 
             // 设置视频尺寸
             int[] size = calculateVideoSize(shot.getResolution(), shot.getAspectRatio());
             request.setWidth(size[0]);
             request.setHeight(size[1]);
+            request.setRatio(shot.getAspectRatio() != null ? shot.getAspectRatio() : "16:9");
 
             // 调用Seedance生成视频
             SeedanceResponse response = seedanceService.generateVideo(request);
 
             if ("completed".equals(response.getStatus()) || "succeeded".equals(response.getStatus())) {
+                ensureGeneratedVideoUrlPresent(response);
                 // 计算生成耗时
                 int durationSeconds = (int) ((System.currentTimeMillis() - startTime) / 1000);
                 log.info("视频生成耗时: {}秒 (约{}分{}秒)", durationSeconds, durationSeconds / 60, durationSeconds % 60);
 
                 // 保存视频URL
+                persistSuccessfulVideoGeneration(shot.getId(), response, durationSeconds);
+
+                // 保存元数据
                 shot.setVideoUrl(response.getVideoUrl());
                 shot.setThumbnailUrl(response.getThumbnailUrl());
                 shot.setVideoSeed(response.getSeed());
                 shot.setGenerationStatus(ShotGenerationStatus.COMPLETED.getCode());
+                shot.setGenerationError(null);
                 shot.setGenerationDuration(durationSeconds);
-                shot.setDeductedCredits(null); // 成功后清除扣除积分记录
-                shot.setUpdatedAt(LocalDateTime.now());
-                shotMapper.updateById(shot);
-
-                // 保存元数据
+                shot.setDeductedCredits(null);
                 saveVideoMetadata(shot, prompt, response);
 
                 // 保存视频版本资产
@@ -818,17 +822,7 @@ public class ShotServiceImpl implements ShotService {
         } catch (Exception e) {
             log.error("视频生成异常: shotId={}", shotId, e);
             shot.setGenerationStatus(ShotGenerationStatus.FAILED.getCode());
-            // 提取关键错误信息，转换为用户友好的提示
-            String errorMsg = e.getMessage();
-            if (errorMsg != null && errorMsg.contains("ModelNotOpen")) {
-                shot.setGenerationError("模型未开通，请在火山引擎控制台开通 Seedance 2.0 模型");
-            } else if (errorMsg != null && errorMsg.contains("SensitiveContent")) {
-                shot.setGenerationError("内容审核未通过，请修改分镜描述后重试");
-            } else if (errorMsg != null && errorMsg.contains("copyright")) {
-                shot.setGenerationError("内容审核未通过，请修改分镜描述后重试");
-            } else {
-                shot.setGenerationError("视频生成失败，请稍后重试");
-            }
+            shot.setGenerationError(resolveVideoGenerationError(e.getMessage(), false));
 
             // 生成失败，返还积分
             if (shot.getDeductedCredits() != null && shot.getDeductedCredits() > 0) {
@@ -915,7 +909,7 @@ public class ShotServiceImpl implements ShotService {
         metadata.setPrompt(prompt);
         metadata.setUserPrompt(shot.getUserPrompt());
         metadata.setSeed(response.getSeed());
-        metadata.setModelVersion("seedance-2.0");
+        metadata.setModelVersion(resolveVideoModelForMetadata(shot, response));
         metadata.setVideoDuration(shot.getDuration());
         metadata.setGenerationTimeMs(response.getGenerationTimeMs());
         metadata.setCreatedAt(LocalDateTime.now());
@@ -1328,6 +1322,18 @@ public class ShotServiceImpl implements ShotService {
 
     @Override
     public void generateVideoWithReferences(Long shotId, List<String> referenceUrls) {
+        generateVideoWithReferences(shotId, referenceUrls, null);
+    }
+
+    @Override
+    public void generateVideoWithReferences(Long shotId, List<String> referenceUrls, List<ReferenceImageDTO> referenceImages) {
+        generateVideoWithReferences(shotId, referenceUrls, referenceImages, null, null);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public void generateVideoWithReferences(Long shotId, List<String> referenceUrls, List<ReferenceImageDTO> referenceImages,
+            ShotUpdateRequest shotUpdate, LocalDateTime generationStartTime) {
         log.info("开始生成视频(带参考图): shotId={}, referenceUrls={}", shotId, referenceUrls);
 
         // 获取分镜信息
@@ -1341,6 +1347,7 @@ public class ShotServiceImpl implements ShotService {
             log.info("分镜视频已在生成中，拒绝重复提交(带参考图): shotId={}", shotId);
             throw new BusinessException("分镜正在生成中，请等待当前任务完成");
         }
+        applyShotUpdateForGeneration(shot, shotUpdate);
 
         // 计算并扣除积分
         int requiredCredits = CreditConstants.calculateCredits(shot.getResolution(), shot.getDuration(), shot.getVideoModel());
@@ -1353,7 +1360,7 @@ public class ShotServiceImpl implements ShotService {
         log.info("积分扣除成功: userId={}, amount={}, shotId={}", userId, requiredCredits, shotId);
 
         // 更新状态并记录扣除的积分
-        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime now = generationStartTime != null ? generationStartTime : LocalDateTime.now();
         LambdaUpdateWrapper<Shot> updateWrapper = new LambdaUpdateWrapper<>();
         updateWrapper.eq(Shot::getId, shotId)
                 .ne(Shot::getGenerationStatus, ShotGenerationStatus.GENERATING.getCode())
@@ -1362,6 +1369,7 @@ public class ShotServiceImpl implements ShotService {
                 .set(Shot::getDeductedCredits, requiredCredits)
                 .set(Shot::getGenerationStartTime, now)
                 .set(Shot::getUpdatedAt, now);
+        applyShotUpdateToWrapper(updateWrapper, shotUpdate);
         int updated = shotMapper.update(null, updateWrapper);
 
         if (updated == 0) {
@@ -1369,10 +1377,144 @@ public class ShotServiceImpl implements ShotService {
             log.info("分镜视频生成重复提交，积分已返还(带参考图): shotId={}, credits={}", shotId, requiredCredits);
             throw new BusinessException("分镜正在生成中，请等待当前任务完成");
         }
+        replaceReferenceImagesForGeneration(shotId, referenceImages);
         log.info("已更新分镜状态为生成中: shotId={}", shotId);
 
         // 通过代理异步执行视频生成（确保真正的异步）
         self.doGenerateVideoWithReferences(shotId, referenceUrls);
+    }
+
+    private void applyShotUpdateForGeneration(Shot shot, ShotUpdateRequest request) {
+        if (shot == null || request == null) {
+            return;
+        }
+        if (request.getDescription() != null) {
+            shot.setDescription(request.getDescription());
+        }
+        if (request.getDescriptionEdited() != null) {
+            shot.setDescriptionEdited(request.getDescriptionEdited());
+        }
+        if (request.getStartTime() != null) {
+            shot.setStartTime(request.getStartTime());
+        }
+        if (request.getEndTime() != null) {
+            shot.setEndTime(request.getEndTime());
+        }
+        if (request.getDuration() != null) {
+            shot.setDuration(Math.min(request.getDuration(), 15));
+        }
+        if (request.getResolution() != null) {
+            shot.setResolution(request.getResolution());
+        }
+        if (request.getAspectRatio() != null) {
+            shot.setAspectRatio(request.getAspectRatio());
+        }
+        if (request.getShotType() != null) {
+            shot.setShotType(request.getShotType());
+        }
+        if (request.getCameraAngle() != null) {
+            shot.setCameraAngle(request.getCameraAngle());
+        }
+        if (request.getCameraMovement() != null) {
+            shot.setCameraMovement(request.getCameraMovement());
+        }
+        if (request.getSoundEffect() != null) {
+            shot.setSoundEffect(request.getSoundEffect());
+        }
+        if (request.getShotName() != null) {
+            shot.setShotName(normalizeShotName(request.getShotName()));
+        }
+        if (request.getSceneName() != null) {
+            shot.setSceneName(request.getSceneName());
+        }
+        if (request.getSceneEdited() != null) {
+            shot.setSceneEdited(request.getSceneEdited());
+        }
+        if (request.getUserPrompt() != null) {
+            shot.setUserPrompt(request.getUserPrompt());
+        }
+        if (request.getVideoModel() != null) {
+            shot.setVideoModel(request.getVideoModel());
+        }
+    }
+
+    private void applyShotUpdateToWrapper(LambdaUpdateWrapper<Shot> updateWrapper, ShotUpdateRequest request) {
+        if (request == null) {
+            return;
+        }
+        if (request.getDescription() != null) {
+            updateWrapper.set(Shot::getDescription, request.getDescription());
+        }
+        if (request.getDescriptionEdited() != null) {
+            updateWrapper.set(Shot::getDescriptionEdited, request.getDescriptionEdited());
+        }
+        if (request.getStartTime() != null) {
+            updateWrapper.set(Shot::getStartTime, request.getStartTime());
+        }
+        if (request.getEndTime() != null) {
+            updateWrapper.set(Shot::getEndTime, request.getEndTime());
+        }
+        if (request.getDuration() != null) {
+            updateWrapper.set(Shot::getDuration, Math.min(request.getDuration(), 15));
+        }
+        if (request.getResolution() != null) {
+            updateWrapper.set(Shot::getResolution, request.getResolution());
+        }
+        if (request.getAspectRatio() != null) {
+            updateWrapper.set(Shot::getAspectRatio, request.getAspectRatio());
+        }
+        if (request.getShotType() != null) {
+            updateWrapper.set(Shot::getShotType, request.getShotType());
+        }
+        if (request.getCameraAngle() != null) {
+            updateWrapper.set(Shot::getCameraAngle, request.getCameraAngle());
+        }
+        if (request.getCameraMovement() != null) {
+            updateWrapper.set(Shot::getCameraMovement, request.getCameraMovement());
+        }
+        if (request.getSoundEffect() != null) {
+            updateWrapper.set(Shot::getSoundEffect, request.getSoundEffect());
+        }
+        if (request.getShotName() != null) {
+            updateWrapper.set(Shot::getShotName, normalizeShotName(request.getShotName()));
+        }
+        if (request.getSceneName() != null) {
+            updateWrapper.set(Shot::getSceneName, request.getSceneName());
+        }
+        if (request.getSceneEdited() != null) {
+            updateWrapper.set(Shot::getSceneEdited, request.getSceneEdited());
+        }
+        if (request.getUserPrompt() != null) {
+            updateWrapper.set(Shot::getUserPrompt, request.getUserPrompt());
+        }
+        if (request.getVideoModel() != null) {
+            updateWrapper.set(Shot::getVideoModel, request.getVideoModel());
+        }
+    }
+
+    private void replaceReferenceImagesForGeneration(Long shotId, List<ReferenceImageDTO> referenceImages) {
+        if (referenceImages == null) {
+            return;
+        }
+        LambdaQueryWrapper<ShotReferenceImage> deleteWrapper = new LambdaQueryWrapper<>();
+        deleteWrapper.eq(ShotReferenceImage::getShotId, shotId);
+        shotReferenceImageMapper.delete(deleteWrapper);
+
+        for (int i = 0; i < referenceImages.size(); i++) {
+            ReferenceImageDTO dto = referenceImages.get(i);
+            ShotReferenceImage entity = new ShotReferenceImage();
+            entity.setShotId(shotId);
+            entity.setImageType(dto.getImageType());
+            entity.setReferenceId(dto.getReferenceId());
+            entity.setReferenceName(dto.getReferenceName());
+            entity.setImageUrl(dto.getImageUrl());
+            entity.setDisplayOrder(i);
+            entity.setIsUserAdded(dto.getIsUserAdded() != null && dto.getIsUserAdded() ? 1 : 0);
+            entity.setCreatedAt(LocalDateTime.now());
+            entity.setUpdatedAt(LocalDateTime.now());
+            shotReferenceImageMapper.insert(entity);
+        }
+        log.info("生成前同步分镜参考图: shotId={}, count={}", shotId, referenceImages.size());
     }
 
     @Override
@@ -1409,19 +1551,20 @@ public class ShotServiceImpl implements ShotService {
             for (AssetReference ref : references) {
                 log.info("参考图: type={}, name={}, url={}", ref.getType(), ref.getName(), ref.getImageUrl());
             }
-            String finalPrompt = appendReferenceGuide(result.getPrompt(), references);
-
             // 创建生成请求
             SeedanceRequest request = new SeedanceRequest();
+            request.setModel(convertToApiModel(shot.getVideoModel()));
+            String finalPrompt = appendReferenceGuide(result.getPrompt(), references, request.getModel());
             request.setPrompt(finalPrompt);
             request.setDuration(shot.getDuration() != null ? shot.getDuration() : 5);
             request.setShotId(shotId);
-            request.setModel(convertToApiModel(shot.getVideoModel()));
+            request.setGenerateAudio(true);
 
             // 设置视频尺寸
             int[] size = calculateVideoSize(shot.getResolution(), shot.getAspectRatio());
             request.setWidth(size[0]);
             request.setHeight(size[1]);
+            request.setRatio(shot.getAspectRatio() != null ? shot.getAspectRatio() : "16:9");
 
             // 构建参考图列表
             if (!references.isEmpty()) {
@@ -1444,21 +1587,22 @@ public class ShotServiceImpl implements ShotService {
             SeedanceResponse response = seedanceService.generateVideo(request);
 
             if ("completed".equals(response.getStatus()) || "succeeded".equals(response.getStatus())) {
+                ensureGeneratedVideoUrlPresent(response);
                 // 计算生成耗时
                 int durationSeconds = (int) ((System.currentTimeMillis() - startTime) / 1000);
                 log.info("视频生成耗时: {}秒 (约{}分{}秒)", durationSeconds, durationSeconds / 60, durationSeconds % 60);
 
                 // 保存视频URL
+                persistSuccessfulVideoGeneration(shot.getId(), response, durationSeconds);
+
+                // 保存元数据
                 shot.setVideoUrl(response.getVideoUrl());
                 shot.setThumbnailUrl(response.getThumbnailUrl());
                 shot.setVideoSeed(response.getSeed());
                 shot.setGenerationStatus(ShotGenerationStatus.COMPLETED.getCode());
+                shot.setGenerationError(null);
                 shot.setGenerationDuration(durationSeconds);
-                shot.setDeductedCredits(null); // 成功后清除扣除积分记录
-                shot.setUpdatedAt(LocalDateTime.now());
-                shotMapper.updateById(shot);
-
-                // 保存元数据
+                shot.setDeductedCredits(null);
                 saveVideoMetadata(shot, finalPrompt, response);
 
                 // 保存视频版本资产
@@ -1474,19 +1618,7 @@ public class ShotServiceImpl implements ShotService {
         } catch (Exception e) {
             log.error("视频生成异常(带参考图): shotId={}", shotId, e);
             shot.setGenerationStatus(ShotGenerationStatus.FAILED.getCode());
-            // 提取关键错误信息，转换为用户友好的提示
-            String errorMsg = e.getMessage();
-            if (errorMsg != null && errorMsg.contains("ModelNotOpen")) {
-                shot.setGenerationError("模型未开通，请在火山引擎控制台开通 Seedance 2.0 模型");
-            } else if (errorMsg != null && errorMsg.contains("SensitiveContent")) {
-                shot.setGenerationError("内容审核未通过，请修改分镜描述后重试（避免戏剧化镜头语言）");
-            } else if (errorMsg != null && errorMsg.contains("copyright")) {
-                shot.setGenerationError("内容审核未通过，请修改分镜描述后重试（避免标志性镜头描述）");
-            } else if (errorMsg != null && errorMsg.contains("超时")) {
-                shot.setGenerationError("视频生成超时，请稍后重试或减少视频时长");
-            } else {
-                shot.setGenerationError("视频生成失败，请稍后重试");
-            }
+            shot.setGenerationError(resolveVideoGenerationError(e.getMessage(), true));
 
             // 生成失败，返还积分
             if (shot.getDeductedCredits() != null && shot.getDeductedCredits() > 0) {
@@ -1502,6 +1634,64 @@ public class ShotServiceImpl implements ShotService {
             shot.setUpdatedAt(LocalDateTime.now());
             shotMapper.updateById(shot);
         }
+    }
+
+    private void persistSuccessfulVideoGeneration(Long shotId, SeedanceResponse response, Integer durationSeconds) {
+        LambdaUpdateWrapper<Shot> updateWrapper = new LambdaUpdateWrapper<>();
+        updateWrapper.eq(Shot::getId, shotId)
+                .set(Shot::getVideoUrl, response.getVideoUrl())
+                .set(Shot::getThumbnailUrl, response.getThumbnailUrl())
+                .set(Shot::getVideoSeed, response.getSeed())
+                .set(Shot::getGenerationStatus, ShotGenerationStatus.COMPLETED.getCode())
+                .set(Shot::getGenerationError, null)
+                .set(Shot::getGenerationDuration, durationSeconds)
+                .set(Shot::getDeductedCredits, null)
+                .set(Shot::getUpdatedAt, LocalDateTime.now());
+        shotMapper.update(null, updateWrapper);
+    }
+
+    private void ensureGeneratedVideoUrlPresent(SeedanceResponse response) {
+        if (response == null || response.getVideoUrl() == null || response.getVideoUrl().isBlank()) {
+            throw new RuntimeException("视频生成完成但未返回视频地址，请重新生成");
+        }
+    }
+
+    private String resolveVideoGenerationError(String errorMsg, boolean withReferences) {
+        String detail = normalizeVideoGenerationErrorDetail(errorMsg);
+        if (detail.contains("ModelNotOpen")) {
+            return "模型未开通，请在火山引擎控制台开通对应视频模型";
+        }
+        if (detail.contains("SensitiveContent")) {
+            return withReferences
+                    ? "内容审核未通过，请修改分镜描述后重试（避免戏剧化镜头语言）"
+                    : "内容审核未通过，请修改分镜描述后重试";
+        }
+        if (detail.toLowerCase().contains("copyright")) {
+            return withReferences
+                    ? "内容审核未通过，请修改分镜描述后重试（避免标志性镜头描述）"
+                    : "内容审核未通过，请修改分镜描述后重试";
+        }
+        if (detail.contains("超时")) {
+            return "视频生成超时，请稍后重试或减少视频时长";
+        }
+        if (detail.contains("未返回视频地址")) {
+            return "视频生成完成但未返回视频地址，请重新生成";
+        }
+        if (!detail.isBlank()) {
+            return detail;
+        }
+        return "视频生成失败，请稍后重试";
+    }
+
+    private String normalizeVideoGenerationErrorDetail(String errorMsg) {
+        if (errorMsg == null || errorMsg.isBlank()) {
+            return "";
+        }
+        String detail = errorMsg.replaceFirst("^视频生成失败[:：]\\s*", "").trim();
+        if (detail.startsWith("状态-")) {
+            return "";
+        }
+        return detail;
     }
 
     /**
@@ -1900,11 +2090,11 @@ public class ShotServiceImpl implements ShotService {
             for (String url : frontendReferenceUrls) {
                 addReference(references, "frontend", "页面参考图", url);
             }
-        } else {
-            List<AssetReference> dbReferences = getReferenceImagesFromDB(shot.getId());
-            log.info("从 shot_reference_image 表获取参考图数量: {}", dbReferences.size());
-            references.addAll(dbReferences);
         }
+
+        List<AssetReference> dbReferences = getReferenceImagesFromDB(shot.getId());
+        log.info("从 shot_reference_image 表获取参考图数量: {}", dbReferences.size());
+        references.addAll(dbReferences);
 
         addShotBoundAssetReferences(shot, seriesId, references);
         return dedupeReferences(references);
@@ -1965,19 +2155,50 @@ public class ShotServiceImpl implements ShotService {
 
     private List<AssetReference> dedupeReferences(List<AssetReference> references) {
         List<AssetReference> dedupedReferences = new ArrayList<>();
-        Set<String> seenUrls = new HashSet<>();
+        Map<String, Integer> indexByUrl = new HashMap<>();
         for (AssetReference ref : references) {
-            if (ref.getImageUrl() != null && seenUrls.add(ref.getImageUrl())) {
+            if (ref.getImageUrl() == null) {
+                continue;
+            }
+            String url = ref.getImageUrl();
+            Integer existingIndex = indexByUrl.get(url);
+            if (existingIndex == null) {
+                indexByUrl.put(url, dedupedReferences.size());
                 dedupedReferences.add(ref);
+                continue;
+            }
+            AssetReference existing = dedupedReferences.get(existingIndex);
+            if (referenceSpecificity(ref) > referenceSpecificity(existing)) {
+                dedupedReferences.set(existingIndex, ref);
             }
         }
         return dedupedReferences;
     }
 
-    private String appendReferenceGuide(String prompt, List<AssetReference> references) {
+    private int referenceSpecificity(AssetReference ref) {
+        int score = 0;
+        String type = ref.getType();
+        if (type != null && !type.isBlank() && !"frontend".equals(type)) {
+            score += 2;
+        }
+        String name = ref.getName();
+        if (name != null && !name.isBlank() && !"页面参考图".equals(name)) {
+            score += 1;
+        }
+        return score;
+    }
+
+    private String appendReferenceGuide(String prompt, List<AssetReference> references, String model) {
         if (references == null || references.isEmpty()) {
             return prompt;
         }
+        if ("kling-v3-omni".equals(model)) {
+            return appendKlingOmniReferenceGuide(prompt, references);
+        }
+        return appendSeedanceReferenceGuide(prompt, references);
+    }
+
+    private String appendSeedanceReferenceGuide(String prompt, List<AssetReference> references) {
         StringBuilder builder = new StringBuilder(prompt != null ? prompt : "");
         builder.append("\n\n参考图映射：");
         for (int i = 0; i < references.size(); i++) {
@@ -1989,6 +2210,87 @@ public class ShotServiceImpl implements ShotService {
         }
         builder.append("\n请严格按以上参考图保持角色、场景、道具外观一致，尤其人物脸型、发型、服装和身份特征不要替换成其他形象。");
         return builder.toString();
+    }
+
+    private String appendKlingOmniReferenceGuide(String prompt, List<AssetReference> references) {
+        StringBuilder builder = new StringBuilder();
+        builder.append("Omni 输入绑定：");
+        for (int i = 0; i < references.size(); i++) {
+            AssetReference ref = references.get(i);
+            builder.append("\n- ")
+                    .append(omniBindingSubject(ref))
+                    .append("必须使用 <<<image_").append(i + 1).append(">>>，")
+                    .append(referenceInstruction(ref))
+                    .append("。");
+        }
+        builder.append("\n\n");
+        builder.append(prompt != null ? prompt : "");
+        builder.append("\n\nKling Omni 参考图绑定：");
+        for (int i = 0; i < references.size(); i++) {
+            AssetReference ref = references.get(i);
+            builder.append("\n").append(referenceLabel(ref)).append("：")
+                    .append(ref.getName() != null ? ref.getName() : "未命名参考图")
+                    .append("，必须使用 <<<image_").append(i + 1).append(">>> 作为")
+                    .append(referenceInstruction(ref));
+            String type = ref.getType();
+            if ("role".equals(type)) {
+                builder.append("；画面中的").append(ref.getName() != null ? ref.getName() : "该人物")
+                        .append("必须以 <<<image_").append(i + 1)
+                        .append(">>> 为人物外观参考，保持脸型、五官、发型、服装和身份特征一致");
+            } else if ("scene".equals(type)) {
+                builder.append("；当前镜头环境必须以 <<<image_").append(i + 1)
+                        .append(">>> 为场景参考，保持空间结构、陈设、色彩氛围一致");
+            } else if ("prop".equals(type)) {
+                builder.append("；画面中的").append(ref.getName() != null ? ref.getName() : "该道具")
+                        .append("必须以 <<<image_").append(i + 1)
+                        .append(">>> 为道具外观参考");
+            }
+        }
+        builder.append("\n请严格按照上述 <<<image_N>>> 参考图生成：场景参考图只约束环境和空间布局，人物参考图只约束对应角色的脸型、发型、服装和身份特征，道具参考图只约束对应物品外观。不要把人物替换成其他形象，不要忽略场景图。");
+        return builder.toString();
+    }
+
+    private String omniBindingSubject(AssetReference ref) {
+        String name = ref.getName() != null && !ref.getName().isBlank() ? ref.getName() : "未命名参考图";
+        String type = ref.getType();
+        if ("scene".equals(type)) {
+            return "场景【" + name + "】";
+        }
+        if ("role".equals(type)) {
+            return "人物【" + name + "】";
+        }
+        if ("prop".equals(type)) {
+            return "道具【" + name + "】";
+        }
+        return "参考图【" + name + "】";
+    }
+
+    private String referenceLabel(AssetReference ref) {
+        String type = ref.getType();
+        if ("scene".equals(type)) {
+            return "场景参考图";
+        }
+        if ("role".equals(type)) {
+            return "人物参考图";
+        }
+        if ("prop".equals(type)) {
+            return "道具参考图";
+        }
+        return "参考图";
+    }
+
+    private String referenceInstruction(AssetReference ref) {
+        String type = ref.getType();
+        if ("scene".equals(type)) {
+            return "画面环境、建筑结构、色彩氛围和空间布局参考";
+        }
+        if ("role".equals(type)) {
+            return "对应人物角色外观参考";
+        }
+        if ("prop".equals(type)) {
+            return "对应道具外观参考";
+        }
+        return "视觉参考";
     }
 
     /**
@@ -2164,15 +2466,74 @@ public class ShotServiceImpl implements ShotService {
         // 保存元数据
         ShotVideoAssetMetadata metadata = new ShotVideoAssetMetadata();
         metadata.setShotVideoAssetId(videoAsset.getId());
-        metadata.setModel("seedance-2.0");
+        metadata.setModel(resolveVideoModelForMetadata(shot, response));
         metadata.setPrompt(prompt);
         if (referenceUrls != null && !referenceUrls.isEmpty()) {
             metadata.setReferenceUrls(String.join(",", referenceUrls));
         }
+        metadata.setGenerationParams(buildVideoGenerationParams(response, referenceUrls));
         metadata.setCreatedAt(LocalDateTime.now());
         shotVideoAssetMetadataMapper.insert(metadata);
 
         log.info("保存视频版本资产: shotId={}, version={}, assetId={}", shot.getId(), newVersion, videoAsset.getId());
+    }
+
+    private String resolveVideoModelForMetadata(Shot shot, SeedanceResponse response) {
+        if (response != null && response.getSubmitModel() != null && !response.getSubmitModel().isBlank()) {
+            return response.getSubmitModel();
+        }
+        if (shot != null && shot.getVideoModel() != null && !shot.getVideoModel().isBlank()) {
+            return convertToApiModel(shot.getVideoModel());
+        }
+        return "seedance-2.0";
+    }
+
+    private String buildVideoGenerationParams(SeedanceResponse response, List<String> referenceUrls) {
+        if (response == null) {
+            return null;
+        }
+        Map<String, Object> params = new LinkedHashMap<>();
+        putIfPresent(params, "requestUrl", response.getSubmitRequestUrl());
+        putIfPresent(params, "requestBody", parseJsonObjectOrRaw(response.getSubmitRequestBody()));
+        putIfPresent(params, "model", response.getSubmitModel());
+        putIfPresent(params, "providerTaskId", response.getTaskId());
+        putIfPresent(params, "providerVideoUrl", response.getProviderVideoUrl());
+        putIfPresent(params, "ossVideoUrl", response.getVideoUrl());
+        putIfPresent(params, "thumbnailUrl", response.getThumbnailUrl());
+        putIfPresent(params, "seed", response.getSeed());
+        if (referenceUrls != null && !referenceUrls.isEmpty()) {
+            params.put("referenceUrls", referenceUrls);
+        }
+        if (params.isEmpty()) {
+            return null;
+        }
+        try {
+            return OBJECT_MAPPER.writeValueAsString(params);
+        } catch (Exception e) {
+            log.warn("序列化视频生成参数失败: {}", e.getMessage());
+            return null;
+        }
+    }
+
+    private void putIfPresent(Map<String, Object> params, String key, Object value) {
+        if (value == null) {
+            return;
+        }
+        if (value instanceof String text && text.isBlank()) {
+            return;
+        }
+        params.put(key, value);
+    }
+
+    private Object parseJsonObjectOrRaw(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        try {
+            return OBJECT_MAPPER.readValue(value, Object.class);
+        } catch (Exception e) {
+            return value;
+        }
     }
 
     /**
@@ -2198,6 +2559,8 @@ public class ShotServiceImpl implements ShotService {
         if (metadata != null) {
             vo.setModel(metadata.getModel());
             vo.setPrompt(metadata.getPrompt());
+            vo.setReferenceUrls(metadata.getReferenceUrls());
+            vo.setGenerationParams(metadata.getGenerationParams());
         }
 
         return vo;

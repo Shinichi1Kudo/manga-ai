@@ -39,6 +39,7 @@ import java.util.Base64;
 import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.Executor;
+import java.time.Duration;
 import java.util.stream.Collectors;
 
 /**
@@ -61,12 +62,14 @@ public class GptImage2ServiceImpl implements GptImage2Service {
     private static final int MAX_GENERATE_ATTEMPTS = 3;
     private static final int GENERATE_CREDIT_COST = 12;
     private static final String CREDIT_REFERENCE_TYPE = "GPT_IMAGE2_TASK";
+    private static final long DEFAULT_STALE_TASK_TIMEOUT_MS = 30L * 60L * 1000L;
 
     private final OssService ossService;
     private final UserService userService;
     private final GptImage2TaskMapper taskMapper;
     private final Executor imageGenerateExecutor;
     private final RestTemplate restTemplate;
+    private final long staleTaskTimeoutMs;
 
     @Value("${gpt-image2.api-key:${GPT_IMAGE2_API_KEY:}}")
     private String apiKey;
@@ -83,11 +86,13 @@ public class GptImage2ServiceImpl implements GptImage2Service {
             UserService userService,
             GptImage2TaskMapper taskMapper,
             @Qualifier("imageGenerateExecutor") Executor imageGenerateExecutor,
-            @Value("${gpt-image2.timeout:300000}") int timeout) {
+            @Value("${gpt-image2.timeout:300000}") int timeout,
+            @Value("${gpt-image2.stale-timeout:1800000}") long staleTaskTimeoutMs) {
         this.ossService = ossService;
         this.userService = userService;
         this.taskMapper = taskMapper;
         this.imageGenerateExecutor = imageGenerateExecutor;
+        this.staleTaskTimeoutMs = Math.max(600000L, staleTaskTimeoutMs);
         SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
         factory.setConnectTimeout(30000);
         factory.setReadTimeout(timeout);
@@ -95,7 +100,7 @@ public class GptImage2ServiceImpl implements GptImage2Service {
     }
 
     public GptImage2ServiceImpl(OssService ossService, UserService userService) {
-        this(ossService, userService, null, Runnable::run, 300000);
+        this(ossService, userService, null, Runnable::run, 300000, DEFAULT_STALE_TASK_TIMEOUT_MS);
     }
 
     public GptImage2ServiceImpl(
@@ -103,7 +108,7 @@ public class GptImage2ServiceImpl implements GptImage2Service {
             UserService userService,
             GptImage2TaskMapper taskMapper,
             Executor imageGenerateExecutor) {
-        this(ossService, userService, taskMapper, imageGenerateExecutor, 300000);
+        this(ossService, userService, taskMapper, imageGenerateExecutor, 300000, DEFAULT_STALE_TASK_TIMEOUT_MS);
     }
 
     @Override
@@ -213,7 +218,7 @@ public class GptImage2ServiceImpl implements GptImage2Service {
         if (taskId == null) {
             throw new BusinessException(400, "任务ID不能为空");
         }
-        return toResponse(getOwnedTask(taskId));
+        return toResponse(markStaleTaskFailedIfNeeded(getOwnedTask(taskId)));
     }
 
     @Override
@@ -231,7 +236,7 @@ public class GptImage2ServiceImpl implements GptImage2Service {
         if (tasks == null || tasks.isEmpty()) {
             return Collections.emptyList();
         }
-        return tasks.stream().map(this::toResponse).collect(Collectors.toList());
+        return tasks.stream().map(this::markStaleTaskFailedIfNeeded).map(this::toResponse).collect(Collectors.toList());
     }
 
     @Override
@@ -245,7 +250,42 @@ public class GptImage2ServiceImpl implements GptImage2Service {
                 .orderByDesc(GptImage2Task::getCreatedAt)
                 .last("LIMIT 1");
         GptImage2Task task = taskMapper.selectOne(wrapper);
-        return task == null ? null : toResponse(task);
+        return task == null ? null : toResponse(markStaleTaskFailedIfNeeded(task));
+    }
+
+    @Override
+    public int failStaleRunningTasks() {
+        if (taskMapper == null) {
+            return 0;
+        }
+        LocalDateTime cutoff = staleCutoff();
+        LambdaQueryWrapper<GptImage2Task> wrapper = new LambdaQueryWrapper<>();
+        wrapper.in(GptImage2Task::getStatus, "pending", "running")
+                .lt(GptImage2Task::getUpdatedAt, cutoff)
+                .last("LIMIT 100");
+        List<GptImage2Task> tasks = taskMapper.selectList(wrapper);
+        if (tasks == null || tasks.isEmpty()) {
+            return 0;
+        }
+
+        int failedCount = 0;
+        for (GptImage2Task task : tasks) {
+            if (task == null || !isStaleTask(task, cutoff)) {
+                continue;
+            }
+            task.setStatus("failed");
+            task.setErrorMessage("生成任务超时，已自动停止并返还积分，请重新提交");
+            LocalDateTime now = LocalDateTime.now();
+            task.setCompletedAt(now);
+            task.setUpdatedAt(now);
+            refundCreditsIfNeeded(task);
+            taskMapper.updateById(task);
+            failedCount++;
+        }
+        if (failedCount > 0) {
+            log.warn("已清理 {} 个卡住的GPT-Image2生图任务", failedCount);
+        }
+        return failedCount;
     }
 
     @Override
@@ -285,7 +325,7 @@ public class GptImage2ServiceImpl implements GptImage2Service {
                 log.warn("GPT-Image2 API返回错误: status={}, body={}", e.getStatusCode(), e.getResponseBodyAsString());
                 throw new BusinessException((int) e.getStatusCode().value(), friendlyApiError(e.getResponseBodyAsString()));
             } catch (RestClientException e) {
-                if (attempt < MAX_GENERATE_ATTEMPTS && isRetryableGenerateException(e)) {
+                if (attempt < MAX_GENERATE_ATTEMPTS && isRetryableGenerateException(e) && !isReadTimeoutException(e)) {
                     log.warn("GPT-Image2请求连接中断，准备重试: attempt={}/{}, error={}",
                             attempt, MAX_GENERATE_ATTEMPTS, collectThrowableMessages(e));
                     continue;
@@ -474,6 +514,25 @@ public class GptImage2ServiceImpl implements GptImage2Service {
                 || message.contains("timed out");
     }
 
+    private boolean isReadTimeoutException(Throwable throwable) {
+        String message = collectThrowableMessages(throwable).toLowerCase();
+        return message.contains("read timed out");
+    }
+
+    private boolean isStaleTask(GptImage2Task task, LocalDateTime cutoff) {
+        if (!"pending".equals(task.getStatus()) && !"running".equals(task.getStatus())) {
+            return false;
+        }
+        LocalDateTime lastActiveAt = task.getUpdatedAt();
+        if (lastActiveAt == null) {
+            lastActiveAt = task.getSubmittedAt();
+        }
+        if (lastActiveAt == null) {
+            lastActiveAt = task.getCreatedAt();
+        }
+        return lastActiveAt != null && lastActiveAt.isBefore(cutoff);
+    }
+
     private String collectThrowableMessages(Throwable throwable) {
         StringBuilder builder = new StringBuilder();
         Throwable current = throwable;
@@ -501,6 +560,25 @@ public class GptImage2ServiceImpl implements GptImage2Service {
         return task;
     }
 
+    private GptImage2Task markStaleTaskFailedIfNeeded(GptImage2Task task) {
+        if (task == null || taskMapper == null || !isStaleTask(task, staleCutoff())) {
+            return task;
+        }
+        task.setStatus("failed");
+        task.setErrorMessage("生成任务超时，已自动停止并返还积分，请重新提交");
+        LocalDateTime now = LocalDateTime.now();
+        task.setCompletedAt(now);
+        task.setUpdatedAt(now);
+        refundCreditsIfNeeded(task);
+        taskMapper.updateById(task);
+        log.warn("GPT-Image2任务超时自动失败: taskId={}, userId={}", task.getId(), task.getUserId());
+        return task;
+    }
+
+    private LocalDateTime staleCutoff() {
+        return LocalDateTime.now().minus(Duration.ofMillis(staleTaskTimeoutMs));
+    }
+
     private GptImage2GenerateResponse toResponse(GptImage2Task task) {
         GptImage2GenerateResponse response = new GptImage2GenerateResponse();
         response.setId(task.getId());
@@ -511,7 +589,7 @@ public class GptImage2ServiceImpl implements GptImage2Service {
         response.setImageUrl(task.getImageUrl());
         response.setStatus(task.getStatus());
         response.setStatusDesc(statusDesc(task.getStatus()));
-        response.setProgressPercent(progressPercent(task.getStatus()));
+        response.setProgressPercent(progressPercent(task));
         response.setModel(task.getModel());
         response.setMode(task.getMode());
         response.setCreditCost(task.getCreditCost() == null ? GENERATE_CREDIT_COST : task.getCreditCost());
@@ -552,12 +630,18 @@ public class GptImage2ServiceImpl implements GptImage2Service {
         return "排队中";
     }
 
-    private Integer progressPercent(String status) {
+    private Integer progressPercent(GptImage2Task task) {
+        String status = task.getStatus();
         if ("succeeded".equals(status) || "failed".equals(status)) {
             return 100;
         }
         if ("running".equals(status)) {
-            return 35;
+            LocalDateTime startTime = task.getSubmittedAt() != null ? task.getSubmittedAt() : task.getCreatedAt();
+            if (startTime == null) {
+                return 35;
+            }
+            long elapsedSeconds = Math.max(0, Duration.between(startTime, LocalDateTime.now()).getSeconds());
+            return Math.min(95, Math.max(35, 35 + (int) (elapsedSeconds / 18)));
         }
         return 5;
     }

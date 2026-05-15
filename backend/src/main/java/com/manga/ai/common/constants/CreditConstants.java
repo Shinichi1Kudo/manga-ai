@@ -53,7 +53,7 @@ public class CreditConstants {
      * 根据分辨率、时长和模型计算所需积分
      * @param resolution 分辨率 (480p, 720p 或 1080p)
      * @param duration 时长(秒)
-     * @param videoModel 视频模型 (seedance-2.0, seedance-2.0-fast 等)，null 时默认 Fast
+     * @param videoModel 视频模型 (seedance-2.0, seedance-2.0-fast, kling-v3-omni 等)，null 时默认 Fast
      * @return 所需积分
      */
     public static int calculateCredits(String resolution, Integer duration, String videoModel) {
@@ -91,7 +91,8 @@ public class CreditConstants {
      */
     public static int getCreditsPerSecond(String resolution, String videoModel) {
         boolean isVipModel = "seedance-2.0".equals(videoModel)
-                || "doubao-seedance-2-0-260128".equals(videoModel);
+                || "doubao-seedance-2-0-260128".equals(videoModel)
+                || "kling-v3-omni".equals(videoModel);
 
         if ("480p".equals(resolution)) {
             return isVipModel ? CREDITS_PER_SECOND_480P_VIP : CREDITS_PER_SECOND_480P_FAST;

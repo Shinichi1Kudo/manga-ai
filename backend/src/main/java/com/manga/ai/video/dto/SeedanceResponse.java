@@ -28,6 +28,11 @@ public class SeedanceResponse implements Serializable {
     private String videoUrl;
 
     /**
+     * Provider 原始视频URL（上传到本方OSS前）
+     */
+    private String providerVideoUrl;
+
+    /**
      * 缩略图URL
      */
     private String thumbnailUrl;
@@ -46,4 +51,19 @@ public class SeedanceResponse implements Serializable {
      * 生成耗时（毫秒）
      */
     private Long generationTimeMs;
+
+    /**
+     * 提交给视频供应商的最终请求地址
+     */
+    private String submitRequestUrl;
+
+    /**
+     * 提交给视频供应商的最终请求体
+     */
+    private String submitRequestBody;
+
+    /**
+     * 提交给视频供应商的最终模型
+     */
+    private String submitModel;
 }

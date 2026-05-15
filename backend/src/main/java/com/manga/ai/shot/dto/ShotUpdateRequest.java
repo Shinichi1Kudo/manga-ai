@@ -93,7 +93,7 @@ public class ShotUpdateRequest implements Serializable {
     private Integer generationStatus;
 
     /**
-     * 视频生成模型: seedance-2.0-fast, seedance-2.0
+     * 视频生成模型: seedance-2.0-fast, seedance-2.0, kling-v3-omni
      */
     private String videoModel;
 }

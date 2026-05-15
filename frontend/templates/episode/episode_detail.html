@@ -1577,6 +1577,7 @@
                                     data-shot-id="{{ shot.id }}">
                                 <option value="seedance-2.0-fast" {% if shot.videoModel == 'seedance-2.0-fast' or not shot.videoModel %}selected{% endif %}>Seedance 2.0 Fast VIP</option>
                                 <option value="seedance-2.0" {% if shot.videoModel == 'seedance-2.0' %}selected{% endif %}>Seedance 2.0 VIP</option>
+                                <option value="kling-v3-omni" {% if shot.videoModel == 'kling-v3-omni' %}selected{% endif %}>Kling v3 Omni</option>
                             </select>
                         </div>
                         <div class="flex items-center gap-2">
@@ -1953,7 +1954,9 @@ function applyPendingShotCardState(card) {
             editor.dataset.blurBound = 'true';
         }
     });
+    bindShotSelectControls(card);
     renderPendingShotActions(card);
+    updateShotCreditDisplay(card);
     syncShotVideoSourceBadge(card, card.dataset.status === '2' ? (card.dataset.videoSource || 'system') : '');
     syncShotGenerationDurationBadge(card, getShotCardData(card));
 }
@@ -2149,29 +2152,41 @@ checkShotsParsingStatus();
 // 为正在生成的视频启动计时器
 function startGeneratingTimers() {
     document.querySelectorAll('.generating-timer').forEach(timer => {
-        if (timer.dataset.timerActive === 'true') return;
-        const startTimeStr = timer.dataset.startTime;
-        console.log('[TIMER] Found timer element, startTime:', startTimeStr);
-        if (startTimeStr) {
-            const startTime = parseGenerationStartTime(startTimeStr);
-            console.log('[TIMER] Parsed startTime:', startTime, 'isValid:', !isNaN(startTime.getTime()));
-            if (isNaN(startTime.getTime())) {
-                console.error('[TIMER] Invalid date:', startTimeStr);
-                return;
-            }
-            timer.dataset.timerActive = 'true';
-            const updateTimer = () => {
-                const elapsed = Math.floor((Date.now() - startTime.getTime()) / 1000);
-                const minutes = Math.floor(elapsed / 60);
-                const seconds = elapsed % 60;
-                const timeStr = minutes > 0 ? `${minutes}分${seconds}秒` : `${seconds}秒`;
-                timer.innerHTML = `<i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i>生成中 ${timeStr}`;
-                lucide.createIcons();
-            };
-            updateTimer();
-            setInterval(updateTimer, 1000);
+        const startTimeStr = timer.dataset.startTime || timer.dataset.resolvedStartTime;
+        if (!startTimeStr) return;
+
+        const startTime = parseGenerationStartTime(startTimeStr);
+        if (isNaN(startTime.getTime())) {
+            console.error('[TIMER] Invalid date:', startTimeStr);
+            return;
         }
+        timer.dataset.resolvedStartTime = startTime.toISOString();
+
+        if (timer.dataset.timerActive === 'true') {
+            updateGeneratingTimer(timer);
+            return;
+        }
+
+        timer.dataset.timerActive = 'true';
+        updateGeneratingTimer(timer);
+        setInterval(() => updateGeneratingTimer(timer), 1000);
     });
+}
+
+function updateGeneratingTimer(timer) {
+    if (!timer || !timer.isConnected) return;
+    const startTimeStr = timer.dataset.resolvedStartTime || timer.dataset.startTime;
+    if (!startTimeStr) return;
+
+    const startTime = parseGenerationStartTime(startTimeStr);
+    if (isNaN(startTime.getTime())) return;
+
+    const elapsed = Math.max(0, Math.floor((Date.now() - startTime.getTime()) / 1000));
+    const minutes = Math.floor(elapsed / 60);
+    const seconds = elapsed % 60;
+    const timeStr = minutes > 0 ? `${minutes}分${seconds}秒` : `${seconds}秒`;
+    timer.innerHTML = `<i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i>生成中 ${timeStr}`;
+    lucide.createIcons();
 }
 
 // Helper functions for form modals (not image preview)
@@ -3455,51 +3470,145 @@ function collectShotReferenceUrls(card) {
     return referenceUrls;
 }
 
-async function handleShotRegenerateClick() {
-    const shotId = this.dataset.shotId;
-    const card = this.closest('.shot-card');
+function collectShotReferenceImages(card) {
+    const referenceImages = [];
+    const seen = new Set();
+    const addReference = (type, id, name, url) => {
+        if (!url) return;
+        const key = `${type || 'frontend'}:${id || name || url}:${url}`;
+        if (seen.has(key)) return;
+        seen.add(key);
+        const parsedId = id === '' || id === undefined || id === null ? null : parseInt(id, 10);
+        referenceImages.push({
+            imageType: type || 'frontend',
+            referenceId: Number.isFinite(parsedId) ? parsedId : null,
+            referenceName: name || '页面参考图',
+            imageUrl: url,
+            isUserAdded: true
+        });
+    };
+
+    const sceneEditor = card?.querySelector('[data-field="scene"]');
+    const sceneName = normalizeSceneText(sceneEditor?.dataset.sceneName || sceneEditor?.textContent || '');
+    addReference('scene', null, sceneName || '分镜场景', sceneEditor?.dataset.sceneAssetUrl);
+
+    try {
+        const characters = JSON.parse(card?.dataset.shotCharacters || '[]');
+        characters.forEach(character => {
+            const name = character.clothingName && character.clothingName !== '默认'
+                ? `${character.roleName}-${character.clothingName}`
+                : character.roleName;
+            addReference('role', character.roleId, name, character.assetUrl);
+        });
+    } catch (e) {}
+
+    const descEditor = card?.querySelector('[data-field="description"]');
+    try {
+        const props = JSON.parse(descEditor?.dataset.shotProps || '[]');
+        props.forEach(prop => addReference('prop', prop.propId, prop.propName, prop.assetUrl));
+    } catch (e) {}
+
+    card?.querySelectorAll('[data-asset-url]').forEach(el => {
+        addReference(el.dataset.assetType, el.dataset.assetId, el.dataset.assetName, el.dataset.assetUrl);
+    });
+
+    referenceImages.forEach((item, index) => item.displayOrder = index);
+    return referenceImages;
+}
+
+async function persistShotReferenceImagesForGeneration(shotId, card) {
+    const referenceImages = card?._pendingGenerationReferenceImages || collectShotReferenceImages(card);
+    if (card) delete card._pendingGenerationReferenceImages;
+    return persistShotReferenceImages(shotId, referenceImages);
+}
+
+async function persistShotReferenceImages(shotId, referenceImages) {
+    await fetch(`/api/v1/shots/${shotId}/references/`, {
+        method: 'PUT',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRFToken': getCookie('csrftoken')
+        },
+        body: JSON.stringify({ referenceImages })
+    });
+    return referenceImages;
+}
+
+async function fetchShotGenerationState(shotId) {
+    const response = await fetch(`/api/v1/shots/episode/${episodeId}/`);
+    const result = await response.json();
+    if (result.code !== 200 || !Array.isArray(result.data)) return null;
+    return result.data.find(shot => String(shot.id) === String(shotId)) || null;
+}
+
+function formatBackendLocalDateTime(date) {
+    const pad = value => String(value).padStart(2, '0');
+    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+}
+
+async function submitShotGeneration(button) {
+    const shotId = button.dataset.shotId;
+    const card = button.closest('.shot-card');
     if (isLockedShotCard(card)) {
         showToast('已锁定分镜只能修改标题', 'warning');
         return;
     }
     if (card && card.dataset.status === '1') {
-        updateCardToGenerating(card, this);
+        updateCardToGenerating(card, button);
         return;
     }
-    this.disabled = true;
+    button.disabled = true;
+    const generationStartTime = formatBackendLocalDateTime(new Date());
+    const shotUpdate = buildShotGenerationUpdatePayload(card);
+    const referenceImages = collectShotReferenceImages(card);
+    const referenceUrls = collectShotReferenceUrls(card);
 
-    // 立即更新 UI 为生成中状态，不等后端返回
     if (card) {
-        updateCardToGenerating(card, this);
+        updateCardToGenerating(card, button, generationStartTime);
     }
-    startTimer(this);
-    // 启动轮询
     startShotGenerationPolling();
 
     try {
-        const referenceUrls = collectShotReferenceUrls(card);
-
         const response = await fetch(`/api/v1/shots/${shotId}/generate-with-references/`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
                 'X-CSRFToken': getCookie('csrftoken')
             },
-            body: JSON.stringify({ referenceUrls: referenceUrls })
+            body: JSON.stringify({ referenceUrls, referenceImages, shotUpdate, generationStartTime })
         });
         const data = await readJsonResponse(response);
         if (!(data.success || data.code === 200)) {
             if (isAlreadyGeneratingResponse(data)) {
-                if (card) updateCardToGenerating(card, this);
                 return;
             }
             restoreCardFromGenerating(card);
             alert('生成失败: ' + (data.error || data.message));
+        } else {
+            markShotGenerationUpdateSaved(card, shotUpdate);
+            let submittedShot = null;
+            try {
+                submittedShot = await fetchShotGenerationState(shotId);
+            } catch (stateError) {
+                console.warn('获取分镜生成状态失败，使用本地生成状态兜底:', stateError);
+            }
+            if (card) {
+                if (submittedShot) {
+                    syncShotCardDatasetFromApi(card, submittedShot);
+                    updateCardToGenerating(card, button, submittedShot.generationStartTime);
+                } else {
+                    updateCardToGenerating(card, button, generationStartTime);
+                }
+            }
         }
     } catch (e) {
         restoreCardFromGenerating(card);
         alert('请求失败: ' + e.message);
     }
+}
+
+async function handleShotRegenerateClick() {
+    return submitShotGeneration(this);
 }
 
 async function uploadShotVideoFile() {
@@ -6037,6 +6146,31 @@ function stopTimer(button) {
     }
 }
 
+function startSubmittingTimer(button) {
+    const startTime = Date.now();
+    button.dataset.submitStartTime = startTime;
+
+    const updateTimer = () => {
+        if (!button.dataset.submitStartTime) return;
+        const elapsed = Math.floor((Date.now() - startTime) / 1000);
+        button.innerHTML = `<i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i>提交中 ${elapsed}秒`;
+        lucide.createIcons();
+    };
+
+    updateTimer();
+    const timerId = setInterval(updateTimer, 1000);
+    button.dataset.submitTimerId = timerId;
+    return timerId;
+}
+
+function stopSubmittingTimer(button) {
+    if (button.dataset.submitTimerId) {
+        clearInterval(parseInt(button.dataset.submitTimerId, 10));
+        delete button.dataset.submitTimerId;
+    }
+    delete button.dataset.submitStartTime;
+}
+
 function parseGenerationStartTime(value) {
     if (!value) return new Date();
     const normalized = value.includes('T') ? value : value.replace(' ', 'T');
@@ -6044,7 +6178,7 @@ function parseGenerationStartTime(value) {
     return isNaN(parsed.getTime()) ? new Date() : parsed;
 }
 
-function lockShotGenerationControls(card, activeButton = null) {
+function lockShotGenerationControls(card, activeButton = null, label = '生成中') {
     if (!card) return;
     card.querySelectorAll('.generate-btn, .regenerate-btn, .manual-video-upload-btn').forEach(btn => {
         if (!btn.dataset.originalHtml) {
@@ -6054,7 +6188,7 @@ function lockShotGenerationControls(card, activeButton = null) {
         btn.setAttribute('aria-disabled', 'true');
         btn.classList.add('opacity-60', 'cursor-not-allowed');
         if (btn !== activeButton && !btn.dataset.startTime) {
-            btn.innerHTML = '<i data-lucide="loader-2" class="w-3.5 h-3.5 animate-spin"></i>生成中';
+            btn.innerHTML = `<i data-lucide="loader-2" class="w-3.5 h-3.5 animate-spin"></i>${label}`;
         }
     });
     lucide.createIcons();
@@ -6099,6 +6233,7 @@ function unlockShotGenerationControls(card) {
     if (!card) return;
     card.querySelectorAll('.generate-btn, .regenerate-btn, .manual-video-upload-btn').forEach(btn => {
         stopTimer(btn);
+        stopSubmittingTimer(btn);
         btn.disabled = false;
         btn.removeAttribute('aria-disabled');
         btn.classList.remove('opacity-60', 'cursor-not-allowed');
@@ -6108,6 +6243,11 @@ function unlockShotGenerationControls(card) {
         }
     });
     lucide.createIcons();
+}
+
+function updateCardToSubmitting(card, activeButton = null) {
+    if (!card) return;
+    lockShotGenerationControls(card, activeButton, '提交中');
 }
 
 function restoreCardFromGenerating(card) {
@@ -6213,7 +6353,9 @@ async function readJsonResponse(response) {
 // 计算并显示积分消耗
 function calculateCredits(resolution, duration, videoModel) {
     const durationSec = duration || 5;
-    const isVipModel = videoModel === 'seedance-2.0' || videoModel === 'doubao-seedance-2-0-260128';
+    const isVipModel = videoModel === 'seedance-2.0'
+        || videoModel === 'doubao-seedance-2-0-260128'
+        || videoModel === 'kling-v3-omni';
     let creditsPerSecond;
     if (resolution === '480p') {
         creditsPerSecond = isVipModel ? 15 : 12;
@@ -6230,7 +6372,7 @@ function updateResolutionOptions(card, videoModel) {
     const resolutionSelect = card.querySelector('.resolution-select');
     if (!resolutionSelect) return;
 
-    const isVipModel = videoModel === 'seedance-2.0';
+    const isVipModel = videoModel === 'seedance-2.0' || videoModel === 'kling-v3-omni';
     const currentResolution = resolutionSelect.value;
 
     // 获取4K选项
@@ -6333,51 +6475,8 @@ lucide.createIcons();
 document.querySelectorAll('.generate-btn').forEach(btn => {
         if (btn.dataset.bound === 'true') return;
         btn.dataset.bound = 'true';
-	    btn.addEventListener('click', async function() {
-	        const shotId = this.dataset.shotId;
-	        const card = this.closest('.shot-card');
-	        if (isLockedShotCard(card)) {
-	            showToast('已锁定分镜只能修改标题', 'warning');
-	            return;
-	        }
-	        if (card && card.dataset.status === '1') {
-	            updateCardToGenerating(card, this);
-	            return;
-	        }
-	        this.disabled = true;
-
-	        // 立即更新 UI 为生成中状态，不等后端返回
-	        if (card) {
-	            updateCardToGenerating(card, this);
-	        }
-	        startTimer(this);
-	        // 启动轮询
-	        startShotGenerationPolling();
-
-        try {
-            const referenceUrls = collectShotReferenceUrls(card);
-
-            const response = await fetch(`/api/v1/shots/${shotId}/generate-with-references/`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'X-CSRFToken': getCookie('csrftoken')
-                },
-                body: JSON.stringify({ referenceUrls: referenceUrls })
-            });
-	            const data = await readJsonResponse(response);
-	            if (!(data.success || data.code === 200)) {
-	                if (isAlreadyGeneratingResponse(data)) {
-	                    if (card) updateCardToGenerating(card, this);
-	                    return;
-	                }
-	                restoreCardFromGenerating(card);
-	                alert('生成失败: ' + (data.error || data.message));
-	            }
-	        } catch (e) {
-	            restoreCardFromGenerating(card);
-	            alert('请求失败: ' + e.message);
-	        }
+	    btn.addEventListener('click', function() {
+	        submitShotGeneration(this);
 	    });
 	});
 
@@ -7489,6 +7588,72 @@ function getShotSelectPayload(card, fields) {
     return data;
 }
 
+function buildShotGenerationUpdatePayload(card) {
+    if (!card) return {};
+    const descriptionEditor = card.querySelector('[data-field="description"]');
+    const sceneEditor = card.querySelector('[data-field="scene"]');
+    const fullText = extractDescriptionText(descriptionEditor);
+    const sceneText = normalizeSceneText(extractDescriptionText(sceneEditor));
+    const parsedShotText = parseShotText(fullText || '');
+    const descriptionDirty = descriptionEditor?.dataset.userDirty === 'true';
+    const sceneDirty = sceneEditor?.dataset.userDirty === 'true';
+
+    const data = getShotSelectPayload(card, ['duration', 'resolution', 'aspectRatio', 'videoModel']);
+
+    if (descriptionDirty) {
+        data.description = parsedShotText.description || fullText;
+        data.descriptionEdited = true;
+        if (parsedShotText.shotType) {
+            data.shotType = parsedShotText.shotType;
+        }
+        if (parsedShotText.soundEffect) {
+            data.soundEffect = parsedShotText.soundEffect;
+        }
+        if (parsedShotText.startTime !== null && parsedShotText.endTime !== null) {
+            data.startTime = parsedShotText.startTime;
+            data.endTime = parsedShotText.endTime;
+        }
+    }
+    if (sceneDirty) {
+        data.sceneName = sceneText;
+        data.sceneEdited = true;
+    }
+
+    return data;
+}
+
+function markShotGenerationUpdateSaved(card, shotUpdate = {}) {
+    if (!card) return;
+    syncShotButtonDatasets(card);
+    const descriptionEditor = card.querySelector('[data-field="description"]');
+    const sceneEditor = card.querySelector('[data-field="scene"]');
+
+    if (shotUpdate.descriptionEdited && descriptionEditor) {
+        descriptionEditor.dataset.userDirty = 'false';
+        descriptionEditor.dataset.descriptionEdited = 'true';
+        if (shotUpdate.description) {
+            descriptionEditor.dataset.description = shotUpdate.description;
+        }
+        if (shotUpdate.shotType) {
+            descriptionEditor.dataset.shotType = shotUpdate.shotType;
+        }
+        if (shotUpdate.soundEffect) {
+            descriptionEditor.dataset.soundEffect = shotUpdate.soundEffect;
+        }
+    }
+    if (shotUpdate.sceneEdited && sceneEditor) {
+        sceneEditor.dataset.userDirty = 'false';
+        sceneEditor.dataset.sceneEdited = 'true';
+    }
+    updateShotEditBadge(
+        card,
+        descriptionEditor?.dataset.descriptionEdited,
+        sceneEditor?.dataset.sceneEdited
+    );
+    const shotId = card.dataset.shotId;
+    if (shotId) showSaveIndicator(shotId, 'saved');
+}
+
 function syncShotButtonDatasets(card) {
     const duration = card.querySelector('.duration-select')?.value;
     const resolution = card.querySelector('.resolution-select')?.value;
@@ -8355,6 +8520,51 @@ function renderSceneWithAutoAssets(editor) {
     }
 }
 
+function bindShotSelectControls(card) {
+    if (!card || isLockedShotCard(card)) return;
+    const shotId = card.dataset.shotId;
+
+    const durationSelect = card.querySelector('.duration-select');
+    if (durationSelect && durationSelect.dataset.creditBound !== 'true') {
+        durationSelect.dataset.creditBound = 'true';
+        durationSelect.addEventListener('change', () => {
+            updateShotCreditDisplay(card);
+            saveShotSettings(shotId, ['duration']);
+        });
+    }
+
+    const resolutionSelect = card.querySelector('.resolution-select');
+    if (resolutionSelect && resolutionSelect.dataset.creditBound !== 'true') {
+        resolutionSelect.dataset.creditBound = 'true';
+        resolutionSelect.addEventListener('change', () => {
+            updateShotCreditDisplay(card);
+            saveShotSettings(shotId, ['resolution']);
+        });
+    }
+
+    const aspectRatioSelect = card.querySelector('.aspect-ratio-select');
+    if (aspectRatioSelect && aspectRatioSelect.dataset.creditBound !== 'true') {
+        aspectRatioSelect.dataset.creditBound = 'true';
+        aspectRatioSelect.addEventListener('change', () => {
+            saveShotSettings(shotId, ['aspectRatio']);
+        });
+    }
+
+    const videoModelSelect = card.querySelector('.video-model-select');
+    if (videoModelSelect && videoModelSelect.dataset.creditBound !== 'true') {
+        videoModelSelect.dataset.creditBound = 'true';
+        videoModelSelect.addEventListener('change', () => {
+            updateResolutionOptions(card, videoModelSelect.value);
+            updateShotCreditDisplay(card);
+            saveShotSettings(shotId, ['videoModel', 'resolution']);
+        });
+    }
+
+    const currentVideoModel = videoModelSelect ? videoModelSelect.value : 'seedance-2.0-fast';
+    updateResolutionOptions(card, currentVideoModel);
+    updateShotCreditDisplay(card);
+}
+
 // 初始化内联编辑
 function initInlineEditing() {
     // initInlineEditing called
@@ -8412,44 +8622,7 @@ function initInlineEditing() {
             }
         }
 
-        // 时长下拉框
-        const durationSelect = card.querySelector('.duration-select');
-        if (durationSelect && !locked) {
-            durationSelect.addEventListener('change', () => {
-                // 更新积分显示
-                updateShotCreditDisplay(card);
-                saveShotSettings(shotId, ['duration']);
-            });
-        }
-
-        // 分辨率下拉框
-        const resolutionSelect = card.querySelector('.resolution-select');
-        if (resolutionSelect && !locked) {
-            resolutionSelect.addEventListener('change', () => {
-                // 更新积分显示
-                updateShotCreditDisplay(card);
-                saveShotSettings(shotId, ['resolution']);
-            });
-        }
-
-        // 比例下拉框
-        const aspectRatioSelect = card.querySelector('.aspect-ratio-select');
-        if (aspectRatioSelect && !locked) {
-            aspectRatioSelect.addEventListener('change', () => {
-                saveShotSettings(shotId, ['aspectRatio']);
-            });
-        }
-
-        // 视频模型下拉框
-        const videoModelSelect = card.querySelector('.video-model-select');
-        if (videoModelSelect && !locked) {
-            videoModelSelect.addEventListener('change', () => {
-                // 根据模型更新分辨率选项
-                updateResolutionOptions(card, videoModelSelect.value);
-                updateShotCreditDisplay(card);
-                saveShotSettings(shotId, ['videoModel', 'resolution']);
-            });
-        }
+        bindShotSelectControls(card);
 
         // 分镜名称输入框
         const shotNameInput = card.querySelector('.shot-name-input');

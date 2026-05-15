@@ -41,6 +41,13 @@ import java.util.concurrent.Executor;
 @RequiredArgsConstructor
 public class SubjectReplacementServiceImpl implements SubjectReplacementService {
 
+    private static final String SUBJECT_REPLACEMENT_TOAPIS_MODEL = "doubao-seedance-2-0-260128";
+    private static final List<String> SUBJECT_REPLACEMENT_TOAPIS_MODELS = Arrays.asList(
+            "doubao-seedance-2-0-260128",
+            "seedance-2.0",
+            "doubao-seedance-2-0-fast-260128",
+            "seedance-2.0-fast"
+    );
     private static final List<String> ALLOWED_VIDEO_TYPES = Arrays.asList(
             "video/mp4", "video/webm", "video/quicktime", "video/x-m4v"
     );
@@ -85,7 +92,7 @@ public class SubjectReplacementServiceImpl implements SubjectReplacementService 
         task.setDuration(normalizeDuration(request.getDuration()));
         task.setGenerateAudio(request.getGenerateAudio() == null ? true : request.getGenerateAudio());
         task.setWatermark(request.getWatermark() == null ? false : request.getWatermark());
-        task.setModel(subjectReplacementModel);
+        task.setModel(normalizeSubjectReplacementModel(subjectReplacementModel));
         task.setPrompt(prompt);
         task.setReplacementsJson(JSON.toJSONString(request.getReplacements()));
         task.setStatus("pending");
@@ -135,7 +142,9 @@ public class SubjectReplacementServiceImpl implements SubjectReplacementService 
             request.setRatio(task.getAspectRatio());
             request.setGenerateAudio(task.getGenerateAudio());
             request.setWatermark(task.getWatermark());
-            request.setModel(task.getModel());
+            String useModel = normalizeSubjectReplacementModel(task.getModel());
+            task.setModel(useModel);
+            request.setModel(useModel);
 
             List<SeedanceRequest.ReferenceContent> contents = new ArrayList<>();
             int imageIndex = 1;
@@ -162,8 +171,8 @@ public class SubjectReplacementServiceImpl implements SubjectReplacementService 
             videoContent.setVideoUrl(videoUrl);
             contents.add(videoContent);
             request.setContents(contents);
-            log.info("主体替换提交Seedance: taskId={}, duration={}s, ratio={}, images={}, hasVideo={}",
-                    taskId, request.getDuration(), request.getRatio(), replacements.size(), !isBlank(task.getOriginalVideoUrl()));
+            log.info("主体替换提交新视频API: taskId={}, model={}, duration={}s, ratio={}, images={}, hasVideo={}",
+                    taskId, request.getModel(), request.getDuration(), request.getRatio(), replacements.size(), !isBlank(task.getOriginalVideoUrl()));
 
             SeedanceResponse response = seedanceService.generateVideo(request);
             task.setVolcengineTaskId(response.getTaskId());
@@ -181,7 +190,8 @@ public class SubjectReplacementServiceImpl implements SubjectReplacementService 
                 task.setErrorMessage(toFriendlyError(response.getErrorMessage() != null ? response.getErrorMessage() : "主体替换失败"));
                 task.setCompletedAt(LocalDateTime.now());
                 refundCreditsIfNeeded(task);
-                log.warn("主体替换任务失败: taskId={}, status={}, error={}", taskId, response.getStatus(), response.getErrorMessage());
+                log.warn("主体替换任务失败: taskId={}, status={}, providerUrl={}, providerModel={}, error={}",
+                        taskId, response.getStatus(), response.getSubmitRequestUrl(), response.getSubmitModel(), response.getErrorMessage());
             }
         } catch (Exception e) {
             log.error("主体替换任务异常: taskId={}", taskId, e);
@@ -492,14 +502,14 @@ public class SubjectReplacementServiceImpl implements SubjectReplacementService 
             return "输入内容过长，已超过模型上下文限制，请减少参考图数量或缩短替换描述后重试。";
         }
         if (normalized.contains("authenticationerror") || normalized.contains("invalidapikey")) {
-            return "火山引擎鉴权失败，请检查 API Key 或 AK/SK 配置。";
+            return "视频生成服务鉴权失败，请检查 API Key 配置。";
         }
         if (normalized.contains("modelnotopen") || normalized.contains("servicenotopen")) {
-            return "模型服务未开通，请在火山方舟控制台开通对应模型后重试。";
+            return "模型服务未开通，请开通对应模型后重试。";
         }
         if (normalized.contains("accountoverdueerror") || normalized.contains("serviceoverdue")
                 || normalized.contains("insufficientbalance") || normalized.contains("overdue")) {
-            return "火山引擎账号欠费或余额不足，请充值后重试。";
+            return "视频生成服务账号欠费或余额不足，请充值后重试。";
         }
         if (normalized.contains("accessdenied") || normalized.contains("permissiondenied")) {
             return "当前账号没有访问该模型或资源的权限，请检查权限或白名单后重试。";
@@ -507,7 +517,7 @@ public class SubjectReplacementServiceImpl implements SubjectReplacementService 
         if (normalized.contains("ratelimit") || normalized.contains("quotaexceeded")
                 || normalized.contains("serveroverloaded") || normalized.contains("requestbursttoofast")
                 || normalized.contains("inflightbatchsizeexceeded")) {
-            return "当前请求过多或额度已达上限，请稍后重试，或检查火山引擎额度和并发限制。";
+            return "当前请求过多或额度已达上限，请稍后重试，或检查视频生成服务额度和并发限制。";
         }
         if (normalized.contains("invalidendpointormodel") || normalized.contains("unsupportedmodel")
                 || normalized.contains("modelnotfound")) {
@@ -515,7 +525,7 @@ public class SubjectReplacementServiceImpl implements SubjectReplacementService 
         }
         if (normalized.contains("internalserviceerror") || normalized.contains("internalservererror")
                 || normalized.contains("internal error")) {
-            return "火山引擎服务内部异常，请稍后重试。";
+            return "视频生成服务内部异常，请稍后重试。";
         }
         if (message.contains("超时") || normalized.contains("timeout") || normalized.contains("timed out")) {
             return "视频生成超时，请稍后重试。";
@@ -626,6 +636,19 @@ public class SubjectReplacementServiceImpl implements SubjectReplacementService 
             return "object";
         }
         return normalized;
+    }
+
+    private String normalizeSubjectReplacementModel(String configuredModel) {
+        if (isBlank(configuredModel)) {
+            return SUBJECT_REPLACEMENT_TOAPIS_MODEL;
+        }
+        String normalized = configuredModel.trim();
+        if (SUBJECT_REPLACEMENT_TOAPIS_MODELS.contains(normalized)) {
+            return normalized;
+        }
+        log.warn("主体替换模型不支持新视频API，已切换为默认模型: configuredModel={}, fallback={}",
+                normalized, SUBJECT_REPLACEMENT_TOAPIS_MODEL);
+        return SUBJECT_REPLACEMENT_TOAPIS_MODEL;
     }
 
     private String replacementTypeLabel(String type) {

@@ -72,6 +72,7 @@ public class SeedanceRequest implements Serializable {
      * 视频生成模型
      * - doubao-seedance-2-0-fast-260128: Seedance 2.0 Fast VIP
      * - doubao-seedance-2-0-260128: Seedance 2.0 VIP
+     * - kling-v3-omni: Kling v3 Omni
      */
     private String model;
 
