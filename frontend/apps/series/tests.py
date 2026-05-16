@@ -518,7 +518,7 @@ class RoleNameGuidanceTests(TestCase):
 
 
 class GptImage2HomeTests(TestCase):
-    def test_home_page_has_today_update_announcement(self):
+    def test_home_page_has_recent_update_announcement(self):
         template_path = Path(settings.BASE_DIR) / 'templates/series/series_list.html'
         template = template_path.read_text(encoding='utf-8')
 
@@ -545,11 +545,21 @@ class GptImage2HomeTests(TestCase):
         self.assertIn('覆盖 Seedance 2.0、Fast、Kling v3 Omni、GPT-Image2，具体消耗以生成页面显示为准。', template)
         self.assertIn('height: 286px;', template)
         self.assertIn('height: 112px;', template)
-        self.assertIn('今日更新', template)
-        self.assertIn('2026.05.16', template)
+        self.assertIn('近期更新', template)
+        self.assertIn('{% now "Y.m.d" %}', template)
+        self.assertNotIn('<div class="home-announcement-date">2026.05.16</div>', template)
         self.assertIn('Seedance 2.0 正式全面上线', template)
         self.assertIn('原生支持真人人脸表现', template)
         self.assertIn('新接入可灵 Kling v3 Omni 模型', template)
+        self.assertIn('分镜解析质量优化：增强镜头衔接感，减少剧情断层。', template)
+        self.assertIn('角色创建体验升级：支持上传人物全身图', template)
+        self.assertIn('资产审核更安全：角色缺图或生成失败时将无法锁定系列', template)
+        self.assertIn('Seedance 2.0', template)
+        self.assertIn('真人人脸', template)
+        self.assertIn('Kling v3 Omni', template)
+        self.assertIn('分镜解析', template)
+        self.assertIn('角色创建', template)
+        self.assertIn('资产审核', template)
         self.assertNotIn('后续我们会继续补充更多视频模型', template)
 
     def test_home_page_links_to_gpt_image2_workspace(self):

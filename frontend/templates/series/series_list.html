@@ -5,7 +5,7 @@
 {% block content %}
 <!-- Hero Section -->
 <div class="home-hero text-center py-12">
-    <div class="home-announcement" role="region" aria-label="今日更新公告">
+    <div class="home-announcement" role="region" aria-label="近期更新公告">
         <div class="home-announcement-header">
             <div class="home-announcement-badge">
                 <span class="home-announcement-signal" aria-hidden="true">
@@ -14,9 +14,9 @@
                     <span></span>
                 </span>
                 <i data-lucide="megaphone" class="w-4 h-4"></i>
-                <span>今日更新</span>
+                <span>近期更新</span>
             </div>
-            <div class="home-announcement-date">2026.05.16</div>
+            <div class="home-announcement-date">{% now "Y.m.d" %}</div>
         </div>
         <div class="home-announcement-pinned">
             <div class="home-announcement-pinned-head">
@@ -30,23 +30,32 @@
             <p>视频和图片生成积分价格今日起全面下调。</p>
             <p>覆盖 Seedance 2.0、Fast、Kling v3 Omni、GPT-Image2，具体消耗以生成页面显示为准。</p>
         </div>
-        <div class="home-announcement-meta">模型能力升级 / 今日上线</div>
-        <div class="home-announcement-scroll" aria-label="Seedance 2.0 正式全面上线；原生支持真人人脸表现；新接入可灵 Kling v3 Omni 模型。">
+        <div class="home-announcement-meta">模型能力升级 / 创作体验优化</div>
+        <div class="home-announcement-scroll" aria-label="Seedance 2.0 正式全面上线；原生支持真人人脸表现；新接入可灵 Kling v3 Omni 模型；分镜解析质量优化；角色创建体验升级；资产审核更安全。">
             <div class="home-announcement-story">
                 <p><span class="home-announcement-index">01</span><span>Seedance 2.0 正式全面上线，生成效果与镜头表现完成升级。</span></p>
                 <p><span class="home-announcement-index">02</span><span>原生支持真人人脸表现，更适合真人短剧和角色特写。</span></p>
                 <p><span class="home-announcement-index">03</span><span>新接入可灵 Kling v3 Omni 模型，分镜生成多一个高表现选择。</span></p>
+                <p><span class="home-announcement-index">04</span><span>分镜解析质量优化：增强镜头衔接感，减少剧情断层。</span></p>
+                <p><span class="home-announcement-index">05</span><span>角色创建体验升级：支持上传人物全身图，角色资产制作更灵活。</span></p>
+                <p><span class="home-announcement-index">06</span><span>资产审核更安全：角色缺图或生成失败时将无法锁定系列，避免后续制作出错。</span></p>
             </div>
             <div class="home-announcement-story" aria-hidden="true">
                 <p><span class="home-announcement-index">01</span><span>Seedance 2.0 正式全面上线，生成效果与镜头表现完成升级。</span></p>
                 <p><span class="home-announcement-index">02</span><span>原生支持真人人脸表现，更适合真人短剧和角色特写。</span></p>
                 <p><span class="home-announcement-index">03</span><span>新接入可灵 Kling v3 Omni 模型，分镜生成多一个高表现选择。</span></p>
+                <p><span class="home-announcement-index">04</span><span>分镜解析质量优化：增强镜头衔接感，减少剧情断层。</span></p>
+                <p><span class="home-announcement-index">05</span><span>角色创建体验升级：支持上传人物全身图，角色资产制作更灵活。</span></p>
+                <p><span class="home-announcement-index">06</span><span>资产审核更安全：角色缺图或生成失败时将无法锁定系列，避免后续制作出错。</span></p>
             </div>
         </div>
         <div class="home-announcement-chip-row" aria-hidden="true">
             <span>Seedance 2.0</span>
             <span>真人人脸</span>
             <span>Kling v3 Omni</span>
+            <span>分镜解析</span>
+            <span>角色创建</span>
+            <span>资产审核</span>
         </div>
     </div>
 
