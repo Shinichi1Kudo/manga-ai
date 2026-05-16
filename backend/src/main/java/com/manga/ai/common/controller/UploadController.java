@@ -68,6 +68,8 @@ public class UploadController {
                 folder = "scenes";
             } else if ("prop".equals(type)) {
                 folder = "props";
+            } else if ("role".equals(type)) {
+                folder = "characters";
             }
 
             String url = ossService.uploadImage(data, folder);

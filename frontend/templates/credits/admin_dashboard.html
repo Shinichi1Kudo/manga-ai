@@ -76,6 +76,14 @@
                 <h2>最近积分流水</h2>
                 <p>查询近 3 天积分变动，包含几点使用、用户和用途</p>
             </div>
+            <div class="flex w-full flex-col gap-2 sm:w-auto sm:min-w-[360px] sm:flex-row">
+                <div class="relative flex-1">
+                    <i data-lucide="search" class="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-cyan-100/45"></i>
+                    <input id="creditRecordNicknameSearch" type="search" placeholder="模糊搜索用户昵称" class="w-full rounded-xl border border-white/10 bg-white/[0.055] py-2.5 pl-9 pr-3 text-sm text-white/85 outline-none placeholder:text-white/30 focus:border-cyan-300/45 focus:bg-white/[0.08]">
+                </div>
+                <button type="button" onclick="searchCreditRecordsByNickname()" class="rounded-xl bg-cyan-300 px-4 py-2.5 text-sm font-bold text-slate-950 hover:bg-cyan-200">搜索</button>
+                <button type="button" onclick="clearCreditRecordNicknameSearch()" class="rounded-xl border border-white/10 bg-white/[0.055] px-4 py-2.5 text-sm font-bold text-white/70 hover:bg-white/[0.1]">清空</button>
+            </div>
         </div>
         <div class="overflow-x-auto">
             <table class="admin-table">
@@ -259,6 +267,7 @@
 let creditAdminData = null;
 let creditUsageResizeTimer = null;
 let creditRecordPage = 1;
+let creditRecordNicknameKeyword = '';
 const creditRecordPageSize = 20;
 
 function formatAdminNumber(value) {
@@ -267,7 +276,11 @@ function formatAdminNumber(value) {
 
 function loadCreditAdminDashboard(page = creditRecordPage) {
     creditRecordPage = Math.max(1, Number(page || 1));
-    fetch(`/api/admin/credits/dashboard/?hours=24&recordPage=${creditRecordPage}&recordPageSize=${creditRecordPageSize}`)
+    let url = `/api/admin/credits/dashboard/?hours=24&recordPage=${creditRecordPage}&recordPageSize=${creditRecordPageSize}`;
+    if (creditRecordNicknameKeyword) {
+        url += `&nickname=${encodeURIComponent(creditRecordNicknameKeyword)}`;
+    }
+    fetch(url)
         .then(res => res.json())
         .then(result => {
             if (result.code !== 200) {
@@ -383,6 +396,21 @@ function renderCreditRecordPagination(pageData) {
 
 function changeCreditRecordPage(delta) {
     loadCreditAdminDashboard(creditRecordPage + delta);
+}
+
+function searchCreditRecordsByNickname() {
+    const input = document.getElementById('creditRecordNicknameSearch');
+    creditRecordNicknameKeyword = (input?.value || '').trim();
+    loadCreditAdminDashboard(1);
+}
+
+function clearCreditRecordNicknameSearch() {
+    const input = document.getElementById('creditRecordNicknameSearch');
+    if (input) {
+        input.value = '';
+    }
+    creditRecordNicknameKeyword = '';
+    loadCreditAdminDashboard(1);
 }
 
 function resizeCreditUsageCanvas(canvas) {
@@ -506,6 +534,12 @@ window.addEventListener('resize', () => {
     if (!creditAdminData) return;
     clearTimeout(creditUsageResizeTimer);
     creditUsageResizeTimer = setTimeout(() => drawCreditUsageChart(creditAdminData.hourlyUsage || []), 120);
+});
+
+document.getElementById('creditRecordNicknameSearch')?.addEventListener('keydown', event => {
+    if (event.key === 'Enter') {
+        searchCreditRecordsByNickname();
+    }
 });
 
 loadCreditAdminDashboard();

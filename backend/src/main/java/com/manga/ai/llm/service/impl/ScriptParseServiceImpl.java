@@ -310,6 +310,8 @@ public class ScriptParseServiceImpl implements ScriptParseService {
         prompt.append("- **时长范围**：单个镜头 5-12 秒，重要对白场景可延长至 15 秒\n");
         prompt.append("- **保留完整性**：每个分镜应承载完整的叙事单元\n\n");
 
+        appendNarrativeContinuityRules(prompt);
+
         prompt.append("### 剧情描述要求（非常重要）\n");
         prompt.append("剧情描述必须**完整保留原始剧本内容**，包含：\n");
         prompt.append("- **角色的完整台词**：不要简化或省略对白，用引号标注\n");
@@ -501,6 +503,8 @@ public class ScriptParseServiceImpl implements ScriptParseService {
         prompt.append("- duration: 该分镜的时长（秒），范围 4-15 秒\n");
         prompt.append("- 建议：普通分镜 8-10 秒，重要场景 10-15 秒，转场或特写 4-6 秒\n\n");
 
+        appendNarrativeContinuityRules(prompt);
+
         prompt.append("## 剧情描述要求（非常重要）\n");
         prompt.append("剧情描述必须**完整保留原始剧本内容**，包含：\n");
         prompt.append("- 角色的完整台词（不要简化或省略）\n");
@@ -568,6 +572,16 @@ public class ScriptParseServiceImpl implements ScriptParseService {
         prompt.append("```\n");
 
         return prompt.toString();
+    }
+
+    private void appendNarrativeContinuityRules(StringBuilder prompt) {
+        prompt.append("## 连续叙事与镜头衔接（最高优先级）\n");
+        prompt.append("- **连续叙事**：先通读整集剧情，建立事件链后再拆分，所有分镜必须像一段连续视频，而不是互不相关的剧情摘要。\n");
+        prompt.append("- **承接上一镜**：从第2个分镜开始，description 要自然承接上一镜的动作、视线、情绪、道具或声音，例如“她抬头的瞬间”“铜镜余光里”“上一句质问尚未落下”。不要生硬写“上一镜”。\n");
+        prompt.append("- **推进下一镜**：每个分镜结尾要留下推动下一镜的视觉或情绪钩子，如角色转身、道具落地、目光移向门外、声音逼近、对方反应。\n");
+        prompt.append("- **禁止孤立分镜**：不要让每个分镜只讲自己的内容；相邻分镜必须存在因果、动作延续、视线匹配、反应镜头或声音桥至少一种衔接。\n");
+        prompt.append("- **镜头组节奏**：连续动作可拆成“动作发起 -> 反应 -> 结果/转折”，对白可拆成“说话者 -> 听者反应 -> 关系变化”，场景转换要用声音、道具或情绪余波过渡。\n");
+        prompt.append("- 生成前检查 shotNumber 顺序：每个分镜都应回答“它从上一镜接住了什么，又把什么递给下一镜”。\n\n");
     }
 
     /**

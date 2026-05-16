@@ -13,6 +13,7 @@ import com.manga.ai.common.enums.ShotGenerationStatus;
 import com.manga.ai.common.enums.ShotStatus;
 import com.manga.ai.common.exception.BusinessException;
 import com.manga.ai.common.service.OssService;
+import com.manga.ai.common.service.UserVideoGenerationLimiter;
 import com.manga.ai.episode.entity.Episode;
 import com.manga.ai.episode.mapper.EpisodeMapper;
 import com.manga.ai.common.enums.EpisodeStatus;
@@ -57,6 +58,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.BeanUtils;
 import org.springframework.context.annotation.Lazy;
+import org.springframework.core.task.TaskRejectedException;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -73,6 +75,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.stream.Collectors;
 
 /**
@@ -113,6 +116,7 @@ public class ShotServiceImpl implements ShotService {
     private final ShotVideoAssetMetadataMapper shotVideoAssetMetadataMapper;
     private final OssService ossService;
     private final UserService userService;
+    private final UserVideoGenerationLimiter videoGenerationLimiter;
 
     // 自注入代理，用于正确调用 @Async 方法
     private final ShotService self;
@@ -135,6 +139,7 @@ public class ShotServiceImpl implements ShotService {
                           ShotVideoAssetMetadataMapper shotVideoAssetMetadataMapper,
                           OssService ossService,
                           UserService userService,
+                          UserVideoGenerationLimiter videoGenerationLimiter,
                           @Lazy ShotService self) {
         this.shotMapper = shotMapper;
         this.shotCharacterMapper = shotCharacterMapper;
@@ -154,6 +159,7 @@ public class ShotServiceImpl implements ShotService {
         this.shotVideoAssetMetadataMapper = shotVideoAssetMetadataMapper;
         this.ossService = ossService;
         this.userService = userService;
+        this.videoGenerationLimiter = videoGenerationLimiter;
         this.self = self;
     }
 
@@ -263,6 +269,10 @@ public class ShotServiceImpl implements ShotService {
         return series != null ? series.getUserId() : null;
     }
 
+    private String shotLimiterTaskKey(Long shotId) {
+        return "shot:" + shotId;
+    }
+
     @Override
     public ShotDetailVO getShotDetail(Long shotId) {
         Shot shot = shotMapper.selectById(shotId);
@@ -275,14 +285,10 @@ public class ShotServiceImpl implements ShotService {
 
     @Override
     public List<ShotDetailVO> getShotsByEpisodeId(Long episodeId) {
-        // 查询所有分镜
-        LambdaQueryWrapper<Shot> wrapper = new LambdaQueryWrapper<>();
-        wrapper.eq(Shot::getEpisodeId, episodeId)
-                .orderByAsc(Shot::getStatus)
-                .orderByAsc(Shot::getShotNumber);
-        List<Shot> shots = shotMapper.selectList(wrapper);
+        // 剧集详情页列表只读取首屏和内联编辑需要的字段，避免大提示词字段拖慢入口。
+        List<Shot> shots = shotMapper.selectEpisodeDetailList(episodeId);
 
-        if (shots.isEmpty()) {
+        if (shots == null || shots.isEmpty()) {
             return List.of();
         }
 
@@ -347,33 +353,34 @@ public class ShotServiceImpl implements ShotService {
         Map<Long, List<ShotProp>> propsByShotId = allShotProps.stream()
                 .collect(Collectors.groupingBy(ShotProp::getShotId));
 
-        // 查询该系列所有道具，建立道具名称到资产的映射（用于解析 propsJson）
+        // 只查询当前分镜实际关联的道具，避免剧集详情列表扫描整部系列的道具资产。
         Map<Long, String> propIdToNameMap = new HashMap<>();
-        Map<Long, Prop> propByIdMap = new HashMap<>();
         Map<String, PropAsset> propNameToAssetMap = new HashMap<>();
         Map<Long, PropAsset> propAssetMap = new HashMap<>();
-        if (!shots.isEmpty()) {
+        Set<Long> propIds = allShotProps.stream()
+                .map(ShotProp::getPropId)
+                .filter(id -> id != null)
+                .collect(Collectors.toSet());
+        if (!propIds.isEmpty()) {
             Episode episode = shots.get(0).getEpisodeId() != null
                     ? episodeMapper.selectById(shots.get(0).getEpisodeId())
                     : null;
             Long seriesId = episode != null ? episode.getSeriesId() : null;
             if (seriesId != null) {
-                // 查询该系列所有道具
                 LambdaQueryWrapper<Prop> propQueryWrapper = new LambdaQueryWrapper<>();
-                propQueryWrapper.eq(Prop::getSeriesId, seriesId);
-                List<Prop> allSeriesProps = propMapper.selectList(propQueryWrapper);
-                for (Prop prop : allSeriesProps) {
+                propQueryWrapper.eq(Prop::getSeriesId, seriesId)
+                        .in(Prop::getId, propIds);
+                List<Prop> linkedProps = propMapper.selectList(propQueryWrapper);
+                for (Prop prop : linkedProps) {
                     if (prop.getId() != null && prop.getPropName() != null) {
                         propIdToNameMap.put(prop.getId(), prop.getPropName());
-                        propByIdMap.put(prop.getId(), prop);
                     }
                 }
 
-                // 查询这些道具的资产：锁定道具使用系列激活版本，未锁定道具只使用当前剧集版本。
-                if (!allSeriesProps.isEmpty()) {
-                    List<Long> allPropIds = allSeriesProps.stream().map(Prop::getId).collect(Collectors.toList());
+                if (!linkedProps.isEmpty()) {
+                    List<Long> linkedPropIds = linkedProps.stream().map(Prop::getId).collect(Collectors.toList());
                     LambdaQueryWrapper<PropAsset> paQueryWrapper = new LambdaQueryWrapper<>();
-                    paQueryWrapper.in(PropAsset::getPropId, allPropIds)
+                    paQueryWrapper.in(PropAsset::getPropId, linkedPropIds)
                             .orderByDesc(PropAsset::getIsActive)
                             .orderByDesc(PropAsset::getVersion)
                             .orderByDesc(PropAsset::getId);
@@ -382,8 +389,7 @@ public class ShotServiceImpl implements ShotService {
                     Map<Long, List<PropAsset>> assetsByPropId = allPropAssets.stream()
                             .collect(Collectors.groupingBy(PropAsset::getPropId));
 
-                    // 建立道具名称到资产的映射
-                    for (Prop prop : allSeriesProps) {
+                    for (Prop prop : linkedProps) {
                         PropAsset asset = selectVisiblePropAsset(prop, assetsByPropId.getOrDefault(prop.getId(), List.of()), episodeId);
                         if (asset != null && prop.getPropName() != null) {
                             propAssetMap.put(prop.getId(), asset);
@@ -408,8 +414,19 @@ public class ShotServiceImpl implements ShotService {
 
         // 组装VO
         return shots.stream()
-                .map(shot -> convertToDetailVOOptimized(shot, finalSceneMap, finalSceneAssetMap, charactersByShotId.getOrDefault(shot.getId(), List.of()), finalRoleMap, finalAssetMap, finalPropsByShotId.getOrDefault(shot.getId(), List.of()), finalPropAssetMap, finalPropIdToNameMap, finalPropNameToAssetMap, finalActiveVideoAssetMap, finalActiveVideoMetadataMap))
+                .map(shot -> convertToDetailVOOptimized(sanitizeEpisodeListShot(shot), finalSceneMap, finalSceneAssetMap, charactersByShotId.getOrDefault(shot.getId(), List.of()), finalRoleMap, finalAssetMap, finalPropsByShotId.getOrDefault(shot.getId(), List.of()), finalPropAssetMap, finalPropIdToNameMap, finalPropNameToAssetMap, finalActiveVideoAssetMap, finalActiveVideoMetadataMap))
                 .collect(Collectors.toList());
+    }
+
+    private Shot sanitizeEpisodeListShot(Shot shot) {
+        if (shot == null) {
+            return null;
+        }
+        shot.setCharactersJson(null);
+        shot.setPropsJson(null);
+        shot.setReferencePrompt(null);
+        shot.setUserPrompt(null);
+        return shot;
     }
 
     @Override
@@ -618,30 +635,44 @@ public class ShotServiceImpl implements ShotService {
         if (userId == null) {
             throw new BusinessException("用户未登录");
         }
-        userService.deductCredits(userId, requiredCredits, CreditUsageType.VIDEO_GENERATION.getCode(),
-                "视频生成-分镜" + shot.getShotNumber(), shotId, "SHOT");
-        log.info("积分扣除成功: userId={}, amount={}, shotId={}", userId, requiredCredits, shotId);
+        String limiterTaskKey = shotLimiterTaskKey(shotId);
+        videoGenerationLimiter.acquireOrThrow(userId, limiterTaskKey);
+        boolean limiterAcquired = true;
 
-        // 记录扣除的积分（用于失败时返还）
-        LocalDateTime now = LocalDateTime.now();
-        LambdaUpdateWrapper<Shot> updateWrapper = new LambdaUpdateWrapper<>();
-        updateWrapper.eq(Shot::getId, shotId)
-                .ne(Shot::getGenerationStatus, ShotGenerationStatus.GENERATING.getCode())
-                .set(Shot::getDeductedCredits, requiredCredits)
-                .set(Shot::getGenerationStatus, ShotGenerationStatus.GENERATING.getCode())
-                .set(Shot::getGenerationError, null)
-                .set(Shot::getGenerationStartTime, now)
-                .set(Shot::getUpdatedAt, now);
-        int updated = shotMapper.update(null, updateWrapper);
-        if (updated == 0) {
-            userService.refundCredits(userId, requiredCredits, "视频生成重复提交返还-分镜" + shot.getShotNumber(), shotId, "SHOT");
-            log.info("分镜视频生成重复提交，积分已返还: shotId={}, credits={}", shotId, requiredCredits);
-            throw new BusinessException("分镜正在生成中，请等待当前任务完成");
+        try {
+            userService.deductCredits(userId, requiredCredits, CreditUsageType.VIDEO_GENERATION.getCode(),
+                    "视频生成-分镜" + shot.getShotNumber(), shotId, "SHOT");
+            log.info("积分扣除成功: userId={}, amount={}, shotId={}", userId, requiredCredits, shotId);
+
+            // 记录扣除的积分（用于失败时返还）
+            LocalDateTime now = LocalDateTime.now();
+            LambdaUpdateWrapper<Shot> updateWrapper = new LambdaUpdateWrapper<>();
+            updateWrapper.eq(Shot::getId, shotId)
+                    .ne(Shot::getGenerationStatus, ShotGenerationStatus.GENERATING.getCode())
+                    .set(Shot::getDeductedCredits, requiredCredits)
+                    .set(Shot::getGenerationStatus, ShotGenerationStatus.GENERATING.getCode())
+                    .set(Shot::getGenerationError, null)
+                    .set(Shot::getGenerationStartTime, now)
+                    .set(Shot::getUpdatedAt, now);
+            int updated = shotMapper.update(null, updateWrapper);
+            if (updated == 0) {
+                userService.refundCredits(userId, requiredCredits, "视频生成重复提交返还-分镜" + shot.getShotNumber(), shotId, "SHOT");
+                log.info("分镜视频生成重复提交，积分已返还: shotId={}, credits={}", shotId, requiredCredits);
+                throw new BusinessException("分镜正在生成中，请等待当前任务完成");
+            }
+            log.info("已更新分镜状态为生成中: shotId={}", shotId);
+
+            // 通过代理异步执行视频生成（确保真正的异步）
+            self.doGenerateVideo(shotId, userId, limiterTaskKey);
+            limiterAcquired = false;
+        } catch (RuntimeException e) {
+            rollbackGeneratingShotIfQueuedRejected(shotId, userId, requiredCredits, shot.getShotNumber(), e);
+            throw normalizeVideoQueueRejection(e);
+        } finally {
+            if (limiterAcquired) {
+                videoGenerationLimiter.release(userId, limiterTaskKey);
+            }
         }
-        log.info("已更新分镜状态为生成中: shotId={}", shotId);
-
-        // 通过代理异步执行视频生成（确保真正的异步）
-        self.doGenerateVideo(shotId);
     }
 
     @Override
@@ -780,12 +811,21 @@ public class ShotServiceImpl implements ShotService {
     @Override
     @Async("videoGenerateExecutor")
     public void doGenerateVideo(Long shotId) {
+        doGenerateVideo(shotId, null, null);
+    }
+
+    @Override
+    @Async("videoGenerateExecutor")
+    public void doGenerateVideo(Long shotId, Long userId, String limiterTaskKey) {
         log.info("异步执行视频生成: shotId={}", shotId);
         long startTime = System.currentTimeMillis();
+        Long releaseUserId = userId;
+        String releaseTaskKey = limiterTaskKey;
 
         Shot shot = shotMapper.selectById(shotId);
         if (shot == null) {
             log.error("分镜不存在: shotId={}", shotId);
+            releaseVideoGenerationSlot(releaseUserId, releaseTaskKey);
             return;
         }
 
@@ -849,9 +889,9 @@ public class ShotServiceImpl implements ShotService {
 
             // 生成失败，返还积分
             if (shot.getDeductedCredits() != null && shot.getDeductedCredits() > 0) {
-                Long userId = getUserIdForShot(shot);
-                if (userId != null) {
-                    userService.refundCredits(userId, shot.getDeductedCredits(),
+                Long refundUserId = getUserIdForShot(shot);
+                if (refundUserId != null) {
+                    userService.refundCredits(refundUserId, shot.getDeductedCredits(),
                             "视频生成失败返还-分镜" + shot.getShotNumber(), shotId, "SHOT");
                     log.info("视频生成失败，积分已返还: shotId={}, credits={}", shotId, shot.getDeductedCredits());
                 }
@@ -860,6 +900,14 @@ public class ShotServiceImpl implements ShotService {
 
             shot.setUpdatedAt(LocalDateTime.now());
             shotMapper.updateById(shot);
+        } finally {
+            if (releaseUserId == null) {
+                releaseUserId = getUserIdForShot(shot);
+            }
+            if (releaseTaskKey == null) {
+                releaseTaskKey = shotLimiterTaskKey(shotId);
+            }
+            releaseVideoGenerationSlot(releaseUserId, releaseTaskKey);
         }
     }
 
@@ -1385,35 +1433,48 @@ public class ShotServiceImpl implements ShotService {
         if (userId == null) {
             throw new BusinessException("用户未登录");
         }
-        userService.deductCredits(userId, requiredCredits, CreditUsageType.VIDEO_GENERATION.getCode(),
-                "视频生成-分镜" + shot.getShotNumber(), shotId, "SHOT");
-        log.info("积分扣除成功: userId={}, amount={}, shotId={}", userId, requiredCredits, shotId);
+        String limiterTaskKey = shotLimiterTaskKey(shotId);
+        videoGenerationLimiter.acquireOrThrow(userId, limiterTaskKey);
+        boolean limiterAcquired = true;
 
-        // 更新状态并记录扣除的积分
-        LocalDateTime now = generationStartTime != null ? generationStartTime : LocalDateTime.now();
-        LambdaUpdateWrapper<Shot> updateWrapper = new LambdaUpdateWrapper<>();
-        updateWrapper.eq(Shot::getId, shotId)
-                .ne(Shot::getGenerationStatus, ShotGenerationStatus.GENERATING.getCode())
-                .set(Shot::getGenerationStatus, ShotGenerationStatus.GENERATING.getCode())
-                .set(Shot::getGenerationError, null)
-                .set(Shot::getDeductedCredits, requiredCredits)
-                .set(Shot::getGenerationStartTime, now)
-                .set(Shot::getUpdatedAt, now);
-        applyShotUpdateToWrapper(updateWrapper, shotUpdate, shot);
-        int updated = shotMapper.update(null, updateWrapper);
+        try {
+            userService.deductCredits(userId, requiredCredits, CreditUsageType.VIDEO_GENERATION.getCode(),
+                    "视频生成-分镜" + shot.getShotNumber(), shotId, "SHOT");
+            log.info("积分扣除成功: userId={}, amount={}, shotId={}", userId, requiredCredits, shotId);
 
-        if (updated == 0) {
-            userService.refundCredits(userId, requiredCredits, "视频生成重复提交返还-分镜" + shot.getShotNumber(), shotId, "SHOT");
-            log.info("分镜视频生成重复提交，积分已返还(带参考图): shotId={}, credits={}", shotId, requiredCredits);
-            throw new BusinessException("分镜正在生成中，请等待当前任务完成");
+            // 更新状态并记录扣除的积分
+            LocalDateTime now = generationStartTime != null ? generationStartTime : LocalDateTime.now();
+            LambdaUpdateWrapper<Shot> updateWrapper = new LambdaUpdateWrapper<>();
+            updateWrapper.eq(Shot::getId, shotId)
+                    .ne(Shot::getGenerationStatus, ShotGenerationStatus.GENERATING.getCode())
+                    .set(Shot::getGenerationStatus, ShotGenerationStatus.GENERATING.getCode())
+                    .set(Shot::getGenerationError, null)
+                    .set(Shot::getDeductedCredits, requiredCredits)
+                    .set(Shot::getGenerationStartTime, now)
+                    .set(Shot::getUpdatedAt, now);
+            applyShotUpdateToWrapper(updateWrapper, shotUpdate, shot);
+            int updated = shotMapper.update(null, updateWrapper);
+
+            if (updated == 0) {
+                userService.refundCredits(userId, requiredCredits, "视频生成重复提交返还-分镜" + shot.getShotNumber(), shotId, "SHOT");
+                log.info("分镜视频生成重复提交，积分已返还(带参考图): shotId={}, credits={}", shotId, requiredCredits);
+                throw new BusinessException("分镜正在生成中，请等待当前任务完成");
+            }
+            replaceReferenceImagesForGeneration(shotId, referenceImages);
+            log.info("已更新分镜状态为生成中: shotId={}", shotId);
+            shot.setGenerationStatus(ShotGenerationStatus.GENERATING.getCode());
+            shot.setGenerationError(null);
+            shot.setDeductedCredits(requiredCredits);
+            shot.setGenerationStartTime(now);
+            shot.setUpdatedAt(now);
+            limiterAcquired = false;
+        } catch (RuntimeException e) {
+            throw e;
+        } finally {
+            if (limiterAcquired) {
+                videoGenerationLimiter.release(userId, limiterTaskKey);
+            }
         }
-        replaceReferenceImagesForGeneration(shotId, referenceImages);
-        log.info("已更新分镜状态为生成中: shotId={}", shotId);
-        shot.setGenerationStatus(ShotGenerationStatus.GENERATING.getCode());
-        shot.setGenerationError(null);
-        shot.setDeductedCredits(requiredCredits);
-        shot.setGenerationStartTime(now);
-        shot.setUpdatedAt(now);
 
         return convertToDetailVO(shot);
     }
@@ -1431,7 +1492,15 @@ public class ShotServiceImpl implements ShotService {
             throw new BusinessException("分镜生成任务尚未提交，请重新点击生成");
         }
         log.info("启动已准备的视频生成任务: shotId={}", shotId);
-        self.doGenerateVideoWithReferences(shotId, referenceUrls);
+        Long userId = getUserIdForShot(shot);
+        String limiterTaskKey = shotLimiterTaskKey(shotId);
+        try {
+            self.doGenerateVideoWithReferences(shotId, referenceUrls, userId, limiterTaskKey);
+        } catch (RuntimeException e) {
+            rollbackPreparedVideoGeneration(shotId, userId, shot.getDeductedCredits(), shot.getShotNumber());
+            videoGenerationLimiter.release(userId, limiterTaskKey);
+            throw normalizeVideoQueueRejection(e);
+        }
     }
 
     private void applyShotUpdateForGeneration(Shot shot, ShotUpdateRequest request) {
@@ -1581,12 +1650,21 @@ public class ShotServiceImpl implements ShotService {
     @Override
     @Async("videoGenerateExecutor")
     public void doGenerateVideoWithReferences(Long shotId, List<String> referenceUrls) {
+        doGenerateVideoWithReferences(shotId, referenceUrls, null, null);
+    }
+
+    @Override
+    @Async("videoGenerateExecutor")
+    public void doGenerateVideoWithReferences(Long shotId, List<String> referenceUrls, Long userId, String limiterTaskKey) {
         log.info("异步执行视频生成: shotId={}, referenceUrls={}", shotId, referenceUrls);
         long startTime = System.currentTimeMillis();
+        Long releaseUserId = userId;
+        String releaseTaskKey = limiterTaskKey;
 
         Shot shot = shotMapper.selectById(shotId);
         if (shot == null) {
             log.error("分镜不存在: shotId={}", shotId);
+            releaseVideoGenerationSlot(releaseUserId, releaseTaskKey);
             return;
         }
 
@@ -1684,9 +1762,9 @@ public class ShotServiceImpl implements ShotService {
 
             // 生成失败，返还积分
             if (shot.getDeductedCredits() != null && shot.getDeductedCredits() > 0) {
-                Long userId = getUserIdForShot(shot);
-                if (userId != null) {
-                    userService.refundCredits(userId, shot.getDeductedCredits(),
+                Long refundUserId = getUserIdForShot(shot);
+                if (refundUserId != null) {
+                    userService.refundCredits(refundUserId, shot.getDeductedCredits(),
                             "视频生成失败返还-分镜" + shot.getShotNumber(), shotId, "SHOT");
                     log.info("视频生成失败，积分已返还: shotId={}, credits={}", shotId, shot.getDeductedCredits());
                 }
@@ -1695,6 +1773,14 @@ public class ShotServiceImpl implements ShotService {
 
             shot.setUpdatedAt(LocalDateTime.now());
             shotMapper.updateById(shot);
+        } finally {
+            if (releaseUserId == null) {
+                releaseUserId = getUserIdForShot(shot);
+            }
+            if (releaseTaskKey == null) {
+                releaseTaskKey = shotLimiterTaskKey(shotId);
+            }
+            releaseVideoGenerationSlot(releaseUserId, releaseTaskKey);
         }
     }
 
@@ -1710,6 +1796,61 @@ public class ShotServiceImpl implements ShotService {
                 .set(Shot::getDeductedCredits, null)
                 .set(Shot::getUpdatedAt, LocalDateTime.now());
         shotMapper.update(null, updateWrapper);
+    }
+
+    private void rollbackGeneratingShotIfQueuedRejected(Long shotId, Long userId, Integer deductedCredits,
+                                                        Integer shotNumber, RuntimeException e) {
+        if (!isVideoQueueRejection(e)) {
+            return;
+        }
+        rollbackPreparedVideoGeneration(shotId, userId, deductedCredits, shotNumber);
+    }
+
+    private void rollbackPreparedVideoGeneration(Long shotId, Long userId, Integer deductedCredits, Integer shotNumber) {
+        LambdaUpdateWrapper<Shot> rollbackWrapper = new LambdaUpdateWrapper<>();
+        rollbackWrapper.eq(Shot::getId, shotId)
+                .eq(Shot::getGenerationStatus, ShotGenerationStatus.GENERATING.getCode())
+                .set(Shot::getGenerationStatus, ShotGenerationStatus.PENDING.getCode())
+                .set(Shot::getGenerationError, null)
+                .set(Shot::getGenerationStartTime, null)
+                .set(Shot::getDeductedCredits, null)
+                .set(Shot::getUpdatedAt, LocalDateTime.now());
+        shotMapper.update(null, rollbackWrapper);
+
+        if (userId != null && deductedCredits != null && deductedCredits > 0) {
+            userService.refundCredits(userId, deductedCredits,
+                    "视频生成队列已满返还-分镜" + (shotNumber != null ? shotNumber : shotId),
+                    shotId, "SHOT");
+        }
+        log.warn("视频生成队列已满，已回滚分镜生成状态: shotId={}, credits={}", shotId, deductedCredits);
+    }
+
+    private RuntimeException normalizeVideoQueueRejection(RuntimeException e) {
+        if (isVideoQueueRejection(e)) {
+            return new BusinessException("生成人数过多请稍后再试");
+        }
+        return e;
+    }
+
+    private boolean isVideoQueueRejection(Throwable throwable) {
+        Throwable current = throwable;
+        while (current != null) {
+            if (current instanceof RejectedExecutionException || current instanceof TaskRejectedException) {
+                return true;
+            }
+            String message = current.getMessage();
+            if (message != null && message.contains("生成人数过多")) {
+                return true;
+            }
+            current = current.getCause();
+        }
+        return false;
+    }
+
+    private void releaseVideoGenerationSlot(Long userId, String limiterTaskKey) {
+        if (userId != null && limiterTaskKey != null) {
+            videoGenerationLimiter.release(userId, limiterTaskKey);
+        }
     }
 
     private void ensureGeneratedVideoUrlPresent(SeedanceResponse response) {

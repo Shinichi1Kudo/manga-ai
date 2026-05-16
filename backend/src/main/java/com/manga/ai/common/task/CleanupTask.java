@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.manga.ai.common.enums.EpisodeStatus;
 import com.manga.ai.common.enums.RoleStatus;
 import com.manga.ai.common.enums.SeriesStatus;
+import com.manga.ai.common.enums.ShotGenerationStatus;
 import com.manga.ai.episode.entity.Episode;
 import com.manga.ai.episode.mapper.EpisodeMapper;
 import com.manga.ai.gptimage.service.GptImage2Service;
@@ -13,6 +14,7 @@ import com.manga.ai.role.mapper.RoleMapper;
 import com.manga.ai.scene.entity.Scene;
 import com.manga.ai.scene.mapper.SceneMapper;
 import com.manga.ai.series.mapper.SeriesMapper;
+import com.manga.ai.shot.mapper.ShotMapper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -34,6 +36,7 @@ public class CleanupTask {
     private final PropMapper propMapper;
     private final GptImage2Service gptImage2Service;
     private final RoleMapper roleMapper;
+    private final ShotMapper shotMapper;
 
     /**
      * 每天凌晨3点清理过期的回收站系列
@@ -162,6 +165,28 @@ public class CleanupTask {
             gptImage2Service.failStaleRunningTasks();
         } catch (Exception e) {
             log.error("清理卡住的GPT-Image2生图任务失败", e);
+        }
+    }
+
+    /**
+     * 每分钟检查一次卡住的分镜视频生成任务。
+     * 如果任务超过1小时仍未完成，恢复为待生成，避免页面长期停留在生成中。
+     */
+    @Scheduled(fixedRate = 60000)
+    public void cleanupStuckGeneratingShots() {
+        try {
+            LocalDateTime timeout = LocalDateTime.now().minusHours(1);
+            int restored = shotMapper.restoreStuckGeneratingShots(
+                    ShotGenerationStatus.PENDING.getCode(),
+                    ShotGenerationStatus.GENERATING.getCode(),
+                    timeout,
+                    LocalDateTime.now()
+            );
+            if (restored > 0) {
+                log.warn("已自动恢复 {} 个卡住超过1小时的分镜视频生成任务", restored);
+            }
+        } catch (Exception e) {
+            log.error("清理卡住的分镜视频生成任务失败", e);
         }
     }
 }

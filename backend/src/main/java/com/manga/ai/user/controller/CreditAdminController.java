@@ -24,8 +24,9 @@ public class CreditAdminController {
     public Result<CreditAdminDashboardVO> dashboard(
             @RequestParam(required = false) Integer hours,
             @RequestParam(required = false) Integer recordPage,
-            @RequestParam(required = false) Integer recordPageSize) {
+            @RequestParam(required = false) Integer recordPageSize,
+            @RequestParam(required = false) String nickname) {
         Long userId = UserContextHolder.getUserId();
-        return Result.success(creditAdminService.getDashboard(userId, hours, recordPage, recordPageSize));
+        return Result.success(creditAdminService.getDashboard(userId, hours, recordPage, recordPageSize, nickname));
     }
 }

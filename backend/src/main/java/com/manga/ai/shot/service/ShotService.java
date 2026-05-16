@@ -143,11 +143,28 @@ public interface ShotService {
     void doGenerateVideo(Long shotId);
 
     /**
+     * 异步执行视频生成（内部方法），携带发起用户用于释放并发占用。
+     * @param shotId 分镜ID
+     * @param userId 发起用户ID
+     * @param limiterTaskKey 并发占用任务Key
+     */
+    void doGenerateVideo(Long shotId, Long userId, String limiterTaskKey);
+
+    /**
      * 异步执行带参考图的视频生成（内部方法）
      * @param shotId 分镜ID
      * @param referenceUrls 参考图URL列表
      */
     void doGenerateVideoWithReferences(Long shotId, java.util.List<String> referenceUrls);
+
+    /**
+     * 异步执行带参考图的视频生成（内部方法），携带发起用户用于释放并发占用。
+     * @param shotId 分镜ID
+     * @param referenceUrls 参考图URL列表
+     * @param userId 发起用户ID
+     * @param limiterTaskKey 并发占用任务Key
+     */
+    void doGenerateVideoWithReferences(Long shotId, java.util.List<String> referenceUrls, Long userId, String limiterTaskKey);
 
     /**
      * 获取分镜视频版本历史

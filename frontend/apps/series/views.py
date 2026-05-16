@@ -3,7 +3,8 @@ from django.http import JsonResponse, HttpResponse, HttpResponseForbidden
 from django.views.decorators.http import require_http_methods
 from django.views.decorators.csrf import csrf_exempt
 from django.contrib import messages
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from urllib.parse import urlencode
 import json
 import requests
 
@@ -31,7 +32,8 @@ def _parallel_backend_gets(token, endpoints):
             for name, endpoint in endpoints.items()
         }
         results = {}
-        for future, name in future_map.items():
+        for future in as_completed(future_map):
+            name = future_map[future]
             results[name] = future.result()
         return results
 
@@ -197,15 +199,24 @@ def series_review(request, series_id):
                 a.get('filePath') and a.get('filePath').strip()
                 for a in role.get('assets', [])
             )
+            role['has_usable_asset'] = any(
+                a.get('filePath') and a.get('filePath').strip() and a.get('status') not in (-1, 0)
+                for a in role.get('assets', [])
+            )
+            if not role['has_usable_asset'] and role.get('status', 0) >= 2:
+                role['status'] = 1
+                role['statusDesc'] = '待审核'
     except BackendAPIError as e:
         messages.error(request, f'获取系列信息失败: {e.message}')
         return redirect('series:list')
 
+    ready_count = sum(1 for r in roles if r.get('status', 0) >= 2 and r.get('has_usable_asset'))
     response = render(request, 'series/series_review.html', {
         'series': series,
         'roles': roles,
         'series_id': series_id,
-        'confirmed_count': sum(1 for r in roles if r.get('status', 0) >= 2),
+        'confirmed_count': ready_count,
+        'roles_ready_for_lock': ready_count == len(roles) and len(roles) > 0,
     })
     # 禁止缓存，确保每次都从服务器获取最新数据
     response['Cache-Control'] = 'no-cache, no-store, must-revalidate'
@@ -694,7 +705,17 @@ def episode_detail(request, series_id, episode_id):
         for shot in shots:
             if shot.get('sceneId'):
                 episode_scene_ids.add(shot.get('sceneId'))
-            # 从propsJson中提取道具信息
+            # 轻量分镜接口不再携带 propsJson，优先使用已组装好的 props 列表。
+            shot_props = shot.get('props') or []
+            if isinstance(shot_props, list):
+                for prop_info in shot_props:
+                    if isinstance(prop_info, dict):
+                        prop_id = prop_info.get('propId') or prop_info.get('id')
+                        if prop_id:
+                            episode_prop_ids.add(prop_id)
+                        prop_name = prop_info.get('propName') or prop_info.get('name')
+                        if prop_name:
+                            episode_prop_names.add(prop_name)
             props_json = shot.get('propsJson')
             if props_json:
                 try:
@@ -1649,10 +1670,18 @@ def credit_admin_dashboard_api(request):
     hours = request.GET.get('hours', 24)
     record_page = request.GET.get('recordPage', 1)
     record_page_size = request.GET.get('recordPageSize', 20)
+    nickname = (request.GET.get('nickname') or '').strip()
 
     client = get_client(request)
     try:
-        result = client.get(f'/v1/admin/credits/dashboard?hours={hours}&recordPage={record_page}&recordPageSize={record_page_size}')
+        params = {
+            'hours': hours,
+            'recordPage': record_page,
+            'recordPageSize': record_page_size,
+        }
+        if nickname:
+            params['nickname'] = nickname
+        result = client.get(f'/v1/admin/credits/dashboard?{urlencode(params)}')
         return JsonResponse({'code': 200, 'data': result})
     except BackendAPIError as e:
         return JsonResponse({'code': e.status_code, 'message': e.message}, status=400)
@@ -1747,9 +1776,9 @@ def file_upload(request):
             return JsonResponse({'success': False, 'message': '未选择文件'}, status=400)
 
         # 检查文件类型
-        allowed_types = ['image/jpeg', 'image/png', 'image/gif']
+        allowed_types = ['image/jpeg', 'image/png', 'image/gif', 'image/webp']
         if file.content_type not in allowed_types:
-            return JsonResponse({'success': False, 'message': '只支持 JPG、PNG、GIF 格式'}, status=400)
+            return JsonResponse({'success': False, 'message': '只支持 JPG、PNG、GIF、WEBP 格式'}, status=400)
 
         # 检查文件大小 (最大 5MB)
         if file.size > 5 * 1024 * 1024:
@@ -1757,7 +1786,8 @@ def file_upload(request):
 
         # 调用后端上传接口
         files = {'file': (file.name, file.read(), file.content_type)}
-        result = client.upload('/v1/upload', files)
+        upload_type = request.POST.get('type', 'avatar')
+        result = client.upload('/v1/upload', files, data={'type': upload_type})
 
         return JsonResponse({'success': True, 'url': result.get('url')})
     except BackendAPIError as e:

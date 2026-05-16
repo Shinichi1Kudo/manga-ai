@@ -80,11 +80,69 @@ public class SchemaMigrationConfig {
 
     private void ensurePerformanceIndexes() {
         try (Connection connection = dataSource.getConnection()) {
+            String productName = connection.getMetaData().getDatabaseProductName();
+            boolean mysql = productName != null && productName.toLowerCase().contains("mysql");
+            ensureEpisodeDetailShotColumns(connection, mysql);
             ensureIndex(connection, "idx_series_user_deleted_created", "series", "user_id, is_deleted, created_at");
             ensureIndex(connection, "idx_role_series_deleted", "role", "series_id, is_deleted");
+            ensureIndex(connection, "idx_shot_episode_detail_list", "shot", "episode_id, is_deleted, status, shot_number");
+            ensureIndex(connection, "idx_shot_character_shot_role", "shot_character", "shot_id, role_id");
+            ensureIndex(connection, "idx_shot_prop_shot_prop", "shot_prop", "shot_id, prop_id");
+            ensureIndex(connection, "idx_scene_asset_scene_active", "scene_asset", "scene_id, is_active");
+            ensureIndex(connection, "idx_role_asset_role_clothing_active", "role_asset", "role_id, clothing_id, is_active");
+            ensureIndex(connection, "idx_prop_asset_prop_active_episode_version", "prop_asset", "prop_id, is_active, episode_id, version");
+            ensureIndex(connection, "idx_shot_video_asset_shot_active_version", "shot_video_asset", "shot_id, is_active, version");
         } catch (Exception e) {
             log.warn("性能索引检查失败: {}", e.getMessage());
         }
+    }
+
+    private void ensureEpisodeDetailShotColumns(Connection connection, boolean mysql) throws Exception {
+        ensureColumn(connection, mysql, "shot", "shot_name",
+                "VARCHAR(100) DEFAULT NULL COMMENT '分镜名称'",
+                "VARCHAR(100)");
+        ensureColumn(connection, mysql, "shot", "scene_name",
+                "VARCHAR(100) DEFAULT NULL COMMENT '场景名称'",
+                "VARCHAR(100)");
+        ensureColumn(connection, mysql, "shot", "shot_type",
+                "VARCHAR(100) DEFAULT NULL COMMENT '镜头类型'",
+                "VARCHAR(100)");
+        ensureColumn(connection, mysql, "shot", "start_time",
+                "INT DEFAULT 0 COMMENT '开始时间（秒）'",
+                "INT DEFAULT 0");
+        ensureColumn(connection, mysql, "shot", "end_time",
+                "INT DEFAULT 5 COMMENT '结束时间（秒）'",
+                "INT DEFAULT 5");
+        ensureColumn(connection, mysql, "shot", "resolution",
+                "VARCHAR(10) DEFAULT '720p' COMMENT '视频分辨率'",
+                "VARCHAR(10) DEFAULT '720p'");
+        ensureColumn(connection, mysql, "shot", "aspect_ratio",
+                "VARCHAR(10) DEFAULT '16:9' COMMENT '视频比例'",
+                "VARCHAR(10) DEFAULT '16:9'");
+        ensureColumn(connection, mysql, "shot", "sound_effect",
+                "TEXT COMMENT '音效描述'",
+                "CLOB");
+        ensureColumn(connection, mysql, "shot", "generation_error",
+                "VARCHAR(500) DEFAULT NULL COMMENT '生成失败原因'",
+                "VARCHAR(500)");
+        ensureColumn(connection, mysql, "shot", "generation_duration",
+                "INT DEFAULT NULL COMMENT '生成耗时（秒）'",
+                "INT");
+        ensureColumn(connection, mysql, "shot", "generation_start_time",
+                "TIMESTAMP NULL COMMENT '生成开始时间'",
+                "TIMESTAMP");
+        ensureColumn(connection, mysql, "shot", "deducted_credits",
+                "INT DEFAULT NULL COMMENT '视频生成已扣除积分（用于失败返还）'",
+                "INT DEFAULT NULL");
+        ensureColumn(connection, mysql, "shot", "video_model",
+                "VARCHAR(100) DEFAULT 'seedance-2.0-fast' COMMENT '视频生成模型'",
+                "VARCHAR(100) DEFAULT 'seedance-2.0-fast'");
+        ensureColumn(connection, mysql, "shot", "description_edited",
+                "TINYINT(1) DEFAULT 0 COMMENT '剧情是否用户编辑过'",
+                "BOOLEAN DEFAULT FALSE");
+        ensureColumn(connection, mysql, "shot", "scene_edited",
+                "TINYINT(1) DEFAULT 0 COMMENT '场景是否用户编辑过'",
+                "BOOLEAN DEFAULT FALSE");
     }
 
     private void ensureSubjectReplacementTaskTable() {

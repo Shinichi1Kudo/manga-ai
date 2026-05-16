@@ -5,6 +5,7 @@ import com.manga.ai.asset.entity.RoleAsset;
 import com.manga.ai.asset.mapper.RoleAssetMapper;
 import com.manga.ai.asset.service.AssetService;
 import com.manga.ai.common.constants.CreditConstants;
+import com.manga.ai.common.enums.AssetStatus;
 import com.manga.ai.common.enums.CreditUsageType;
 import com.manga.ai.common.enums.RoleStatus;
 import com.manga.ai.common.exception.AssetLockedException;
@@ -63,6 +64,11 @@ public class RoleServiceImpl implements RoleService {
     @Override
     @Transactional(rollbackFor = Exception.class)
     public Long createRole(RoleCreateRequest request) {
+        Long userId = UserContextHolder.getUserId();
+        if (userId == null) {
+            throw new BusinessException("用户未登录");
+        }
+
         // 检查系列下是否已有同名角色
         LambdaQueryWrapper<Role> checkWrapper = new LambdaQueryWrapper<>();
         checkWrapper.eq(Role::getSeriesId, request.getSeriesId())
@@ -96,12 +102,17 @@ public class RoleServiceImpl implements RoleService {
         roleMapper.insert(role);
         log.info("创建角色: roleId={}, roleName={}", role.getId(), role.getRoleName());
 
+        if (request.getUploadedImageUrl() != null && !request.getUploadedImageUrl().isBlank()) {
+            createManualUploadedAsset(role, request.getUploadedImageUrl(), request.getOriginalPrompt());
+            role.setStatus(RoleStatus.PENDING_REVIEW.getCode());
+            role.setUpdatedAt(LocalDateTime.now());
+            roleMapper.updateById(role);
+            log.info("角色使用手动上传图片，跳过生图任务: roleId={}", role.getId());
+            return role.getId();
+        }
+
         // 扣除积分（角色生成1张图，包含多视角）
         int requiredCredits = CreditConstants.CREDITS_PER_IMAGE;
-        Long userId = UserContextHolder.getUserId();
-        if (userId == null) {
-            throw new BusinessException("用户未登录");
-        }
         userService.deductCredits(userId, requiredCredits, CreditUsageType.ROLE_CREATE.getCode(),
                 "角色创建-" + role.getRoleName(), role.getId(), "ROLE");
         log.info("角色生成扣费: userId={}, roleId={}, credits={}", userId, role.getId(), requiredCredits);
@@ -130,6 +141,27 @@ public class RoleServiceImpl implements RoleService {
         });
 
         return roleId;
+    }
+
+    private void createManualUploadedAsset(Role role, String imageUrl, String originalPrompt) {
+        RoleAsset asset = new RoleAsset();
+        asset.setRoleId(role.getId());
+        asset.setAssetType("CHARACTER_SHEET");
+        asset.setViewType("ALL");
+        asset.setClothingId(1);
+        asset.setClothingName("默认");
+        asset.setVersion(1);
+        asset.setFileName(role.getRoleName() + "_manual_upload_v1.png");
+        asset.setFilePath(imageUrl);
+        asset.setThumbnailPath(imageUrl);
+        asset.setTransparentPath(imageUrl);
+        asset.setStatus(AssetStatus.PENDING_REVIEW.getCode());
+        asset.setIsActive(1);
+        asset.setValidationPassed(1);
+        asset.setClothingPrompt(originalPrompt);
+        asset.setCreatedAt(LocalDateTime.now());
+        asset.setUpdatedAt(LocalDateTime.now());
+        roleAssetMapper.insert(asset);
     }
 
     @Override
@@ -245,6 +277,11 @@ public class RoleServiceImpl implements RoleService {
         // 检查是否已锁定
         if (RoleStatus.LOCKED.getCode().equals(role.getStatus())) {
             throw new AssetLockedException("角色已锁定");
+        }
+
+        Long usableAssetCount = roleAssetMapper.countUsableActiveAssetsByRoleId(roleId);
+        if (usableAssetCount == null || usableAssetCount == 0) {
+            throw new BusinessException("角色图片未全部生成成功，无法确认，请先重新生成失败图片");
         }
 
         // 更新状态为已确认

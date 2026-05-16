@@ -62,18 +62,18 @@
             </div>
 
             <!-- 已有角色提示 -->
-            <div class="bg-white/5 rounded-xl p-4">
-                <h4 class="text-white/70 text-sm mb-2 flex items-center gap-2">
-                    <i data-lucide="users" class="w-4 h-4"></i>
-                    已有角色（请在剧本中使用这些角色名）
+            <div class="episode-role-name-hint rounded-xl border border-amber-400/60 bg-amber-400/15 p-4 shadow-[0_0_24px_rgba(251,191,36,0.16)]">
+                <h4 class="text-amber-100 text-sm font-semibold mb-3 flex items-start gap-2 leading-relaxed">
+                    <i data-lucide="alert-triangle" class="w-4 h-4 text-amber-300 mt-0.5 flex-shrink-0"></i>
+                    已有角色（请在剧本中使用下方名字作为剧本里出现的人物角色名）
                 </h4>
                 <div class="flex flex-wrap gap-2">
                     {% if series.roles %}
                         {% for role in series.roles %}
-                        <span class="px-3 py-1 rounded-full bg-violet-500/20 text-violet-300 text-sm">{{ role }}</span>
+                        <span class="px-3 py-1 rounded-full bg-amber-300/20 border border-amber-300/30 text-amber-100 text-sm font-medium">{{ role }}</span>
                         {% endfor %}
                     {% else %}
-                    <span class="text-white/40 text-sm">暂无角色信息</span>
+                    <span class="text-amber-100/70 text-sm">暂无角色信息</span>
                     {% endif %}
                 </div>
             </div>

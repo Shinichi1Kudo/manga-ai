@@ -340,6 +340,11 @@ public class SeriesServiceImpl implements SeriesService {
             throw new BusinessException("存在 " + unconfirmedCount + " 个未确认的角色，无法锁定");
         }
 
+        Long rolesWithoutUsableAsset = roleAssetMapper.countRolesWithoutUsableActiveAssetBySeriesId(seriesId);
+        if (rolesWithoutUsableAsset != null && rolesWithoutUsableAsset > 0) {
+            throw new BusinessException("存在 " + rolesWithoutUsableAsset + " 个角色图片未生成成功，无法锁定");
+        }
+
         // 锁定所有角色
         Role updateRole = new Role();
         updateRole.setStatus(RoleStatus.LOCKED.getCode());
@@ -542,6 +547,20 @@ public class SeriesServiceImpl implements SeriesService {
 
             log.info("创建角色: id={}, name={}, style={}", role.getId(), role.getRoleName(), charStyle);
 
+            String uploadedImageUrl = charData.getString("uploadedImageUrl");
+            if (uploadedImageUrl != null && !uploadedImageUrl.isBlank()) {
+                saveManualUploadedRoleAsset(role, uploadedImageUrl, charData);
+                role.setStatus(RoleStatus.PENDING_REVIEW.getCode());
+                role.setUpdatedAt(LocalDateTime.now());
+                roleMapper.updateById(role);
+
+                int completed = completedRoles.incrementAndGet();
+                int percent = (int) (completed * 100.0 / totalRoles);
+                sendProgress(seriesId, "PROCESSING", completed, totalRoles, percent,
+                        "完成: " + roleName + " (" + completed + "/" + totalRoles + ")");
+                return;
+            }
+
             // 构建请求
             ImageGenerateRequest imageRequest = ImageGenerateRequest.builder()
                     .roleName(role.getRoleName())
@@ -584,6 +603,39 @@ public class SeriesServiceImpl implements SeriesService {
             sendProgress(seriesId, "PROCESSING", completed, totalRoles, percent,
                     "角色处理异常: " + roleName + " (" + completed + "/" + totalRoles + ")");
         }
+    }
+
+    private void saveManualUploadedRoleAsset(Role role, String imageUrl, JSONObject charData) {
+        RoleAsset asset = new RoleAsset();
+        asset.setRoleId(role.getId());
+        asset.setAssetType("CHARACTER_SHEET");
+        asset.setViewType("ALL");
+        asset.setClothingId(1);
+        asset.setClothingName("默认");
+        asset.setVersion(1);
+        asset.setFileName(role.getRoleName() + "_manual_upload_v1.png");
+        asset.setFilePath(imageUrl);
+        asset.setThumbnailPath(imageUrl);
+        asset.setTransparentPath(imageUrl);
+        asset.setStatus(AssetStatus.PENDING_REVIEW.getCode());
+        asset.setIsActive(1);
+        asset.setValidationPassed(1);
+        asset.setClothingPrompt(charData.getString("originalPrompt"));
+        asset.setCreatedAt(LocalDateTime.now());
+        asset.setUpdatedAt(LocalDateTime.now());
+        roleAssetMapper.insert(asset);
+
+        AssetMetadata metadata = new AssetMetadata();
+        metadata.setAssetId(asset.getId());
+        metadata.setModelVersion("manual-upload");
+        metadata.setAspectRatio(charData.getString("aspectRatio"));
+        metadata.setUserPrompt(charData.getString("originalPrompt"));
+        metadata.setPrompt(charData.getString("customPrompt"));
+        metadata.setGenerationTimeMs(0L);
+        metadata.setCreatedAt(LocalDateTime.now());
+        assetMetadataMapper.insert(metadata);
+
+        log.info("保存手动上传角色资产: roleId={}, assetId={}", role.getId(), asset.getId());
     }
 
     /**

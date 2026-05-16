@@ -3,9 +3,13 @@ package com.manga.ai.shot.service.impl;
 import com.manga.ai.asset.mapper.RoleAssetMapper;
 import com.manga.ai.common.enums.ShotGenerationStatus;
 import com.manga.ai.common.enums.ShotStatus;
+import com.manga.ai.common.exception.BusinessException;
 import com.manga.ai.common.service.OssService;
+import com.manga.ai.common.service.UserVideoGenerationLimiter;
 import com.manga.ai.episode.entity.Episode;
 import com.manga.ai.episode.mapper.EpisodeMapper;
+import com.manga.ai.prop.entity.Prop;
+import com.manga.ai.prop.entity.PropAsset;
 import com.manga.ai.role.entity.Role;
 import com.manga.ai.prop.mapper.PropAssetMapper;
 import com.manga.ai.prop.mapper.PropMapper;
@@ -19,6 +23,7 @@ import com.manga.ai.series.mapper.SeriesMapper;
 import com.manga.ai.shot.dto.ShotUpdateRequest;
 import com.manga.ai.shot.entity.Shot;
 import com.manga.ai.shot.entity.ShotCharacter;
+import com.manga.ai.shot.entity.ShotProp;
 import com.manga.ai.shot.entity.ShotReferenceImage;
 import com.manga.ai.shot.entity.ShotVideoAssetMetadata;
 import com.manga.ai.shot.mapper.ShotCharacterMapper;
@@ -41,12 +46,18 @@ import org.apache.ibatis.builder.MapperBuilderAssistant;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.LocalDateTime;
 import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
+import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -56,6 +67,204 @@ class ShotServiceImplTest {
 
     static {
         TableInfoHelper.initTableInfo(new MapperBuilderAssistant(new MybatisConfiguration(), ""), Shot.class);
+    }
+
+    @Test
+    void episodeShotListUsesLightweightShotQueryAndOmitsGenerationOnlyLargeFields() {
+        ShotMapper shotMapper = mock(ShotMapper.class);
+        ShotCharacterMapper shotCharacterMapper = mock(ShotCharacterMapper.class);
+        ShotPropMapper shotPropMapper = mock(ShotPropMapper.class);
+        SceneMapper sceneMapper = mock(SceneMapper.class);
+        SceneAssetMapper sceneAssetMapper = mock(SceneAssetMapper.class);
+        RoleMapper roleMapper = mock(RoleMapper.class);
+        RoleAssetMapper roleAssetMapper = mock(RoleAssetMapper.class);
+        EpisodeMapper episodeMapper = mock(EpisodeMapper.class);
+        PropMapper propMapper = mock(PropMapper.class);
+        PropAssetMapper propAssetMapper = mock(PropAssetMapper.class);
+        ShotVideoAssetMapper shotVideoAssetMapper = mock(ShotVideoAssetMapper.class);
+        ShotVideoAssetMetadataMapper shotVideoAssetMetadataMapper = mock(ShotVideoAssetMetadataMapper.class);
+
+        Shot shot = new Shot();
+        shot.setId(700L);
+        shot.setEpisodeId(77L);
+        shot.setShotNumber(1);
+        shot.setShotName("开场");
+        shot.setDescription("剧情【沈清欢入场】");
+        shot.setReferencePrompt("SHOULD_NOT_BE_LOADED_FOR_LIST");
+        shot.setUserPrompt("SHOULD_NOT_BE_LOADED_FOR_LIST");
+        shot.setCharactersJson("SHOULD_NOT_BE_LOADED_FOR_LIST");
+        shot.setPropsJson(null);
+        shot.setGenerationStatus(ShotGenerationStatus.PENDING.getCode());
+        shot.setStatus(ShotStatus.PENDING_REVIEW.getCode());
+        when(shotMapper.selectEpisodeDetailList(77L)).thenReturn(List.of(shot));
+        when(shotCharacterMapper.selectList(any())).thenReturn(List.of());
+        when(shotPropMapper.selectList(any())).thenReturn(List.of());
+        when(shotVideoAssetMapper.selectActiveByShotIds(List.of(700L))).thenReturn(List.of());
+
+        List<com.manga.ai.shot.dto.ShotDetailVO> result = createService(
+                shotMapper,
+                shotCharacterMapper,
+                shotPropMapper,
+                sceneMapper,
+                sceneAssetMapper,
+                roleMapper,
+                roleAssetMapper,
+                propAssetMapper,
+                propMapper,
+                episodeMapper,
+                mock(SeedanceService.class),
+                shotVideoAssetMapper,
+                shotVideoAssetMetadataMapper
+        ).getShotsByEpisodeId(77L);
+
+        assertThat(result).hasSize(1);
+        assertThat(result.get(0).getShotName()).isEqualTo("开场");
+        assertThat(result.get(0).getDescription()).isEqualTo("剧情【沈清欢入场】");
+        assertThat(result.get(0).getReferencePrompt()).isNull();
+        assertThat(result.get(0).getUserPrompt()).isNull();
+        assertThat(result.get(0).getCharactersJson()).isNull();
+        verify(shotMapper).selectEpisodeDetailList(77L);
+        verify(shotMapper, never()).selectList(any());
+    }
+
+    @Test
+    void episodeShotListBuildsPropThumbnailsFromRelationalRowsWithoutPropsJson() {
+        ShotMapper shotMapper = mock(ShotMapper.class);
+        ShotCharacterMapper shotCharacterMapper = mock(ShotCharacterMapper.class);
+        ShotPropMapper shotPropMapper = mock(ShotPropMapper.class);
+        SceneMapper sceneMapper = mock(SceneMapper.class);
+        SceneAssetMapper sceneAssetMapper = mock(SceneAssetMapper.class);
+        RoleMapper roleMapper = mock(RoleMapper.class);
+        RoleAssetMapper roleAssetMapper = mock(RoleAssetMapper.class);
+        EpisodeMapper episodeMapper = mock(EpisodeMapper.class);
+        PropMapper propMapper = mock(PropMapper.class);
+        PropAssetMapper propAssetMapper = mock(PropAssetMapper.class);
+        ShotVideoAssetMapper shotVideoAssetMapper = mock(ShotVideoAssetMapper.class);
+        ShotVideoAssetMetadataMapper shotVideoAssetMetadataMapper = mock(ShotVideoAssetMetadataMapper.class);
+
+        Shot shot = new Shot();
+        shot.setId(701L);
+        shot.setEpisodeId(77L);
+        shot.setShotNumber(2);
+        shot.setDescription("剧情【玉佩落地】");
+        shot.setPropsJson(null);
+        shot.setGenerationStatus(ShotGenerationStatus.PENDING.getCode());
+        shot.setStatus(ShotStatus.PENDING_REVIEW.getCode());
+        when(shotMapper.selectEpisodeDetailList(77L)).thenReturn(List.of(shot));
+        when(shotCharacterMapper.selectList(any())).thenReturn(List.of());
+
+        ShotProp shotProp = new ShotProp();
+        shotProp.setShotId(701L);
+        shotProp.setPropId(900L);
+        when(shotPropMapper.selectList(any())).thenReturn(List.of(shotProp));
+
+        Episode episode = new Episode();
+        episode.setId(77L);
+        episode.setSeriesId(88L);
+        when(episodeMapper.selectById(77L)).thenReturn(episode);
+
+        Prop prop = new Prop();
+        prop.setId(900L);
+        prop.setSeriesId(88L);
+        prop.setPropName("玉佩");
+        when(propMapper.selectList(any())).thenReturn(List.of(prop));
+
+        PropAsset propAsset = new PropAsset();
+        propAsset.setId(910L);
+        propAsset.setPropId(900L);
+        propAsset.setEpisodeId(77L);
+        propAsset.setFilePath("https://example.com/prop.png");
+        propAsset.setFileName("玉佩.png");
+        propAsset.setIsActive(1);
+        propAsset.setVersion(3);
+        when(propAssetMapper.selectList(any())).thenReturn(List.of(propAsset));
+        when(shotVideoAssetMapper.selectActiveByShotIds(List.of(701L))).thenReturn(List.of());
+
+        List<com.manga.ai.shot.dto.ShotDetailVO> result = createService(
+                shotMapper,
+                shotCharacterMapper,
+                shotPropMapper,
+                sceneMapper,
+                sceneAssetMapper,
+                roleMapper,
+                roleAssetMapper,
+                propAssetMapper,
+                propMapper,
+                episodeMapper,
+                mock(SeedanceService.class),
+                shotVideoAssetMapper,
+                shotVideoAssetMetadataMapper
+        ).getShotsByEpisodeId(77L);
+
+        assertThat(result).hasSize(1);
+        assertThat(result.get(0).getProps()).hasSize(1);
+        assertThat(result.get(0).getProps().get(0).getPropId()).isEqualTo(900L);
+        assertThat(result.get(0).getProps().get(0).getPropName()).isEqualTo("玉佩");
+        assertThat(result.get(0).getProps().get(0).getAssetUrl()).isEqualTo("https://example.com/prop.png");
+    }
+
+    @Test
+    void episodeShotListSkipsPropLookupsWhenShotsHaveNoPropRelations() {
+        ShotMapper shotMapper = mock(ShotMapper.class);
+        ShotCharacterMapper shotCharacterMapper = mock(ShotCharacterMapper.class);
+        ShotPropMapper shotPropMapper = mock(ShotPropMapper.class);
+        SceneMapper sceneMapper = mock(SceneMapper.class);
+        SceneAssetMapper sceneAssetMapper = mock(SceneAssetMapper.class);
+        RoleMapper roleMapper = mock(RoleMapper.class);
+        RoleAssetMapper roleAssetMapper = mock(RoleAssetMapper.class);
+        EpisodeMapper episodeMapper = mock(EpisodeMapper.class);
+        PropMapper propMapper = mock(PropMapper.class);
+        PropAssetMapper propAssetMapper = mock(PropAssetMapper.class);
+        ShotVideoAssetMapper shotVideoAssetMapper = mock(ShotVideoAssetMapper.class);
+        ShotVideoAssetMetadataMapper shotVideoAssetMetadataMapper = mock(ShotVideoAssetMetadataMapper.class);
+
+        Shot shot = new Shot();
+        shot.setId(702L);
+        shot.setEpisodeId(77L);
+        shot.setShotNumber(3);
+        shot.setGenerationStatus(ShotGenerationStatus.PENDING.getCode());
+        shot.setStatus(ShotStatus.PENDING_REVIEW.getCode());
+        when(shotMapper.selectEpisodeDetailList(77L)).thenReturn(List.of(shot));
+        when(shotCharacterMapper.selectList(any())).thenReturn(List.of());
+        when(shotPropMapper.selectList(any())).thenReturn(List.of());
+        when(shotVideoAssetMapper.selectActiveByShotIds(List.of(702L))).thenReturn(List.of());
+
+        List<com.manga.ai.shot.dto.ShotDetailVO> result = createService(
+                shotMapper,
+                shotCharacterMapper,
+                shotPropMapper,
+                sceneMapper,
+                sceneAssetMapper,
+                roleMapper,
+                roleAssetMapper,
+                propAssetMapper,
+                propMapper,
+                episodeMapper,
+                mock(SeedanceService.class),
+                shotVideoAssetMapper,
+                shotVideoAssetMetadataMapper
+        ).getShotsByEpisodeId(77L);
+
+        assertThat(result).hasSize(1);
+        assertThat(result.get(0).getProps()).isEmpty();
+        verify(episodeMapper, never()).selectById(any());
+        verify(propMapper, never()).selectList(any());
+        verify(propAssetMapper, never()).selectList(any());
+    }
+
+    @Test
+    void episodeDetailPerformanceMigrationAddsCompositeIndexesForShotListPath() throws Exception {
+        Path migration = Path.of("src/main/resources/db/migration/V2026.05.17__Optimize_Episode_Detail_Shot_List.sql");
+        String sql = Files.readString(migration, StandardCharsets.UTF_8).toLowerCase();
+
+        assertThat(sql)
+                .contains("idx_shot_episode_detail_list")
+                .contains("idx_shot_character_shot_role")
+                .contains("idx_shot_prop_shot_prop")
+                .contains("idx_scene_asset_scene_active")
+                .contains("idx_role_asset_role_clothing_active")
+                .contains("idx_prop_asset_prop_active_episode_version")
+                .contains("idx_shot_video_asset_shot_active_version");
     }
 
     @Test
@@ -116,6 +325,109 @@ class ShotServiceImplTest {
         assertThat(wrapperCaptor.getValue().getParamNameValuePairs())
                 .containsEntry("MPGENVAL1", "720p")
                 .containsEntry("MPGENVAL2", "kling-v3-omni");
+    }
+
+    @Test
+    void generateVideoRejectsBeforeDeductingCreditsWhenUserConcurrencyLimitReached() {
+        ShotMapper shotMapper = mock(ShotMapper.class);
+        UserService userService = mock(UserService.class);
+        ShotService self = mock(ShotService.class);
+        UserVideoGenerationLimiter limiter = mock(UserVideoGenerationLimiter.class);
+
+        Shot shot = new Shot();
+        shot.setId(650L);
+        shot.setEpisodeId(11L);
+        shot.setShotNumber(6);
+        shot.setStatus(ShotStatus.PENDING_REVIEW.getCode());
+        shot.setDuration(8);
+        shot.setResolution("720p");
+        shot.setVideoModel("seedance-2.0-fast");
+        shot.setGenerationStatus(ShotGenerationStatus.PENDING.getCode());
+        when(shotMapper.selectById(650L)).thenReturn(shot);
+        doThrow(new BusinessException("当前账号同时生成视频任务已达15路，请等待已有任务完成后再试"))
+                .when(limiter).acquireOrThrow(7L, "shot:650");
+
+        UserContextHolder.setUserId(7L);
+        try {
+            ShotServiceImpl service = createService(
+                    shotMapper,
+                    mock(ShotCharacterMapper.class),
+                    mock(SceneMapper.class),
+                    mock(SceneAssetMapper.class),
+                    mock(RoleMapper.class),
+                    mock(RoleAssetMapper.class),
+                    mock(EpisodeMapper.class),
+                    mock(SeedanceService.class),
+                    mock(ShotReferenceImageMapper.class),
+                    mock(ShotVideoAssetMapper.class),
+                    mock(ShotVideoAssetMetadataMapper.class),
+                    userService,
+                    self,
+                    limiter
+            );
+
+            assertThatThrownBy(() -> service.generateVideo(650L))
+                    .isInstanceOf(BusinessException.class)
+                    .hasMessageContaining("15路");
+        } finally {
+            UserContextHolder.clear();
+        }
+
+        verify(userService, never()).deductCredits(any(), any(Integer.class), any(), any(), any(), any());
+        verify(shotMapper, never()).update(eq(null), any(LambdaUpdateWrapper.class));
+        verify(self, never()).doGenerateVideo(any());
+        verify(self, never()).doGenerateVideo(any(), any(), any());
+    }
+
+    @Test
+    void generateVideoReleasesUserConcurrencySlotWhenStatusUpdateLosesRace() {
+        ShotMapper shotMapper = mock(ShotMapper.class);
+        UserService userService = mock(UserService.class);
+        ShotService self = mock(ShotService.class);
+        UserVideoGenerationLimiter limiter = mock(UserVideoGenerationLimiter.class);
+
+        Shot shot = new Shot();
+        shot.setId(651L);
+        shot.setEpisodeId(11L);
+        shot.setShotNumber(7);
+        shot.setStatus(ShotStatus.PENDING_REVIEW.getCode());
+        shot.setDuration(8);
+        shot.setResolution("720p");
+        shot.setVideoModel("seedance-2.0-fast");
+        shot.setGenerationStatus(ShotGenerationStatus.PENDING.getCode());
+        when(shotMapper.selectById(651L)).thenReturn(shot);
+        when(shotMapper.update(eq(null), any(LambdaUpdateWrapper.class))).thenReturn(0);
+
+        UserContextHolder.setUserId(7L);
+        try {
+            ShotServiceImpl service = createService(
+                    shotMapper,
+                    mock(ShotCharacterMapper.class),
+                    mock(SceneMapper.class),
+                    mock(SceneAssetMapper.class),
+                    mock(RoleMapper.class),
+                    mock(RoleAssetMapper.class),
+                    mock(EpisodeMapper.class),
+                    mock(SeedanceService.class),
+                    mock(ShotReferenceImageMapper.class),
+                    mock(ShotVideoAssetMapper.class),
+                    mock(ShotVideoAssetMetadataMapper.class),
+                    userService,
+                    self,
+                    limiter
+            );
+
+            assertThatThrownBy(() -> service.generateVideo(651L))
+                    .isInstanceOf(BusinessException.class)
+                    .hasMessageContaining("正在生成中");
+        } finally {
+            UserContextHolder.clear();
+        }
+
+        verify(limiter).acquireOrThrow(7L, "shot:651");
+        verify(userService).refundCredits(eq(7L), eq(176), any(), eq(651L), eq("SHOT"));
+        verify(limiter).release(7L, "shot:651");
+        verify(self, never()).doGenerateVideo(any(), any(), any());
     }
 
     @Test
@@ -430,7 +742,12 @@ class ShotServiceImplTest {
                 self
         ).startPreparedVideoGenerationWithReferences(636L, List.of("https://example.com/ref.png"));
 
-        verify(self).doGenerateVideoWithReferences(636L, List.of("https://example.com/ref.png"));
+        verify(self).doGenerateVideoWithReferences(
+                eq(636L),
+                eq(List.of("https://example.com/ref.png")),
+                isNull(),
+                eq("shot:636")
+        );
     }
 
     @Test
@@ -777,6 +1094,44 @@ class ShotServiceImplTest {
                 mock(ShotVideoAssetMetadataMapper.class),
                 mock(OssService.class),
                 mock(UserService.class),
+                mock(UserVideoGenerationLimiter.class),
+                mock(ShotService.class)
+        );
+    }
+
+    private ShotServiceImpl createService(ShotMapper shotMapper,
+                                          ShotCharacterMapper shotCharacterMapper,
+                                          ShotPropMapper shotPropMapper,
+                                          SceneMapper sceneMapper,
+                                          SceneAssetMapper sceneAssetMapper,
+                                          RoleMapper roleMapper,
+                                          RoleAssetMapper roleAssetMapper,
+                                          PropAssetMapper propAssetMapper,
+                                          PropMapper propMapper,
+                                          EpisodeMapper episodeMapper,
+                                          SeedanceService seedanceService,
+                                          ShotVideoAssetMapper shotVideoAssetMapper,
+                                          ShotVideoAssetMetadataMapper shotVideoAssetMetadataMapper) {
+        return new ShotServiceImpl(
+                shotMapper,
+                shotCharacterMapper,
+                shotPropMapper,
+                sceneMapper,
+                sceneAssetMapper,
+                roleMapper,
+                roleAssetMapper,
+                propAssetMapper,
+                propMapper,
+                episodeMapper,
+                mock(SeriesMapper.class),
+                mock(VideoMetadataMapper.class),
+                seedanceService,
+                mock(ShotReferenceImageMapper.class),
+                shotVideoAssetMapper,
+                shotVideoAssetMetadataMapper,
+                mock(OssService.class),
+                mock(UserService.class),
+                mock(UserVideoGenerationLimiter.class),
                 mock(ShotService.class)
         );
     }
@@ -794,6 +1149,38 @@ class ShotServiceImplTest {
                                           ShotVideoAssetMetadataMapper shotVideoAssetMetadataMapper,
                                           UserService userService,
                                           ShotService self) {
+        return createService(
+                shotMapper,
+                shotCharacterMapper,
+                sceneMapper,
+                sceneAssetMapper,
+                roleMapper,
+                roleAssetMapper,
+                episodeMapper,
+                seedanceService,
+                shotReferenceImageMapper,
+                shotVideoAssetMapper,
+                shotVideoAssetMetadataMapper,
+                userService,
+                self,
+                mock(UserVideoGenerationLimiter.class)
+        );
+    }
+
+    private ShotServiceImpl createService(ShotMapper shotMapper,
+                                          ShotCharacterMapper shotCharacterMapper,
+                                          SceneMapper sceneMapper,
+                                          SceneAssetMapper sceneAssetMapper,
+                                          RoleMapper roleMapper,
+                                          RoleAssetMapper roleAssetMapper,
+                                          EpisodeMapper episodeMapper,
+                                          SeedanceService seedanceService,
+                                          ShotReferenceImageMapper shotReferenceImageMapper,
+                                          ShotVideoAssetMapper shotVideoAssetMapper,
+                                          ShotVideoAssetMetadataMapper shotVideoAssetMetadataMapper,
+                                          UserService userService,
+                                          ShotService self,
+                                          UserVideoGenerationLimiter videoGenerationLimiter) {
         return new ShotServiceImpl(
                 shotMapper,
                 shotCharacterMapper,
@@ -813,6 +1200,7 @@ class ShotServiceImplTest {
                 shotVideoAssetMetadataMapper,
                 mock(OssService.class),
                 userService,
+                videoGenerationLimiter,
                 self
         );
     }
@@ -847,6 +1235,7 @@ class ShotServiceImplTest {
                 shotVideoAssetMetadataMapper,
                 mock(OssService.class),
                 mock(UserService.class),
+                mock(UserVideoGenerationLimiter.class),
                 mock(ShotService.class)
         );
     }

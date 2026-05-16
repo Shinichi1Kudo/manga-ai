@@ -68,8 +68,9 @@
         <button id="confirmAllBtn" class="px-5 py-2.5 rounded-xl bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 transition-all font-medium flex items-center gap-2">
             <i data-lucide="check-check" class="w-4 h-4"></i>全部确认
         </button>
-        <button id="lockSeriesBtn" class="px-5 py-2.5 rounded-xl bg-gradient-to-r from-violet-500 to-purple-500 hover:from-violet-600 hover:to-purple-600 transition-all font-medium flex items-center gap-2 {% if confirmed_count != roles|length %}opacity-50 cursor-not-allowed{% endif %}"
-                {% if confirmed_count != roles|length %}disabled{% endif %}>
+        <button id="lockSeriesBtn" class="px-5 py-2.5 rounded-xl bg-gradient-to-r from-violet-500 to-purple-500 hover:from-violet-600 hover:to-purple-600 transition-all font-medium flex items-center gap-2 {% if not roles_ready_for_lock %}opacity-50 cursor-not-allowed{% endif %}"
+                {% if not roles_ready_for_lock %}disabled{% endif %}
+                title="{% if not roles_ready_for_lock %}请先确认所有角色，且每个角色都需要有生成成功的图片{% endif %}">
             <i data-lucide="arrow-right" class="w-4 h-4"></i>下一步
         </button>
         {% endif %}
@@ -99,7 +100,7 @@
 <!-- Role Cards Container -->
 <div class="space-y-6" id="roleContainer">
 {% for role in roles %}
-<div class="glass-card glass-card-hover p-6 role-card" id="role-{{ role.id }}" data-role-id="{{ role.id }}" data-role-status="{{ role.status }}" data-custom-prompt="{{ role.customPrompt|default:'' }}" data-original-prompt="{{ role.originalPrompt|default:'' }}">
+<div class="glass-card glass-card-hover p-6 role-card" id="role-{{ role.id }}" data-role-id="{{ role.id }}" data-role-status="{{ role.status }}" data-has-usable-asset="{{ role.has_usable_asset|yesno:'true,false' }}" data-custom-prompt="{{ role.customPrompt|default:'' }}" data-original-prompt="{{ role.originalPrompt|default:'' }}" data-role-style-keywords="{{ role.styleKeywords|default:series.styleKeywords|default:'' }}">
     <!-- Role Header -->
     <div class="flex items-start justify-between mb-4">
         <div class="flex items-center gap-4">
@@ -134,7 +135,8 @@
             </button>
             <button class="confirm-btn px-4 py-2.5 rounded-xl bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-400 transition-colors font-medium flex items-center gap-2"
                     data-role-id="{{ role.id }}"
-                    {% if role.status >= 2 %}disabled{% endif %}>
+                    {% if role.status >= 2 or not role.has_usable_asset %}disabled{% endif %}
+                    title="{% if not role.has_usable_asset %}请先重新生成失败的角色图片{% endif %}">
                 <i data-lucide="check" class="w-4 h-4"></i>确认
             </button>
             <button class="unlock-btn px-4 py-2.5 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 text-amber-400 transition-colors font-medium flex items-center gap-2 {% if role.status < 2 %}opacity-50 cursor-not-allowed{% endif %}"
@@ -416,7 +418,7 @@
 
 <!-- Add Role Modal -->
 <div class="modal-backdrop" id="addRoleModal">
-    <div class="modal-content max-w-lg">
+    <div class="modal-content max-w-3xl">
         <div class="p-6 border-b border-white/10">
             <h3 class="text-xl font-bold">添加新角色</h3>
             <p class="text-white/50 text-sm mt-1">填写角色信息，系统将自动生成角色资产</p>
@@ -424,29 +426,81 @@
         <div class="p-6 space-y-4">
             <div>
                 <label class="block text-sm text-white/60 mb-2">角色名称 <span class="text-red-400">*</span></label>
-                <input type="text" id="newRoleName" class="input-modern" placeholder="输入角色名称">
+                <input type="text" id="newRoleName" class="input-modern" placeholder="只输入人名，例如：李强、周也" required data-required-message="请填写角色名称">
+                <div class="role-name-only-warning mt-3 rounded-xl border border-amber-400/50 bg-amber-400/15 px-3 py-2 text-xs leading-relaxed text-amber-100 flex items-start gap-2 shadow-[0_0_18px_rgba(251,191,36,0.16)]">
+                    <i data-lucide="alert-triangle" class="w-4 h-4 text-amber-300 mt-0.5 flex-shrink-0"></i>
+                    <span><strong class="text-amber-200">角色名称只填人名。</strong>例如：李强、周也；不要填写主播、演员、程序员、女主等职业身份，这些内容请写到提示词里。</span>
+                </div>
             </div>
 
-            <!-- 人物精细三视图选项 -->
-            <div class="p-3 rounded-xl bg-violet-500/10 border border-violet-500/30">
-                <label class="flex items-center gap-3 cursor-pointer">
-                    <input type="checkbox" id="newRoleDetailedView" class="w-5 h-5 rounded accent-violet-500" onchange="toggleNewRoleDetailedView(this)">
-                    <span class="text-sm font-medium text-violet-300">
-                        <i data-lucide="layout-grid" class="w-4 h-4 inline mr-1"></i>人物精细三视图（含具体细节）
-                    </span>
-                </label>
-                <p class="text-xs text-white/40 mt-2 ml-8">勾选后自动使用16:9比例，禁用风格选择，生成包含三视图、头部角度、细节特写的完整角色设定板</p>
+            <div class="role-generation-mode-guide rounded-xl border border-emerald-400/40 bg-emerald-400/10 p-3">
+                <div class="flex items-start gap-2">
+                    <i data-lucide="sparkles" class="mt-0.5 h-4 w-4 flex-shrink-0 text-emerald-300"></i>
+                    <div>
+                        <p class="text-sm font-semibold text-emerald-100">推荐使用默认生成</p>
+                        <p class="mt-1 text-xs text-white/55">系统会根据角色描述自动生成角色三视图，适合大多数创作场景。如需指定版式或使用本地人物图，可启用下方高级方式。</p>
+                    </div>
+                </div>
             </div>
 
-            <!-- 大头特写+三视图选项 -->
-            <div class="p-3 rounded-xl bg-cyan-500/10 border border-cyan-500/30">
-                <label class="flex items-center gap-3 cursor-pointer">
-                    <input type="checkbox" id="newRoleFaceCloseupView" class="w-5 h-5 rounded accent-cyan-500" onchange="toggleNewRoleFaceCloseupView(this)">
-                    <span class="text-sm font-medium text-cyan-300">
-                        <i data-lucide="user-circle" class="w-4 h-4 inline mr-1"></i>人物三视图（含大头特写）
-                    </span>
+            <div class="role-advanced-options rounded-xl border border-white/10 bg-white/[0.03] p-3">
+                <label class="flex cursor-pointer items-center justify-between gap-4">
+                    <div class="flex items-center gap-2 text-sm font-medium text-white/80">
+                        <input type="checkbox" id="newRoleAdvancedOptionsToggle" class="role-advanced-options-toggle h-4 w-4 rounded accent-emerald-500" onchange="toggleRoleAdvancedOptions(this)">
+                        <i data-lucide="sliders-horizontal" class="h-4 w-4 text-white/45"></i>
+                        <span>启用高级方式</span>
+                    </div>
+                    <span id="newRoleAdvancedOptionsBadge" class="rounded-full bg-white/10 px-2 py-0.5 text-xs text-white/50">默认不启用</span>
                 </label>
-                <p class="text-xs text-white/40 mt-2 ml-8">勾选后生成左边大头特写+右边三视图布局，更好展示面部细节</p>
+                <p class="mt-2 text-xs text-white/45">默认收起，系统将按角色描述生成角色三视图。</p>
+                <div id="newRoleAdvancedOptionsPanel" class="role-advanced-options-panel hidden mt-3 space-y-2">
+                    <div class="rounded-lg border border-white/10 bg-black/10 p-3">
+                        <label class="flex items-center gap-3 cursor-pointer">
+                            <input type="checkbox" id="newRoleDetailedView" class="w-5 h-5 rounded accent-violet-500" onchange="toggleNewRoleDetailedView(this)">
+                            <span class="text-sm font-medium text-white/85">
+                                <span class="mr-2 rounded-full bg-violet-500/15 px-2 py-0.5 text-xs text-violet-200">可选</span>
+                                <i data-lucide="layout-grid" class="w-4 h-4 inline mr-1 text-violet-300"></i>人物精细三视图（含具体细节）
+                            </span>
+                        </label>
+                        <p class="text-xs text-white/40 mt-2 ml-8">需要完整角色设定板时再勾选；勾选后自动使用16:9比例，生成三视图、头部角度、细节特写。</p>
+                    </div>
+
+                    <div class="rounded-lg border border-white/10 bg-black/10 p-3">
+                        <label class="flex items-center gap-3 cursor-pointer">
+                            <input type="checkbox" id="newRoleFaceCloseupView" class="w-5 h-5 rounded accent-cyan-500" onchange="toggleNewRoleFaceCloseupView(this)">
+                            <span class="text-sm font-medium text-white/85">
+                                <span class="mr-2 rounded-full bg-cyan-500/15 px-2 py-0.5 text-xs text-cyan-200">可选</span>
+                                <i data-lucide="user-circle" class="w-4 h-4 inline mr-1 text-cyan-300"></i>人物三视图（含大头特写）
+                            </span>
+                        </label>
+                        <p class="text-xs text-white/40 mt-2 ml-8">需要强调面部细节时再勾选；会生成左边大头特写+右边三视图布局。</p>
+                    </div>
+
+                    <div class="rounded-lg border border-white/10 bg-black/10 p-3">
+                        <label class="flex items-center gap-3 cursor-pointer">
+                            <input type="checkbox" id="newRoleManualUpload" class="role-manual-upload-checkbox w-5 h-5 rounded accent-emerald-500" onchange="toggleManualRoleUpload(this)">
+                            <span class="text-sm font-medium text-white/85">
+                                <span class="mr-2 rounded-full bg-emerald-500/15 px-2 py-0.5 text-xs text-emerald-200">可选</span>
+                                <i data-lucide="upload" class="w-4 h-4 inline mr-1 text-emerald-300"></i>自行上传人物全身图【推荐三视图或者更精细的图】
+                            </span>
+                        </label>
+                        <p class="text-xs text-white/40 mt-2 ml-8">已有合适人物图时再勾选；请先选择图片比例和图片风格，比例不一致会要求手动裁剪。</p>
+                        <div id="newRoleManualUploadPanel" class="manual-upload-panel hidden mt-3 ml-8 space-y-3">
+                            <input type="file" id="newRoleManualUploadInput" class="hidden" accept="image/png,image/jpeg,image/webp">
+                            <button type="button" id="newRoleManualUploadBtn" class="px-4 py-2 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-100 text-sm transition-colors flex items-center gap-2">
+                                <i data-lucide="image-plus" class="w-4 h-4"></i><span id="newRoleManualUploadBtnText">选择本地图片</span>
+                            </button>
+                            <div id="newRoleManualUploadPreview" class="hidden rounded-xl border border-white/10 bg-black/20 p-3">
+                                <img id="newRoleManualUploadPreviewImg" class="max-h-64 w-auto max-w-full rounded-lg object-contain mx-auto" alt="人物全身图预览">
+                                <p id="newRoleManualUploadFileName" class="mt-2 text-xs text-white/50 truncate"></p>
+                            </div>
+                            <div id="manualRoleUploadWarning" class="manualRoleUploadWarning hidden rounded-xl border border-red-400/60 bg-red-500/15 px-3 py-2 text-xs leading-relaxed text-red-100 flex items-start gap-2">
+                                <i data-lucide="alert-octagon" class="w-4 h-4 text-red-300 mt-0.5 flex-shrink-0"></i>
+                                <span><strong class="text-red-200">真人风格兼容性提示：</strong>上传非即梦生成的人物全身图时，Seedance 2.0 系列模型在分镜视频生成环节可能触发真人隐私校验。建议改用平台生成的角色三视图，以提升后续视频生成稳定性。</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
             </div>
 
             <!-- 布局选项警告提示 -->
@@ -461,7 +515,7 @@
                 <label class="block text-sm text-white/60 mb-2">
                     <i data-lucide="sparkles" class="w-4 h-4 inline mr-1"></i>提示词 <span class="text-red-400">*</span>
                 </label>
-                <textarea id="newCustomPrompt" class="input-modern" rows="4" placeholder="输入角色描述，用于生成三视图图片。"></textarea>
+                <textarea id="newCustomPrompt" class="input-modern" rows="4" placeholder="只描述角色特点、外貌、性格，例如：黑色短发，眼神冷静，穿深色风衣，做事果断沉稳。不需要写生成三视图、角色设定板等话术，系统会自动处理。"></textarea>
             </div>
             <!-- 图片设置 -->
             <div class="grid grid-cols-3 gap-4">
@@ -512,7 +566,7 @@
         </div>
         <div class="p-6 border-t border-white/10 flex justify-end gap-3">
             <button onclick="closeAddRoleModal()" class="px-5 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 transition-colors font-medium">取消</button>
-            <button onclick="submitAddRole()" class="btn-neon flex items-center gap-2">
+            <button onclick="submitAddRole(event)" class="btn-neon flex items-center gap-2">
                 <i data-lucide="plus" class="w-4 h-4"></i>添加角色
                 <span class="flex items-center gap-1 text-yellow-300 text-sm"><i data-lucide="coins" class="w-3.5 h-3.5"></i>6</span>
             </button>
@@ -712,6 +766,35 @@
     </div>
 </div>
 
+<!-- 人物全身图裁剪弹窗 -->
+<div class="modal-backdrop" id="roleCropModal">
+    <div class="modal-content max-w-4xl" onclick="event.stopPropagation()">
+        <div class="flex items-center justify-between border-b border-white/10 pb-4 mb-5">
+            <div>
+                <h3 class="text-xl font-bold">裁剪人物全身图</h3>
+                <p class="text-white/50 text-sm mt-1">请按已选择的图片比例保留人物完整身体，确认后会上传到 OSS。</p>
+            </div>
+            <button type="button" onclick="closeRoleCropModal(true)" class="p-2 rounded-lg hover:bg-white/10 transition-colors">
+                <i data-lucide="x" class="w-5 h-5"></i>
+            </button>
+        </div>
+        <div id="roleCropStage" class="relative h-[520px] rounded-2xl overflow-hidden bg-black/40 border border-white/10 select-none">
+            <img id="roleCropImage" src="" alt="裁剪图片" class="absolute max-w-none opacity-50" draggable="false">
+            <div id="roleCropBox" class="absolute overflow-hidden border-2 border-cyan-300 shadow-[0_0_0_9999px_rgba(0,0,0,0.52)]">
+                <img id="roleCropBoxImage" src="" alt="" class="absolute max-w-none" draggable="false">
+            </div>
+        </div>
+        <div class="mt-5 flex items-center gap-4">
+            <span class="text-sm text-white/50">缩放</span>
+            <input id="roleCropZoom" type="range" min="100" max="260" value="100" class="flex-1 accent-cyan-400">
+            <button type="button" onclick="closeRoleCropModal(true)" class="px-5 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 transition-all">取消</button>
+            <button type="button" onclick="confirmRoleCrop()" class="px-5 py-2.5 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-500 hover:from-cyan-600 hover:to-blue-600 transition-all font-medium flex items-center gap-2">
+                <i data-lucide="crop" class="w-4 h-4"></i>确认裁剪
+            </button>
+        </div>
+    </div>
+</div>
+
 <!-- Generate New Clothing Modal -->
 <div class="modal-backdrop" id="newClothingModal">
     <div class="modal-content max-w-2xl">
@@ -734,8 +817,8 @@
                 </div>
             </div>
             <div>
-                <label class="block text-sm text-white/60 mb-2">服装描述（可选）</label>
-                <textarea id="newClothingPrompt" class="input-modern" rows="3" placeholder="描述新服装的特点，留空则使用默认提示词"></textarea>
+                <label class="block text-sm text-white/60 mb-2">服装描述 <span class="text-red-400">*</span></label>
+                <textarea id="newClothingPrompt" class="input-modern" rows="3" placeholder="描述新服装的款式、颜色、材质和搭配，例如：银白色战甲，金属肩甲，深色内衬，保持角色五官不变。" required data-required-message="请填写服装描述"></textarea>
             </div>
             <!-- 图片设置 -->
             <div class="grid grid-cols-3 gap-4">
@@ -764,7 +847,7 @@
                 <div>
                     <label class="block text-sm text-white/60 mb-2">图片风格 <span class="text-red-400">*</span></label>
                     <div class="flex gap-2">
-                        <select id="newClothingStyle" class="input-modern flex-1" required>
+                        <select id="newClothingStyle" class="input-modern flex-1 opacity-60 cursor-not-allowed" required disabled>
                             <option value="">请选择</option>
                             <option value="3d_anime">超精细3D动漫</option>
                             <option value="realistic">真人风格</option>
@@ -777,10 +860,11 @@
                             <option value="pixel_art">像素风格</option>
                             <option value="chibi">Q版卡通</option>
                         </select>
-                        <button type="button" class="px-3 py-2 rounded-lg bg-white/10 hover:bg-white/20 text-xs transition-colors" onclick="openStylePreview('newClothingStyle')">
+                        <button type="button" id="newClothingStylePreviewBtn" class="px-3 py-2 rounded-lg bg-white/10 text-xs transition-colors opacity-50 cursor-not-allowed" disabled title="生成新服装时沿用角色创建风格">
                             <i data-lucide="eye" class="w-4 h-4"></i>
                         </button>
                     </div>
+                    <p class="text-xs text-white/40 mt-2">该风格来自角色创建时的图片风格，生成新服装时保持一致。</p>
                 </div>
             </div>
         </div>
@@ -958,6 +1042,15 @@
 let currentRoleId = null;
 let currentClothingId = null;
 
+const newRoleManualUploadState = {
+    blob: null,
+    fileName: '',
+    uploadedUrl: '',
+    previewUrl: '',
+    sourceFile: null,
+    aspectRatio: ''
+};
+
 // localStorage key for generating state
 const GENERATING_STATE_KEY = 'manga_generating_state';
 
@@ -1070,6 +1163,42 @@ function getGeneratingState() {
 function clearGeneratingState() {
     localStorage.removeItem(GENERATING_STATE_KEY);
     console.log('Cleared generating state');
+}
+
+function parseAspectRatioValue(value) {
+    const parts = (value || '').split(':').map(Number);
+    if (parts.length !== 2 || !parts[0] || !parts[1]) {
+        return null;
+    }
+    return { width: parts[0], height: parts[1], value };
+}
+
+function aspectRatioMatches(width, height, ratioValue) {
+    const ratio = parseAspectRatioValue(ratioValue);
+    if (!ratio || !width || !height) return false;
+    return Math.abs((width / height) - (ratio.width / ratio.height)) < 0.01;
+}
+
+function getRoleCanvasSize(ratioValue) {
+    const ratio = parseAspectRatioValue(ratioValue) || { width: 1, height: 1 };
+    const longSide = 1536;
+    if (ratio.width >= ratio.height) {
+        return { width: longSide, height: Math.round(longSide * ratio.height / ratio.width) };
+    }
+    return { width: Math.round(longSide * ratio.width / ratio.height), height: longSide };
+}
+
+function imageFileToImage(file) {
+    return new Promise((resolve, reject) => {
+        const url = URL.createObjectURL(file);
+        const image = new Image();
+        image.onload = () => resolve({ image, url });
+        image.onerror = () => {
+            URL.revokeObjectURL(url);
+            reject(new Error('图片读取失败'));
+        };
+        image.src = url;
+    });
 }
 
 // Restore generating UI from localStorage state
@@ -1276,7 +1405,7 @@ function selectClothing(tab) {
                     <i data-lucide="refresh-cw" class="w-4 h-4 inline mr-1"></i>重新生成
                 </button>
             `;
-            lucide.createIcons();
+            safeCreateIcons();
         } else {
             // 有图片URL，显示图片
             mainImage.src = imageUrl;
@@ -1408,6 +1537,8 @@ function generateNewClothing(roleId) {
     document.getElementById('newClothingName').value = '';
     document.getElementById('newClothingPrompt').value = '';
     document.getElementById('newClothingReferenceUrl').value = '';
+    const currentRoleCard = document.querySelector(`.role-card[data-role-id="${roleId}"]`);
+    applyLockedNewClothingStyle(currentRoleCard);
 
     // 获取该系列下所有角色的服装作为参考图选项
     const selector = document.getElementById('referenceImageSelector');
@@ -1491,6 +1622,21 @@ function generateNewClothing(roleId) {
     document.getElementById('newClothingModal').classList.add('active');
 }
 
+function applyLockedNewClothingStyle(roleCard) {
+    const styleSelect = document.getElementById('newClothingStyle');
+    if (!styleSelect) return;
+    const seriesStyle = document.getElementById('styleKeywordsDisplay')?.dataset?.styleKeywords || '';
+    const roleStyleKey = roleCard?.dataset?.roleStyleKeywords || seriesStyle || '';
+    styleSelect.disabled = false;
+    styleSelect.value = roleStyleKey;
+    if (!styleSelect.value && seriesStyle) {
+        styleSelect.value = seriesStyle;
+    }
+    styleSelect.disabled = true;
+    styleSelect.classList.add('opacity-60', 'cursor-not-allowed');
+    document.getElementById('newClothingStylePreviewBtn')?.setAttribute('disabled', 'disabled');
+}
+
 // 为没有资产的角色生成默认服装
 function generateDefaultClothing(roleId) {
     const roleCard = document.querySelector(`.role-card[data-role-id="${roleId}"]`);
@@ -1538,7 +1684,7 @@ function generateDefaultClothing(roleId) {
                     </button>
                 </div>
             `;
-            lucide.createIcons();
+            safeCreateIcons();
         }
     })
     .catch(err => {
@@ -1634,6 +1780,11 @@ function submitNewClothing() {
 
     if (!referenceUrl) {
         showToast('请选择参考图片', 'error');
+        return;
+    }
+
+    if (!prompt) {
+        showToast('请填写服装描述', 'error');
         return;
     }
 
@@ -2252,7 +2403,7 @@ function submitRegenerate() {
                         </button>
                     </div>
                 `;
-                lucide.createIcons();
+                safeCreateIcons();
             } else {
                 // 正常状态的情况：显示错误遮罩
                 const overlay = mainImage?.parentElement.querySelector('.generating-overlay');
@@ -2267,7 +2418,7 @@ function submitRegenerate() {
                             </button>
                         </div>
                     `;
-                    lucide.createIcons();
+                    safeCreateIcons();
                 }
             }
         }
@@ -2360,7 +2511,7 @@ function showVersions(roleId, clothingId) {
         } else {
             versionList.innerHTML = '<p class="text-center text-white/40">暂无历史版本</p>';
         }
-        lucide.createIcons();
+        safeCreateIcons();
     });
 }
 
@@ -2528,11 +2679,18 @@ function deleteClothing(roleId, clothingId) {
 function updateStats() {
     const cards = document.querySelectorAll('.role-card');
     let confirmed = 0;
+    let confirmable = 0;
+    let missingAssets = 0;
     let assets = 0;
 
     cards.forEach(card => {
         const status = card.dataset.roleStatus;
-        if (status === '2' || status === '3') {
+        if (roleHasUsableAsset(card)) {
+            confirmable++;
+        } else {
+            missingAssets++;
+        }
+        if ((status === '2' || status === '3') && roleHasUsableAsset(card)) {
             confirmed++;
         }
         assets += card.querySelectorAll('.clothing-tab').length;
@@ -2546,16 +2704,24 @@ function updateStats() {
     // 更新"下一步"按钮状态（仅当按钮存在时）
     const nextBtn = document.getElementById('lockSeriesBtn');
     if (nextBtn) {
-        if (confirmed === cards.length && cards.length > 0) {
+        if (confirmed === cards.length && cards.length > 0 && missingAssets === 0) {
             nextBtn.disabled = false;
             nextBtn.classList.remove('opacity-50', 'cursor-not-allowed');
         } else {
             nextBtn.disabled = true;
             nextBtn.classList.add('opacity-50', 'cursor-not-allowed');
         }
+        nextBtn.title = missingAssets > 0 ? `还有 ${missingAssets} 个角色图片未生成成功，不能进入下一步` : '';
     }
 }
 updateStats();
+
+function roleHasUsableAsset(card) {
+    if (!card) return false;
+    if (card.dataset.hasUsableAsset === 'true') return true;
+    const usableTab = card.querySelector('.clothing-tab[data-image-url]:not([data-status="-1"]):not([data-status="0"])');
+    return !!(usableTab && usableTab.dataset.imageUrl && usableTab.dataset.imageUrl.trim());
+}
 
 function getActiveClothingId(card) {
     return card?.querySelector('.clothing-section .clothing-tab.active')?.dataset.clothingId || '1';
@@ -2569,13 +2735,13 @@ function setButtonBusy(button, busy, busyText = null) {
         button.classList.add('opacity-70', 'cursor-not-allowed');
         if (busyText) {
             button.innerHTML = `<i data-lucide="loader-2" class="w-4 h-4 animate-spin"></i>${busyText}`;
-            lucide.createIcons();
+            safeCreateIcons();
         }
     } else {
         if (button.dataset.originalHtml) {
             button.innerHTML = button.dataset.originalHtml;
             delete button.dataset.originalHtml;
-            lucide.createIcons();
+            safeCreateIcons();
         }
         button.classList.remove('opacity-70', 'cursor-not-allowed');
     }
@@ -2639,7 +2805,7 @@ function markSeriesPendingAfterUnlock() {
     if (lockedBadge && lockedBadge.textContent.includes('已锁定')) {
         lockedBadge.className = 'px-5 py-2.5 rounded-xl bg-amber-500/20 text-amber-300 font-medium flex items-center gap-2';
         lockedBadge.innerHTML = '<i data-lucide="unlock" class="w-4 h-4"></i>待审核';
-        lucide.createIcons();
+        safeCreateIcons();
     }
     const nextBtn = document.getElementById('lockSeriesBtn');
     if (nextBtn) {
@@ -2661,6 +2827,7 @@ function initButtonStates() {
         // 检查当前tab的状态
         const tabStatus = activeTab.dataset.status;
         const isGenerating = tabStatus === '0' || activeTab.dataset.generating === 'true';
+        const hasUsableAsset = roleHasUsableAsset(card);
         const clothingId = activeTab.dataset.clothingId;
 
         // 检查角色是否已确认或已锁定
@@ -2671,9 +2838,18 @@ function initButtonStates() {
             clothingId,
             tabStatus,
             isGenerating,
+            hasUsableAsset,
             roleStatus,
             isConfirmed
         });
+
+        const confirmBtn = card.querySelector('.confirm-btn');
+        if (confirmBtn && !isConfirmed) {
+            confirmBtn.disabled = !hasUsableAsset;
+            confirmBtn.classList.toggle('opacity-50', !hasUsableAsset);
+            confirmBtn.classList.toggle('cursor-not-allowed', !hasUsableAsset);
+            confirmBtn.title = hasUsableAsset ? '' : '请先重新生成失败的角色图片';
+        }
 
         // 设为默认按钮可见性（默认服装不显示）
         if (setDefaultBtn) {
@@ -2723,6 +2899,10 @@ document.querySelectorAll('.confirm-btn:not([disabled])').forEach(btn => {
     btn.addEventListener('click', function() {
         const roleId = this.dataset.roleId;
         const card = document.querySelector(`.role-card[data-role-id="${roleId}"]`);
+        if (!roleHasUsableAsset(card)) {
+            showToast('请先重新生成失败的角色图片，再确认角色', 'warning');
+            return;
+        }
 
         fetch(`/roles/${roleId}/confirm/`, {
             method: 'POST',
@@ -2942,6 +3122,12 @@ document.getElementById('confirmAllBtn').addEventListener('click', function() {
 // 下一步（锁定资产库）
 document.getElementById('lockSeriesBtn').addEventListener('click', function() {
     if (this.disabled) return;
+    const cards = document.querySelectorAll('.role-card');
+    if ([...cards].some(card => !roleHasUsableAsset(card))) {
+        showToast('还有角色图片未生成成功，不能进入下一步', 'warning');
+        updateStats();
+        return;
+    }
 
     if (!confirm('确定要进入下一步吗？锁定后将无法修改。')) return;
 
@@ -2965,6 +3151,7 @@ function openAddRoleModal() {
     document.getElementById('addRoleModal').classList.add('active');
     document.getElementById('newRoleName').value = '';
     document.getElementById('newCustomPrompt').value = '';
+    updateManualRoleUploadWarning();
 }
 
 function closeAddRoleModal() {
@@ -2972,8 +3159,10 @@ function closeAddRoleModal() {
     // 重置表单
     document.getElementById('newRoleName').value = '';
     document.getElementById('newCustomPrompt').value = '';
+    document.getElementById('newRoleAdvancedOptionsToggle').checked = false;
     document.getElementById('newRoleDetailedView').checked = false;
     document.getElementById('newRoleFaceCloseupView').checked = false;
+    document.getElementById('newRoleManualUpload').checked = false;
     document.getElementById('newRoleAspectRatio').value = '';
     document.getElementById('newRoleQuality').value = '';
     document.getElementById('newRoleStyle').value = '';
@@ -2981,10 +3170,176 @@ function closeAddRoleModal() {
     document.getElementById('layoutOptionWarning').classList.add('hidden');
     // 恢复所有选项可用状态
     toggleNewRoleDetailedView(document.getElementById('newRoleDetailedView'));
+    toggleManualRoleUpload(document.getElementById('newRoleManualUpload'));
+    toggleRoleAdvancedOptions(document.getElementById('newRoleAdvancedOptionsToggle'));
+    clearManualRoleUploadFile();
+}
+
+function updateManualRoleUploadWarning() {
+    const warning = document.getElementById('manualRoleUploadWarning');
+    const enabled = document.getElementById('newRoleManualUpload')?.checked;
+    const style = document.getElementById('newRoleStyle')?.value;
+    warning?.classList.toggle('hidden', !(enabled && style === 'realistic'));
+}
+
+function toggleRoleAdvancedOptions(toggle) {
+    const panel = document.getElementById('newRoleAdvancedOptionsPanel');
+    const badge = document.getElementById('newRoleAdvancedOptionsBadge');
+    panel?.classList.toggle('hidden', !toggle.checked);
+    if (badge) {
+        badge.textContent = toggle.checked ? '已展开' : '默认不启用';
+        badge.classList.toggle('text-emerald-200', toggle.checked);
+        badge.classList.toggle('bg-emerald-500/15', toggle.checked);
+    }
+    if (!toggle.checked) {
+        const detailed = document.getElementById('newRoleDetailedView');
+        const face = document.getElementById('newRoleFaceCloseupView');
+        const manual = document.getElementById('newRoleManualUpload');
+        if (detailed?.checked) {
+            detailed.checked = false;
+            toggleNewRoleDetailedView(detailed);
+        }
+        if (face) face.checked = false;
+        if (manual?.checked) {
+            manual.checked = false;
+            toggleManualRoleUpload(manual);
+        }
+        document.getElementById('layoutOptionWarning')?.classList.add('hidden');
+    }
+    safeCreateIcons();
+}
+
+function setNewRoleThreeViewOptionsDisabled(disabled) {
+    [document.getElementById('newRoleDetailedView'), document.getElementById('newRoleFaceCloseupView')].forEach(checkbox => {
+        if (!checkbox) return;
+        checkbox.disabled = disabled;
+        checkbox.closest('label')?.classList.toggle('opacity-50', disabled);
+        checkbox.closest('label')?.classList.toggle('cursor-not-allowed', disabled);
+    });
+}
+
+function toggleManualRoleUpload(checkbox) {
+    const panel = document.getElementById('newRoleManualUploadPanel');
+    const detailed = document.getElementById('newRoleDetailedView');
+    const face = document.getElementById('newRoleFaceCloseupView');
+    if (checkbox.checked) {
+        if (detailed.checked) {
+            detailed.checked = false;
+            toggleNewRoleDetailedView(detailed);
+        }
+        if (face.checked) {
+            face.checked = false;
+        }
+        document.getElementById('layoutOptionWarning').classList.add('hidden');
+        setNewRoleThreeViewOptionsDisabled(true);
+        panel?.classList.remove('hidden');
+    } else {
+        setNewRoleThreeViewOptionsDisabled(false);
+        panel?.classList.add('hidden');
+    }
+    updateManualRoleUploadWarning();
+    safeCreateIcons();
+}
+
+function clearManualRoleUploadFile() {
+    if (newRoleManualUploadState.previewUrl) {
+        URL.revokeObjectURL(newRoleManualUploadState.previewUrl);
+    }
+    newRoleManualUploadState.blob = null;
+    newRoleManualUploadState.fileName = '';
+    newRoleManualUploadState.uploadedUrl = '';
+    newRoleManualUploadState.previewUrl = '';
+    newRoleManualUploadState.sourceFile = null;
+    newRoleManualUploadState.aspectRatio = '';
+    const input = document.getElementById('newRoleManualUploadInput');
+    if (input) input.value = '';
+    document.getElementById('newRoleManualUploadPreview')?.classList.add('hidden');
+    document.getElementById('newRoleManualUploadPreviewImg').src = '';
+    document.getElementById('newRoleManualUploadFileName').textContent = '';
+    document.getElementById('newRoleManualUploadBtnText').textContent = '选择本地图片';
+}
+
+function setManualRoleUploadPreview(blob, fileName, ratioValue) {
+    if (newRoleManualUploadState.previewUrl) {
+        URL.revokeObjectURL(newRoleManualUploadState.previewUrl);
+    }
+    newRoleManualUploadState.blob = blob;
+    newRoleManualUploadState.fileName = fileName || 'role.png';
+    newRoleManualUploadState.aspectRatio = ratioValue;
+    newRoleManualUploadState.uploadedUrl = '';
+    newRoleManualUploadState.previewUrl = URL.createObjectURL(blob);
+    document.getElementById('newRoleManualUploadPreviewImg').src = newRoleManualUploadState.previewUrl;
+    document.getElementById('newRoleManualUploadFileName').textContent = newRoleManualUploadState.fileName;
+    document.getElementById('newRoleManualUploadPreview').classList.remove('hidden');
+    document.getElementById('newRoleManualUploadBtnText').textContent = '重新上传本地图片';
+}
+
+async function handleManualRoleUploadFile(file) {
+    if (!file) return;
+    const ratioValue = document.getElementById('newRoleAspectRatio').value;
+    if (!ratioValue) {
+        showToast('请先选择图片比例，再上传人物全身图', 'error');
+        return;
+    }
+    if (!['image/png', 'image/jpeg', 'image/webp'].includes(file.type)) {
+        showToast('只支持 JPG、PNG、WEBP 格式', 'error');
+        return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+        showToast('图片大小不能超过5MB', 'error');
+        return;
+    }
+    const { image, url } = await imageFileToImage(file);
+    newRoleManualUploadState.sourceFile = file;
+    if (aspectRatioMatches(image.naturalWidth, image.naturalHeight, ratioValue)) {
+        const size = getRoleCanvasSize(ratioValue);
+        const canvas = document.createElement('canvas');
+        canvas.width = size.width;
+        canvas.height = size.height;
+        canvas.getContext('2d').drawImage(image, 0, 0, image.naturalWidth, image.naturalHeight, 0, 0, size.width, size.height);
+        canvas.toBlob(blob => {
+            if (!blob) {
+                showToast('图片处理失败，请重试', 'error');
+                return;
+            }
+            const baseName = (file.name || 'role.png').replace(/\.[^.]+$/, '');
+            setManualRoleUploadPreview(blob, `${baseName}_${ratioValue.replace(':', 'x')}.png`, ratioValue);
+        }, 'image/png');
+        URL.revokeObjectURL(url);
+        return;
+    }
+    openRoleCropModal(url, image.naturalWidth, image.naturalHeight, file.name);
+}
+
+async function uploadManualRoleImage() {
+    if (newRoleManualUploadState.uploadedUrl) {
+        return newRoleManualUploadState.uploadedUrl;
+    }
+    if (!newRoleManualUploadState.blob) {
+        throw new Error('请先上传并裁剪人物全身图');
+    }
+    const formData = new FormData();
+    formData.append('file', newRoleManualUploadState.blob, newRoleManualUploadState.fileName || 'role.png');
+    formData.append('type', 'role');
+    const response = await fetch('/api/upload/', {
+        method: 'POST',
+        body: formData
+    });
+    const data = await response.json();
+    if (!response.ok || !data.success || !data.url) {
+        throw new Error(data.message || '人物全身图上传失败');
+    }
+    newRoleManualUploadState.uploadedUrl = data.url;
+    return data.url;
 }
 
 // 切换精细三视图模式
 function toggleNewRoleDetailedView(checkbox) {
+    if (checkbox.checked && document.getElementById('newRoleManualUpload')?.checked) {
+        checkbox.checked = false;
+        showToast('已选择自行上传人物全身图，不能同时选择人物精细三视图', 'warning');
+        return;
+    }
     const aspectSelect = document.getElementById('newRoleAspectRatio');
     const styleSelect = document.getElementById('newRoleStyle');
     const stylePreviewBtn = document.getElementById('newRoleStylePreviewBtn');
@@ -3043,6 +3398,11 @@ function toggleNewRoleDetailedView(checkbox) {
 
 // 切换大头特写+三视图模式
 function toggleNewRoleFaceCloseupView(checkbox) {
+    if (checkbox.checked && document.getElementById('newRoleManualUpload')?.checked) {
+        checkbox.checked = false;
+        showToast('已选择自行上传人物全身图，不能同时选择人物三视图', 'warning');
+        return;
+    }
     const detailedViewCheckbox = document.getElementById('newRoleDetailedView');
     const warningDiv = document.getElementById('layoutOptionWarning');
 
@@ -3141,10 +3501,19 @@ function toggleRegenerateFaceCloseupView(checkbox) {
     }
 }
 
-function submitAddRole() {
+function focusRequiredRoleField(field, message) {
+    if (!field) return;
+    showToast(message || field.dataset.requiredMessage || '请完善必填信息', 'error');
+    field.focus();
+    if (typeof field.reportValidity === 'function') {
+        field.reportValidity();
+    }
+}
+
+async function submitAddRole(event) {
     const roleName = document.getElementById('newRoleName').value.trim();
     if (!roleName) {
-        showToast('请输入角色名称', 'error');
+        focusRequiredRoleField(document.getElementById('newRoleName'), '请填写角色名称');
         return;
     }
 
@@ -3156,12 +3525,13 @@ function submitAddRole() {
 
     const detailedView = document.getElementById('newRoleDetailedView').checked;
     const faceCloseupView = document.getElementById('newRoleFaceCloseupView').checked;
+    const manualUploadEnabled = document.getElementById('newRoleManualUpload').checked;
 
     // 保存用户原始输入的提示词
     let originalPrompt = customPrompt;
 
     // 如果启用了精细三视图，追加默认提示词
-    if (detailedView && customPrompt) {
+    if (detailedView && customPrompt && !manualUploadEnabled) {
         customPrompt = customPrompt + '\n\n' + DETAILED_THREE_VIEW_PROMPT;
     }
 
@@ -3179,13 +3549,40 @@ function submitAddRole() {
         return;
     }
 
-    // 精细三视图模式下不需要选择风格
-    if (!detailedView && !styleKey) {
+    if (manualUploadEnabled && !newRoleManualUploadState.blob && !newRoleManualUploadState.uploadedUrl) {
+        showToast('请上传人物全身图', 'error');
+        return;
+    }
+
+    // 手动上传必须选择风格；精细三视图模式或大头特写模式下不需要选择风格
+    if (((!detailedView && !faceCloseupView) || manualUploadEnabled) && !styleKey) {
         showToast('请选择图片风格', 'error');
         return;
     }
 
-    const styleKeywords = detailedView ? '' : (STYLE_PRESETS[styleKey] || '');
+    let uploadedImageUrl = '';
+    const submitBtn = event?.target?.closest('button') || document.querySelector('#addRoleModal .btn-neon');
+    if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.dataset.originalHtml = submitBtn.dataset.originalHtml || submitBtn.innerHTML;
+        submitBtn.innerHTML = '提交中...';
+    }
+
+    try {
+        if (manualUploadEnabled) {
+            uploadedImageUrl = await uploadManualRoleImage();
+        }
+    } catch (error) {
+        showToast(error.message || '人物全身图上传失败', 'error');
+        if (submitBtn) {
+            submitBtn.disabled = false;
+            submitBtn.innerHTML = submitBtn.dataset.originalHtml;
+            safeCreateIcons();
+        }
+        return;
+    }
+
+    const styleKeywords = detailedView && !manualUploadEnabled ? '' : (STYLE_PRESETS[styleKey] || '');
 
     fetch(`/roles/series/{{ series_id }}/create/`, {
         method: 'POST',
@@ -3200,24 +3597,60 @@ function submitAddRole() {
             aspectRatio: aspectRatio,
             quality: quality,
             styleKeywords: styleKeywords,
-            detailedView: detailedView,
-            faceCloseupView: faceCloseupView
+            detailedView: manualUploadEnabled ? false : detailedView,
+            faceCloseupView: manualUploadEnabled ? false : faceCloseupView,
+            manualUploadEnabled: manualUploadEnabled,
+            uploadedImageUrl: uploadedImageUrl
         })
     })
     .then(response => response.json())
     .then(data => {
         if (data.success) {
-            showToast('角色添加成功，正在生成图片...', 'success');
+            showToast(manualUploadEnabled ? '角色添加成功，已进入待审核' : '角色添加成功，正在生成图片...', 'success');
             closeAddRoleModal();
             setTimeout(() => location.reload(), 1500);
         } else {
             showToast(data.error || '添加失败', 'error');
+            if (submitBtn) {
+                submitBtn.disabled = false;
+                submitBtn.innerHTML = submitBtn.dataset.originalHtml;
+                safeCreateIcons();
+            }
+        }
+    })
+    .catch(() => {
+        showToast('网络错误，请重试', 'error');
+        if (submitBtn) {
+            submitBtn.disabled = false;
+            submitBtn.innerHTML = submitBtn.dataset.originalHtml;
+            safeCreateIcons();
         }
     });
 }
 
 document.getElementById('addRoleBtn').addEventListener('click', openAddRoleModal);
 document.getElementById('addFirstRoleBtn')?.addEventListener('click', openAddRoleModal);
+document.getElementById('newRoleManualUploadBtn')?.addEventListener('click', function() {
+    if (!document.getElementById('newRoleAspectRatio').value) {
+        showToast('请先选择图片比例，再上传人物全身图', 'error');
+        return;
+    }
+    document.getElementById('newRoleManualUploadInput')?.click();
+});
+document.getElementById('newRoleManualUploadInput')?.addEventListener('change', function() {
+    handleManualRoleUploadFile(this.files?.[0]).catch(error => {
+        showToast(error.message || '图片处理失败，请重试', 'error');
+    });
+});
+document.getElementById('newRoleStyle')?.addEventListener('change', updateManualRoleUploadWarning);
+document.getElementById('newRoleAspectRatio')?.addEventListener('change', function() {
+    if (document.getElementById('newRoleManualUpload')?.checked
+        && newRoleManualUploadState.blob
+        && newRoleManualUploadState.aspectRatio !== this.value) {
+        showToast('图片比例已变更，请重新上传并裁剪人物全身图', 'warning');
+        clearManualRoleUploadFile();
+    }
+});
 
 // 编辑系列信息
 function openEditSeriesModal() {
@@ -3339,6 +3772,150 @@ function submitEditRole() {
     });
 }
 
+let roleCropState = {
+    imageUrl: '',
+    naturalWidth: 0,
+    naturalHeight: 0,
+    fileName: '',
+    ratioValue: '',
+    zoom: 1,
+    dragging: false
+};
+
+function openRoleCropModal(imageUrl, naturalWidth, naturalHeight, fileName) {
+    roleCropState = {
+        ...roleCropState,
+        imageUrl,
+        naturalWidth,
+        naturalHeight,
+        fileName: fileName || 'role.png',
+        ratioValue: document.getElementById('newRoleAspectRatio')?.value || '1:1',
+        zoom: 1,
+        dragging: false
+    };
+    const zoom = document.getElementById('roleCropZoom');
+    if (zoom) zoom.value = '100';
+    document.getElementById('roleCropImage').src = imageUrl;
+    document.getElementById('roleCropBoxImage').src = imageUrl;
+    document.getElementById('roleCropModal').classList.add('active');
+    requestAnimationFrame(layoutRoleCropper);
+    safeCreateIcons();
+}
+
+function layoutRoleCropper() {
+    const stage = document.getElementById('roleCropStage');
+    const ratio = parseAspectRatioValue(roleCropState.ratioValue) || { width: 1, height: 1 };
+    if (!stage) return;
+    const stageW = stage.clientWidth;
+    const stageH = stage.clientHeight;
+    const maxW = stageW * 0.72;
+    const maxH = stageH * 0.72;
+    let boxW = maxW;
+    let boxH = boxW * ratio.height / ratio.width;
+    if (boxH > maxH) {
+        boxH = maxH;
+        boxW = boxH * ratio.width / ratio.height;
+    }
+    roleCropState.boxWidth = boxW;
+    roleCropState.boxHeight = boxH;
+    roleCropState.boxX = (stageW - boxW) / 2;
+    roleCropState.boxY = (stageH - boxH) / 2;
+    roleCropState.baseScale = Math.max(boxW / roleCropState.naturalWidth, boxH / roleCropState.naturalHeight);
+    updateRoleCropImageLayout(true);
+}
+
+function updateRoleCropImageLayout(center = false) {
+    const image = document.getElementById('roleCropImage');
+    const box = document.getElementById('roleCropBox');
+    const boxImage = document.getElementById('roleCropBoxImage');
+    if (!image || !box || !boxImage) return;
+    const scale = roleCropState.baseScale * roleCropState.zoom;
+    roleCropState.displayWidth = roleCropState.naturalWidth * scale;
+    roleCropState.displayHeight = roleCropState.naturalHeight * scale;
+    if (center) {
+        roleCropState.imageX = roleCropState.boxX + (roleCropState.boxWidth - roleCropState.displayWidth) / 2;
+        roleCropState.imageY = roleCropState.boxY + (roleCropState.boxHeight - roleCropState.displayHeight) / 2;
+    }
+    image.style.width = `${roleCropState.displayWidth}px`;
+    image.style.height = `${roleCropState.displayHeight}px`;
+    image.style.left = `${roleCropState.imageX}px`;
+    image.style.top = `${roleCropState.imageY}px`;
+    box.style.width = `${roleCropState.boxWidth}px`;
+    box.style.height = `${roleCropState.boxHeight}px`;
+    box.style.left = `${roleCropState.boxX}px`;
+    box.style.top = `${roleCropState.boxY}px`;
+    boxImage.style.width = `${roleCropState.displayWidth}px`;
+    boxImage.style.height = `${roleCropState.displayHeight}px`;
+    boxImage.style.left = `${roleCropState.imageX - roleCropState.boxX}px`;
+    boxImage.style.top = `${roleCropState.imageY - roleCropState.boxY}px`;
+}
+
+function closeRoleCropModal(clearFile = false) {
+    document.getElementById('roleCropModal').classList.remove('active');
+    if (clearFile) {
+        const input = document.getElementById('newRoleManualUploadInput');
+        if (input) input.value = '';
+    }
+    if (roleCropState.imageUrl) {
+        URL.revokeObjectURL(roleCropState.imageUrl);
+    }
+    roleCropState.imageUrl = '';
+}
+
+function confirmRoleCrop() {
+    const image = document.getElementById('roleCropImage');
+    if (!image) return;
+    const scale = roleCropState.naturalWidth / roleCropState.displayWidth;
+    const sx = Math.max(0, (roleCropState.boxX - roleCropState.imageX) * scale);
+    const sy = Math.max(0, (roleCropState.boxY - roleCropState.imageY) * scale);
+    const sw = Math.min(roleCropState.boxWidth * scale, roleCropState.naturalWidth - sx);
+    const sh = Math.min(roleCropState.boxHeight * scale, roleCropState.naturalHeight - sy);
+    if (sw <= 0 || sh <= 0) {
+        showToast('裁剪区域无效，请重新调整', 'error');
+        return;
+    }
+    const size = getRoleCanvasSize(roleCropState.ratioValue);
+    const canvas = document.createElement('canvas');
+    canvas.width = size.width;
+    canvas.height = size.height;
+    canvas.getContext('2d').drawImage(image, sx, sy, sw, sh, 0, 0, size.width, size.height);
+    canvas.toBlob(blob => {
+        if (!blob) {
+            showToast('裁剪失败，请重试', 'error');
+            return;
+        }
+        const baseName = (roleCropState.fileName || 'role.png').replace(/\.[^.]+$/, '');
+        setManualRoleUploadPreview(blob, `${baseName}_${roleCropState.ratioValue.replace(':', 'x')}.png`, roleCropState.ratioValue);
+        closeRoleCropModal(false);
+    }, 'image/png');
+}
+
+document.getElementById('roleCropZoom')?.addEventListener('input', function() {
+    roleCropState.zoom = Number(this.value) / 100;
+    updateRoleCropImageLayout();
+});
+
+document.getElementById('roleCropStage')?.addEventListener('pointerdown', function(e) {
+    roleCropState.dragging = true;
+    roleCropState.startX = e.clientX;
+    roleCropState.startY = e.clientY;
+    roleCropState.startImageX = roleCropState.imageX;
+    roleCropState.startImageY = roleCropState.imageY;
+    this.setPointerCapture(e.pointerId);
+});
+
+document.getElementById('roleCropStage')?.addEventListener('pointermove', function(e) {
+    if (!roleCropState.dragging) return;
+    roleCropState.imageX = roleCropState.startImageX + e.clientX - roleCropState.startX;
+    roleCropState.imageY = roleCropState.startImageY + e.clientY - roleCropState.startY;
+    updateRoleCropImageLayout();
+});
+
+document.getElementById('roleCropStage')?.addEventListener('pointerup', function(e) {
+    roleCropState.dragging = false;
+    this.releasePointerCapture(e.pointerId);
+});
+
 // Toast
 function showToast(message, type = 'info') {
     const toast = document.createElement('div');
@@ -3348,12 +3925,12 @@ function showToast(message, type = 'info') {
         <span>${message}</span>
     </div>`;
     document.body.appendChild(toast);
-    lucide.createIcons();
+    safeCreateIcons();
     setTimeout(() => toast.remove(), 3000);
 }
 
 // Close modals on backdrop click
-['addRoleModal', 'editRoleModal', 'versionModal', 'newClothingModal', 'editClothingNameModal', 'regenerateModal', 'stylePreviewModal'].forEach(id => {
+['addRoleModal', 'editRoleModal', 'versionModal', 'newClothingModal', 'editClothingNameModal', 'regenerateModal', 'stylePreviewModal', 'roleCropModal'].forEach(id => {
     document.getElementById(id).addEventListener('click', (e) => {
         if (e.target === e.currentTarget) {
             e.currentTarget.classList.remove('active');
@@ -3637,7 +4214,7 @@ function selectClothingWithoutURL(tab) {
                     <i data-lucide="refresh-cw" class="w-4 h-4 inline mr-1"></i>重新生成
                 </button>
             `;
-            lucide.createIcons();
+            safeCreateIcons();
         } else {
             mainImage.src = imageUrl;
             mainImage.style.display = 'block';
@@ -3671,7 +4248,7 @@ let currentStylePreviewTarget = null;
 function openStylePreview(targetId) {
     currentStylePreviewTarget = targetId;
     document.getElementById('stylePreviewModal').classList.add('active');
-    lucide.createIcons();
+    safeCreateIcons();
 }
 
 function closeStylePreview(event) {
@@ -3685,6 +4262,9 @@ function selectStyleFromPreview(styleKey) {
         const select = document.getElementById(currentStylePreviewTarget);
         if (select) {
             select.value = styleKey;
+            if (currentStylePreviewTarget === 'newRoleStyle') {
+                updateManualRoleUploadWarning();
+            }
         }
     }
     closeStylePreview();

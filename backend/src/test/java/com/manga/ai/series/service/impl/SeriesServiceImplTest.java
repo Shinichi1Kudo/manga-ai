@@ -1,12 +1,18 @@
 package com.manga.ai.series.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.Wrapper;
-import com.manga.ai.asset.mapper.AssetMetadataMapper;
+import com.manga.ai.asset.entity.AssetMetadata;
+import com.manga.ai.asset.entity.RoleAsset;
+import com.manga.ai.common.enums.AssetStatus;
+import com.manga.ai.common.enums.RoleStatus;
 import com.manga.ai.asset.mapper.RoleAssetMapper;
+import com.manga.ai.common.enums.SeriesStatus;
+import com.manga.ai.asset.mapper.AssetMetadataMapper;
 import com.manga.ai.common.exception.BusinessException;
 import com.manga.ai.common.service.OssService;
-import com.manga.ai.episode.mapper.EpisodeMapper;
 import com.manga.ai.image.service.ImageGenerateService;
+import com.manga.ai.episode.mapper.EpisodeMapper;
+import com.manga.ai.role.entity.Role;
 import com.manga.ai.nlp.service.NLPExtractService;
 import com.manga.ai.role.mapper.RoleMapper;
 import com.manga.ai.series.dto.SeriesDetailVO;
@@ -17,6 +23,7 @@ import com.manga.ai.shot.mapper.ShotMapper;
 import com.manga.ai.shot.mapper.ShotVideoAssetMapper;
 import com.manga.ai.user.service.impl.UserServiceImpl.UserContextHolder;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 
 import java.util.List;
@@ -33,6 +40,33 @@ import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 class SeriesServiceImplTest {
+
+    @Test
+    void lockSeriesRejectsConfirmedRolesWithoutUsableActiveAssets() {
+        SeriesMapper seriesMapper = mock(SeriesMapper.class);
+        RoleMapper roleMapper = mock(RoleMapper.class);
+        RoleAssetMapper roleAssetMapper = mock(RoleAssetMapper.class);
+        SeriesServiceImpl service = createService(seriesMapper, roleMapper, roleAssetMapper);
+        Series series = new Series();
+        series.setId(12L);
+        series.setUserId(7L);
+        series.setStatus(SeriesStatus.PENDING_REVIEW.getCode());
+        when(seriesMapper.selectById(12L)).thenReturn(series);
+        when(roleMapper.selectCount(any(Wrapper.class))).thenReturn(0L);
+        when(roleAssetMapper.countRolesWithoutUsableActiveAssetBySeriesId(12L)).thenReturn(2L);
+
+        UserContextHolder.setUserId(7L);
+        try {
+            assertThatThrownBy(() -> service.lockSeries(12L))
+                    .isInstanceOf(BusinessException.class)
+                    .hasMessageContaining("存在 2 个角色图片未生成成功，无法锁定");
+        } finally {
+            UserContextHolder.clear();
+        }
+
+        verify(roleAssetMapper).countRolesWithoutUsableActiveAssetBySeriesId(12L);
+        verify(seriesMapper, never()).updateById(any(Series.class));
+    }
 
     @Test
     void getSeriesListRequiresAuthenticatedUserBeforeQuerying() {
@@ -196,14 +230,83 @@ class SeriesServiceImplTest {
         verify(roleMapper, never()).selectList(any(Wrapper.class));
     }
 
+    @Test
+    void asyncProcessCharactersWithUploadedImageCreatesManualAssetAndSkipsImageGeneration() {
+        SeriesMapper seriesMapper = mock(SeriesMapper.class);
+        RoleMapper roleMapper = mock(RoleMapper.class);
+        RoleAssetMapper roleAssetMapper = mock(RoleAssetMapper.class);
+        AssetMetadataMapper assetMetadataMapper = mock(AssetMetadataMapper.class);
+        ImageGenerateService imageGenerateService = mock(ImageGenerateService.class);
+        SeriesServiceImpl service = createService(
+                seriesMapper,
+                roleMapper,
+                roleAssetMapper,
+                assetMetadataMapper,
+                imageGenerateService
+        );
+        Series series = new Series();
+        series.setId(12L);
+        series.setStyleKeywords("realistic");
+        when(seriesMapper.selectById(12L)).thenReturn(series);
+        when(roleMapper.insert(any(Role.class))).thenAnswer(invocation -> {
+            invocation.<Role>getArgument(0).setId(88L);
+            return 1;
+        });
+        when(roleAssetMapper.insert(any(RoleAsset.class))).thenAnswer(invocation -> {
+            invocation.<RoleAsset>getArgument(0).setId(99L);
+            return 1;
+        });
+
+        service.asyncProcessCharacters(12L, """
+                [{
+                    "roleName": "林墨",
+                    "customPrompt": "年轻程序员",
+                    "originalPrompt": "年轻程序员",
+                    "aspectRatio": "9:16",
+                    "uploadedImageUrl": "https://movie-agent.oss-cn-beijing.aliyuncs.com/characters/linmo.png"
+                }]
+                """);
+
+        ArgumentCaptor<RoleAsset> assetCaptor = ArgumentCaptor.forClass(RoleAsset.class);
+        verify(roleAssetMapper).insert(assetCaptor.capture());
+        RoleAsset asset = assetCaptor.getValue();
+        assertThat(asset.getRoleId()).isEqualTo(88L);
+        assertThat(asset.getClothingName()).isEqualTo("默认");
+        assertThat(asset.getFilePath()).isEqualTo("https://movie-agent.oss-cn-beijing.aliyuncs.com/characters/linmo.png");
+        assertThat(asset.getStatus()).isEqualTo(AssetStatus.PENDING_REVIEW.getCode());
+
+        ArgumentCaptor<AssetMetadata> metadataCaptor = ArgumentCaptor.forClass(AssetMetadata.class);
+        verify(assetMetadataMapper).insert(metadataCaptor.capture());
+        assertThat(metadataCaptor.getValue().getAssetId()).isEqualTo(99L);
+        assertThat(metadataCaptor.getValue().getModelVersion()).isEqualTo("manual-upload");
+        assertThat(metadataCaptor.getValue().getAspectRatio()).isEqualTo("9:16");
+
+        ArgumentCaptor<Role> roleCaptor = ArgumentCaptor.forClass(Role.class);
+        verify(roleMapper).updateById(roleCaptor.capture());
+        assertThat(roleCaptor.getValue().getStatus()).isEqualTo(RoleStatus.PENDING_REVIEW.getCode());
+        verify(imageGenerateService, never()).generateCharacterSheet(any());
+    }
+
     private SeriesServiceImpl createService(SeriesMapper seriesMapper, RoleMapper roleMapper) {
+        return createService(seriesMapper, roleMapper, mock(RoleAssetMapper.class));
+    }
+
+    private SeriesServiceImpl createService(SeriesMapper seriesMapper, RoleMapper roleMapper, RoleAssetMapper roleAssetMapper) {
+        return createService(seriesMapper, roleMapper, roleAssetMapper, mock(AssetMetadataMapper.class), mock(ImageGenerateService.class));
+    }
+
+    private SeriesServiceImpl createService(SeriesMapper seriesMapper,
+                                            RoleMapper roleMapper,
+                                            RoleAssetMapper roleAssetMapper,
+                                            AssetMetadataMapper assetMetadataMapper,
+                                            ImageGenerateService imageGenerateService) {
         return new SeriesServiceImpl(
                 seriesMapper,
                 roleMapper,
-                mock(RoleAssetMapper.class),
-                mock(AssetMetadataMapper.class),
+                roleAssetMapper,
+                assetMetadataMapper,
                 mock(NLPExtractService.class),
-                mock(ImageGenerateService.class),
+                imageGenerateService,
                 mock(SimpMessagingTemplate.class),
                 mock(SeriesService.class),
                 mock(EpisodeMapper.class),

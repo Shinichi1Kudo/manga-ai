@@ -78,6 +78,31 @@ class CreditAdminServiceImplTest {
         assertThat(dashboard.getHourlyUsage()).anyMatch(point -> point.getDeducted() == 64);
     }
 
+    @Test
+    void dashboardFiltersRecentRecordsByNicknameKeyword() {
+        UserMapper userMapper = mock(UserMapper.class);
+        CreditRecordMapper creditRecordMapper = mock(CreditRecordMapper.class);
+        CreditAdminServiceImpl service = new CreditAdminServiceImpl(userMapper, creditRecordMapper);
+
+        User admin = user(1L, "1198693014@qq.com", "工藤新一", 10808);
+        User target = user(2L, "target@example.com", "小明创作者", 120);
+        User other = user(3L, "other@example.com", "小红", 80);
+        when(userMapper.selectById(1L)).thenReturn(admin);
+        when(userMapper.selectList(any(Wrapper.class))).thenReturn(List.of(admin, target, other));
+
+        LocalDateTime now = LocalDateTime.now();
+        CreditRecord targetRecord = record(1L, 2L, -64, 56, "deduct", "video", "小明的视频生成", now.minusHours(1));
+        CreditRecord otherRecord = record(2L, 3L, -32, 48, "deduct", "image", "小红的生图", now.minusHours(2));
+        when(creditRecordMapper.selectList(any(Wrapper.class))).thenReturn(List.of(targetRecord, otherRecord));
+
+        CreditAdminDashboardVO dashboard = service.getDashboard(1L, 24, 1, 20, "明创");
+
+        assertThat(dashboard.getRecentRecords().getTotal()).isEqualTo(1);
+        assertThat(dashboard.getRecentRecords().getRecords()).hasSize(1);
+        assertThat(dashboard.getRecentRecords().getRecords().get(0).getNickname()).isEqualTo("小明创作者");
+        assertThat(dashboard.getRecentRecords().getRecords().get(0).getDescription()).isEqualTo("小明的视频生成");
+    }
+
     private User user(Long id, String email, String nickname, Integer credits) {
         User user = new User();
         user.setId(id);

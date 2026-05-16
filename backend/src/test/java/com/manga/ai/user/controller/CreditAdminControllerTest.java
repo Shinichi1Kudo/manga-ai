@@ -15,7 +15,7 @@ class CreditAdminControllerTest {
     @Test
     void controllerExposesCreditDashboardEndpoint() throws Exception {
         RequestMapping rootMapping = CreditAdminController.class.getAnnotation(RequestMapping.class);
-        Method dashboard = CreditAdminController.class.getDeclaredMethod("dashboard", Integer.class, Integer.class, Integer.class);
+        Method dashboard = CreditAdminController.class.getDeclaredMethod("dashboard", Integer.class, Integer.class, Integer.class, String.class);
 
         assertThat(rootMapping).isNotNull();
         assertThat(rootMapping.value()).containsExactly("/v1/admin/credits");
@@ -24,8 +24,10 @@ class CreditAdminControllerTest {
         Parameter hours = dashboard.getParameters()[0];
         Parameter recordPage = dashboard.getParameters()[1];
         Parameter recordPageSize = dashboard.getParameters()[2];
+        Parameter nickname = dashboard.getParameters()[3];
         assertThat(hours.getAnnotation(RequestParam.class).required()).isFalse();
         assertThat(recordPage.getAnnotation(RequestParam.class).required()).isFalse();
         assertThat(recordPageSize.getAnnotation(RequestParam.class).required()).isFalse();
+        assertThat(nickname.getAnnotation(RequestParam.class).required()).isFalse();
     }
 }

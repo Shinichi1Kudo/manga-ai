@@ -253,7 +253,11 @@ CREATE TABLE IF NOT EXISTS shot (
     generation_error VARCHAR(500),
     generation_duration INT,
     generation_start_time TIMESTAMP,
+    deducted_credits INT DEFAULT NULL,
     status INT DEFAULT 0,
+    video_model VARCHAR(100) DEFAULT 'seedance-2.0-fast',
+    description_edited BOOLEAN DEFAULT FALSE,
+    scene_edited BOOLEAN DEFAULT FALSE,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     is_deleted INT DEFAULT 0
@@ -407,6 +411,7 @@ CREATE TABLE IF NOT EXISTS shot_video_asset (
 
 CREATE INDEX IF NOT EXISTS idx_shot_video_asset_shot_id ON shot_video_asset(shot_id);
 CREATE INDEX IF NOT EXISTS idx_shot_video_asset_version ON shot_video_asset(shot_id, version);
+CREATE INDEX IF NOT EXISTS idx_shot_video_asset_shot_active_version ON shot_video_asset(shot_id, is_active, version);
 
 -- 分镜视频资产元数据表
 CREATE TABLE IF NOT EXISTS shot_video_asset_metadata (
@@ -462,3 +467,13 @@ ALTER TABLE shot ADD COLUMN IF NOT EXISTS start_time INT;
 ALTER TABLE shot ADD COLUMN IF NOT EXISTS end_time INT;
 ALTER TABLE shot ADD COLUMN IF NOT EXISTS sound_effect CLOB;
 ALTER TABLE shot ADD COLUMN IF NOT EXISTS scene_name VARCHAR(100);
+ALTER TABLE shot ADD COLUMN IF NOT EXISTS video_model VARCHAR(100) DEFAULT 'seedance-2.0-fast';
+ALTER TABLE shot ADD COLUMN IF NOT EXISTS description_edited BOOLEAN DEFAULT FALSE;
+ALTER TABLE shot ADD COLUMN IF NOT EXISTS scene_edited BOOLEAN DEFAULT FALSE;
+
+CREATE INDEX IF NOT EXISTS idx_shot_episode_detail_list ON shot(episode_id, is_deleted, status, shot_number);
+CREATE INDEX IF NOT EXISTS idx_shot_character_shot_role ON shot_character(shot_id, role_id);
+CREATE INDEX IF NOT EXISTS idx_shot_prop_shot_prop ON shot_prop(shot_id, prop_id);
+CREATE INDEX IF NOT EXISTS idx_scene_asset_scene_active ON scene_asset(scene_id, is_active);
+CREATE INDEX IF NOT EXISTS idx_role_asset_role_clothing_active ON role_asset(role_id, clothing_id, is_active);
+CREATE INDEX IF NOT EXISTS idx_prop_asset_prop_active_episode_version ON prop_asset(prop_id, is_active, episode_id, version);

@@ -6,6 +6,7 @@ import com.manga.ai.common.constants.CreditConstants;
 import com.manga.ai.common.enums.CreditUsageType;
 import com.manga.ai.common.exception.BusinessException;
 import com.manga.ai.common.service.OssService;
+import com.manga.ai.common.service.UserVideoGenerationLimiter;
 import com.manga.ai.subject.dto.SubjectReplacementCreateRequest;
 import com.manga.ai.subject.dto.SubjectReplacementItemDTO;
 import com.manga.ai.subject.dto.SubjectReplacementTaskVO;
@@ -17,11 +18,12 @@ import com.manga.ai.user.service.impl.UserServiceImpl.UserContextHolder;
 import com.manga.ai.video.dto.SeedanceRequest;
 import com.manga.ai.video.dto.SeedanceResponse;
 import com.manga.ai.video.service.SeedanceService;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.BeanUtils;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.core.task.TaskRejectedException;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -32,13 +34,13 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.concurrent.Executor;
+import java.util.concurrent.RejectedExecutionException;
 
 /**
  * 主体替换服务实现
  */
 @Slf4j
 @Service
-@RequiredArgsConstructor
 public class SubjectReplacementServiceImpl implements SubjectReplacementService {
 
     private static final String SUBJECT_REPLACEMENT_TOAPIS_MODEL = "doubao-seedance-2-0-260128";
@@ -70,9 +72,33 @@ public class SubjectReplacementServiceImpl implements SubjectReplacementService 
     private final UserService userService;
     @Qualifier("videoGenerateExecutor")
     private final Executor videoGenerateExecutor;
+    private final UserVideoGenerationLimiter videoGenerationLimiter;
 
     @Value("${volcengine.seedance.subject-replacement-model:doubao-seedance-2-0-260128}")
     private String subjectReplacementModel;
+
+    public SubjectReplacementServiceImpl(SubjectReplacementTaskMapper taskMapper,
+                                         OssService ossService,
+                                         SeedanceService seedanceService,
+                                         UserService userService,
+                                         Executor videoGenerateExecutor) {
+        this(taskMapper, ossService, seedanceService, userService, videoGenerateExecutor, null);
+    }
+
+    @Autowired
+    public SubjectReplacementServiceImpl(SubjectReplacementTaskMapper taskMapper,
+                                         OssService ossService,
+                                         SeedanceService seedanceService,
+                                         UserService userService,
+                                         @Qualifier("videoGenerateExecutor") Executor videoGenerateExecutor,
+                                         UserVideoGenerationLimiter videoGenerationLimiter) {
+        this.taskMapper = taskMapper;
+        this.ossService = ossService;
+        this.seedanceService = seedanceService;
+        this.userService = userService;
+        this.videoGenerateExecutor = videoGenerateExecutor;
+        this.videoGenerationLimiter = videoGenerationLimiter != null ? videoGenerationLimiter : new UserVideoGenerationLimiter();
+    }
 
     @Override
     public SubjectReplacementTaskVO createTask(SubjectReplacementCreateRequest request) {
@@ -82,41 +108,67 @@ public class SubjectReplacementServiceImpl implements SubjectReplacementService 
         }
 
         validateCreateRequest(request);
+        String pendingLimiterTaskKey = "subject-replacement:new:" + userId + ":" + System.nanoTime();
+        videoGenerationLimiter.acquireOrThrow(userId, pendingLimiterTaskKey);
+        boolean limiterAcquired = true;
 
         String prompt = buildPrompt(request.getReplacements());
         SubjectReplacementTask task = new SubjectReplacementTask();
-        task.setUserId(userId);
-        task.setTaskName(normalizeText(request.getTaskName()));
-        task.setOriginalVideoUrl(request.getOriginalVideoUrl().trim());
-        task.setAspectRatio(normalizeAspectRatio(request.getAspectRatio()));
-        task.setDuration(normalizeDuration(request.getDuration()));
-        task.setGenerateAudio(request.getGenerateAudio() == null ? true : request.getGenerateAudio());
-        task.setWatermark(request.getWatermark() == null ? false : request.getWatermark());
-        task.setModel(normalizeSubjectReplacementModel(subjectReplacementModel));
-        task.setPrompt(prompt);
-        task.setReplacementsJson(JSON.toJSONString(request.getReplacements()));
-        task.setStatus("pending");
-        int requiredCredits = CreditConstants.calculateSubjectReplacementCredits(task.getDuration());
-        task.setDeductedCredits(requiredCredits);
-        task.setCreditsRefunded(false);
-        task.setCreatedAt(LocalDateTime.now());
-        task.setUpdatedAt(LocalDateTime.now());
-        taskMapper.insert(task);
-
         try {
+            task.setUserId(userId);
+            task.setTaskName(normalizeText(request.getTaskName()));
+            task.setOriginalVideoUrl(request.getOriginalVideoUrl().trim());
+            task.setAspectRatio(normalizeAspectRatio(request.getAspectRatio()));
+            task.setDuration(normalizeDuration(request.getDuration()));
+            task.setGenerateAudio(request.getGenerateAudio() == null ? true : request.getGenerateAudio());
+            task.setWatermark(request.getWatermark() == null ? false : request.getWatermark());
+            task.setModel(normalizeSubjectReplacementModel(subjectReplacementModel));
+            task.setPrompt(prompt);
+            task.setReplacementsJson(JSON.toJSONString(request.getReplacements()));
+            task.setStatus("pending");
+            int requiredCredits = CreditConstants.calculateSubjectReplacementCredits(task.getDuration());
+            task.setDeductedCredits(requiredCredits);
+            task.setCreditsRefunded(false);
+            task.setCreatedAt(LocalDateTime.now());
+            task.setUpdatedAt(LocalDateTime.now());
+            taskMapper.insert(task);
+
             userService.deductCredits(userId, requiredCredits, CreditUsageType.SUBJECT_REPLACEMENT.getCode(),
                     "主体替换-任务" + task.getId(), task.getId(), "SUBJECT_REPLACEMENT");
-        } catch (RuntimeException e) {
-            deleteInsertedTask(task.getId(), userId);
-            throw e;
-        }
-        task.setUpdatedAt(LocalDateTime.now());
-        taskMapper.updateById(task);
-        log.info("主体替换扣费: userId={}, taskId={}, duration={}s, credits={}",
-                userId, task.getId(), task.getDuration(), requiredCredits);
+            String taskLimiterKey = subjectReplacementLimiterTaskKey(task.getId());
+            videoGenerationLimiter.release(userId, pendingLimiterTaskKey);
+            videoGenerationLimiter.acquireOrThrow(userId, taskLimiterKey);
+            limiterAcquired = false;
 
-        videoGenerateExecutor.execute(() -> executeTask(task.getId()));
-        return toVO(task);
+            task.setUpdatedAt(LocalDateTime.now());
+            taskMapper.updateById(task);
+            log.info("主体替换扣费: userId={}, taskId={}, duration={}s, credits={}",
+                    userId, task.getId(), task.getDuration(), requiredCredits);
+
+            videoGenerateExecutor.execute(() -> executeTask(task.getId()));
+            return toVO(task);
+        } catch (RuntimeException e) {
+            if (task.getId() != null) {
+                if (isVideoQueueRejection(e)) {
+                    refundCreditsIfNeeded(task);
+                    task.setStatus("failed");
+                    task.setErrorMessage("生成人数过多请稍后再试");
+                    task.setCompletedAt(LocalDateTime.now());
+                    task.setUpdatedAt(LocalDateTime.now());
+                    taskMapper.updateById(task);
+                } else {
+                    deleteInsertedTask(task.getId(), userId);
+                }
+            }
+            if (task.getId() != null) {
+                videoGenerationLimiter.release(userId, subjectReplacementLimiterTaskKey(task.getId()));
+            }
+            throw normalizeVideoQueueRejection(e);
+        } finally {
+            if (limiterAcquired) {
+                videoGenerationLimiter.release(userId, pendingLimiterTaskKey);
+            }
+        }
     }
 
     @Override
@@ -203,6 +255,7 @@ public class SubjectReplacementServiceImpl implements SubjectReplacementService 
         } finally {
             task.setUpdatedAt(LocalDateTime.now());
             taskMapper.updateById(task);
+            videoGenerationLimiter.release(task.getUserId(), subjectReplacementLimiterTaskKey(taskId));
         }
     }
 
@@ -612,6 +665,32 @@ public class SubjectReplacementServiceImpl implements SubjectReplacementService 
         wrapper.eq(SubjectReplacementTask::getId, taskId)
                 .eq(SubjectReplacementTask::getUserId, userId);
         taskMapper.delete(wrapper);
+    }
+
+    private String subjectReplacementLimiterTaskKey(Long taskId) {
+        return "subject-replacement:" + taskId;
+    }
+
+    private RuntimeException normalizeVideoQueueRejection(RuntimeException e) {
+        if (isVideoQueueRejection(e)) {
+            return new BusinessException("生成人数过多请稍后再试");
+        }
+        return e;
+    }
+
+    private boolean isVideoQueueRejection(Throwable throwable) {
+        Throwable current = throwable;
+        while (current != null) {
+            if (current instanceof RejectedExecutionException || current instanceof TaskRejectedException) {
+                return true;
+            }
+            String message = current.getMessage();
+            if (message != null && message.contains("生成人数过多")) {
+                return true;
+            }
+            current = current.getCause();
+        }
+        return false;
     }
 
     private void trimItem(SubjectReplacementItemDTO item) {

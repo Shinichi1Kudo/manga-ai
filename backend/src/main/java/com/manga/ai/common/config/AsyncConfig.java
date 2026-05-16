@@ -7,6 +7,7 @@ import org.springframework.scheduling.annotation.EnableAsync;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 
 import java.util.concurrent.Executor;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.ThreadPoolExecutor;
 
 /**
@@ -27,6 +28,15 @@ public class AsyncConfig {
 
     @Value("${task.executor.thread-name-prefix:manga-ai-}")
     private String threadNamePrefix;
+
+    @Value("${video.executor.core-pool-size:100}")
+    private int videoCorePoolSize = 100;
+
+    @Value("${video.executor.max-pool-size:100}")
+    private int videoMaxPoolSize = 100;
+
+    @Value("${video.executor.queue-capacity:1000}")
+    private int videoQueueCapacity = 1000;
 
     @Bean("taskExecutor")
     public Executor taskExecutor() {
@@ -57,11 +67,13 @@ public class AsyncConfig {
     @Bean("videoGenerateExecutor")
     public Executor videoGenerateExecutor() {
         ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
-        executor.setCorePoolSize(6);
-        executor.setMaxPoolSize(10);
-        executor.setQueueCapacity(50);
+        executor.setCorePoolSize(videoCorePoolSize);
+        executor.setMaxPoolSize(videoMaxPoolSize);
+        executor.setQueueCapacity(videoQueueCapacity);
         executor.setThreadNamePrefix("video-gen-");
-        executor.setRejectedExecutionHandler(new ThreadPoolExecutor.CallerRunsPolicy());
+        executor.setRejectedExecutionHandler((r, e) -> {
+            throw new RejectedExecutionException("生成人数过多请稍后再试");
+        });
         executor.setWaitForTasksToCompleteOnShutdown(true);
         executor.setAwaitTerminationSeconds(120);
         executor.initialize();

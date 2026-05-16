@@ -164,6 +164,80 @@ class SeriesListIsolationTests(TestCase):
 
 
 class EpisodeEntryPerformanceTests(TestCase):
+    def test_parallel_backend_gets_collects_named_results_with_authenticated_clients(self):
+        from apps.series.views import _parallel_backend_gets
+
+        clients = []
+
+        def make_client(token=None):
+            client = Mock()
+            client.get.side_effect = lambda endpoint: {'token': token, 'endpoint': endpoint}
+            clients.append(client)
+            return client
+
+        endpoints = {
+            'episode': '/v1/episodes/77?basic=true',
+            'shots': '/v1/shots/episode/77',
+            'scenes': '/v1/scenes/series/88',
+        }
+
+        with patch('apps.series.views.BackendClient', side_effect=make_client) as backend_client_cls:
+            results = _parallel_backend_gets('token-77', endpoints)
+
+        self.assertEqual(results['episode']['endpoint'], '/v1/episodes/77?basic=true')
+        self.assertEqual(results['shots']['endpoint'], '/v1/shots/episode/77')
+        self.assertEqual(results['scenes']['endpoint'], '/v1/scenes/series/88')
+        self.assertEqual(results['episode']['token'], 'token-77')
+        self.assertEqual(backend_client_cls.call_count, 3)
+        self.assertEqual(
+            sorted(client.get.call_args.args[0] for client in clients),
+            sorted(endpoints.values()),
+        )
+
+    def test_episode_detail_collects_prop_refs_from_lightweight_shot_props(self):
+        session = self.client.session
+        session['token'] = 'token-77'
+        session['email'] = 'user@example.com'
+        session['nickname'] = '测试用户'
+        session.save()
+
+        lightweight_shot = {
+            'id': 701,
+            'episodeId': 77,
+            'sceneId': 900,
+            'propsJson': None,
+            'props': [{'propId': 31, 'propName': '玉佩'}],
+            'generationStatus': 0,
+            'status': 0,
+        }
+        linked_unlocked_prop = {
+            'id': 31,
+            'propName': '玉佩',
+            'status': 2,
+            'assets': [{'isActive': 1, 'version': 3, 'filePath': 'https://example.com/prop.png'}],
+        }
+        unrelated_unlocked_prop = {
+            'id': 32,
+            'propName': '折扇',
+            'status': 2,
+            'assets': [{'isActive': 1, 'version': 1, 'filePath': 'https://example.com/fan.png'}],
+        }
+
+        with patch('apps.series.views._parallel_backend_gets', return_value={
+            'series': {'id': 88, 'seriesName': '测试系列'},
+            'episode': {'id': 77, 'episodeNumber': 1, 'episodeName': '第一集', 'status': 2},
+            'shots': [lightweight_shot],
+            'scenes': [{'id': 900, 'sceneName': '茶楼', 'status': 2, 'assets': []}],
+            'props': [linked_unlocked_prop, unrelated_unlocked_prop],
+            'role_assets': {},
+        }):
+            response = self.client.get('/88/episodes/77/')
+
+        self.assertEqual(response.status_code, 200)
+        prop_names = [prop['propName'] for prop in response.context['props']]
+        self.assertIn('玉佩', prop_names)
+        self.assertNotIn('折扇', prop_names)
+
     def test_episode_entry_uses_locked_series_endpoint_without_role_detail_fanout(self):
         session = self.client.session
         session['token'] = 'token-1'
@@ -262,6 +336,187 @@ class EpisodeVideoCreditDisplayTests(TestCase):
         self.assertIn("creditsPerSecond = isVipModel ? 27 : 22;", template)
 
 
+class EpisodeAssetSelectionModalTests(TestCase):
+    def test_asset_selection_modal_has_prominent_selection_warning(self):
+        template_path = Path(settings.BASE_DIR) / 'templates/episode/episode_detail.html'
+        template = template_path.read_text(encoding='utf-8')
+
+        self.assertIn('id="assetSelectionCriticalNotice"', template)
+        self.assertIn('asset-selection-critical-warning', template)
+        self.assertIn('sticky top-0 z-20', template)
+        self.assertIn('必读', template)
+        self.assertIn('请先选择需要的场景和道具', template)
+        self.assertIn('后面集数用不到的道具或场景，不需要勾选生成', template)
+        self.assertIn('alert-triangle', template)
+
+    def test_asset_selection_select_all_stays_synced_with_individual_checks(self):
+        template_path = Path(settings.BASE_DIR) / 'templates/episode/episode_detail.html'
+        template = template_path.read_text(encoding='utf-8')
+
+        self.assertIn('function getSelectableAssetCheckboxes(type)', template)
+        self.assertIn('function syncAssetSelectAllState(type)', template)
+        self.assertIn('function syncAllAssetSelectAllStates()', template)
+        self.assertIn('function setAssetGroupChecked(type, checked)', template)
+        self.assertIn('master.indeterminate = selectedCount > 0 && selectedCount < totalCount;', template)
+        self.assertIn("setAssetGroupChecked('scene', this.checked);", template)
+        self.assertIn("setAssetGroupChecked('prop', this.checked);", template)
+        self.assertIn("syncAssetSelectAllState('scene');", template)
+        self.assertIn("syncAssetSelectAllState('prop');", template)
+        self.assertIn('syncAllAssetSelectAllStates();', template)
+
+
+class EpisodeCreateRoleNameHintTests(TestCase):
+    def test_episode_create_has_prominent_role_name_usage_hint(self):
+        template_path = Path(settings.BASE_DIR) / 'templates/episode/episode_create.html'
+        template = template_path.read_text(encoding='utf-8')
+
+        self.assertIn('episode-role-name-hint', template)
+        self.assertIn('已有角色（请在剧本中使用下方名字作为剧本里出现的人物角色名）', template)
+        self.assertIn('border-amber-400/60', template)
+        self.assertIn('bg-amber-400/15', template)
+        self.assertIn('alert-triangle', template)
+        self.assertNotIn('已有角色（请在剧本中使用这些角色名）', template)
+
+
+class EpisodeDescriptionAssetRenderTests(TestCase):
+    def test_auto_asset_rendering_does_not_replace_inside_generated_thumbnail_html(self):
+        template_path = Path(settings.BASE_DIR) / 'templates/episode/episode_detail.html'
+        template = template_path.read_text(encoding='utf-8')
+        render_body = template.split('function renderDescriptionWithAutoAssets(editor)', 1)[1].split('// 渲染场景输入框', 1)[0]
+
+        self.assertIn('function collectAutoAssetCandidates(assets)', render_body)
+        self.assertIn('function renderPlainTextWithAutoThumbs(text, assets)', render_body)
+        self.assertIn('function renderFormattedDescriptionWithAutoThumbs(text, assets)', render_body)
+        self.assertIn("if (text.startsWith('剧情【', index))", render_body)
+        self.assertIn('fragments.push(renderPlainTextWithAutoThumbs(dramaText, assets));', render_body)
+        self.assertIn('renderFormattedDescriptionWithAutoThumbs(processedDescription, allAssets)', render_body)
+        self.assertIn('fragments.push(escapeHtml(text.slice(lastIndex, match.index)));', render_body)
+        self.assertIn("fragments.push(escapeHtml(matchText), createThumbHtml(asset, 'auto'));", render_body)
+        self.assertIn("return fragments.join('');", render_body)
+        self.assertNotIn('result = result.replace(regex, asset.name + createThumbHtml', render_body)
+
+
+class SeriesReviewAssetGateTests(TestCase):
+    def test_series_review_requires_successful_role_assets_before_confirm_or_lock(self):
+        template_path = Path(settings.BASE_DIR) / 'templates/series/series_review.html'
+        template = template_path.read_text(encoding='utf-8')
+
+        self.assertIn('data-has-usable-asset="{{ role.has_usable_asset|yesno:\'true,false\' }}"', template)
+        self.assertIn('{% if role.status >= 2 or not role.has_usable_asset %}disabled{% endif %}', template)
+        self.assertIn('function roleHasUsableAsset(card)', template)
+        self.assertIn('let confirmable = 0;', template)
+        self.assertIn('if (roleHasUsableAsset(card)) {', template)
+        self.assertIn('nextBtn.title = missingAssets > 0 ? `还有 ${missingAssets} 个角色图片未生成成功，不能进入下一步` : \'\';', template)
+        self.assertIn("showToast('请先重新生成失败的角色图片，再确认角色', 'warning');", template)
+        self.assertIn("showToast('还有角色图片未生成成功，不能进入下一步', 'warning');", template)
+        self.assertIn("const buttons = document.querySelectorAll('.confirm-btn:not([disabled])');", template)
+
+    def test_new_clothing_uses_role_style_and_requires_clothing_prompt(self):
+        template_path = Path(settings.BASE_DIR) / 'templates/series/series_review.html'
+        template = template_path.read_text(encoding='utf-8')
+
+        self.assertIn('data-role-style-keywords="{{ role.styleKeywords|default:series.styleKeywords|default:\'\' }}"', template)
+        self.assertIn('服装描述 <span class="text-red-400">*</span>', template)
+        self.assertIn('id="newClothingPrompt"', template)
+        self.assertIn('required data-required-message="请填写服装描述"', template)
+        self.assertIn('id="newClothingStyle"', template)
+        self.assertIn('disabled', template.split('id="newClothingStyle"', 1)[1].split('</select>', 1)[0])
+        self.assertIn('该风格来自角色创建时的图片风格，生成新服装时保持一致', template)
+        self.assertIn('applyLockedNewClothingStyle(roleCard)', template)
+        self.assertIn('const roleStyleKey = roleCard?.dataset?.roleStyleKeywords ||', template)
+        self.assertIn("showToast('请填写服装描述', 'error');", template)
+        self.assertNotIn('服装描述（可选）', template)
+
+
+class RoleNameGuidanceTests(TestCase):
+    def test_create_series_and_review_add_role_show_name_only_warning(self):
+        template_root = Path(settings.BASE_DIR) / 'templates/series'
+        init_template = (template_root / 'series_init.html').read_text(encoding='utf-8')
+        review_template = (template_root / 'series_review.html').read_text(encoding='utf-8')
+
+        for template in (init_template, review_template):
+            self.assertIn('role-name-only-warning', template)
+            self.assertIn('角色名称只填人名', template)
+            self.assertIn('只输入人名，例如：李强、周也', template)
+            self.assertIn('不要填写主播、演员、程序员、女主等职业身份', template)
+
+    def test_create_series_and_review_add_role_require_role_name(self):
+        template_root = Path(settings.BASE_DIR) / 'templates/series'
+        init_template = (template_root / 'series_init.html').read_text(encoding='utf-8')
+        review_template = (template_root / 'series_review.html').read_text(encoding='utf-8')
+
+        self.assertIn('class="input-modern text-base font-medium character-name w-full"', init_template)
+        self.assertIn('required data-required-message="请填写角色名称"', init_template)
+        self.assertIn("if (!name) {", init_template)
+        self.assertIn("focusInvalidCharacterField(nameInput, '请填写角色名称');", init_template)
+        self.assertIn('function focusInvalidCharacterField(field, message)', init_template)
+
+        self.assertIn('id="newRoleName"', review_template)
+        self.assertIn('required data-required-message="请填写角色名称"', review_template)
+        self.assertIn("focusRequiredRoleField(document.getElementById('newRoleName'), '请填写角色名称');", review_template)
+        self.assertIn('function focusRequiredRoleField(field, message)', review_template)
+
+    def test_role_prompt_placeholder_asks_for_character_traits_not_three_view_terms(self):
+        template_root = Path(settings.BASE_DIR) / 'templates/series'
+        init_template = (template_root / 'series_init.html').read_text(encoding='utf-8')
+        review_template = (template_root / 'series_review.html').read_text(encoding='utf-8')
+
+        prompt_placeholder = (
+            'placeholder="只描述角色特点、外貌、性格，例如：黑色短发，眼神冷静，穿深色风衣，做事果断沉稳。'
+            '不需要写生成三视图、角色设定板等话术，系统会自动处理。"'
+        )
+        self.assertIn(prompt_placeholder, init_template)
+        self.assertIn(prompt_placeholder, review_template)
+        self.assertIn('不需要写生成三视图、角色设定板等话术，系统会自动处理', init_template)
+        self.assertIn('不需要写生成三视图、角色设定板等话术，系统会自动处理', review_template)
+        self.assertNotIn('placeholder="输入角色描述，用于生成三视图图片。', review_template)
+        self.assertNotIn('placeholder="输入角色描述，用于生成三视图图片。例如：', init_template)
+
+    def test_role_forms_offer_manual_full_body_upload_with_crop_and_seedance_warning(self):
+        template_root = Path(settings.BASE_DIR) / 'templates/series'
+        init_template = (template_root / 'series_init.html').read_text(encoding='utf-8')
+        review_template = (template_root / 'series_review.html').read_text(encoding='utf-8')
+
+        for template in (init_template, review_template):
+            self.assertIn('自行上传人物全身图', template)
+            self.assertIn('推荐三视图或者更精细的图', template)
+            self.assertIn('role-manual-upload-checkbox', template)
+            self.assertIn('roleCropModal', template)
+            self.assertIn('manualRoleUploadWarning', template)
+            self.assertIn('即梦生成', template)
+            self.assertIn('Seedance 2.0', template)
+            self.assertIn('真人风格兼容性提示', template)
+            self.assertIn('上传非即梦生成的人物全身图时，Seedance 2.0 系列模型在分镜视频生成环节可能触发真人隐私校验。', template)
+            self.assertIn('建议改用平台生成的角色三视图，以提升后续视频生成稳定性。', template)
+            self.assertNotIn('如果用户上传的人物全身图不是即梦生成的', template)
+            self.assertIn("formData.append('type', 'role')", template)
+            self.assertIn('uploadedImageUrl', template)
+            self.assertIn('toggleManualRoleUpload', template)
+
+    def test_role_layout_options_are_marked_as_optional_advanced_choices(self):
+        template_root = Path(settings.BASE_DIR) / 'templates/series'
+        init_template = (template_root / 'series_init.html').read_text(encoding='utf-8')
+        review_template = (template_root / 'series_review.html').read_text(encoding='utf-8')
+
+        for template in (init_template, review_template):
+            self.assertIn('role-generation-mode-guide', template)
+            self.assertIn('推荐使用默认生成', template)
+            self.assertIn('系统会根据角色描述自动生成角色三视图，适合大多数创作场景。', template)
+            self.assertIn('如需指定版式或使用本地人物图，可启用下方高级方式。', template)
+            self.assertIn('role-advanced-options', template)
+            self.assertIn('role-advanced-options-panel hidden', template)
+            self.assertIn('role-advanced-options-toggle', template)
+            self.assertIn('启用高级方式', template)
+            self.assertIn('默认不启用', template)
+            self.assertIn('默认收起，系统将按角色描述生成角色三视图。', template)
+            self.assertIn('toggleRoleAdvancedOptions', template)
+            self.assertIn('可选', template)
+            self.assertIn('高级方式', template)
+
+        self.assertIn('角色名称 <span class="text-red-400">*</span>', init_template)
+        self.assertIn('角色名称 <span class="text-red-400">*</span>', review_template)
+
+
 class GptImage2HomeTests(TestCase):
     def test_home_page_has_today_update_announcement(self):
         template_path = Path(settings.BASE_DIR) / 'templates/series/series_list.html'
@@ -319,6 +574,9 @@ class GptImage2HomeTests(TestCase):
         self.assertIn('disabled', workbench_block)
         self.assertIn('等待上线', workbench_block)
         self.assertIn('功能研制中', workbench_block)
+        self.assertIn('<div class="home-action-group">\n            <div class="home-action-label">基础工作台</div>', template)
+        self.assertIn('<div class="home-action-group home-action-group-accent">\n            <div class="home-action-label">AI 工具</div>', template)
+        self.assertIn('<div class="home-action-group home-action-group-account">\n            <div class="home-action-label">资产与账户</div>', template)
         action_board_style = template.split('.home-action-board {', 1)[1].split('}', 1)[0]
         self.assertIn('display: flex;', action_board_style)
         self.assertIn('align-items: flex-start;', action_board_style)
@@ -717,11 +975,11 @@ class CreditAdminDashboardTests(TestCase):
         }
 
         with patch('apps.series.views.get_client', return_value=backend_client):
-            response = self.client.get('/api/admin/credits/dashboard/?hours=24&recordPage=2&recordPageSize=15')
+            response = self.client.get('/api/admin/credits/dashboard/?hours=24&recordPage=2&recordPageSize=15&nickname=工藤')
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()['data']['totalBalance'], 10928)
-        backend_client.get.assert_called_once_with('/v1/admin/credits/dashboard?hours=24&recordPage=2&recordPageSize=15')
+        backend_client.get.assert_called_once_with('/v1/admin/credits/dashboard?hours=24&recordPage=2&recordPageSize=15&nickname=%E5%B7%A5%E8%97%A4')
 
     def test_credit_admin_template_contains_chart_and_tables(self):
         template_path = Path(settings.BASE_DIR) / 'templates/credits/admin_dashboard.html'
@@ -733,6 +991,10 @@ class CreditAdminDashboardTests(TestCase):
         self.assertIn('最近积分流水', template)
         self.assertIn('近 3 天', template)
         self.assertIn('id="creditRecordPagination"', template)
+        self.assertIn('id="creditRecordNicknameSearch"', template)
+        self.assertIn('searchCreditRecordsByNickname', template)
+        self.assertIn('clearCreditRecordNicknameSearch', template)
+        self.assertIn('nickname=${encodeURIComponent(creditRecordNicknameKeyword)}', template)
         self.assertIn('function changeCreditRecordPage(delta)', template)
         self.assertIn('changeCreditRecordPage(1)', template)
         self.assertIn('renderTodayDeductedDetails', template)

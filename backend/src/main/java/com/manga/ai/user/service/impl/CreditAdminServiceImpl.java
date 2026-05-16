@@ -44,7 +44,7 @@ public class CreditAdminServiceImpl implements CreditAdminService {
     private final CreditRecordMapper creditRecordMapper;
 
     @Override
-    public CreditAdminDashboardVO getDashboard(Long currentUserId, Integer hours, Integer recordPage, Integer recordPageSize) {
+    public CreditAdminDashboardVO getDashboard(Long currentUserId, Integer hours, Integer recordPage, Integer recordPageSize, String nickname) {
         User currentUser = userMapper.selectById(currentUserId);
         if (!isCreditAdmin(currentUser)) {
             throw new BusinessException(403, "无权访问积分管理后台");
@@ -70,8 +70,12 @@ public class CreditAdminServiceImpl implements CreditAdminService {
         dashboard.setUsers(buildUserBalances(users, allRecords));
         dashboard.setTodayUserDeducted(buildTodayUserDeducted(users, allRecords));
         dashboard.setHourlyUsage(buildHourlyUsage(allRecords, since, normalizedHours));
-        dashboard.setRecentRecords(buildRecentRecords(allRecords, users, recentSince, normalizedPage, normalizedPageSize));
+        dashboard.setRecentRecords(buildRecentRecords(allRecords, users, recentSince, normalizedPage, normalizedPageSize, normalizeKeyword(nickname)));
         return dashboard;
+    }
+
+    public CreditAdminDashboardVO getDashboard(Long currentUserId, Integer hours, Integer recordPage, Integer recordPageSize) {
+        return getDashboard(currentUserId, hours, recordPage, recordPageSize, null);
     }
 
     private boolean isCreditAdmin(User user) {
@@ -86,6 +90,14 @@ public class CreditAdminServiceImpl implements CreditAdminService {
             return defaultValue;
         }
         return Math.max(min, Math.min(max, value));
+    }
+
+    private String normalizeKeyword(String value) {
+        if (value == null) {
+            return null;
+        }
+        String keyword = value.trim();
+        return keyword.isEmpty() ? null : keyword;
     }
 
     private int sumByType(List<CreditRecord> records, String type) {
@@ -199,13 +211,15 @@ public class CreditAdminServiceImpl implements CreditAdminService {
     }
 
     private PageResult<AdminCreditRecordVO> buildRecentRecords(
-            List<CreditRecord> records, List<User> users, LocalDateTime recentSince, int page, int pageSize) {
+            List<CreditRecord> records, List<User> users, LocalDateTime recentSince, int page, int pageSize,
+            String nicknameKeyword) {
         Map<Long, User> userMap = users.stream()
                 .filter(user -> user.getId() != null)
                 .collect(Collectors.toMap(User::getId, user -> user, (left, right) -> left));
 
         List<CreditRecord> recentRecords = records.stream()
                 .filter(record -> record.getCreatedAt() != null && !record.getCreatedAt().isBefore(recentSince))
+                .filter(record -> matchesNickname(userMap.get(record.getUserId()), nicknameKeyword))
                 .collect(Collectors.toList());
         int total = recentRecords.size();
         int fromIndex = Math.min((page - 1) * pageSize, total);
@@ -214,6 +228,13 @@ public class CreditAdminServiceImpl implements CreditAdminService {
                 .map(record -> convertRecord(record, userMap.get(record.getUserId())))
                 .collect(Collectors.toList());
         return PageResult.of(voList, (long) total, (long) pageSize, (long) page);
+    }
+
+    private boolean matchesNickname(User user, String nicknameKeyword) {
+        if (nicknameKeyword == null) {
+            return true;
+        }
+        return user != null && user.getNickname() != null && user.getNickname().contains(nicknameKeyword);
     }
 
     private AdminCreditRecordVO convertRecord(CreditRecord record, User user) {

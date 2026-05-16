@@ -67,11 +67,19 @@ CREATE TABLE IF NOT EXISTS shot (
     id BIGINT AUTO_INCREMENT PRIMARY KEY,
     episode_id BIGINT NOT NULL,
     shot_number INT NOT NULL,
+    shot_name VARCHAR(100) COMMENT '分镜名称',
     scene_id BIGINT,
+    scene_name VARCHAR(100) COMMENT '场景名称',
     description LONGTEXT,
     camera_angle VARCHAR(50),
     camera_movement VARCHAR(50),
+    shot_type VARCHAR(100) COMMENT '镜头类型',
+    start_time INT DEFAULT 0 COMMENT '开始时间（秒）',
+    end_time INT DEFAULT 5 COMMENT '结束时间（秒）',
     duration INT DEFAULT 5,
+    resolution VARCHAR(10) DEFAULT '720p' COMMENT '视频分辨率',
+    aspect_ratio VARCHAR(10) DEFAULT '16:9' COMMENT '视频比例',
+    sound_effect TEXT COMMENT '音效描述',
     characters_json LONGTEXT,
     props_json LONGTEXT,
     reference_prompt LONGTEXT,
@@ -80,11 +88,19 @@ CREATE TABLE IF NOT EXISTS shot (
     thumbnail_url VARCHAR(500),
     video_seed BIGINT,
     generation_status INT DEFAULT 0 COMMENT '0-待生成 1-生成中 2-已完成 3-生成失败',
+    generation_error VARCHAR(500) COMMENT '生成失败原因',
+    generation_duration INT COMMENT '生成耗时（秒）',
+    generation_start_time TIMESTAMP NULL COMMENT '生成开始时间',
+    deducted_credits INT DEFAULT NULL COMMENT '视频生成已扣除积分（用于失败返还）',
     status INT DEFAULT 0 COMMENT '0-待审核 1-已通过 2-已拒绝',
+    video_model VARCHAR(100) DEFAULT 'seedance-2.0-fast' COMMENT '视频生成模型',
+    description_edited TINYINT(1) DEFAULT 0 COMMENT '剧情是否用户编辑过',
+    scene_edited TINYINT(1) DEFAULT 0 COMMENT '场景是否用户编辑过',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     is_deleted INT DEFAULT 0,
     INDEX idx_episode_id (episode_id),
+    INDEX idx_shot_episode_detail_list (episode_id, is_deleted, status, shot_number),
     INDEX idx_scene_id (scene_id),
     INDEX idx_generation_status (generation_status)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='分镜表';
@@ -102,6 +118,7 @@ CREATE TABLE IF NOT EXISTS shot_character (
     scale DECIMAL(5,2) DEFAULT 1.0,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     INDEX idx_shot_id (shot_id),
+    INDEX idx_shot_character_shot_role (shot_id, role_id),
     INDEX idx_role_id (role_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='分镜-角色关联表';
 
@@ -116,6 +133,7 @@ CREATE TABLE IF NOT EXISTS shot_prop (
     rotation DECIMAL(5,2) DEFAULT 0,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     INDEX idx_shot_id (shot_id),
+    INDEX idx_shot_prop_shot_prop (shot_id, prop_id),
     INDEX idx_prop_id (prop_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='分镜-道具关联表';
 
@@ -133,7 +151,8 @@ CREATE TABLE IF NOT EXISTS scene_asset (
     is_active INT DEFAULT 1,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    INDEX idx_scene_id (scene_id)
+    INDEX idx_scene_id (scene_id),
+    INDEX idx_scene_asset_scene_active (scene_id, is_active)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='场景资产表';
 
 -- 道具资产表
@@ -153,6 +172,7 @@ CREATE TABLE IF NOT EXISTS prop_asset (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     INDEX idx_prop_id (prop_id),
+    INDEX idx_prop_asset_prop_active_episode_version (prop_id, is_active, episode_id, version),
     INDEX idx_prop_asset_episode_id (episode_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='道具资产表';
 

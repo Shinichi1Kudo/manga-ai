@@ -3,6 +3,7 @@ package com.manga.ai.subject.service.impl;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.manga.ai.common.enums.CreditUsageType;
 import com.manga.ai.common.exception.BusinessException;
+import com.manga.ai.common.service.UserVideoGenerationLimiter;
 import com.manga.ai.subject.dto.SubjectReplacementCreateRequest;
 import com.manga.ai.subject.dto.SubjectReplacementItemDTO;
 import com.manga.ai.subject.entity.SubjectReplacementTask;
@@ -123,6 +124,30 @@ class SubjectReplacementServiceImplTest {
         verify(mapper).insert(argThat(task ->
                 "doubao-seedance-2-0-260128".equals(task.getModel())
         ));
+    }
+
+    @Test
+    void createTaskRejectsBeforeInsertAndDeductWhenUserConcurrencyLimitReached() {
+        SubjectReplacementTaskMapper mapper = mock(SubjectReplacementTaskMapper.class);
+        UserService userService = mock(UserService.class);
+        UserVideoGenerationLimiter limiter = mock(UserVideoGenerationLimiter.class);
+        SubjectReplacementServiceImpl service = new SubjectReplacementServiceImpl(
+                mapper, null, null, userService, command -> {}, limiter);
+        SubjectReplacementCreateRequest request = createRequest(5);
+        doThrow(new BusinessException("当前账号同时生成视频任务已达15路，请等待已有任务完成后再试"))
+                .when(limiter).acquireOrThrow(eq(7L), argThat(key -> key.startsWith("subject-replacement:new:7:")));
+
+        UserContextHolder.setUserId(7L);
+        try {
+            assertThatThrownBy(() -> service.createTask(request))
+                    .isInstanceOf(BusinessException.class)
+                    .hasMessageContaining("15路");
+        } finally {
+            UserContextHolder.clear();
+        }
+
+        verify(mapper, never()).insert(any(SubjectReplacementTask.class));
+        verify(userService, never()).deductCredits(any(), any(Integer.class), any(), any(), any(), any());
     }
 
     @Test

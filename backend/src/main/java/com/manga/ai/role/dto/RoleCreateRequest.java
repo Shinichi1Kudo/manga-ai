@@ -90,4 +90,9 @@ public class RoleCreateRequest implements Serializable {
      * 是否使用大头特写+三视图布局
      */
     private Boolean faceCloseupView;
+
+    /**
+     * 用户手动上传并裁剪后的角色全身图 OSS URL
+     */
+    private String uploadedImageUrl;
 }

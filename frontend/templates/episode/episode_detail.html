@@ -1114,6 +1114,19 @@
                 </button>
             </div>
 
+            <div id="assetSelectionCriticalNotice" class="asset-selection-critical-warning sticky top-0 z-20 bg-gradient-to-r from-red-500/30 via-orange-400/25 to-yellow-300/20 border border-orange-300/70 rounded-2xl p-4 mb-5 shadow-[0_0_34px_rgba(251,146,60,0.26)] backdrop-blur-xl">
+                <div class="flex items-start gap-3">
+                    <div class="mt-0.5 flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-full bg-orange-300/25 text-orange-100 ring-1 ring-orange-200/40">
+                        <i data-lucide="alert-triangle" class="w-6 h-6"></i>
+                    </div>
+                    <div class="min-w-0">
+                        <div class="mb-1 inline-flex items-center rounded-full bg-red-500/30 px-2.5 py-0.5 text-xs font-black tracking-wide text-red-50 ring-1 ring-red-200/40">必读</div>
+                        <p class="text-lg font-extrabold text-orange-50">请先选择需要的场景和道具</p>
+                        <p class="mt-1 text-sm font-semibold text-yellow-50/95">建议：后面集数用不到的道具或场景，不需要勾选生成。</p>
+                    </div>
+                </div>
+            </div>
+
             <!-- 说明 -->
             <div class="bg-blue-500/10 border border-blue-500/30 rounded-xl p-4 mb-6">
                 <p class="text-blue-300 text-sm">
@@ -7082,6 +7095,40 @@ function renderAssetList(data) {
     updateSelectedCount();
 }
 
+function getSelectableAssetCheckboxes(type) {
+    return Array.from(document.querySelectorAll(`.${type}-checkbox:not(:disabled)`));
+}
+
+function getAssetSelectAllCheckbox(type) {
+    return document.getElementById(type === 'scene' ? 'selectAllScenes' : 'selectAllProps');
+}
+
+function syncAssetSelectAllState(type) {
+    const master = getAssetSelectAllCheckbox(type);
+    if (!master) return;
+
+    const checkboxes = getSelectableAssetCheckboxes(type);
+    const totalCount = checkboxes.length;
+    const selectedCount = checkboxes.filter(cb => cb.checked).length;
+
+    master.checked = totalCount > 0 && selectedCount === totalCount;
+    master.indeterminate = selectedCount > 0 && selectedCount < totalCount;
+    master.disabled = totalCount === 0;
+}
+
+function syncAllAssetSelectAllStates() {
+    syncAssetSelectAllState('scene');
+    syncAssetSelectAllState('prop');
+}
+
+function setAssetGroupChecked(type, checked) {
+    getSelectableAssetCheckboxes(type).forEach(cb => {
+        cb.checked = checked;
+    });
+    syncAssetSelectAllState(type);
+    updateSelectedCount();
+}
+
 // 绑定资产选择事件
 function bindAssetSelectionEvents() {
     // 关闭弹窗（右上角X按钮）
@@ -7141,26 +7188,34 @@ function bindAssetSelectionEvents() {
         }
     });
 
-    // 全选场景
-    document.getElementById('selectAllScenes')?.addEventListener('change', function() {
-        document.querySelectorAll('.scene-checkbox:not(:disabled)').forEach(cb => {
-            cb.checked = this.checked;
-        });
-        updateSelectedCount();
+    const selectAllScenes = document.getElementById('selectAllScenes');
+    if (selectAllScenes) {
+        selectAllScenes.onchange = function() {
+            setAssetGroupChecked('scene', this.checked);
+        };
+    }
+
+    const selectAllProps = document.getElementById('selectAllProps');
+    if (selectAllProps) {
+        selectAllProps.onchange = function() {
+            setAssetGroupChecked('prop', this.checked);
+        };
+    }
+
+    document.querySelectorAll('.scene-checkbox').forEach(cb => {
+        cb.onchange = function() {
+            syncAssetSelectAllState('scene');
+            updateSelectedCount();
+        };
     });
 
-    // 全选道具
-    document.getElementById('selectAllProps')?.addEventListener('change', function() {
-        document.querySelectorAll('.prop-checkbox:not(:disabled)').forEach(cb => {
-            cb.checked = this.checked;
-        });
-        updateSelectedCount();
+    document.querySelectorAll('.prop-checkbox').forEach(cb => {
+        cb.onchange = function() {
+            syncAssetSelectAllState('prop');
+            updateSelectedCount();
+        };
     });
-
-    // 单个勾选
-    document.querySelectorAll('.asset-checkbox').forEach(cb => {
-        cb.addEventListener('change', updateSelectedCount);
-    });
+    syncAllAssetSelectAllStates();
 
     // 解析模式选择交互
     document.querySelectorAll('.parse-mode-option').forEach(option => {
@@ -8397,14 +8452,20 @@ function renderDescriptionWithAutoAssets(editor) {
     ];
 
     function createThumbHtml(asset, source = 'auto') {
+        const config = assetTypeConfig[asset.type] || assetTypeConfig.prop;
+        const safeId = escapeHtml(asset.id);
+        const safeType = escapeHtml(asset.type);
+        const safeName = escapeHtml(asset.name);
+        const safeUrl = escapeHtml(asset.imageUrl);
+        const safeSource = escapeHtml(source);
         return `<span class="inline-flex items-center gap-1 whitespace-nowrap" contenteditable="false"
-                        data-asset-id="${asset.id}" data-asset-type="${asset.type}"
-                        data-asset-name="${asset.name}" data-asset-url="${asset.imageUrl}"
-                        data-asset-source="${source}">
-                        <img class="inline-asset-thumb w-5 h-5 rounded align-middle border-2 ${assetTypeConfig[asset.type].borderColor}"
-                            src="${asset.imageUrl}" alt="${asset.name}"
-                            title="${assetTypeConfig[asset.type].label}: ${asset.name}">
-                        <span class="${assetTypeConfig[asset.type].bgColor} px-1.5 py-0.5 rounded text-xs text-white">${asset.name}</span>
+                        data-asset-id="${safeId}" data-asset-type="${safeType}"
+                        data-asset-name="${safeName}" data-asset-url="${safeUrl}"
+                        data-asset-source="${safeSource}">
+                        <img class="inline-asset-thumb w-5 h-5 rounded align-middle border-2 ${config.borderColor}"
+                            src="${safeUrl}" alt="${safeName}"
+                            title="${escapeHtml(config.label)}: ${safeName}">
+                        <span class="${config.bgColor} px-1.5 py-0.5 rounded text-xs text-white">${safeName}</span>
                     </span>`;
     }
 
@@ -8417,16 +8478,85 @@ function renderDescriptionWithAutoAssets(editor) {
         return null;
     }
 
-    function appendAutoThumbs(text, assets) {
-        let result = text;
+    function collectAutoAssetCandidates(assets) {
+        const names = new Set();
+        const candidates = [];
         for (const asset of assets) {
-            if (!asset.name || !result.includes(asset.name)) continue;
+            if (!asset.name || names.has(asset.name)) continue;
             const targetAsset = chooseAssetByName(assets, asset.name);
             if (!targetAsset || !targetAsset.imageUrl) continue;
-            const regex = new RegExp(escapeRegExp(asset.name), 'g');
-            result = result.replace(regex, asset.name + createThumbHtml(targetAsset, 'auto'));
+            names.add(asset.name);
+            candidates.push(targetAsset);
         }
-        return result;
+        return candidates.sort((a, b) => b.name.length - a.name.length);
+    }
+
+    function renderPlainTextWithAutoThumbs(text, assets) {
+        text = String(text ?? '');
+        const candidates = collectAutoAssetCandidates(assets);
+        if (!text || candidates.length === 0) {
+            return escapeHtml(text);
+        }
+
+        const assetByName = new Map(candidates.map(asset => [asset.name, asset]));
+        const pattern = new RegExp(candidates.map(asset => escapeRegExp(asset.name)).join('|'), 'g');
+        const fragments = [];
+        let lastIndex = 0;
+        let match;
+        while ((match = pattern.exec(text)) !== null) {
+            const matchText = match[0];
+            const asset = assetByName.get(matchText);
+            if (!asset) continue;
+            fragments.push(escapeHtml(text.slice(lastIndex, match.index)));
+            fragments.push(escapeHtml(matchText), createThumbHtml(asset, 'auto'));
+            lastIndex = match.index + matchText.length;
+        }
+        fragments.push(escapeHtml(text.slice(lastIndex)));
+        return fragments.join('');
+    }
+
+    function renderFormattedDescriptionWithAutoThumbs(text, assets) {
+        text = String(text ?? '');
+        const fragments = [];
+        let index = 0;
+
+        while (index < text.length) {
+            if (text.startsWith('剧情【', index)) {
+                const dramaStart = index + 3;
+                fragments.push(escapeHtml(text.slice(index, dramaStart)));
+                let depth = 0;
+                let dramaEnd = -1;
+                for (let i = dramaStart; i < text.length; i++) {
+                    if (text[i] === '【') {
+                        depth++;
+                    } else if (text[i] === '】') {
+                        if (depth === 0) {
+                            dramaEnd = i;
+                            break;
+                        }
+                        depth--;
+                    }
+                }
+
+                if (dramaEnd === -1) {
+                    fragments.push(renderPlainTextWithAutoThumbs(text.slice(dramaStart), assets));
+                    return fragments.join('');
+                }
+
+                const dramaText = text.slice(dramaStart, dramaEnd);
+                fragments.push(renderPlainTextWithAutoThumbs(dramaText, assets));
+                fragments.push(escapeHtml('】'));
+                index = dramaEnd + 1;
+                continue;
+            }
+
+            const nextDramaIndex = text.indexOf('剧情【', index);
+            const segmentEnd = nextDramaIndex === -1 ? text.length : nextDramaIndex;
+            fragments.push(escapeHtml(text.slice(index, segmentEnd)));
+            index = segmentEnd;
+        }
+
+        return fragments.join('');
     }
 
     function renderEditedDescription(text, assetsForPlainNames, assetsForMentions) {
@@ -8435,7 +8565,7 @@ function renderDescriptionWithAutoAssets(editor) {
             if (part.startsWith('@{') && part.endsWith('}')) {
                 const name = part.substring(2, part.length - 1);
                 const asset = chooseAssetByName(assetsForMentions, name);
-                return asset && asset.imageUrl ? createThumbHtml(asset, 'mention') : name;
+                return asset && asset.imageUrl ? createThumbHtml(asset, 'mention') : escapeHtml(name);
             }
 
             const nextPart = parts[index + 1] || '';
@@ -8444,10 +8574,10 @@ function renderDescriptionWithAutoAssets(editor) {
                 : null;
             if (nextName && part.endsWith(nextName)) {
                 const visibleText = part.slice(0, -nextName.length);
-                return appendAutoThumbs(visibleText, assetsForPlainNames) + nextName;
+                return renderPlainTextWithAutoThumbs(visibleText, assetsForPlainNames) + escapeHtml(nextName);
             }
 
-            return appendAutoThumbs(part, assetsForPlainNames);
+            return renderPlainTextWithAutoThumbs(part, assetsForPlainNames);
         }).join('');
     }
 
@@ -8460,7 +8590,7 @@ function renderDescriptionWithAutoAssets(editor) {
 
         // 检查文本中是否有完全匹配的资产名（场景、角色、道具）
         // 在名称后面加缩略图
-        processedDescription = appendAutoThumbs(processedDescription, allAssets);
+        processedDescription = renderFormattedDescriptionWithAutoThumbs(processedDescription, allAssets);
     }
 
         editor.innerHTML = processedDescription;

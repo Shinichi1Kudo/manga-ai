@@ -7,6 +7,7 @@ import org.apache.ibatis.annotations.Param;
 import org.apache.ibatis.annotations.Select;
 import org.apache.ibatis.annotations.Update;
 
+import java.time.LocalDateTime;
 import java.util.List;
 
 /**
@@ -76,6 +77,18 @@ public interface ShotMapper extends BaseMapper<Shot> {
     List<Shot> selectOrderFieldsByEpisodeId(@Param("episodeId") Long episodeId);
 
     /**
+     * 查询剧集详情页分镜列表所需字段，避免列表入口读取生成提示词等大字段。
+     */
+    @Select("SELECT id, episode_id, shot_number, shot_name, scene_id, scene_name, description, " +
+            "camera_angle, camera_movement, shot_type, start_time, end_time, duration, " +
+            "resolution, aspect_ratio, sound_effect, video_url, thumbnail_url, " +
+            "generation_status, generation_error, generation_duration, generation_start_time, " +
+            "status, video_model, description_edited, scene_edited, created_at, updated_at " +
+            "FROM shot WHERE episode_id = #{episodeId} AND is_deleted = 0 " +
+            "ORDER BY status ASC, shot_number ASC")
+    List<Shot> selectEpisodeDetailList(@Param("episodeId") Long episodeId);
+
+    /**
      * 查询剧集下待审核分镜最大的排序号，用于解锁后放到待审核列表末尾。
      */
     @Select("SELECT COALESCE(MAX(shot_number), 0) FROM shot WHERE episode_id = #{episodeId} AND status <> #{lockedStatus} AND is_deleted = 0")
@@ -86,4 +99,18 @@ public interface ShotMapper extends BaseMapper<Shot> {
      */
     @Select("SELECT COALESCE(MAX(shot_number), 0) FROM shot WHERE episode_id = #{episodeId} AND status = #{lockedStatus} AND is_deleted = 0")
     Integer selectMaxLockedShotNumber(@Param("episodeId") Long episodeId, @Param("lockedStatus") Integer lockedStatus);
+
+    /**
+     * 将超过兜底时间仍处于生成中的分镜恢复为待生成，避免异步任务中断后页面永久卡住。
+     */
+    @Update("UPDATE shot SET generation_status = #{pendingStatus}, generation_error = NULL, " +
+            "generation_start_time = NULL, deducted_credits = NULL, updated_at = #{now} " +
+            "WHERE generation_status = #{generatingStatus} " +
+            "AND generation_start_time IS NOT NULL " +
+            "AND generation_start_time < #{timeout} " +
+            "AND is_deleted = 0")
+    int restoreStuckGeneratingShots(@Param("pendingStatus") Integer pendingStatus,
+                                    @Param("generatingStatus") Integer generatingStatus,
+                                    @Param("timeout") LocalDateTime timeout,
+                                    @Param("now") LocalDateTime now);
 }
