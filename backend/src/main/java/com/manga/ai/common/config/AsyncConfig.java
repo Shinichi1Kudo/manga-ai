@@ -57,9 +57,9 @@ public class AsyncConfig {
     @Bean("videoGenerateExecutor")
     public Executor videoGenerateExecutor() {
         ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
-        executor.setCorePoolSize(2);
-        executor.setMaxPoolSize(5);
-        executor.setQueueCapacity(20);
+        executor.setCorePoolSize(6);
+        executor.setMaxPoolSize(10);
+        executor.setQueueCapacity(50);
         executor.setThreadNamePrefix("video-gen-");
         executor.setRejectedExecutionHandler(new ThreadPoolExecutor.CallerRunsPolicy());
         executor.setWaitForTasksToCompleteOnShutdown(true);
