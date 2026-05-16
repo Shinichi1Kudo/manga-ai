@@ -1492,6 +1492,32 @@ def shot_generate_with_references(request, shot_id):
 
 
 @csrf_exempt
+@require_http_methods(["POST"])
+def shot_generation_prepare(request, shot_id):
+    """提交分镜生成中状态，并转发生成参数到后端"""
+    client = get_client(request)
+    try:
+        data = json.loads(request.body or '{}')
+        result = client.post(f'/v1/shots/{shot_id}/generation/prepare', data)
+        return JsonResponse({'code': 200, 'data': result, 'success': True})
+    except BackendAPIError as e:
+        return JsonResponse({'code': 400, 'message': e.message}, status=400)
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def shot_generation_start(request, shot_id):
+    """启动已提交状态的分镜后台生成任务"""
+    client = get_client(request)
+    try:
+        data = json.loads(request.body or '{}')
+        client.post(f'/v1/shots/{shot_id}/generation/start', data)
+        return JsonResponse({'code': 200, 'success': True})
+    except BackendAPIError as e:
+        return JsonResponse({'code': 400, 'message': e.message}, status=400)
+
+
+@csrf_exempt
 @require_http_methods(["GET"])
 def shot_video_history(request, shot_id):
     """获取分镜视频版本历史"""

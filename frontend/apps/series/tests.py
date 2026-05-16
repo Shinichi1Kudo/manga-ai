@@ -249,6 +249,19 @@ class SubjectReplacementCreditButtonTests(TestCase):
         self.assertIn('const subjectReplacementCreditsPerSecond = 60;', template)
         self.assertIn("document.getElementById('submitCreditText').textContent = `扣除${estimatedCredits}积分`", template)
 
+
+class EpisodeVideoCreditDisplayTests(TestCase):
+    def test_episode_template_uses_current_video_credit_rates(self):
+        template_path = Path(settings.BASE_DIR) / 'templates/episode/episode_detail.html'
+        template = template_path.read_text(encoding='utf-8')
+
+        self.assertIn("if (videoModel === 'kling-v3-omni')", template)
+        self.assertIn("creditsPerSecond = resolution === '1080p' ? 16 : 15;", template)
+        self.assertIn("creditsPerSecond = 67;", template)
+        self.assertIn("creditsPerSecond = isVipModel ? 16 : 11;", template)
+        self.assertIn("creditsPerSecond = isVipModel ? 27 : 22;", template)
+
+
 class GptImage2HomeTests(TestCase):
     def test_home_page_has_today_update_announcement(self):
         template_path = Path(settings.BASE_DIR) / 'templates/series/series_list.html'
@@ -256,18 +269,27 @@ class GptImage2HomeTests(TestCase):
 
         self.assertIn('home-hero', template)
         self.assertIn('home-announcement', template)
+        self.assertIn('home-announcement-pinned', template)
+        self.assertIn('home-announcement-pinned-label', template)
+        self.assertIn('home-announcement-pinned-title', template)
         self.assertIn('home-announcement-scroll', template)
         self.assertIn('home-announcement-story', template)
         self.assertIn('home-announcement-index', template)
         self.assertIn('announcement-scroll-y', template)
         self.assertIn('animation: announcement-scroll-y 12s linear infinite;', template)
-        self.assertIn('top: 54px;', template)
+        self.assertIn('top: -12px;', template)
         self.assertIn('left: -40px;', template)
         self.assertIn('width: 400px;', template)
         self.assertIn('home-announcement-signal', template)
         self.assertIn('home-announcement-meta', template)
         self.assertIn('home-announcement-chip-row', template)
         self.assertIn('backdrop-filter: blur(18px);', template)
+        self.assertIn('置顶通知', template)
+        self.assertIn('积分价格全面下调', template)
+        self.assertIn('视频和图片生成积分价格今日起全面下调。', template)
+        self.assertIn('覆盖 Seedance 2.0、Fast、Kling v3 Omni、GPT-Image2，具体消耗以生成页面显示为准。', template)
+        self.assertIn('height: 286px;', template)
+        self.assertIn('height: 112px;', template)
         self.assertIn('今日更新', template)
         self.assertIn('2026.05.16', template)
         self.assertIn('Seedance 2.0 正式全面上线', template)
@@ -286,6 +308,28 @@ class GptImage2HomeTests(TestCase):
         self.assertIn('资产与账户', template)
         self.assertNotIn('id="gptImage2Modal"', template)
         self.assertNotIn('function openGptImage2Modal()', template)
+
+    def test_home_page_has_disabled_ecommerce_button_under_workbench(self):
+        template_path = Path(settings.BASE_DIR) / 'templates/series/series_list.html'
+        template = template_path.read_text(encoding='utf-8')
+
+        workbench_block = template.split('基础工作台', 1)[1].split('AI 工具', 1)[0]
+        self.assertIn('电商带货', workbench_block)
+        self.assertIn('home-action-disabled', workbench_block)
+        self.assertIn('disabled', workbench_block)
+        self.assertIn('等待上线', workbench_block)
+        self.assertIn('功能研制中', workbench_block)
+        action_board_style = template.split('.home-action-board {', 1)[1].split('}', 1)[0]
+        self.assertIn('display: flex;', action_board_style)
+        self.assertIn('align-items: flex-start;', action_board_style)
+        action_group_style = template.split('.home-action-group {', 1)[1].split('}', 1)[0]
+        self.assertIn('align-self: flex-start;', action_group_style)
+        self.assertIn('height: auto;', action_group_style)
+        self.assertIn('flex: 1.25 1 0;', action_group_style)
+        self.assertIn('min-width: 0;', action_group_style)
+        account_group_style = template.split('.home-action-group-account {', 1)[1].split('}', 1)[0]
+        self.assertIn('flex-grow: 0.72;', account_group_style)
+        self.assertIn('min-width: 210px;', account_group_style)
 
     def test_credit_records_home_button_has_no_leading_icon(self):
         template_path = Path(settings.BASE_DIR) / 'templates/series/series_list.html'
@@ -316,8 +360,9 @@ class GptImage2HomeTests(TestCase):
         self.assertIn('gpt-image-aspect-frame', template)
         self.assertIn('getGptImage2AspectStyle(task.aspectRatio)', template)
         self.assertIn('清晰度：${escapeGptImage2Html(formatGptImage2Resolution(task.resolution))}', template)
-        self.assertIn('const GPT_IMAGE2_CREDIT_COST = 12;', template)
-        self.assertIn('扣除12积分', template)
+        self.assertIn('const GPT_IMAGE2_CREDIT_COST = 6;', template)
+        self.assertIn('6 积分/张', template)
+        self.assertIn('扣除6积分', template)
         self.assertIn('失败自动返还', template)
         self.assertIn('gpt-image-model-badge', template)
         self.assertIn('formatGptImage2ModelLabel(task.model)', template)
@@ -471,7 +516,8 @@ class EpisodeDetailShotCreditTests(TestCase):
         self.assertIn('function collectShotReferenceImages(card)', template)
         submit_body = template.split('async function submitShotGeneration(button)', 1)[1].split('async function handleShotRegenerateClick()', 1)[0]
         self.assertIn('const referenceImages = collectShotReferenceImages(card);', submit_body)
-        self.assertIn('body: JSON.stringify({ referenceUrls, referenceImages, shotUpdate, generationStartTime })', submit_body)
+        self.assertIn('const payload = { referenceUrls, referenceImages, shotUpdate, generationStartTime };', submit_body)
+        self.assertIn('body: JSON.stringify(payload)', submit_body)
 
         regenerate_body = template.split('async function handleShotRegenerateClick()', 1)[1].split('async function uploadShotVideoFile()', 1)[0]
         self.assertIn('return submitShotGeneration(this);', regenerate_body)
@@ -484,7 +530,8 @@ class EpisodeDetailShotCreditTests(TestCase):
         submit_body = template.split('async function submitShotGeneration(button)', 1)[1].split('async function handleShotRegenerateClick()', 1)[0]
         self.assertIn('const shotUpdate = buildShotGenerationUpdatePayload(card);', submit_body)
         self.assertIn('const referenceImages = collectShotReferenceImages(card);', submit_body)
-        self.assertIn('body: JSON.stringify({ referenceUrls, referenceImages, shotUpdate, generationStartTime })', submit_body)
+        self.assertIn('const payload = { referenceUrls, referenceImages, shotUpdate, generationStartTime };', submit_body)
+        self.assertIn('body: JSON.stringify(payload)', submit_body)
 
         generate_bind_body = template.split('// 单个生成', 1)[1].split('// 重新生成', 1)[0]
         self.assertIn("btn.addEventListener('click', function() {", generate_bind_body)
@@ -494,9 +541,9 @@ class EpisodeDetailShotCreditTests(TestCase):
         template_path = Path(settings.BASE_DIR) / 'templates/episode/episode_detail.html'
         template = template_path.read_text(encoding='utf-8')
         submit_body = template.split('async function submitShotGeneration(button)', 1)[1].split('async function handleShotRegenerateClick()', 1)[0]
-        before_submit_fetch = submit_body.split("const response = await fetch(`/api/v1/shots/${shotId}/generate-with-references/`", 1)[0]
+        before_prepare_fetch = submit_body.split("const prepareResponse = await fetch(`/api/v1/shots/${shotId}/generation/prepare`", 1)[0]
         after_result_success = submit_body.split('if (!(data.success || data.code === 200))', 1)[1]
-        new_submit_body = before_submit_fetch.split("button.disabled = true;", 1)[1]
+        new_submit_body = before_prepare_fetch.split("button.disabled = true;", 1)[1]
 
         self.assertNotIn('startTimer(button);', submit_body)
         self.assertNotIn('updateCardToSubmitting(card, button);', submit_body)
@@ -508,8 +555,9 @@ class EpisodeDetailShotCreditTests(TestCase):
         self.assertIn('const shotUpdate = buildShotGenerationUpdatePayload(card);', submit_body)
         self.assertIn('updateCardToGenerating(card, button, generationStartTime);', new_submit_body)
         self.assertIn('startShotGenerationPolling();', new_submit_body)
-        self.assertIn('body: JSON.stringify({ referenceUrls, referenceImages, shotUpdate, generationStartTime })', submit_body)
-        self.assertIn('submittedShot = await fetchShotGenerationState(shotId);', after_result_success)
+        self.assertIn('const payload = { referenceUrls, referenceImages, shotUpdate, generationStartTime };', submit_body)
+        self.assertIn('body: JSON.stringify(payload)', submit_body)
+        self.assertIn("fetch(`/api/v1/shots/${shotId}/generation/start`", after_result_success)
         self.assertIn('markShotGenerationUpdateSaved(card, shotUpdate);', submit_body)
 
     def test_generation_timer_resyncs_when_backend_start_time_changes(self):
@@ -565,12 +613,67 @@ class EpisodeDetailShotCreditTests(TestCase):
         self.assertEqual(response.status_code, 200)
         backend_client.post.assert_called_once_with('/v1/shots/629/generate-with-references', payload)
 
-    def test_episode_page_prices_kling_v3_omni_at_eleven_credits_per_second(self):
+    def test_shot_generation_prepare_proxy_forwards_payload(self):
+        session = self.client.session
+        session['token'] = 'token-1'
+        session.save()
+
+        backend_client = Mock()
+        backend_client.post.return_value = {
+            'id': 633,
+            'generationStatus': 1,
+            'generationStartTime': '2026-05-16T18:40:00',
+        }
+        payload = {
+            'referenceUrls': ['https://oss.example.com/scene.png'],
+            'referenceImages': [
+                {'imageType': 'role', 'imageUrl': 'https://oss.example.com/role.png'}
+            ],
+            'shotUpdate': {
+                'duration': 8,
+                'resolution': '720p',
+                'aspectRatio': '16:9',
+                'videoModel': 'kling-v3-omni',
+            },
+            'generationStartTime': '2026-05-16T18:40:00',
+        }
+
+        with patch('apps.series.views.get_client', return_value=backend_client):
+            response = self.client.post(
+                '/api/v1/shots/633/generation/prepare',
+                data=json.dumps(payload),
+                content_type='application/json',
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['data']['generationStatus'], 1)
+        backend_client.post.assert_called_once_with('/v1/shots/633/generation/prepare', payload)
+
+    def test_shot_generation_start_proxy_forwards_payload(self):
+        session = self.client.session
+        session['token'] = 'token-1'
+        session.save()
+
+        backend_client = Mock()
+        payload = {'referenceUrls': ['https://oss.example.com/scene.png']}
+
+        with patch('apps.series.views.get_client', return_value=backend_client):
+            response = self.client.post(
+                '/api/v1/shots/633/generation/start',
+                data=json.dumps(payload),
+                content_type='application/json',
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json()['success'])
+        backend_client.post.assert_called_once_with('/v1/shots/633/generation/start', payload)
+
+    def test_episode_page_prices_kling_v3_omni_at_current_rates(self):
         template_path = Path(settings.BASE_DIR) / 'templates/episode/episode_detail.html'
         template = template_path.read_text()
 
         self.assertIn("if (videoModel === 'kling-v3-omni')", template)
-        self.assertIn('return 11 * durationSec;', template)
+        self.assertIn("creditsPerSecond = resolution === '1080p' ? 16 : 15;", template)
 
 
 class CreditAdminDashboardTests(TestCase):

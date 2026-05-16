@@ -22,6 +22,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.*;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Service;
+import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestTemplate;
 
 import java.util.List;
@@ -37,6 +38,7 @@ public class SeedanceServiceImpl implements SeedanceService {
 
     private static final String FAST_VIP_MODEL = "doubao-seedance-2-0-fast-260128";
     private static final String VIP_MODEL = "doubao-seedance-2-0-260128";
+    private static final String VIP_4K_MODEL = "seedance-2";
     private static final String KLING_V3_OMNI_MODEL = "kling-v3-omni";
 
     @Value("${volcengine.seedance.api-key}")
@@ -88,6 +90,7 @@ public class SeedanceServiceImpl implements SeedanceService {
         if (useModel == null || useModel.isEmpty()) {
             useModel = "doubao-seedance-2-0-fast-260128"; // 默认使用 Fast 模型
         }
+        useModel = normalizeToapisModel(useModel, request);
 
         log.info("提交视频生成任务: model={}, duration={}s, referenceImages={}",
                 useModel, request.getDuration(),
@@ -177,6 +180,13 @@ public class SeedanceServiceImpl implements SeedanceService {
             errorResponse.setTaskId(taskId);
             errorResponse.setErrorMessage(parseApiError(e.getResponseBodyAsString()));
             return errorResponse;
+        } catch (ResourceAccessException e) {
+            log.warn("查询任务状态网络异常，将继续轮询: taskId={}, error={}", taskId, e.getMessage());
+            SeedanceResponse pendingResponse = new SeedanceResponse();
+            pendingResponse.setStatus("in_progress");
+            pendingResponse.setTaskId(taskId);
+            pendingResponse.setErrorMessage("查询任务状态超时，正在继续等待结果");
+            return pendingResponse;
         } catch (Exception e) {
             log.error("查询任务状态异常: taskId={}", taskId, e);
             SeedanceResponse errorResponse = new SeedanceResponse();
@@ -467,9 +477,6 @@ public class SeedanceServiceImpl implements SeedanceService {
         requestBody.put("prompt", request.getPrompt());
         requestBody.put("duration", request.getDuration());
         requestBody.put("aspect_ratio", request.getRatio() != null ? request.getRatio() : "16:9");
-        if (request.getResolution() != null && !request.getResolution().isBlank()) {
-            requestBody.put("resolution", request.getResolution());
-        }
         requestBody.put("watermark", request.getWatermark() != null ? request.getWatermark() : false);
         if (request.getSeed() != null) {
             requestBody.put("seed", request.getSeed());
@@ -555,11 +562,26 @@ public class SeedanceServiceImpl implements SeedanceService {
     }
 
     private boolean isToapisModel(String useModel) {
-        return isFastVipModel(useModel) || VIP_MODEL.equals(useModel) || "seedance-2.0".equals(useModel) || isKlingOmniModel(useModel);
+        return isFastVipModel(useModel)
+                || VIP_MODEL.equals(useModel)
+                || VIP_4K_MODEL.equals(useModel)
+                || "doubao-seedance-2-0".equals(useModel)
+                || "seedance-2.0".equals(useModel)
+                || isKlingOmniModel(useModel);
     }
 
     private boolean isKlingOmniModel(String useModel) {
         return KLING_V3_OMNI_MODEL.equals(useModel);
+    }
+
+    private String normalizeToapisModel(String useModel, SeedanceRequest request) {
+        String requestResolution = request != null ? request.getResolution() : null;
+        String sizeResolution = request != null ? resolutionFromSize(request.getWidth(), request.getHeight()) : null;
+        boolean vip4k = "1080p".equals(requestResolution) || "1080p".equals(sizeResolution);
+        if (vip4k && ("seedance-2.0".equals(useModel) || VIP_MODEL.equals(useModel))) {
+            return VIP_4K_MODEL;
+        }
+        return useModel;
     }
 
     private String trimTrailingSlash(String value) {
@@ -592,11 +614,11 @@ public class SeedanceServiceImpl implements SeedanceService {
     }
 
     private String klingModeFromRequest(SeedanceRequest request) {
-        String mode = modeFromSize(request.getWidth(), request.getHeight());
-        if ("std".equals(mode)) {
+        String resolution = resolutionFromSize(request.getWidth(), request.getHeight());
+        if ("1080p".equals(resolution)) {
             return "pro";
         }
-        return mode;
+        return "std";
     }
 
     private void applySubmitRequestMetadata(SeedanceResponse response, String requestUrl, String requestBody, String submitModel) {

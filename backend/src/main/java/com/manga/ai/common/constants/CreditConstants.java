@@ -6,16 +6,17 @@ package com.manga.ai.common.constants;
 public class CreditConstants {
 
     // Seedance 2.0 (doubao-seedance-2-0-260128) VIP 模型
-    public static final int CREDITS_PER_SECOND_480P_VIP = 15;
-    public static final int CREDITS_PER_SECOND_720P_VIP = 32;
-    public static final int CREDITS_PER_SECOND_1080P_VIP = 69;
+    public static final int CREDITS_PER_SECOND_480P_VIP = 16;
+    public static final int CREDITS_PER_SECOND_720P_VIP = 27;
+    public static final int CREDITS_PER_SECOND_1080P_VIP = 67;
 
     // Seedance 2.0 Fast (doubao-seedance-2-0-fast-260128) 模型
-    public static final int CREDITS_PER_SECOND_480P_FAST = 12;
-    public static final int CREDITS_PER_SECOND_720P_FAST = 25;
+    public static final int CREDITS_PER_SECOND_480P_FAST = 11;
+    public static final int CREDITS_PER_SECOND_720P_FAST = 22;
 
     // Kling v3 Omni 模型
-    public static final int CREDITS_PER_SECOND_KLING_V3_OMNI = 11;
+    public static final int CREDITS_PER_SECOND_720P_KLING_V3_OMNI = 15;
+    public static final int CREDITS_PER_SECOND_1080P_KLING_V3_OMNI = 16;
 
     /**
      * 默认视频时长(秒)
@@ -26,6 +27,11 @@ public class CreditConstants {
      * 图像生成积分：6积分/张
      */
     public static final int CREDITS_PER_IMAGE = 6;
+
+    /**
+     * GPT-Image2 图片生成积分：6积分/张
+     */
+    public static final int CREDITS_PER_GPT_IMAGE2_IMAGE = 6;
 
     /**
      * 剧本解析积分：2积分/次
@@ -94,7 +100,9 @@ public class CreditConstants {
      */
     public static int getCreditsPerSecond(String resolution, String videoModel) {
         if ("kling-v3-omni".equals(videoModel)) {
-            return CREDITS_PER_SECOND_KLING_V3_OMNI;
+            return "1080p".equals(resolution)
+                    ? CREDITS_PER_SECOND_1080P_KLING_V3_OMNI
+                    : CREDITS_PER_SECOND_720P_KLING_V3_OMNI;
         }
 
         boolean isVipModel = "seedance-2.0".equals(videoModel)

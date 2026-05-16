@@ -2,11 +2,14 @@ package com.manga.ai.common.task;
 
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.manga.ai.common.enums.EpisodeStatus;
+import com.manga.ai.common.enums.RoleStatus;
+import com.manga.ai.common.enums.SeriesStatus;
 import com.manga.ai.episode.entity.Episode;
 import com.manga.ai.episode.mapper.EpisodeMapper;
 import com.manga.ai.gptimage.service.GptImage2Service;
 import com.manga.ai.prop.entity.Prop;
 import com.manga.ai.prop.mapper.PropMapper;
+import com.manga.ai.role.mapper.RoleMapper;
 import com.manga.ai.scene.entity.Scene;
 import com.manga.ai.scene.mapper.SceneMapper;
 import com.manga.ai.series.mapper.SeriesMapper;
@@ -30,6 +33,7 @@ public class CleanupTask {
     private final SceneMapper sceneMapper;
     private final PropMapper propMapper;
     private final GptImage2Service gptImage2Service;
+    private final RoleMapper roleMapper;
 
     /**
      * 每天凌晨3点清理过期的回收站系列
@@ -107,6 +111,44 @@ public class CleanupTask {
             }
         } catch (Exception e) {
             log.error("清理卡住的道具失败", e);
+        }
+    }
+
+    /**
+     * 每分钟检查一次卡在初始化中的系列。
+     * 如果初始化超过1小时仍未完成，说明异步角色生成任务已经中断，自动恢复到待审核。
+     */
+    @Scheduled(fixedRate = 60000)
+    public void cleanupStuckInitializingSeries() {
+        LocalDateTime timeout = LocalDateTime.now().minusHours(1);
+        LocalDateTime now = LocalDateTime.now();
+        try {
+            int restoredRoles = roleMapper.restoreStuckInitializingRoles(
+                    RoleStatus.PENDING_REVIEW.getCode(),
+                    RoleStatus.EXTRACTING.getCode(),
+                    SeriesStatus.INITIALIZING.getCode(),
+                    timeout,
+                    now
+            );
+            if (restoredRoles > 0) {
+                log.info("已自动恢复 {} 个卡在生成中的初始化角色为待审核状态", restoredRoles);
+            }
+        } catch (Exception e) {
+            log.error("清理卡住的初始化角色失败", e);
+        }
+
+        try {
+            int restoredSeries = seriesMapper.restoreStuckInitializingSeries(
+                    SeriesStatus.PENDING_REVIEW.getCode(),
+                    SeriesStatus.INITIALIZING.getCode(),
+                    timeout,
+                    now
+            );
+            if (restoredSeries > 0) {
+                log.info("已自动恢复 {} 个卡在初始化超过1小时的系列为待审核状态", restoredSeries);
+            }
+        } catch (Exception e) {
+            log.error("清理卡住的初始化系列失败", e);
         }
     }
 

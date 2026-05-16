@@ -156,6 +156,53 @@ public class ShotController {
      */
     @PostMapping("/{shotId}/generate-with-references")
     public Result<Void> generateVideoWithReferences(@PathVariable Long shotId, @RequestBody(required = false) java.util.Map<String, Object> body) {
+        ShotGenerationRequest generationRequest = parseShotGenerationRequest(body);
+        log.info("带参考图生成视频: shotId={}, referenceUrls={}, referenceImages={}",
+                shotId,
+                generationRequest.referenceUrls(),
+                generationRequest.referenceImages() != null ? generationRequest.referenceImages().size() : 0);
+        shotService.generateVideoWithReferences(
+                shotId,
+                generationRequest.referenceUrls(),
+                generationRequest.referenceImages(),
+                generationRequest.shotUpdate(),
+                generationRequest.generationStartTime()
+        );
+        return Result.success();
+    }
+
+    /**
+     * 先提交生成任务状态，确保新标签页能立即读到生成中。
+     */
+    @PostMapping({"/{shotId}/generation/prepare", "/{shotId}/generation/prepare/"})
+    public Result<ShotDetailVO> prepareVideoGenerationWithReferences(@PathVariable Long shotId, @RequestBody(required = false) java.util.Map<String, Object> body) {
+        ShotGenerationRequest generationRequest = parseShotGenerationRequest(body);
+        log.info("准备分镜视频生成: shotId={}, referenceUrls={}, referenceImages={}",
+                shotId,
+                generationRequest.referenceUrls(),
+                generationRequest.referenceImages() != null ? generationRequest.referenceImages().size() : 0);
+        ShotDetailVO detail = shotService.prepareVideoGenerationWithReferences(
+                shotId,
+                generationRequest.referenceUrls(),
+                generationRequest.referenceImages(),
+                generationRequest.shotUpdate(),
+                generationRequest.generationStartTime()
+        );
+        return Result.success(detail);
+    }
+
+    /**
+     * 启动已经提交状态的后台生成任务。
+     */
+    @PostMapping({"/{shotId}/generation/start", "/{shotId}/generation/start/"})
+    public Result<Void> startPreparedVideoGenerationWithReferences(@PathVariable Long shotId, @RequestBody(required = false) java.util.Map<String, Object> body) {
+        ShotGenerationRequest generationRequest = parseShotGenerationRequest(body);
+        log.info("启动已准备的视频生成: shotId={}, referenceUrls={}", shotId, generationRequest.referenceUrls());
+        shotService.startPreparedVideoGenerationWithReferences(shotId, generationRequest.referenceUrls());
+        return Result.success();
+    }
+
+    private ShotGenerationRequest parseShotGenerationRequest(java.util.Map<String, Object> body) {
         java.util.List<String> referenceUrls = null;
         java.util.List<ReferenceImageDTO> referenceImages = null;
         ShotUpdateRequest shotUpdate = null;
@@ -181,10 +228,14 @@ public class ShotController {
                 generationStartTime = LocalDateTime.parse(startTimeText.replace("Z", "").replace(" ", "T"));
             }
         }
-        log.info("带参考图生成视频: shotId={}, referenceUrls={}, referenceImages={}",
-                shotId, referenceUrls, referenceImages != null ? referenceImages.size() : 0);
-        shotService.generateVideoWithReferences(shotId, referenceUrls, referenceImages, shotUpdate, generationStartTime);
-        return Result.success();
+        return new ShotGenerationRequest(referenceUrls, referenceImages, shotUpdate, generationStartTime);
+    }
+
+    private record ShotGenerationRequest(
+            java.util.List<String> referenceUrls,
+            java.util.List<ReferenceImageDTO> referenceImages,
+            ShotUpdateRequest shotUpdate,
+            LocalDateTime generationStartTime) {
     }
 
     /**

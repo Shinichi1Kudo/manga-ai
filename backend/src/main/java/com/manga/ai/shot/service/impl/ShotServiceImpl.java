@@ -71,6 +71,7 @@ import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
 
@@ -213,13 +214,24 @@ public class ShotServiceImpl implements ShotService {
      * @return API模型名称
      */
     private String convertToApiModel(String videoModel) {
+        return convertToApiModel(videoModel, null);
+    }
+
+    private String convertToApiModel(String videoModel, String resolution) {
         if (videoModel == null || videoModel.isEmpty()) {
             return "doubao-seedance-2-0-fast-260128"; // 默认 Fast 模型
         }
         switch (videoModel) {
             case "seedance-2.0":
             case "doubao-seedance-2-0-260128":
+                if ("1080p".equals(resolution)) {
+                    return "seedance-2";
+                }
                 return "doubao-seedance-2-0-260128"; // VIP 模型
+            case "seedance-2":
+                return "seedance-2";
+            case "doubao-seedance-2-0":
+                return "doubao-seedance-2-0";
             case "kling-v3-omni":
                 return "kling-v3-omni"; // Kling v3 Omni 模型
             case "seedance-2.0-fast":
@@ -227,6 +239,13 @@ public class ShotServiceImpl implements ShotService {
             default:
                 return "doubao-seedance-2-0-fast-260128"; // Fast VIP 模型
         }
+    }
+
+    private String normalizeResolutionForModel(String videoModel, String resolution) {
+        if ("kling-v3-omni".equals(videoModel) && "480p".equals(resolution)) {
+            return "720p";
+        }
+        return resolution;
     }
 
     /**
@@ -428,8 +447,11 @@ public class ShotServiceImpl implements ShotService {
         if (request.getDuration() != null) {
             updateWrapper.set(Shot::getDuration, Math.min(request.getDuration(), 15));  // 最大15秒
         }
-        if (request.getResolution() != null) {
-            updateWrapper.set(Shot::getResolution, request.getResolution());
+        String nextVideoModel = request.getVideoModel() != null ? request.getVideoModel() : shot.getVideoModel();
+        String nextResolution = request.getResolution() != null ? request.getResolution() : shot.getResolution();
+        nextResolution = normalizeResolutionForModel(nextVideoModel, nextResolution);
+        if (request.getResolution() != null || (request.getVideoModel() != null && !Objects.equals(nextResolution, shot.getResolution()))) {
+            updateWrapper.set(Shot::getResolution, nextResolution);
         }
         if (request.getAspectRatio() != null) {
             updateWrapper.set(Shot::getAspectRatio, request.getAspectRatio());
@@ -779,7 +801,8 @@ public class ShotServiceImpl implements ShotService {
             request.setPrompt(prompt);
             request.setDuration(shot.getDuration() != null ? shot.getDuration() : 5);
             request.setShotId(shotId);
-            request.setModel(convertToApiModel(shot.getVideoModel()));
+            request.setModel(convertToApiModel(shot.getVideoModel(), shot.getResolution()));
+            request.setResolution(shot.getResolution());
             request.setGenerateAudio(true);
 
             // 设置视频尺寸
@@ -1331,8 +1354,15 @@ public class ShotServiceImpl implements ShotService {
     }
 
     @Override
-    @Transactional(rollbackFor = Exception.class)
     public void generateVideoWithReferences(Long shotId, List<String> referenceUrls, List<ReferenceImageDTO> referenceImages,
+            ShotUpdateRequest shotUpdate, LocalDateTime generationStartTime) {
+        self.prepareVideoGenerationWithReferences(shotId, referenceUrls, referenceImages, shotUpdate, generationStartTime);
+        self.startPreparedVideoGenerationWithReferences(shotId, referenceUrls);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public ShotDetailVO prepareVideoGenerationWithReferences(Long shotId, List<String> referenceUrls, List<ReferenceImageDTO> referenceImages,
             ShotUpdateRequest shotUpdate, LocalDateTime generationStartTime) {
         log.info("开始生成视频(带参考图): shotId={}, referenceUrls={}", shotId, referenceUrls);
 
@@ -1369,7 +1399,7 @@ public class ShotServiceImpl implements ShotService {
                 .set(Shot::getDeductedCredits, requiredCredits)
                 .set(Shot::getGenerationStartTime, now)
                 .set(Shot::getUpdatedAt, now);
-        applyShotUpdateToWrapper(updateWrapper, shotUpdate);
+        applyShotUpdateToWrapper(updateWrapper, shotUpdate, shot);
         int updated = shotMapper.update(null, updateWrapper);
 
         if (updated == 0) {
@@ -1379,8 +1409,28 @@ public class ShotServiceImpl implements ShotService {
         }
         replaceReferenceImagesForGeneration(shotId, referenceImages);
         log.info("已更新分镜状态为生成中: shotId={}", shotId);
+        shot.setGenerationStatus(ShotGenerationStatus.GENERATING.getCode());
+        shot.setGenerationError(null);
+        shot.setDeductedCredits(requiredCredits);
+        shot.setGenerationStartTime(now);
+        shot.setUpdatedAt(now);
 
-        // 通过代理异步执行视频生成（确保真正的异步）
+        return convertToDetailVO(shot);
+    }
+
+    @Override
+    public void startPreparedVideoGenerationWithReferences(Long shotId, List<String> referenceUrls) {
+        Shot shot = shotMapper.selectById(shotId);
+        if (shot == null) {
+            log.error("分镜不存在: shotId={}", shotId);
+            throw new BusinessException("分镜不存在");
+        }
+        ensureShotCanBeModified(shot);
+        if (!ShotGenerationStatus.GENERATING.getCode().equals(shot.getGenerationStatus())) {
+            log.warn("分镜未处于生成中，拒绝启动后台生成: shotId={}, generationStatus={}", shotId, shot.getGenerationStatus());
+            throw new BusinessException("分镜生成任务尚未提交，请重新点击生成");
+        }
+        log.info("启动已准备的视频生成任务: shotId={}", shotId);
         self.doGenerateVideoWithReferences(shotId, referenceUrls);
     }
 
@@ -1403,8 +1453,11 @@ public class ShotServiceImpl implements ShotService {
         if (request.getDuration() != null) {
             shot.setDuration(Math.min(request.getDuration(), 15));
         }
+        String nextVideoModel = request.getVideoModel() != null ? request.getVideoModel() : shot.getVideoModel();
+        String nextResolution = request.getResolution() != null ? request.getResolution() : shot.getResolution();
+        nextResolution = normalizeResolutionForModel(nextVideoModel, nextResolution);
         if (request.getResolution() != null) {
-            shot.setResolution(request.getResolution());
+            shot.setResolution(nextResolution);
         }
         if (request.getAspectRatio() != null) {
             shot.setAspectRatio(request.getAspectRatio());
@@ -1434,11 +1487,14 @@ public class ShotServiceImpl implements ShotService {
             shot.setUserPrompt(request.getUserPrompt());
         }
         if (request.getVideoModel() != null) {
-            shot.setVideoModel(request.getVideoModel());
+            shot.setVideoModel(nextVideoModel);
+            if (!Objects.equals(nextResolution, shot.getResolution())) {
+                shot.setResolution(nextResolution);
+            }
         }
     }
 
-    private void applyShotUpdateToWrapper(LambdaUpdateWrapper<Shot> updateWrapper, ShotUpdateRequest request) {
+    private void applyShotUpdateToWrapper(LambdaUpdateWrapper<Shot> updateWrapper, ShotUpdateRequest request, Shot resolvedShot) {
         if (request == null) {
             return;
         }
@@ -1458,7 +1514,7 @@ public class ShotServiceImpl implements ShotService {
             updateWrapper.set(Shot::getDuration, Math.min(request.getDuration(), 15));
         }
         if (request.getResolution() != null) {
-            updateWrapper.set(Shot::getResolution, request.getResolution());
+            updateWrapper.set(Shot::getResolution, resolvedShot != null ? resolvedShot.getResolution() : request.getResolution());
         }
         if (request.getAspectRatio() != null) {
             updateWrapper.set(Shot::getAspectRatio, request.getAspectRatio());
@@ -1489,6 +1545,11 @@ public class ShotServiceImpl implements ShotService {
         }
         if (request.getVideoModel() != null) {
             updateWrapper.set(Shot::getVideoModel, request.getVideoModel());
+            if (request.getResolution() == null && resolvedShot != null
+                    && "kling-v3-omni".equals(resolvedShot.getVideoModel())
+                    && "720p".equals(resolvedShot.getResolution())) {
+                updateWrapper.set(Shot::getResolution, resolvedShot.getResolution());
+            }
         }
     }
 
@@ -1553,11 +1614,12 @@ public class ShotServiceImpl implements ShotService {
             }
             // 创建生成请求
             SeedanceRequest request = new SeedanceRequest();
-            request.setModel(convertToApiModel(shot.getVideoModel()));
+            request.setModel(convertToApiModel(shot.getVideoModel(), shot.getResolution()));
             String finalPrompt = appendReferenceGuide(result.getPrompt(), references, request.getModel());
             request.setPrompt(finalPrompt);
             request.setDuration(shot.getDuration() != null ? shot.getDuration() : 5);
             request.setShotId(shotId);
+            request.setResolution(shot.getResolution());
             request.setGenerateAudio(true);
 
             // 设置视频尺寸

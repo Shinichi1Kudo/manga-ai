@@ -93,6 +93,32 @@ class ShotServiceImplTest {
     }
 
     @Test
+    void updateShotNormalizesKlingOmni480pTo720p() {
+        ShotMapper shotMapper = mock(ShotMapper.class);
+        Shot shot = new Shot();
+        shot.setId(640L);
+        shot.setStatus(ShotStatus.PENDING_REVIEW.getCode());
+        shot.setResolution("480p");
+        shot.setVideoModel("seedance-2.0-fast");
+        when(shotMapper.selectById(640L)).thenReturn(shot);
+
+        ShotUpdateRequest request = new ShotUpdateRequest();
+        request.setVideoModel("kling-v3-omni");
+        request.setResolution("480p");
+
+        createService(shotMapper).updateShot(640L, request);
+
+        ArgumentCaptor<LambdaUpdateWrapper<Shot>> wrapperCaptor = ArgumentCaptor.forClass(LambdaUpdateWrapper.class);
+        verify(shotMapper).update(eq(null), wrapperCaptor.capture());
+        assertThat(String.valueOf(wrapperCaptor.getValue().getSqlSet()))
+                .contains("resolution=#{ew.paramNameValuePairs.MPGENVAL1}")
+                .contains("video_model=#{ew.paramNameValuePairs.MPGENVAL2}");
+        assertThat(wrapperCaptor.getValue().getParamNameValuePairs())
+                .containsEntry("MPGENVAL1", "720p")
+                .containsEntry("MPGENVAL2", "kling-v3-omni");
+    }
+
+    @Test
     void successfulVideoGenerationClearsPreviousGenerationError() {
         ShotMapper shotMapper = mock(ShotMapper.class);
         Shot shot = new Shot();
@@ -163,6 +189,40 @@ class ShotServiceImplTest {
     }
 
     @Test
+    void seedanceVip4kShotUsesSeedance2ModelAnd1080pResolution() {
+        ShotMapper shotMapper = mock(ShotMapper.class);
+        Shot shot = new Shot();
+        shot.setId(639L);
+        shot.setEpisodeId(11L);
+        shot.setShotNumber(9);
+        shot.setStatus(ShotStatus.PENDING_REVIEW.getCode());
+        shot.setUserPrompt("Seedance VIP 4K 测试提示词");
+        shot.setDuration(8);
+        shot.setResolution("1080p");
+        shot.setAspectRatio("16:9");
+        shot.setVideoModel("seedance-2.0");
+        shot.setGenerationStatus(ShotGenerationStatus.GENERATING.getCode());
+        when(shotMapper.selectById(639L)).thenReturn(shot);
+
+        SeedanceService seedanceService = mock(SeedanceService.class);
+        SeedanceResponse response = new SeedanceResponse();
+        response.setStatus("completed");
+        response.setVideoUrl("https://example.com/seedance-vip-4k.mp4");
+        when(seedanceService.generateVideo(any(SeedanceRequest.class))).thenReturn(response);
+
+        createService(shotMapper, seedanceService).doGenerateVideo(639L);
+
+        ArgumentCaptor<SeedanceRequest> requestCaptor = ArgumentCaptor.forClass(SeedanceRequest.class);
+        verify(seedanceService).generateVideo(requestCaptor.capture());
+        SeedanceRequest request = requestCaptor.getValue();
+        assertThat(request.getModel()).isEqualTo("seedance-2");
+        assertThat(request.getResolution()).isEqualTo("1080p");
+        assertThat(request.getWidth()).isEqualTo(1920);
+        assertThat(request.getHeight()).isEqualTo(1080);
+        assertThat(request.getRatio()).isEqualTo("16:9");
+    }
+
+    @Test
     void completedVideoGenerationWithoutVideoUrlIsTreatedAsFailure() {
         ShotMapper shotMapper = mock(ShotMapper.class);
         Shot shot = new Shot();
@@ -222,7 +282,7 @@ class ShotServiceImplTest {
     }
 
     @Test
-    void generateWithReferencesUsesClientStartTimeAndSavesShotUpdateBeforeAsyncWork() {
+    void prepareGenerationWithReferencesPersistsGeneratingStateBeforeStartingAsyncWork() {
         ShotMapper shotMapper = mock(ShotMapper.class);
         ShotReferenceImageMapper shotReferenceImageMapper = mock(ShotReferenceImageMapper.class);
         UserService userService = mock(UserService.class);
@@ -267,7 +327,7 @@ class ShotServiceImplTest {
                     mock(ShotVideoAssetMetadataMapper.class),
                     userService,
                     self
-            ).generateVideoWithReferences(635L, List.of(), List.of(), update, clickedAt);
+            ).prepareVideoGenerationWithReferences(635L, List.of(), List.of(), update, clickedAt);
         } finally {
             UserContextHolder.clear();
         }
@@ -287,8 +347,90 @@ class ShotServiceImplTest {
         assertThat(shot.getResolution()).isEqualTo("720p");
         assertThat(shot.getAspectRatio()).isEqualTo("9:16");
         assertThat(shot.getVideoModel()).isEqualTo("kling-v3-omni");
-        verify(userService).deductCredits(eq(7L), eq(88), any(), any(), eq(635L), eq("SHOT"));
-        verify(self).doGenerateVideoWithReferences(635L, List.of());
+        verify(userService).deductCredits(eq(7L), eq(120), any(), any(), eq(635L), eq("SHOT"));
+        verify(self, never()).doGenerateVideoWithReferences(any(), any());
+    }
+
+    @Test
+    void prepareGenerationWithReferencesNormalizesKlingOmni480pTo720p() {
+        ShotMapper shotMapper = mock(ShotMapper.class);
+        ShotReferenceImageMapper shotReferenceImageMapper = mock(ShotReferenceImageMapper.class);
+        UserService userService = mock(UserService.class);
+
+        Shot shot = new Shot();
+        shot.setId(641L);
+        shot.setEpisodeId(11L);
+        shot.setShotNumber(10);
+        shot.setStatus(ShotStatus.PENDING_REVIEW.getCode());
+        shot.setDuration(5);
+        shot.setResolution("480p");
+        shot.setAspectRatio("16:9");
+        shot.setVideoModel("seedance-2.0-fast");
+        shot.setGenerationStatus(ShotGenerationStatus.PENDING.getCode());
+        when(shotMapper.selectById(641L)).thenReturn(shot);
+        when(shotMapper.update(eq(null), any(LambdaUpdateWrapper.class))).thenReturn(1);
+
+        ShotUpdateRequest update = new ShotUpdateRequest();
+        update.setResolution("480p");
+        update.setVideoModel("kling-v3-omni");
+
+        UserContextHolder.setUserId(7L);
+        try {
+            createService(
+                    shotMapper,
+                    mock(ShotCharacterMapper.class),
+                    mock(SceneMapper.class),
+                    mock(SceneAssetMapper.class),
+                    mock(RoleMapper.class),
+                    mock(RoleAssetMapper.class),
+                    mock(EpisodeMapper.class),
+                    mock(SeedanceService.class),
+                    shotReferenceImageMapper,
+                    mock(ShotVideoAssetMapper.class),
+                    mock(ShotVideoAssetMetadataMapper.class),
+                    userService,
+                    mock(ShotService.class)
+            ).prepareVideoGenerationWithReferences(641L, List.of(), List.of(), update, null);
+        } finally {
+            UserContextHolder.clear();
+        }
+
+        ArgumentCaptor<LambdaUpdateWrapper<Shot>> wrapperCaptor = ArgumentCaptor.forClass(LambdaUpdateWrapper.class);
+        verify(shotMapper).update(eq(null), wrapperCaptor.capture());
+        assertThat(shot.getResolution()).isEqualTo("720p");
+        assertThat(shot.getVideoModel()).isEqualTo("kling-v3-omni");
+        assertThat(wrapperCaptor.getValue().getParamNameValuePairs()).containsValue("720p");
+        verify(userService).deductCredits(eq(7L), eq(75), any(), any(), eq(641L), eq("SHOT"));
+    }
+
+    @Test
+    void startPreparedGenerationWithReferencesOnlyStartsAsyncWorkAfterPreparedStateExists() {
+        ShotMapper shotMapper = mock(ShotMapper.class);
+        ShotService self = mock(ShotService.class);
+
+        Shot shot = new Shot();
+        shot.setId(636L);
+        shot.setStatus(ShotStatus.PENDING_REVIEW.getCode());
+        shot.setGenerationStatus(ShotGenerationStatus.GENERATING.getCode());
+        when(shotMapper.selectById(636L)).thenReturn(shot);
+
+        createService(
+                shotMapper,
+                mock(ShotCharacterMapper.class),
+                mock(SceneMapper.class),
+                mock(SceneAssetMapper.class),
+                mock(RoleMapper.class),
+                mock(RoleAssetMapper.class),
+                mock(EpisodeMapper.class),
+                mock(SeedanceService.class),
+                mock(ShotReferenceImageMapper.class),
+                mock(ShotVideoAssetMapper.class),
+                mock(ShotVideoAssetMetadataMapper.class),
+                mock(UserService.class),
+                self
+        ).startPreparedVideoGenerationWithReferences(636L, List.of("https://example.com/ref.png"));
+
+        verify(self).doGenerateVideoWithReferences(636L, List.of("https://example.com/ref.png"));
     }
 
     @Test

@@ -4,6 +4,7 @@ import com.alibaba.fastjson2.JSON;
 import com.alibaba.fastjson2.JSONArray;
 import com.alibaba.fastjson2.JSONObject;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.manga.ai.common.constants.CreditConstants;
 import com.manga.ai.common.enums.CreditUsageType;
 import com.manga.ai.common.exception.BusinessException;
 import com.manga.ai.common.service.OssService;
@@ -68,7 +69,7 @@ public class GptImage2ServiceImpl implements GptImage2Service {
     );
     private static final long MAX_IMAGE_SIZE = 10L * 1024 * 1024;
     private static final int MAX_GENERATE_ATTEMPTS = 3;
-    private static final int GENERATE_CREDIT_COST = 12;
+    private static final int GENERATE_CREDIT_COST = CreditConstants.CREDITS_PER_GPT_IMAGE2_IMAGE;
     private static final String CREDIT_REFERENCE_TYPE = "GPT_IMAGE2_TASK";
     private static final long DEFAULT_STALE_TASK_TIMEOUT_MS = 30L * 60L * 1000L;
 

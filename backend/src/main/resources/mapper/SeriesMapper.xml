@@ -16,7 +16,9 @@
             ON r.series_id = s.id
             AND r.is_deleted = 0
         WHERE s.is_deleted = 0
-            AND s.user_id = #{userId}
+            <if test="userId != null">
+                AND s.user_id = #{userId}
+            </if>
         GROUP BY
             s.id,
             s.series_name,
@@ -26,6 +28,39 @@
             s.updated_at
         ORDER BY s.created_at DESC
         LIMIT #{limit} OFFSET #{offset}
+    </select>
+
+    <select id="selectSeriesCount" resultType="java.lang.Integer">
+        SELECT COUNT(*)
+        FROM series s
+        WHERE s.is_deleted = 0
+            <if test="userId != null">
+                AND s.user_id = #{userId}
+            </if>
+    </select>
+
+    <select id="selectLockedSeriesCards" resultType="com.manga.ai.series.dto.SeriesDetailVO">
+        SELECT
+            s.id,
+            s.series_name AS seriesName,
+            s.status,
+            s.created_at AS createdAt,
+            COUNT(r.id) AS roleCount
+        FROM series s
+        LEFT JOIN role r
+            ON r.series_id = s.id
+            AND r.is_deleted = 0
+        WHERE s.is_deleted = 0
+            AND s.status IN (2, 3)
+            <if test="userId != null">
+                AND s.user_id = #{userId}
+            </if>
+        GROUP BY
+            s.id,
+            s.series_name,
+            s.status,
+            s.created_at
+        ORDER BY s.created_at DESC
     </select>
 
 </mapper>

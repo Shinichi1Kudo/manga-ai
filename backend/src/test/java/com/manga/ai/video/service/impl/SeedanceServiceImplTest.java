@@ -1,5 +1,7 @@
 package com.manga.ai.video.service.impl;
 
+import com.alibaba.fastjson2.JSON;
+import com.alibaba.fastjson2.JSONObject;
 import com.manga.ai.common.service.OssService;
 import com.manga.ai.role.mapper.RoleMapper;
 import com.manga.ai.scene.mapper.SceneMapper;
@@ -14,6 +16,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.web.client.HttpClientErrorException;
+import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestTemplate;
 
 import java.nio.charset.StandardCharsets;
@@ -103,6 +106,83 @@ class SeedanceServiceImplTest {
                             && body.contains("\"prompt\":\"古风少女转身\"")
                             && body.contains("\"aspect_ratio\":\"16:9\"")
                             && body.contains("\"metadata\"");
+                }),
+                eq(String.class)
+        );
+    }
+
+    @Test
+    void submitSeedance2Vip4kUsesOnlyMetadataResolution() {
+        RestTemplate restTemplate = mock(RestTemplate.class);
+        SeedanceServiceImpl service = newService(restTemplate);
+        SeedanceRequest request = new SeedanceRequest();
+        request.setModel("seedance-2");
+        request.setPrompt("古风少女转身 4K");
+        request.setDuration(8);
+        request.setRatio("16:9");
+        request.setResolution("1080p");
+        request.setWidth(1920);
+        request.setHeight(1080);
+
+        when(restTemplate.exchange(anyString(), eq(HttpMethod.POST), any(HttpEntity.class), eq(String.class)))
+                .thenReturn(ResponseEntity.ok("{\"id\":\"task-seedance2-4k\",\"status\":\"pending\"}"));
+
+        SeedanceResponse response = service.submitVideoGeneration(request);
+
+        assertThat(response.getTaskId()).isEqualTo("task-seedance2-4k");
+        verify(restTemplate).exchange(
+                eq("https://toapis.com/v1/videos/generations"),
+                eq(HttpMethod.POST),
+                org.mockito.ArgumentMatchers.<HttpEntity<String>>argThat(entity -> {
+                    String body = entity.getBody();
+                    String authorization = entity.getHeaders().getFirst("Authorization");
+                    if (!"Bearer test-toapis-key".equals(authorization) || body == null) {
+                        return false;
+                    }
+                    JSONObject json = JSON.parseObject(body);
+                    JSONObject metadata = json.getJSONObject("metadata");
+                    return "seedance-2".equals(json.getString("model"))
+                            && !json.containsKey("resolution")
+                            && metadata != null
+                            && "1080p".equals(metadata.getString("resolution"));
+                }),
+                eq(String.class)
+        );
+    }
+
+    @Test
+    void submitLegacyVipModelWith1080pNormalizesToSeedance2Model() {
+        RestTemplate restTemplate = mock(RestTemplate.class);
+        SeedanceServiceImpl service = newService(restTemplate);
+        SeedanceRequest request = new SeedanceRequest();
+        request.setModel("seedance-2.0");
+        request.setPrompt("古风少女转身 4K");
+        request.setDuration(8);
+        request.setRatio("16:9");
+        request.setResolution("1080p");
+        request.setWidth(1920);
+        request.setHeight(1080);
+
+        when(restTemplate.exchange(anyString(), eq(HttpMethod.POST), any(HttpEntity.class), eq(String.class)))
+                .thenReturn(ResponseEntity.ok("{\"id\":\"task-legacy-vip-4k\",\"status\":\"pending\"}"));
+
+        SeedanceResponse response = service.submitVideoGeneration(request);
+
+        assertThat(response.getTaskId()).isEqualTo("task-legacy-vip-4k");
+        assertThat(response.getSubmitModel()).isEqualTo("seedance-2");
+        verify(restTemplate).exchange(
+                eq("https://toapis.com/v1/videos/generations"),
+                eq(HttpMethod.POST),
+                org.mockito.ArgumentMatchers.<HttpEntity<String>>argThat(entity -> {
+                    String body = entity.getBody();
+                    if (body == null) {
+                        return false;
+                    }
+                    JSONObject json = JSON.parseObject(body);
+                    JSONObject metadata = json.getJSONObject("metadata");
+                    return "seedance-2".equals(json.getString("model"))
+                            && metadata != null
+                            && "1080p".equals(metadata.getString("resolution"));
                 }),
                 eq(String.class)
         );
@@ -226,6 +306,30 @@ class SeedanceServiceImplTest {
     }
 
     @Test
+    void generateVideoKeepsPollingWhenStatusQueryTemporarilyTimesOut() {
+        RestTemplate restTemplate = mock(RestTemplate.class);
+        SeedanceServiceImpl service = newService(restTemplate);
+        ReflectionTestUtils.setField(service, "timeout", 50);
+        ReflectionTestUtils.setField(service, "pollInterval", 1);
+        SeedanceRequest request = new SeedanceRequest();
+        request.setModel("doubao-seedance-2-0-fast-260128");
+        request.setPrompt("Fast 任务");
+        request.setDuration(6);
+        request.setRatio("16:9");
+
+        when(restTemplate.exchange(anyString(), eq(HttpMethod.POST), any(HttpEntity.class), eq(String.class)))
+                .thenReturn(ResponseEntity.ok("{\"id\":\"fast-timeout-task\",\"status\":\"queued\"}"));
+        when(restTemplate.exchange(anyString(), eq(HttpMethod.GET), any(HttpEntity.class), eq(String.class)))
+                .thenThrow(new ResourceAccessException("I/O error on GET request for \"https://toapis.com/v1/videos/generations/fast-timeout-task\": Connect timed out"))
+                .thenReturn(ResponseEntity.ok("{\"id\":\"fast-timeout-task\",\"status\":\"completed\",\"metadata\":{\"url\":\"https://files.toapis.com/result.mp4\"}}"));
+
+        SeedanceResponse response = service.generateVideo(request);
+
+        assertThat(response.getStatus()).isEqualTo("completed");
+        assertThat(response.getVideoUrl()).isEqualTo("https://files.toapis.com/result.mp4");
+    }
+
+    @Test
     void submitKlingV3OmniWithAudioDropsBaseVideoBecauseProviderRejectsBoth() {
         RestTemplate restTemplate = mock(RestTemplate.class);
         SeedanceServiceImpl service = newService(restTemplate);
@@ -263,22 +367,28 @@ class SeedanceServiceImplTest {
                 org.mockito.ArgumentMatchers.<HttpEntity<String>>argThat(entity -> {
                     String body = entity.getBody();
                     String authorization = entity.getHeaders().getFirst("Authorization");
-                    return "Bearer test-toapis-key".equals(authorization)
-                            && body != null
-                            && body.contains("\"model\":\"kling-v3-omni\"")
-                            && body.contains("\"model_name\":\"kling-v3-omni\"")
-                            && body.contains("\"multi_shot\":false")
-                            && body.contains("\"prompt\":\"古风少女转身\"")
-                            && body.contains("\"aspect_ratio\":\"9:16\"")
-                            && body.contains("\"duration\":8")
-                            && !body.contains("\"duration\":\"8\"")
-                            && body.contains("\"mode\":\"4k\"")
-                            && body.contains("\"sound\":\"on\"")
-                            && body.contains("\"audio\":true")
-                            && body.contains("\"watermark_info\":{\"enabled\":false}")
-                            && body.contains("\"metadata\":{\"image_list\":[{\"image_url\":\"https://example.com/ref.png\"}]}")
-                            && !body.contains("\"video_list\"")
-                            && !body.contains("\"image_with_roles\"");
+                    if (!"Bearer test-toapis-key".equals(authorization) || body == null) {
+                        return false;
+                    }
+                    JSONObject json = JSON.parseObject(body);
+                    JSONObject metadata = json.getJSONObject("metadata");
+                    return "kling-v3-omni".equals(json.getString("model"))
+                            && "kling-v3-omni".equals(json.getString("model_name"))
+                            && Boolean.FALSE.equals(json.getBoolean("multi_shot"))
+                            && "古风少女转身".equals(json.getString("prompt"))
+                            && "9:16".equals(json.getString("aspect_ratio"))
+                            && Integer.valueOf(8).equals(json.getInteger("duration"))
+                            && "pro".equals(json.getString("mode"))
+                            && "on".equals(json.getString("sound"))
+                            && Boolean.TRUE.equals(json.getBoolean("audio"))
+                            && metadata != null
+                            && metadata.getJSONArray("image_list") != null
+                            && metadata.getJSONArray("image_list").size() == 1
+                            && "https://example.com/ref.png".equals(metadata.getJSONArray("image_list").getJSONObject(0).getString("image_url"))
+                            && !metadata.containsKey("mode")
+                            && !metadata.containsKey("duration")
+                            && !json.containsKey("video_list")
+                            && !json.containsKey("image_with_roles");
                 }),
                 eq(String.class)
         );
@@ -613,20 +723,20 @@ class SeedanceServiceImplTest {
     }
 
     @Test
-    void submitKlingV3OmniAudioRequestUpgrades480pToProModeAndRecordsProviderRequest() {
+    void submitKlingV3OmniUltraUsesStdModeAndRecordsProviderRequest() {
         RestTemplate restTemplate = mock(RestTemplate.class);
         SeedanceServiceImpl service = newService(restTemplate);
         SeedanceRequest request = new SeedanceRequest();
         request.setModel("kling-v3-omni");
-        request.setPrompt("480p Kling 任务");
+        request.setPrompt("720p Kling 任务");
         request.setDuration(5);
         request.setRatio("16:9");
-        request.setWidth(864);
-        request.setHeight(480);
+        request.setWidth(1280);
+        request.setHeight(720);
         request.setGenerateAudio(true);
 
         when(restTemplate.exchange(anyString(), eq(HttpMethod.POST), any(HttpEntity.class), eq(String.class)))
-                .thenReturn(ResponseEntity.ok("{\"id\":\"kling-480p\",\"status\":\"queued\"}"));
+                .thenReturn(ResponseEntity.ok("{\"id\":\"kling-720p\",\"status\":\"queued\"}"));
 
         SeedanceResponse response = service.submitVideoGeneration(request);
 
@@ -635,8 +745,8 @@ class SeedanceServiceImplTest {
         assertThat(response.getSubmitRequestBody())
                 .contains("\"sound\":\"on\"")
                 .contains("\"audio\":true")
-                .contains("\"mode\":\"pro\"")
-                .doesNotContain("\"mode\":\"std\"");
+                .contains("\"mode\":\"std\"")
+                .doesNotContain("\"mode\":\"pro\"");
 
         verify(restTemplate).exchange(
                 eq("https://toapis.com/v1/videos/generations"),
@@ -646,27 +756,27 @@ class SeedanceServiceImplTest {
                     return body != null
                             && body.contains("\"sound\":\"on\"")
                             && body.contains("\"audio\":true")
-                            && body.contains("\"mode\":\"pro\"")
-                            && !body.contains("\"mode\":\"std\"");
+                            && body.contains("\"mode\":\"std\"")
+                            && !body.contains("\"mode\":\"pro\"");
                 }),
                 eq(String.class)
         );
     }
 
     @Test
-    void submitKlingV3OmniUpgrades480pToProModeBecauseAudioIsAlwaysEnabled() {
+    void submitKlingV3Omni4kUsesProModeBecauseProvider4kIsExposedAsPro() {
         RestTemplate restTemplate = mock(RestTemplate.class);
         SeedanceServiceImpl service = newService(restTemplate);
         SeedanceRequest request = new SeedanceRequest();
         request.setModel("kling-v3-omni");
-        request.setPrompt("480p Kling 默认音频任务");
+        request.setPrompt("4K Kling 默认音频任务");
         request.setDuration(5);
         request.setRatio("16:9");
-        request.setWidth(864);
-        request.setHeight(480);
+        request.setWidth(1920);
+        request.setHeight(1080);
 
         when(restTemplate.exchange(anyString(), eq(HttpMethod.POST), any(HttpEntity.class), eq(String.class)))
-                .thenReturn(ResponseEntity.ok("{\"id\":\"kling-480p-default-audio\",\"status\":\"queued\"}"));
+                .thenReturn(ResponseEntity.ok("{\"id\":\"kling-4k-default-audio\",\"status\":\"queued\"}"));
 
         SeedanceResponse response = service.submitVideoGeneration(request);
 
@@ -674,7 +784,7 @@ class SeedanceServiceImplTest {
                 .contains("\"sound\":\"on\"")
                 .contains("\"audio\":true")
                 .contains("\"mode\":\"pro\"")
-                .doesNotContain("\"mode\":\"std\"");
+                .doesNotContain("\"mode\":\"4k\"");
     }
 
     @Test

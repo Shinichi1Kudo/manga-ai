@@ -18,6 +18,18 @@
             </div>
             <div class="home-announcement-date">2026.05.16</div>
         </div>
+        <div class="home-announcement-pinned">
+            <div class="home-announcement-pinned-head">
+                <span class="home-announcement-pinned-label">
+                    <i data-lucide="pin" class="w-3.5 h-3.5"></i>
+                    置顶通知
+                </span>
+                <span class="home-announcement-pinned-hot">重磅</span>
+            </div>
+            <div class="home-announcement-pinned-title">积分价格全面下调</div>
+            <p>视频和图片生成积分价格今日起全面下调。</p>
+            <p>覆盖 Seedance 2.0、Fast、Kling v3 Omni、GPT-Image2，具体消耗以生成页面显示为准。</p>
+        </div>
         <div class="home-announcement-meta">模型能力升级 / 今日上线</div>
         <div class="home-announcement-scroll" aria-label="Seedance 2.0 正式全面上线；原生支持真人人脸表现；新接入可灵 Kling v3 Omni 模型。">
             <div class="home-announcement-story">
@@ -50,7 +62,7 @@
     </p>
 
     <div class="home-action-board">
-        <div class="home-action-group">
+        <div class="home-action-group home-action-group-account">
             <div class="home-action-label">基础工作台</div>
             <div class="home-action-row">
                 <a href="/init/" data-login-required="true" class="home-action home-action-primary">
@@ -61,6 +73,14 @@
                     <i data-lucide="film" class="w-5 h-5"></i>
                     <span>剧集制作</span>
                 </a>
+                <button type="button" class="home-action home-action-disabled" disabled aria-disabled="true" title="等待上线，功能还在研制中">
+                    <i data-lucide="shopping-bag" class="w-5 h-5"></i>
+                    <span class="home-action-copy">
+                        <span>电商带货</span>
+                        <small>等待上线，功能研制中</small>
+                    </span>
+                    <span class="home-coming-soon-badge">待上线</span>
+                </button>
             </div>
         </div>
 
@@ -1147,10 +1167,10 @@ function getCookie(name) {
 
 .home-announcement {
     position: absolute;
-    top: 54px;
+    top: -12px;
     left: -40px;
     width: 400px;
-    height: 224px;
+    height: 286px;
     padding: 14px 14px 12px;
     overflow: hidden;
     border: 1px solid rgba(125, 211, 252, 0.28);
@@ -1254,17 +1274,82 @@ function getCookie(name) {
 .home-announcement-meta {
     position: relative;
     z-index: 1;
-    margin-top: 10px;
+    margin-top: 12px;
     color: rgba(186, 230, 253, 0.72);
     font-size: 11px;
     font-weight: 800;
     line-height: 1;
 }
 
+.home-announcement-pinned {
+    position: relative;
+    z-index: 1;
+    margin-top: 12px;
+    border: 1px solid rgba(251, 191, 36, 0.28);
+    border-radius: 14px;
+    background:
+        linear-gradient(135deg, rgba(250, 204, 21, 0.16), rgba(244, 114, 182, 0.1)),
+        rgba(15, 23, 42, 0.34);
+    padding: 9px 10px 8px;
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.1),
+        0 12px 24px rgba(234, 179, 8, 0.08);
+}
+
+.home-announcement-pinned-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+}
+
+.home-announcement-pinned-label,
+.home-announcement-pinned-hot {
+    display: inline-flex;
+    height: 20px;
+    align-items: center;
+    gap: 5px;
+    border-radius: 999px;
+    font-size: 10px;
+    font-weight: 900;
+    line-height: 1;
+    white-space: nowrap;
+}
+
+.home-announcement-pinned-label {
+    background: rgba(251, 191, 36, 0.18);
+    color: rgb(254, 243, 199);
+    padding: 0 8px;
+    box-shadow: inset 0 0 0 1px rgba(251, 191, 36, 0.24);
+}
+
+.home-announcement-pinned-hot {
+    background: linear-gradient(135deg, rgba(244, 63, 94, 0.95), rgba(251, 146, 60, 0.92));
+    color: white;
+    padding: 0 8px;
+    box-shadow: 0 8px 18px rgba(244, 63, 94, 0.22);
+}
+
+.home-announcement-pinned-title {
+    margin-top: 7px;
+    color: rgb(255, 251, 235);
+    font-size: 14px;
+    font-weight: 900;
+    line-height: 1.2;
+}
+
+.home-announcement-pinned p {
+    margin: 4px 0 0;
+    color: rgba(255, 251, 235, 0.78);
+    font-size: 10.5px;
+    font-weight: 650;
+    line-height: 1.36;
+}
+
 .home-announcement-scroll {
     position: relative;
     z-index: 1;
-    height: 108px;
+    height: 112px;
     margin-top: 11px;
     overflow: hidden;
     color: rgba(255, 255, 255, 0.8);
@@ -1335,8 +1420,8 @@ function getCookie(name) {
 }
 
 .home-action-board {
-    display: grid;
-    grid-template-columns: minmax(0, 1.25fr) minmax(0, 1.25fr) minmax(210px, 0.72fr);
+    display: flex;
+    align-items: flex-start;
     gap: 14px;
     max-width: 1120px;
     margin: 0 auto;
@@ -1344,6 +1429,10 @@ function getCookie(name) {
 }
 
 .home-action-group {
+    flex: 1.25 1 0;
+    min-width: 0;
+    align-self: flex-start;
+    height: auto;
     border: 1px solid rgba(255, 255, 255, 0.1);
     border-radius: 18px;
     background: rgba(255, 255, 255, 0.045);
@@ -1354,6 +1443,11 @@ function getCookie(name) {
 .home-action-group-accent {
     background: linear-gradient(135deg, rgba(16, 185, 129, 0.11), rgba(14, 165, 233, 0.09));
     border-color: rgba(125, 211, 252, 0.18);
+}
+
+.home-action-group-account {
+    flex-grow: 0.72;
+    min-width: 210px;
 }
 
 .home-action-label {
@@ -1422,6 +1516,65 @@ function getCookie(name) {
     background: rgba(255, 255, 255, 0.1);
 }
 
+.home-action-disabled {
+    grid-column: 1 / -1;
+    justify-content: flex-start;
+    min-height: 56px;
+    border-style: dashed;
+    border-color: rgba(203, 213, 225, 0.22);
+    background:
+        linear-gradient(135deg, rgba(148, 163, 184, 0.16), rgba(71, 85, 105, 0.13)),
+        rgba(15, 23, 42, 0.22);
+    color: rgba(226, 232, 240, 0.68);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+    cursor: not-allowed;
+}
+
+.home-action-disabled:hover {
+    transform: none;
+    background:
+        linear-gradient(135deg, rgba(148, 163, 184, 0.16), rgba(71, 85, 105, 0.13)),
+        rgba(15, 23, 42, 0.22);
+}
+
+.home-action-disabled i {
+    color: rgba(226, 232, 240, 0.58);
+}
+
+.home-action-disabled:disabled {
+    opacity: 0.92;
+}
+
+.home-action-copy {
+    display: inline-flex;
+    min-width: 0;
+    flex: 1;
+    flex-direction: column;
+    gap: 3px;
+}
+
+.home-action-copy small {
+    color: rgba(203, 213, 225, 0.58);
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 1;
+}
+
+.home-coming-soon-badge {
+    display: inline-flex;
+    height: 22px;
+    align-items: center;
+    border-radius: 999px;
+    border: 1px solid rgba(203, 213, 225, 0.16);
+    background: rgba(15, 23, 42, 0.32);
+    padding: 0 9px;
+    color: rgba(226, 232, 240, 0.68);
+    font-size: 10px;
+    font-weight: 900;
+    line-height: 1;
+    white-space: nowrap;
+}
+
 .home-new-badge {
     display: inline-flex;
     height: 18px;
@@ -1438,8 +1591,14 @@ function getCookie(name) {
 
 @media (max-width: 980px) {
     .home-action-board {
-        grid-template-columns: 1fr;
+        flex-direction: column;
         max-width: 640px;
+    }
+
+    .home-action-group,
+    .home-action-group-account {
+        width: 100%;
+        min-width: 0;
     }
 
     .home-announcement {
@@ -1447,7 +1606,7 @@ function getCookie(name) {
         top: auto;
         left: auto;
         width: min(100%, 440px);
-        height: 224px;
+        height: 286px;
         margin: 0 auto 22px;
     }
 }
@@ -1455,12 +1614,13 @@ function getCookie(name) {
 @media (max-width: 560px) {
     .home-announcement {
         width: 100%;
-        height: 224px;
+        height: auto;
+        min-height: 286px;
         padding: 12px;
     }
 
     .home-announcement-scroll {
-        height: 106px;
+        height: 112px;
         margin-top: 10px;
     }
 

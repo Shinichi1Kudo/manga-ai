@@ -9,6 +9,7 @@ import com.manga.ai.episode.mapper.EpisodeMapper;
 import com.manga.ai.image.service.ImageGenerateService;
 import com.manga.ai.nlp.service.NLPExtractService;
 import com.manga.ai.role.mapper.RoleMapper;
+import com.manga.ai.series.dto.SeriesDetailVO;
 import com.manga.ai.series.entity.Series;
 import com.manga.ai.series.mapper.SeriesMapper;
 import com.manga.ai.series.service.SeriesService;
@@ -18,9 +19,13 @@ import com.manga.ai.user.service.impl.UserServiceImpl.UserContextHolder;
 import org.junit.jupiter.api.Test;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 
+import java.util.List;
+
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -50,7 +55,7 @@ class SeriesServiceImplTest {
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("请先登录");
 
-        verify(seriesMapper, never()).selectCount(any(Wrapper.class));
+        verify(seriesMapper, never()).selectSeriesCount(any());
     }
 
     @Test
@@ -66,6 +71,40 @@ class SeriesServiceImplTest {
         }
 
         verify(seriesMapper).selectSeriesListCards(eq(7L), eq(9), eq(9));
+    }
+
+    @Test
+    void getSeriesListLetsUserOneViewAllSeries() {
+        SeriesMapper seriesMapper = mock(SeriesMapper.class);
+        SeriesServiceImpl service = createService(seriesMapper, mock(RoleMapper.class));
+
+        UserContextHolder.setUserId(1L);
+        try {
+            service.getSeriesList(1, 9);
+        } finally {
+            UserContextHolder.clear();
+        }
+
+        verify(seriesMapper).selectSeriesListCards(isNull(), eq(9), eq(0));
+    }
+
+    @Test
+    void getSeriesCountLetsUserOneCountAllSeries() {
+        SeriesMapper seriesMapper = mock(SeriesMapper.class);
+        SeriesServiceImpl service = createService(seriesMapper, mock(RoleMapper.class));
+        when(seriesMapper.selectSeriesCount(null)).thenReturn(42);
+
+        UserContextHolder.setUserId(1L);
+        Integer total;
+        try {
+            total = service.getSeriesCount();
+        } finally {
+            UserContextHolder.clear();
+        }
+
+        assertThat(total).isEqualTo(42);
+        verify(seriesMapper).selectSeriesCount(isNull());
+        verify(seriesMapper, never()).selectCount(any(Wrapper.class));
     }
 
     @Test
@@ -89,6 +128,72 @@ class SeriesServiceImplTest {
 
         verify(seriesMapper).selectById(12L);
         verifyNoInteractions(roleMapper);
+    }
+
+    @Test
+    void getSeriesDetailLetsUserOneViewAnotherUsersSeries() {
+        SeriesMapper seriesMapper = mock(SeriesMapper.class);
+        RoleMapper roleMapper = mock(RoleMapper.class);
+        SeriesServiceImpl service = createService(seriesMapper, roleMapper);
+        Series series = new Series();
+        series.setId(12L);
+        series.setUserId(8L);
+        when(seriesMapper.selectById(12L)).thenReturn(series);
+        when(roleMapper.selectList(any(Wrapper.class))).thenReturn(List.of());
+
+        UserContextHolder.setUserId(1L);
+        try {
+            service.getSeriesDetail(12L);
+        } finally {
+            UserContextHolder.clear();
+        }
+
+        verify(seriesMapper).selectById(12L);
+        verify(roleMapper).selectList(any(Wrapper.class));
+    }
+
+    @Test
+    void getLockedSeriesUsesLightweightLockedSeriesMapper() {
+        SeriesMapper seriesMapper = mock(SeriesMapper.class);
+        RoleMapper roleMapper = mock(RoleMapper.class);
+        SeriesServiceImpl service = createService(seriesMapper, roleMapper);
+        SeriesDetailVO lockedSeries = new SeriesDetailVO();
+        lockedSeries.setId(21L);
+        lockedSeries.setSeriesName("只查轻量字段");
+        lockedSeries.setRoleCount(4);
+        when(seriesMapper.selectLockedSeriesCards(7L)).thenReturn(List.of(lockedSeries));
+
+        UserContextHolder.setUserId(7L);
+        List<SeriesDetailVO> result;
+        try {
+            result = service.getLockedSeries();
+        } finally {
+            UserContextHolder.clear();
+        }
+
+        assertThat(result).containsExactly(lockedSeries);
+        verify(seriesMapper).selectLockedSeriesCards(eq(7L));
+        verify(seriesMapper, never()).selectList(any(Wrapper.class));
+        verify(roleMapper, never()).selectList(any(Wrapper.class));
+    }
+
+    @Test
+    void getLockedSeriesLetsUserOneViewAllLockedSeries() {
+        SeriesMapper seriesMapper = mock(SeriesMapper.class);
+        RoleMapper roleMapper = mock(RoleMapper.class);
+        SeriesServiceImpl service = createService(seriesMapper, roleMapper);
+        when(seriesMapper.selectLockedSeriesCards(null)).thenReturn(List.of());
+
+        UserContextHolder.setUserId(1L);
+        try {
+            service.getLockedSeries();
+        } finally {
+            UserContextHolder.clear();
+        }
+
+        verify(seriesMapper).selectLockedSeriesCards(isNull());
+        verify(seriesMapper, never()).selectList(any(Wrapper.class));
+        verify(roleMapper, never()).selectList(any(Wrapper.class));
     }
 
     private SeriesServiceImpl createService(SeriesMapper seriesMapper, RoleMapper roleMapper) {

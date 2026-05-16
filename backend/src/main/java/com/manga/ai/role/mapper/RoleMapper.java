@@ -31,4 +31,19 @@ public interface RoleMapper extends BaseMapper<Role> {
                                  @Param("updatedAt") LocalDateTime updatedAt,
                                  @Param("confirmedStatus") Integer confirmedStatus,
                                  @Param("lockedStatus") Integer lockedStatus);
+
+    /**
+     * 恢复初始化阶段中断后残留为生成中的角色。
+     */
+    @Update("UPDATE role SET status = #{targetStatus}, updated_at = #{updatedAt} "
+            + "WHERE is_deleted = 0 AND status = #{sourceStatus} "
+            + "AND series_id IN ("
+            + "SELECT id FROM series WHERE is_deleted = 0 "
+            + "AND status = #{seriesStatus} AND updated_at < #{timeout}"
+            + ")")
+    int restoreStuckInitializingRoles(@Param("targetStatus") Integer targetStatus,
+                                      @Param("sourceStatus") Integer sourceStatus,
+                                      @Param("seriesStatus") Integer seriesStatus,
+                                      @Param("timeout") LocalDateTime timeout,
+                                      @Param("updatedAt") LocalDateTime updatedAt);
 }

@@ -3569,15 +3569,16 @@ async function submitShotGeneration(button) {
     startShotGenerationPolling();
 
     try {
-        const response = await fetch(`/api/v1/shots/${shotId}/generate-with-references/`, {
+        const payload = { referenceUrls, referenceImages, shotUpdate, generationStartTime };
+        const prepareResponse = await fetch(`/api/v1/shots/${shotId}/generation/prepare`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
                 'X-CSRFToken': getCookie('csrftoken')
             },
-            body: JSON.stringify({ referenceUrls, referenceImages, shotUpdate, generationStartTime })
+            body: JSON.stringify(payload)
         });
-        const data = await readJsonResponse(response);
+        const data = await readJsonResponse(prepareResponse);
         if (!(data.success || data.code === 200)) {
             if (isAlreadyGeneratingResponse(data)) {
                 return;
@@ -3586,12 +3587,7 @@ async function submitShotGeneration(button) {
             alert('生成失败: ' + (data.error || data.message));
         } else {
             markShotGenerationUpdateSaved(card, shotUpdate);
-            let submittedShot = null;
-            try {
-                submittedShot = await fetchShotGenerationState(shotId);
-            } catch (stateError) {
-                console.warn('获取分镜生成状态失败，使用本地生成状态兜底:', stateError);
-            }
+            const submittedShot = data.data || null;
             if (card) {
                 if (submittedShot) {
                     syncShotCardDatasetFromApi(card, submittedShot);
@@ -3600,6 +3596,23 @@ async function submitShotGeneration(button) {
                     updateCardToGenerating(card, button, generationStartTime);
                 }
             }
+            fetch(`/api/v1/shots/${shotId}/generation/start`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': getCookie('csrftoken')
+                },
+                body: JSON.stringify({ referenceUrls })
+            })
+                .then(readJsonResponse)
+                .then(startData => {
+                    if (!(startData.success || startData.code === 200) && !isAlreadyGeneratingResponse(startData)) {
+                        console.error('启动后台视频生成失败:', startData);
+                    }
+                })
+                .catch(startError => {
+                    console.error('启动后台视频生成请求失败:', startError);
+                });
         }
     } catch (e) {
         restoreCardFromGenerating(card);
@@ -6354,18 +6367,19 @@ async function readJsonResponse(response) {
 function calculateCredits(resolution, duration, videoModel) {
     const durationSec = duration || 5;
     if (videoModel === 'kling-v3-omni') {
-        return 11 * durationSec;
+        const creditsPerSecond = resolution === '1080p' ? 16 : 15;
+        return creditsPerSecond * durationSec;
     }
 
     const isVipModel = videoModel === 'seedance-2.0'
         || videoModel === 'doubao-seedance-2-0-260128';
     let creditsPerSecond;
     if (resolution === '480p') {
-        creditsPerSecond = isVipModel ? 15 : 12;
+        creditsPerSecond = isVipModel ? 16 : 11;
     } else if (resolution === '1080p') {
-        creditsPerSecond = 69;  // 1080p 仅 VIP 模型
+        creditsPerSecond = 67;  // 1080p 仅 VIP 模型
     } else {
-        creditsPerSecond = isVipModel ? 32 : 25;
+        creditsPerSecond = isVipModel ? 27 : 22;
     }
     return creditsPerSecond * durationSec;
 }
@@ -6375,28 +6389,30 @@ function updateResolutionOptions(card, videoModel) {
     const resolutionSelect = card.querySelector('.resolution-select');
     if (!resolutionSelect) return;
 
-    const isVipModel = videoModel === 'seedance-2.0' || videoModel === 'kling-v3-omni';
     const currentResolution = resolutionSelect.value;
-
-    // 获取4K选项
+    const isKlingOmni = videoModel === 'kling-v3-omni';
+    const isVipModel = videoModel === 'seedance-2.0' || isKlingOmni;
+    const optionHd = resolutionSelect.querySelector('option[value="480p"]');
+    const optionUltra = resolutionSelect.querySelector('option[value="720p"]');
     const option4K = resolutionSelect.querySelector('option[value="1080p"]');
 
-    if (isVipModel) {
-        // VIP模型：启用4K选项
-        if (option4K) {
-            option4K.disabled = false;
-            option4K.style.display = '';
-        }
-    } else {
-        // Fast模型：禁用4K选项
-        if (option4K) {
-            option4K.disabled = true;
-            option4K.style.display = 'none';
-        }
-        // 如果当前选中的是4K，自动切换到720p
-        if (currentResolution === '1080p') {
-            resolutionSelect.value = '720p';
-        }
+    if (optionHd) {
+        optionHd.disabled = isKlingOmni;
+        optionHd.style.display = isKlingOmni ? 'none' : '';
+    }
+    if (optionUltra) {
+        optionUltra.disabled = false;
+        optionUltra.style.display = '';
+    }
+    if (option4K) {
+        option4K.disabled = !isVipModel;
+        option4K.style.display = isVipModel ? '' : 'none';
+    }
+
+    if (isKlingOmni && currentResolution === '480p') {
+        resolutionSelect.value = '720p';
+    } else if (!isVipModel && currentResolution === '1080p') {
+        resolutionSelect.value = '720p';
     }
 }
 

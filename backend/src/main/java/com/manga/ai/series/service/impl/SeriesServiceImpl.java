@@ -66,6 +66,8 @@ import java.util.concurrent.atomic.AtomicInteger;
 @Service
 public class SeriesServiceImpl implements SeriesService {
 
+    private static final Long GLOBAL_SERIES_VIEWER_USER_ID = 1L;
+
     private final SeriesMapper seriesMapper;
     private final RoleMapper roleMapper;
     private final RoleAssetMapper roleAssetMapper;
@@ -119,10 +121,27 @@ public class SeriesServiceImpl implements SeriesService {
         return userId;
     }
 
+    private boolean canViewAllSeries(Long userId) {
+        return GLOBAL_SERIES_VIEWER_USER_ID.equals(userId);
+    }
+
+    private Long seriesListFilterUserId(Long userId) {
+        return canViewAllSeries(userId) ? null : userId;
+    }
+
     private Series getOwnedSeriesOrThrow(Long seriesId) {
         Long userId = requireCurrentUserId();
         Series series = seriesMapper.selectById(seriesId);
         if (series == null || !userId.equals(series.getUserId())) {
+            throw new BusinessException(404, "系列不存在");
+        }
+        return series;
+    }
+
+    private Series getViewableSeriesOrThrow(Long seriesId) {
+        Long userId = requireCurrentUserId();
+        Series series = seriesMapper.selectById(seriesId);
+        if (series == null || (!canViewAllSeries(userId) && !userId.equals(series.getUserId()))) {
             throw new BusinessException(404, "系列不存在");
         }
         return series;
@@ -186,7 +205,7 @@ public class SeriesServiceImpl implements SeriesService {
 
     @Override
     public SeriesDetailVO getSeriesDetail(Long seriesId) {
-        Series series = getOwnedSeriesOrThrow(seriesId);
+        Series series = getViewableSeriesOrThrow(seriesId);
 
         SeriesDetailVO vo = convertToVO(series);
 
@@ -218,22 +237,22 @@ public class SeriesServiceImpl implements SeriesService {
     public List<SeriesDetailVO> getSeriesList(Integer page, Integer pageSize) {
         Long userId = requireCurrentUserId();
         int offset = (page - 1) * pageSize;
-        return seriesMapper.selectSeriesListCards(userId, pageSize, offset);
+        return seriesMapper.selectSeriesListCards(seriesListFilterUserId(userId), pageSize, offset);
     }
 
     @Override
     public Integer getSeriesCount() {
         Long userId = requireCurrentUserId();
-        LambdaQueryWrapper<Series> wrapper = new LambdaQueryWrapper<>();
-        wrapper.eq(Series::getUserId, userId);
-        return Math.toIntExact(seriesMapper.selectCount(wrapper));
+        return seriesMapper.selectSeriesCount(seriesListFilterUserId(userId));
     }
 
     @Override
     public List<SeriesDetailVO> getAllSeries() {
         Long userId = requireCurrentUserId();
         LambdaQueryWrapper<Series> wrapper = new LambdaQueryWrapper<>();
-        wrapper.eq(Series::getUserId, userId);
+        if (!canViewAllSeries(userId)) {
+            wrapper.eq(Series::getUserId, userId);
+        }
         wrapper.orderByDesc(Series::getCreatedAt);
         List<Series> seriesList = seriesMapper.selectList(wrapper);
 
@@ -260,7 +279,7 @@ public class SeriesServiceImpl implements SeriesService {
 
     @Override
     public SeriesProgressVO getSeriesProgress(Long seriesId) {
-        Series series = getOwnedSeriesOrThrow(seriesId);
+        Series series = getViewableSeriesOrThrow(seriesId);
 
         SeriesProgressVO progress = new SeriesProgressVO();
         progress.setSeriesId(seriesId);
@@ -716,31 +735,7 @@ public class SeriesServiceImpl implements SeriesService {
     @Override
     public List<SeriesDetailVO> getLockedSeries() {
         Long userId = requireCurrentUserId();
-        LambdaQueryWrapper<Series> wrapper = new LambdaQueryWrapper<>();
-        wrapper.eq(Series::getUserId, userId);
-        // 状态为 LOCKED(2) 或 LOCKED(3，角色锁定后系列状态)
-        wrapper.in(Series::getStatus, SeriesStatus.LOCKED.getCode(), 3)
-                .orderByDesc(Series::getCreatedAt);
-        List<Series> seriesList = seriesMapper.selectList(wrapper);
-
-        // 批量查询角色数量
-        java.util.Map<Long, Integer> roleCountMap = new java.util.HashMap<>();
-        if (!seriesList.isEmpty()) {
-            List<Long> seriesIds = seriesList.stream().map(Series::getId).collect(java.util.stream.Collectors.toList());
-            LambdaQueryWrapper<Role> roleWrapper = new LambdaQueryWrapper<>();
-            roleWrapper.in(Role::getSeriesId, seriesIds);
-            List<Role> allRoles = roleMapper.selectList(roleWrapper);
-
-            for (Role role : allRoles) {
-                roleCountMap.merge(role.getSeriesId(), 1, Integer::sum);
-            }
-        }
-
-        return seriesList.stream().map(series -> {
-            SeriesDetailVO vo = convertToVO(series);
-            vo.setRoleCount(roleCountMap.getOrDefault(series.getId(), 0));
-            return vo;
-        }).collect(java.util.stream.Collectors.toList());
+        return seriesMapper.selectLockedSeriesCards(seriesListFilterUserId(userId));
     }
 
     @Override
@@ -797,7 +792,7 @@ public class SeriesServiceImpl implements SeriesService {
     @Override
     public SeriesVideoAssetsVO getSeriesVideoAssets(Long seriesId) {
         // 1. 获取系列信息
-        Series series = getOwnedSeriesOrThrow(seriesId);
+        Series series = getViewableSeriesOrThrow(seriesId);
 
         // 2. 获取该系列下所有剧集（@TableLogic会自动过滤已删除的）
         LambdaQueryWrapper<Episode> episodeWrapper = new LambdaQueryWrapper<>();

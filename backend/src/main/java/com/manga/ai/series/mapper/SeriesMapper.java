@@ -26,6 +26,16 @@ public interface SeriesMapper extends BaseMapper<Series> {
                                                @Param("offset") Integer offset);
 
     /**
+     * 剧集制作入口：只返回已锁定系列选择页需要的轻量字段和角色数量。
+     */
+    List<SeriesDetailVO> selectLockedSeriesCards(@Param("userId") Long userId);
+
+    /**
+     * 首页系列卡片总数。userId 为空时返回所有用户的非删除系列。
+     */
+    Integer selectSeriesCount(@Param("userId") Long userId);
+
+    /**
      * 查询回收站列表（按用户过滤）
      */
     @Select("SELECT * FROM series WHERE is_deleted = 1 AND user_id = #{userId} ORDER BY deleted_at DESC")
@@ -70,4 +80,14 @@ public interface SeriesMapper extends BaseMapper<Series> {
                                       @Param("targetStatus") Integer targetStatus,
                                       @Param("lockedStatus") Integer lockedStatus,
                                       @Param("updatedAt") LocalDateTime updatedAt);
+
+    /**
+     * 恢复初始化阶段中断后残留为初始化中的系列。
+     */
+    @Update("UPDATE series SET status = #{targetStatus}, updated_at = #{updatedAt} "
+            + "WHERE is_deleted = 0 AND status = #{sourceStatus} AND updated_at < #{timeout}")
+    int restoreStuckInitializingSeries(@Param("targetStatus") Integer targetStatus,
+                                       @Param("sourceStatus") Integer sourceStatus,
+                                       @Param("timeout") LocalDateTime timeout,
+                                       @Param("updatedAt") LocalDateTime updatedAt);
 }

@@ -118,6 +118,25 @@ public interface ShotService {
                                      ShotUpdateRequest shotUpdate, java.time.LocalDateTime generationStartTime);
 
     /**
+     * 准备带参考图的视频生成任务：同步保存分镜设置、参考图、扣费和生成中状态。
+     * @param shotId 分镜ID
+     * @param referenceUrls 参考图URL列表（前端传入）
+     * @param referenceImages 当前页面选择的参考图明细
+     * @param shotUpdate 当前页面分镜设置
+     * @param generationStartTime 用户点击生成的时间
+     * @return 已落库的分镜状态
+     */
+    ShotDetailVO prepareVideoGenerationWithReferences(Long shotId, java.util.List<String> referenceUrls, java.util.List<ReferenceImageDTO> referenceImages,
+                                                      ShotUpdateRequest shotUpdate, java.time.LocalDateTime generationStartTime);
+
+    /**
+     * 启动已经准备好的带参考图视频生成任务。
+     * @param shotId 分镜ID
+     * @param referenceUrls 参考图URL列表（前端传入）
+     */
+    void startPreparedVideoGenerationWithReferences(Long shotId, java.util.List<String> referenceUrls);
+
+    /**
      * 异步执行视频生成（内部方法）
      * @param shotId 分镜ID
      */

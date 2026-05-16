@@ -178,6 +178,12 @@ urlpatterns = [
     # 带参考图生成视频
     path('api/v1/shots/<int:shot_id>/generate-with-references/', views.shot_generate_with_references, name='shot_generate_with_references'),
 
+    # 分镜视频生成两阶段提交：先落库生成中状态，再后台启动生成任务
+    path('api/v1/shots/<int:shot_id>/generation/prepare', views.shot_generation_prepare, name='shot_generation_prepare'),
+    path('api/v1/shots/<int:shot_id>/generation/prepare/', views.shot_generation_prepare, name='shot_generation_prepare_slash'),
+    path('api/v1/shots/<int:shot_id>/generation/start', views.shot_generation_start, name='shot_generation_start'),
+    path('api/v1/shots/<int:shot_id>/generation/start/', views.shot_generation_start, name='shot_generation_start_slash'),
+
     # 视频版本历史
     path('api/v1/shots/<int:shot_id>/video-history', views.shot_video_history, name='shot_video_history'),
 

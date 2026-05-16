@@ -103,7 +103,7 @@ class GptImage2ServiceImplTest {
             assertThat(response.getPrompt()).isEqualTo("古风少女海报");
             assertThat(response.getMode()).isEqualTo("text-to-image");
             assertThat(response.getResolution()).isEqualTo("4k");
-            assertThat(response.getCreditCost()).isEqualTo(12);
+            assertThat(response.getCreditCost()).isEqualTo(6);
         } finally {
             UserContextHolder.clear();
         }
@@ -112,10 +112,10 @@ class GptImage2ServiceImplTest {
                 && "pending".equals(task.getStatus())
                 && "古风少女海报".equals(task.getPrompt())
                 && "4k".equals(task.getResolution())
-                && Integer.valueOf(12).equals(task.getCreditCost())));
+                && Integer.valueOf(6).equals(task.getCreditCost())));
         verify(userService).deductCredits(
                 eq(7L),
-                eq(12),
+                eq(6),
                 eq(CreditUsageType.IMAGE_GENERATION.getCode()),
                 eq("GPT-Image2生图-任务12"),
                 eq(12L),
@@ -174,7 +174,7 @@ class GptImage2ServiceImplTest {
         });
         doThrow(new BusinessException("积分不足")).when(userService).deductCredits(
                 eq(7L),
-                eq(12),
+                eq(6),
                 eq(CreditUsageType.IMAGE_GENERATION.getCode()),
                 eq("GPT-Image2生图-任务12"),
                 eq(12L),
