@@ -163,6 +163,33 @@ class SeriesListIsolationTests(TestCase):
         self.assertIn('前往登录', template)
 
 
+class EpisodeEntryPerformanceTests(TestCase):
+    def test_episode_entry_uses_locked_series_endpoint_without_role_detail_fanout(self):
+        session = self.client.session
+        session['token'] = 'token-1'
+        session['email'] = 'user@example.com'
+        session['nickname'] = '测试用户'
+        session.save()
+
+        backend_client = Mock()
+        backend_client.get.return_value = [
+            {
+                'id': 79,
+                'seriesName': '替嫁狂妃：王爷请自重',
+                'status': 2,
+                'roleCount': 4,
+            }
+        ]
+
+        with patch('apps.series.views.get_client', return_value=backend_client):
+            response = self.client.get('/episodes/')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, '替嫁狂妃：王爷请自重')
+        self.assertContains(response, '4 个角色')
+        backend_client.get.assert_called_once_with('/v1/series/locked')
+
+
 class SiteBrandingTests(TestCase):
     def test_visible_templates_use_haidai_site_name(self):
         template_root = Path(settings.BASE_DIR) / 'templates'

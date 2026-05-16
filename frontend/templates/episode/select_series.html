@@ -23,7 +23,7 @@
             </div>
             <div>
                 <h3 class="text-lg font-semibold text-white">{{ series.seriesName }}</h3>
-                <p class="text-sm text-white/50">{{ series.roles|length }} 个角色</p>
+                <p class="text-sm text-white/50">{{ series.roleCount|default:0 }} 个角色</p>
             </div>
         </div>
         <div class="flex items-center justify-between">

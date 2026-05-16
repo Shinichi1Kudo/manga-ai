@@ -532,18 +532,12 @@ def select_series_for_episode(request):
     """选择系列页面 - 用于剧集制作"""
     client = get_client(request)
     try:
-        result = client.get('/v1/series/list?page=1&pageSize=100')
-        series_list = result.get('list', [])
-        # 过滤已锁定的系列
-        locked_series = [s for s in series_list if s.get('status') == 2]
+        result = client.get('/v1/series/locked')
+        locked_series = result if isinstance(result, list) else result.get('list', [])
 
-        # 获取每个系列的角色
         for series in locked_series:
-            try:
-                roles = client.get(f'/v1/roles/series/{series["id"]}')
-                series['roles'] = roles
-            except:
-                series['roles'] = []
+            if series.get('roleCount') is None:
+                series['roleCount'] = len(series.get('roles') or [])
     except BackendAPIError as e:
         messages.error(request, f'获取系列列表失败: {e.message}')
         locked_series = []
