@@ -287,7 +287,7 @@ class ShotServiceImplTest {
         assertThat(shot.getResolution()).isEqualTo("720p");
         assertThat(shot.getAspectRatio()).isEqualTo("9:16");
         assertThat(shot.getVideoModel()).isEqualTo("kling-v3-omni");
-        verify(userService).deductCredits(eq(7L), eq(256), any(), any(), eq(635L), eq("SHOT"));
+        verify(userService).deductCredits(eq(7L), eq(88), any(), any(), eq(635L), eq("SHOT"));
         verify(self).doGenerateVideoWithReferences(635L, List.of());
     }
 

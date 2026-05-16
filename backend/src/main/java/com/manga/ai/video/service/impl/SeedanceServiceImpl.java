@@ -467,6 +467,9 @@ public class SeedanceServiceImpl implements SeedanceService {
         requestBody.put("prompt", request.getPrompt());
         requestBody.put("duration", request.getDuration());
         requestBody.put("aspect_ratio", request.getRatio() != null ? request.getRatio() : "16:9");
+        if (request.getResolution() != null && !request.getResolution().isBlank()) {
+            requestBody.put("resolution", request.getResolution());
+        }
         requestBody.put("watermark", request.getWatermark() != null ? request.getWatermark() : false);
         if (request.getSeed() != null) {
             requestBody.put("seed", request.getSeed());

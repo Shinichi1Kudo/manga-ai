@@ -245,9 +245,9 @@ class SubjectReplacementCreditButtonTests(TestCase):
         template = template_path.read_text(encoding='utf-8')
 
         self.assertIn('id="submitCreditText"', template)
-        self.assertIn('扣除160积分', template)
+        self.assertIn('扣除300积分', template)
+        self.assertIn('const subjectReplacementCreditsPerSecond = 60;', template)
         self.assertIn("document.getElementById('submitCreditText').textContent = `扣除${estimatedCredits}积分`", template)
-
 
 class GptImage2HomeTests(TestCase):
     def test_home_page_has_today_update_announcement(self):
@@ -322,6 +322,10 @@ class GptImage2HomeTests(TestCase):
         self.assertIn('gpt-image-model-badge', template)
         self.assertIn('formatGptImage2ModelLabel(task.model)', template)
         self.assertIn('getGptImage2CreditCost(task)', template)
+        self.assertIn('const GPT_IMAGE2_SUPPORTED_ASPECTS_BY_RESOLUTION', template)
+        self.assertIn('function refreshGptImage2AspectOptions()', template)
+        self.assertIn("resolutionSelect?.addEventListener('change', refreshGptImage2AspectOptions);", template)
+        self.assertIn("['16:9', '9:16', '2:1', '1:2', '21:9', '9:21']", template)
 
     def test_gpt_image2_generate_forwards_to_backend(self):
         session = self.client.session
@@ -560,6 +564,13 @@ class EpisodeDetailShotCreditTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         backend_client.post.assert_called_once_with('/v1/shots/629/generate-with-references', payload)
+
+    def test_episode_page_prices_kling_v3_omni_at_eleven_credits_per_second(self):
+        template_path = Path(settings.BASE_DIR) / 'templates/episode/episode_detail.html'
+        template = template_path.read_text()
+
+        self.assertIn("if (videoModel === 'kling-v3-omni')", template)
+        self.assertIn('return 11 * durationSec;', template)
 
 
 class CreditAdminDashboardTests(TestCase):

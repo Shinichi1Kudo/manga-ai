@@ -61,10 +61,11 @@ volcengine:
     poll-interval: 5000
 
 gpt-image2:
-  api-key: ${GPT_IMAGE2_API_KEY:YOUR_API_KEY}
-  base-url: https://api.airiver.cn/v1
+  api-key: ${TOAPIS_API_KEY:${GPT_IMAGE2_API_KEY:YOUR_API_KEY}}
+  base-url: https://toapis.com/v1
   model: gpt-image-2
   timeout: 300000
+  poll-interval: 3000
   stale-timeout: 1800000
 
 # 文件存储配置

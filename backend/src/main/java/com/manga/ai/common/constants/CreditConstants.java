@@ -14,6 +14,9 @@ public class CreditConstants {
     public static final int CREDITS_PER_SECOND_480P_FAST = 12;
     public static final int CREDITS_PER_SECOND_720P_FAST = 25;
 
+    // Kling v3 Omni 模型
+    public static final int CREDITS_PER_SECOND_KLING_V3_OMNI = 11;
+
     /**
      * 默认视频时长(秒)
      */
@@ -30,9 +33,9 @@ public class CreditConstants {
     public static final int CREDITS_PER_SCRIPT_PARSE = 2;
 
     /**
-     * 主体替换积分：32积分/秒
+     * 主体替换积分：60积分/秒
      */
-    public static final int CREDITS_PER_SECOND_SUBJECT_REPLACEMENT = 32;
+    public static final int CREDITS_PER_SECOND_SUBJECT_REPLACEMENT = 60;
 
     // 保留旧常量名兼容（已废弃，使用按模型的方法）
     @Deprecated
@@ -90,9 +93,12 @@ public class CreditConstants {
      * @return 每秒积分
      */
     public static int getCreditsPerSecond(String resolution, String videoModel) {
+        if ("kling-v3-omni".equals(videoModel)) {
+            return CREDITS_PER_SECOND_KLING_V3_OMNI;
+        }
+
         boolean isVipModel = "seedance-2.0".equals(videoModel)
-                || "doubao-seedance-2-0-260128".equals(videoModel)
-                || "kling-v3-omni".equals(videoModel);
+                || "doubao-seedance-2-0-260128".equals(videoModel);
 
         if ("480p".equals(resolution)) {
             return isVipModel ? CREDITS_PER_SECOND_480P_VIP : CREDITS_PER_SECOND_480P_FAST;

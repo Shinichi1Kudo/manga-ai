@@ -53,10 +53,18 @@ public class GptImage2ServiceImpl implements GptImage2Service {
             "image/jpeg", "image/png", "image/webp"
     );
     private static final List<String> ALLOWED_ASPECT_RATIOS = Arrays.asList(
-            "1:1", "16:9", "9:16", "4:3", "3:4"
+            "1:1", "3:2", "2:3", "4:3", "3:4", "5:4", "4:5",
+            "16:9", "9:16", "2:1", "1:2", "21:9", "9:21"
     );
     private static final List<String> ALLOWED_RESOLUTIONS = Arrays.asList(
             "1k", "2k", "4k"
+    );
+    private static final List<String> ASPECT_RATIOS_1K = Arrays.asList(
+            "1:1", "3:2", "2:3"
+    );
+    private static final List<String> ASPECT_RATIOS_2K = ALLOWED_ASPECT_RATIOS;
+    private static final List<String> ASPECT_RATIOS_4K = Arrays.asList(
+            "16:9", "9:16", "2:1", "1:2", "21:9", "9:21"
     );
     private static final long MAX_IMAGE_SIZE = 10L * 1024 * 1024;
     private static final int MAX_GENERATE_ATTEMPTS = 3;
@@ -70,11 +78,15 @@ public class GptImage2ServiceImpl implements GptImage2Service {
     private final Executor imageGenerateExecutor;
     private final RestTemplate restTemplate;
     private final long staleTaskTimeoutMs;
+    private final int generateTimeoutMs;
 
-    @Value("${gpt-image2.api-key:${GPT_IMAGE2_API_KEY:}}")
+    @Value("${gpt-image2.poll-interval:3000}")
+    private int pollIntervalMs = 3000;
+
+    @Value("${gpt-image2.api-key:${TOAPIS_API_KEY:${GPT_IMAGE2_API_KEY:}}}")
     private String apiKey;
 
-    @Value("${gpt-image2.base-url:https://api.airiver.cn/v1}")
+    @Value("${gpt-image2.base-url:https://toapis.com/v1}")
     private String baseUrl;
 
     @Value("${gpt-image2.model:gpt-image-2}")
@@ -93,6 +105,7 @@ public class GptImage2ServiceImpl implements GptImage2Service {
         this.taskMapper = taskMapper;
         this.imageGenerateExecutor = imageGenerateExecutor;
         this.staleTaskTimeoutMs = Math.max(600000L, staleTaskTimeoutMs);
+        this.generateTimeoutMs = Math.max(60000, timeout);
         SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
         factory.setConnectTimeout(30000);
         factory.setReadTimeout(timeout);
@@ -126,6 +139,7 @@ public class GptImage2ServiceImpl implements GptImage2Service {
 
         String aspectRatio = normalizeAspectRatio(request.getAspectRatio());
         String resolution = normalizeResolution(request.getResolution());
+        validateResolutionAspectRatio(resolution, aspectRatio);
         String mode = hasText(request.getReferenceImageUrl()) ? "image-to-image" : "text-to-image";
         GptImage2Task task = new GptImage2Task();
         task.setUserId(userId);
@@ -173,12 +187,13 @@ public class GptImage2ServiceImpl implements GptImage2Service {
         requestBody.put("model", hasText(task.getModel()) ? task.getModel() : model);
         requestBody.put("prompt", task.getPrompt());
         requestBody.put("size", convertAspectRatioToSize(task.getAspectRatio(), task.getResolution()));
+        requestBody.put("resolution", toApiResolution(task.getResolution()));
         requestBody.put("n", 1);
         requestBody.put("response_format", "url");
-        requestBody.put("stream", false);
-        requestBody.put("watermark", false);
         if (hasText(task.getReferenceImageUrl())) {
-            requestBody.put("image", task.getReferenceImageUrl().trim());
+            JSONArray referenceImages = new JSONArray();
+            referenceImages.add(normalizePublicUrl(task.getReferenceImageUrl().trim()));
+            requestBody.put("reference_images", referenceImages);
         }
 
         try {
@@ -318,12 +333,13 @@ public class GptImage2ServiceImpl implements GptImage2Service {
             try {
                 ResponseEntity<String> response = restTemplate.exchange(url, HttpMethod.POST, entity, String.class);
                 if (response.getStatusCode() == HttpStatus.OK && hasText(response.getBody())) {
-                    return response.getBody();
+                    return awaitGenerateResult(response.getBody());
                 }
                 throw new BusinessException(500, "GPT-Image2生成失败: " + response.getStatusCode());
             } catch (HttpClientErrorException | HttpServerErrorException e) {
                 log.warn("GPT-Image2 API返回错误: status={}, body={}", e.getStatusCode(), e.getResponseBodyAsString());
-                throw new BusinessException((int) e.getStatusCode().value(), friendlyApiError(e.getResponseBodyAsString()));
+                throw new BusinessException((int) e.getStatusCode().value(),
+                        friendlyApiError((int) e.getStatusCode().value(), e.getResponseBodyAsString()));
             } catch (RestClientException e) {
                 if (attempt < MAX_GENERATE_ATTEMPTS && isRetryableGenerateException(e) && !isReadTimeoutException(e)) {
                     log.warn("GPT-Image2请求连接中断，准备重试: attempt={}/{}, error={}",
@@ -336,15 +352,109 @@ public class GptImage2ServiceImpl implements GptImage2Service {
         throw new BusinessException(500, "GPT-Image2服务连接中断，请稍后重试");
     }
 
+    private String awaitGenerateResult(String submitResponseBody) {
+        JSONObject submitJson = JSON.parseObject(submitResponseBody);
+        String status = normalizeProviderStatus(submitJson.getString("status"));
+        if ("succeeded".equals(status)) {
+            return submitResponseBody;
+        }
+        if ("failed".equals(status)) {
+            throw new BusinessException(500, friendlyTaskError(submitJson));
+        }
+
+        String providerTaskId = firstText(submitJson, "id", "task_id");
+        if (!hasText(providerTaskId)) {
+            return submitResponseBody;
+        }
+
+        int safePollIntervalMs = Math.max(100, pollIntervalMs);
+        int maxAttempts = Math.max(1, generateTimeoutMs / safePollIntervalMs);
+        for (int attempt = 0; attempt < maxAttempts; attempt++) {
+            sleepBeforePolling(safePollIntervalMs);
+            JSONObject taskJson = queryGenerateTask(providerTaskId.trim());
+            String queryStatus = normalizeProviderStatus(taskJson.getString("status"));
+            if ("succeeded".equals(queryStatus)) {
+                return taskJson.toJSONString();
+            }
+            if ("failed".equals(queryStatus)) {
+                throw new BusinessException(500, friendlyTaskError(taskJson));
+            }
+        }
+        throw new BusinessException(500, "GPT-Image2生成超时，请稍后重试");
+    }
+
+    private JSONObject queryGenerateTask(String providerTaskId) {
+        HttpHeaders headers = new HttpHeaders();
+        headers.set("Authorization", "Bearer " + apiKey.trim());
+        HttpEntity<String> entity = new HttpEntity<>(headers);
+        String url = baseUrl.replaceAll("/+$", "") + "/images/generations/" + providerTaskId;
+        ResponseEntity<String> response = restTemplate.exchange(url, HttpMethod.GET, entity, String.class);
+        if (response.getStatusCode() == HttpStatus.OK && hasText(response.getBody())) {
+            return JSON.parseObject(response.getBody());
+        }
+        throw new BusinessException(500, "GPT-Image2任务查询失败: " + response.getStatusCode());
+    }
+
+    private void sleepBeforePolling(int intervalMs) {
+        try {
+            Thread.sleep(intervalMs);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new BusinessException(500, "GPT-Image2生成任务已中断");
+        }
+    }
+
     private String extractImageUrl(String responseBody) {
         JSONObject json = JSON.parseObject(responseBody);
+        String topLevelUrl = firstText(json, "image_url", "url", "output_url");
+        if (hasText(topLevelUrl)) {
+            return topLevelUrl.trim();
+        }
+
         JSONArray data = json.getJSONArray("data");
+        String imageUrl = extractImageUrlFromArray(data);
+        if (hasText(imageUrl)) {
+            return imageUrl;
+        }
+
+        JSONObject result = json.getJSONObject("result");
+        if (result != null) {
+            imageUrl = firstText(result, "image_url", "url", "output_url");
+            if (hasText(imageUrl)) {
+                return imageUrl.trim();
+            }
+            imageUrl = extractImageUrlFromArray(result.getJSONArray("data"));
+            if (hasText(imageUrl)) {
+                return imageUrl;
+            }
+            imageUrl = extractImageUrlFromArray(result.getJSONArray("images"));
+            if (hasText(imageUrl)) {
+                return imageUrl;
+            }
+        }
+
+        JSONObject content = json.getJSONObject("content");
+        if (content != null) {
+            imageUrl = firstText(content, "image_url", "url", "output_url");
+            if (hasText(imageUrl)) {
+                return imageUrl.trim();
+            }
+            imageUrl = extractImageUrlFromArray(content.getJSONArray("images"));
+            if (hasText(imageUrl)) {
+                return imageUrl;
+            }
+        }
+
+        throw new BusinessException(500, "GPT-Image2未返回图片");
+    }
+
+    private String extractImageUrlFromArray(JSONArray data) {
         if (data == null || data.isEmpty()) {
-            throw new BusinessException(500, "GPT-Image2未返回图片");
+            return null;
         }
 
         JSONObject imageData = data.getJSONObject(0);
-        String imageUrl = imageData.getString("url");
+        String imageUrl = firstText(imageData, "url", "image_url", "output_url");
         if (hasText(imageUrl)) {
             return imageUrl.trim();
         }
@@ -358,8 +468,7 @@ public class GptImage2ServiceImpl implements GptImage2Service {
             }
             return ossUrl;
         }
-
-        throw new BusinessException(500, "GPT-Image2未返回可用图片地址");
+        return null;
     }
 
     String persistGeneratedImage(String imageUrl) {
@@ -442,39 +551,80 @@ public class GptImage2ServiceImpl implements GptImage2Service {
 
     private String convertAspectRatioToSize(String aspectRatio, String resolution) {
         String normalizedResolution = normalizeResolution(resolution);
-        switch (normalizedResolution) {
-            case "1k":
-                switch (aspectRatio) {
-                    case "16:9": return "1536x864";
-                    case "9:16": return "864x1536";
-                    case "4:3": return "1344x1008";
-                    case "3:4": return "1008x1344";
-                    case "1:1":
-                    default: return "1024x1024";
-                }
-            case "4k":
-                switch (aspectRatio) {
-                    case "16:9": return "4032x2268";
-                    case "9:16": return "2268x4032";
-                    case "4:3": return "3584x2688";
-                    case "3:4": return "2016x2688";
-                    case "1:1":
-                    default: return "4096x4096";
-                }
-            case "2k":
-            default:
-                switch (aspectRatio) {
-                    case "16:9": return "2848x1600";
-                    case "9:16": return "1600x2848";
-                    case "4:3": return "2304x1728";
-                    case "3:4": return "1728x2304";
-                    case "1:1":
-                    default: return "2048x2048";
-                }
+        String normalizedAspectRatio = normalizeAspectRatio(aspectRatio);
+        validateResolutionAspectRatio(normalizedResolution, normalizedAspectRatio);
+        return normalizedAspectRatio;
+    }
+
+    private void validateResolutionAspectRatio(String resolution, String aspectRatio) {
+        List<String> supportedRatios = supportedAspectRatios(resolution);
+        if (!supportedRatios.contains(aspectRatio)) {
+            throw new BusinessException(400, "当前清晰度不支持该图片比例，请重新选择");
         }
     }
 
+    private List<String> supportedAspectRatios(String resolution) {
+        String normalizedResolution = normalizeResolution(resolution);
+        if ("1k".equals(normalizedResolution)) {
+            return ASPECT_RATIOS_1K;
+        }
+        if ("4k".equals(normalizedResolution)) {
+            return ASPECT_RATIOS_4K;
+        }
+        return ASPECT_RATIOS_2K;
+    }
+
+    private String toApiResolution(String resolution) {
+        return normalizeResolution(resolution).toUpperCase();
+    }
+
+    private String normalizeProviderStatus(String status) {
+        if (!hasText(status)) {
+            return "pending";
+        }
+        String normalized = status.trim().toLowerCase();
+        if ("completed".equals(normalized) || "succeeded".equals(normalized) || "success".equals(normalized)) {
+            return "succeeded";
+        }
+        if ("failed".equals(normalized) || "error".equals(normalized)) {
+            return "failed";
+        }
+        if ("in_progress".equals(normalized) || "running".equals(normalized) || "processing".equals(normalized)) {
+            return "running";
+        }
+        return "pending";
+    }
+
+    private String friendlyTaskError(JSONObject json) {
+        if (json == null) {
+            return "GPT-Image2生成失败，请稍后重试";
+        }
+        Object error = json.get("error");
+        if (error instanceof JSONObject) {
+            return friendlyApiError(((JSONObject) error).toJSONString());
+        }
+        if (error != null) {
+            return friendlyApiError(String.valueOf(error));
+        }
+        String message = firstText(json, "message", "Message", "error_message");
+        return hasText(message) ? "GPT-Image2生成失败：" + message : "GPT-Image2生成失败，请稍后重试";
+    }
+
+    private String normalizePublicUrl(String url) {
+        if (url == null) {
+            return null;
+        }
+        return url.replaceFirst("^http://", "https://");
+    }
+
     private String friendlyApiError(String responseBody) {
+        return friendlyApiError(null, responseBody);
+    }
+
+    private String friendlyApiError(Integer statusCode, String responseBody) {
+        if (statusCode != null && (statusCode == 401 || statusCode == 403)) {
+            return "GPT-Image2 API Key 无效或未开通 ToApis 图片服务，请检查配置";
+        }
         if (!hasText(responseBody)) {
             return "GPT-Image2服务暂时不可用，请稍后重试";
         }

@@ -139,6 +139,7 @@ public class SubjectReplacementServiceImpl implements SubjectReplacementService 
             SeedanceRequest request = new SeedanceRequest();
             request.setPrompt(buildPrompt(replacements));
             request.setDuration(task.getDuration());
+            request.setResolution("720p");
             request.setRatio(task.getAspectRatio());
             request.setGenerateAudio(task.getGenerateAudio());
             request.setWatermark(task.getWatermark());

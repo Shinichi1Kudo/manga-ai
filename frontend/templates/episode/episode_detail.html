@@ -6353,9 +6353,12 @@ async function readJsonResponse(response) {
 // 计算并显示积分消耗
 function calculateCredits(resolution, duration, videoModel) {
     const durationSec = duration || 5;
+    if (videoModel === 'kling-v3-omni') {
+        return 11 * durationSec;
+    }
+
     const isVipModel = videoModel === 'seedance-2.0'
-        || videoModel === 'doubao-seedance-2-0-260128'
-        || videoModel === 'kling-v3-omni';
+        || videoModel === 'doubao-seedance-2-0-260128';
     let creditsPerSecond;
     if (resolution === '480p') {
         creditsPerSecond = isVipModel ? 15 : 12;

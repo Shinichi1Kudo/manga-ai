@@ -85,10 +85,10 @@
                     <div class="flex flex-wrap items-center justify-between gap-3">
                         <div class="flex items-center gap-2 text-sm text-cyan-100">
                             <i data-lucide="coins" class="w-4 h-4"></i>
-                            <span>主体替换按 <span id="creditsPerSecond">32</span> 积分/秒计费</span>
+                            <span>主体替换按 <span id="creditsPerSecond">60</span> 积分/秒计费</span>
                         </div>
                         <div class="text-sm text-white/75">
-                            预计消耗 <span id="estimatedCredits" class="text-cyan-100 font-semibold">160</span> 积分
+                            预计消耗 <span id="estimatedCredits" class="text-cyan-100 font-semibold">300</span> 积分
                         </div>
                     </div>
                     <div class="mt-2 flex flex-wrap items-center justify-between gap-2 text-xs text-white/45">
@@ -122,7 +122,7 @@
                     <i data-lucide="wand-sparkles" class="w-4 h-4"></i>
                     <span>确认生成</span>
                     <span class="text-white/60">·</span>
-                    <span id="submitCreditText">扣除160积分</span>
+                    <span id="submitCreditText">扣除300积分</span>
                 </button>
             </div>
         </form>
@@ -191,7 +191,7 @@ let pollTimer = null;
 let recentTasksCache = [];
 let recentTaskPage = 1;
 const recentTaskPageSize = 5;
-const subjectReplacementCreditsPerSecond = 32;
+const subjectReplacementCreditsPerSecond = 60;
 let currentCredits = null;
 
 const replacementList = document.getElementById('replacementList');

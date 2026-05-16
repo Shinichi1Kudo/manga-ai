@@ -18,6 +18,7 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.Executor;
+import java.util.concurrent.atomic.AtomicInteger;
 
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.assertj.core.api.Assertions.assertThat;
@@ -34,9 +35,12 @@ import static org.mockito.Mockito.when;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import com.manga.ai.user.service.impl.UserServiceImpl.UserContextHolder;
+import org.mockito.ArgumentCaptor;
 import org.springframework.http.HttpEntity;
 import org.springframework.http.HttpMethod;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.RestClientException;
 import org.springframework.web.client.RestTemplate;
 
@@ -86,7 +90,7 @@ class GptImage2ServiceImplTest {
         });
         GptImage2GenerateRequest request = new GptImage2GenerateRequest();
         request.setPrompt("古风少女海报");
-        request.setAspectRatio("1:1");
+        request.setAspectRatio("16:9");
         request.setResolution("4k");
 
         UserContextHolder.setUserId(7L);
@@ -118,6 +122,37 @@ class GptImage2ServiceImplTest {
                 eq("GPT_IMAGE2_TASK")
         );
         verify(executor).execute(any(Runnable.class));
+    }
+
+    @Test
+    void generateRejectsUnsupportedResolutionAspectCombinationBeforeDeductingCredits() {
+        GptImage2TaskMapper mapper = mock(GptImage2TaskMapper.class);
+        UserService userService = mock(UserService.class);
+        Executor executor = mock(Executor.class);
+        GptImage2ServiceImpl service = new GptImage2ServiceImpl(
+                mock(OssService.class),
+                userService,
+                mapper,
+                executor
+        );
+        ReflectionTestUtils.setField(service, "apiKey", "test-key");
+        GptImage2GenerateRequest request = new GptImage2GenerateRequest();
+        request.setPrompt("电影海报");
+        request.setAspectRatio("16:9");
+        request.setResolution("1k");
+
+        UserContextHolder.setUserId(7L);
+        try {
+            assertThatThrownBy(() -> service.generate(request))
+                    .isInstanceOf(BusinessException.class)
+                    .hasMessageContaining("当前清晰度不支持该图片比例");
+        } finally {
+            UserContextHolder.clear();
+        }
+
+        verify(mapper, never()).insert(any(GptImage2Task.class));
+        verify(userService, never()).deductCredits(anyLong(), anyInt(), anyString(), anyString(), anyLong(), anyString());
+        verify(executor, never()).execute(any(Runnable.class));
     }
 
     @Test
@@ -380,7 +415,7 @@ class GptImage2ServiceImplTest {
         task.setUserId(7L);
         task.setPrompt("淘宝手机广告图");
         task.setAspectRatio("3:4");
-        task.setResolution("4k");
+        task.setResolution("2k");
         task.setStatus("pending");
         task.setModel("gpt-image-2");
         task.setMode("text-to-image");
@@ -418,8 +453,77 @@ class GptImage2ServiceImplTest {
         assertThat(persistedStatuses).containsExactly("running", "succeeded");
         verify(restTemplate, times(3)).exchange(anyString(), eq(HttpMethod.POST), argThat(entity -> {
             String body = String.valueOf(entity.getBody());
-            return body.contains("\"size\":\"2016x2688\"");
+            return body.contains("\"size\":\"3:4\"") && body.contains("\"resolution\":\"2K\"");
         }), eq(String.class));
+    }
+
+    @Test
+    void executeTaskSubmitsToToapisImageApiAndPollsTaskUntilCompleted() {
+        GptImage2TaskMapper mapper = mock(GptImage2TaskMapper.class);
+        RestTemplate restTemplate = mock(RestTemplate.class);
+        OssService ossService = mock(OssService.class);
+        GptImage2Task task = new GptImage2Task();
+        task.setId(12L);
+        task.setUserId(7L);
+        task.setPrompt("电商产品海报");
+        task.setAspectRatio("16:9");
+        task.setResolution("4k");
+        task.setReferenceImageUrl("https://movie-agent.oss-cn-beijing.aliyuncs.com/gpt-image2/references/ref.png");
+        task.setStatus("pending");
+        task.setModel("gpt-image-2");
+        task.setMode("image-to-image");
+        task.setCreditCost(12);
+        AtomicInteger queryCount = new AtomicInteger();
+
+        when(mapper.selectById(12L)).thenReturn(task);
+        when(restTemplate.exchange(anyString(), any(HttpMethod.class), any(HttpEntity.class), eq(String.class)))
+                .thenAnswer(invocation -> {
+                    HttpMethod method = invocation.getArgument(1);
+                    if (HttpMethod.POST.equals(method)) {
+                        return ResponseEntity.ok("{\"id\":\"img-task-1\",\"object\":\"generation.task\",\"model\":\"gpt-image-2\",\"status\":\"queued\",\"progress\":0,\"created_at\":1778615200}");
+                    }
+                    int count = queryCount.incrementAndGet();
+                    if (count == 1) {
+                        return ResponseEntity.ok("{\"id\":\"img-task-1\",\"object\":\"generation.task\",\"model\":\"gpt-image-2\",\"status\":\"in_progress\",\"progress\":45}");
+                    }
+                    return ResponseEntity.ok("{\"id\":\"img-task-1\",\"object\":\"generation.task\",\"model\":\"gpt-image-2\",\"status\":\"completed\",\"progress\":100,\"data\":[{\"url\":\"https://toapis.example.com/result.png\"}]}");
+                });
+        when(ossService.uploadImageFromUrl("https://toapis.example.com/result.png", "gpt-image2/results"))
+                .thenReturn("https://movie-agent.oss-cn-beijing.aliyuncs.com/gpt-image2/results/result.png");
+
+        GptImage2ServiceImpl service = new GptImage2ServiceImpl(
+                ossService,
+                mock(UserService.class),
+                mapper,
+                directExecutor()
+        );
+        ReflectionTestUtils.setField(service, "apiKey", "test-key");
+        ReflectionTestUtils.setField(service, "model", "gpt-image-2");
+        ReflectionTestUtils.setField(service, "baseUrl", "https://toapis.com/v1");
+        ReflectionTestUtils.setField(service, "pollIntervalMs", 1);
+        ReflectionTestUtils.setField(service, "restTemplate", restTemplate);
+
+        service.executeTask(12L);
+
+        assertThat(task.getStatus()).isEqualTo("succeeded");
+        assertThat(task.getImageUrl()).isEqualTo("https://movie-agent.oss-cn-beijing.aliyuncs.com/gpt-image2/results/result.png");
+
+        @SuppressWarnings("rawtypes")
+        ArgumentCaptor<HttpEntity> entityCaptor = ArgumentCaptor.forClass(HttpEntity.class);
+        verify(restTemplate).exchange(eq("https://toapis.com/v1/images/generations"), eq(HttpMethod.POST), entityCaptor.capture(), eq(String.class));
+        String submitBody = String.valueOf(entityCaptor.getValue().getBody());
+        assertThat(submitBody).contains("\"model\":\"gpt-image-2\"");
+        assertThat(submitBody).contains("\"prompt\":\"电商产品海报\"");
+        assertThat(submitBody).contains("\"size\":\"16:9\"");
+        assertThat(submitBody).contains("\"resolution\":\"4K\"");
+        assertThat(submitBody).contains("\"n\":1");
+        assertThat(submitBody).contains("\"response_format\":\"url\"");
+        assertThat(submitBody).contains("\"reference_images\":[\"https://movie-agent.oss-cn-beijing.aliyuncs.com/gpt-image2/references/ref.png\"]");
+        assertThat(submitBody).doesNotContain("\"image\"");
+        assertThat(submitBody).doesNotContain("\"stream\"");
+        assertThat(submitBody).doesNotContain("\"watermark\"");
+        verify(restTemplate, times(2)).exchange(eq("https://toapis.com/v1/images/generations/img-task-1"), eq(HttpMethod.GET), any(HttpEntity.class), eq(String.class));
+        verify(ossService).uploadImageFromUrl("https://toapis.example.com/result.png", "gpt-image2/results");
     }
 
     @Test
@@ -457,6 +561,43 @@ class GptImage2ServiceImplTest {
         assertThat(task.getStatus()).isEqualTo("failed");
         assertThat(task.getErrorMessage()).contains("超时");
         verify(restTemplate).exchange(anyString(), eq(HttpMethod.POST), any(HttpEntity.class), eq(String.class));
+        verify(userService).refundCredits(7L, 12, "GPT-Image2生图失败返还-任务12", 12L, "GPT_IMAGE2_TASK");
+    }
+
+    @Test
+    void executeTaskShowsApiKeyErrorWhenToapisRejectsAuthorization() {
+        GptImage2TaskMapper mapper = mock(GptImage2TaskMapper.class);
+        RestTemplate restTemplate = mock(RestTemplate.class);
+        UserService userService = mock(UserService.class);
+        GptImage2Task task = new GptImage2Task();
+        task.setId(12L);
+        task.setUserId(7L);
+        task.setPrompt("古风少女海报");
+        task.setAspectRatio("1:1");
+        task.setResolution("2k");
+        task.setStatus("pending");
+        task.setModel("gpt-image-2");
+        task.setMode("text-to-image");
+        task.setCreditCost(12);
+        when(mapper.selectById(12L)).thenReturn(task);
+        when(restTemplate.exchange(anyString(), eq(HttpMethod.POST), any(HttpEntity.class), eq(String.class)))
+                .thenThrow(HttpClientErrorException.create(HttpStatus.UNAUTHORIZED, "Unauthorized", null, null, null));
+
+        GptImage2ServiceImpl service = new GptImage2ServiceImpl(
+                mock(OssService.class),
+                userService,
+                mapper,
+                directExecutor()
+        );
+        ReflectionTestUtils.setField(service, "apiKey", "wrong-key");
+        ReflectionTestUtils.setField(service, "model", "gpt-image-2");
+        ReflectionTestUtils.setField(service, "baseUrl", "https://toapis.com/v1");
+        ReflectionTestUtils.setField(service, "restTemplate", restTemplate);
+
+        service.executeTask(12L);
+
+        assertThat(task.getStatus()).isEqualTo("failed");
+        assertThat(task.getErrorMessage()).contains("API Key 无效").contains("ToApis");
         verify(userService).refundCredits(7L, 12, "GPT-Image2生图失败返还-任务12", 12L, "GPT_IMAGE2_TASK");
     }
 

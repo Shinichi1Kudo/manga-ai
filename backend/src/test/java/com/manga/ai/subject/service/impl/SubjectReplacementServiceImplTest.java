@@ -90,13 +90,13 @@ class SubjectReplacementServiceImplTest {
 
         verify(userService).deductCredits(
                 eq(7L),
-                eq(160),
+                eq(300),
                 eq(CreditUsageType.SUBJECT_REPLACEMENT.getCode()),
                 eq("主体替换-任务9"),
                 eq(9L),
                 eq("SUBJECT_REPLACEMENT")
         );
-        verify(mapper).insert(argThat(task -> Integer.valueOf(160).equals(task.getDeductedCredits())
+        verify(mapper).insert(argThat(task -> Integer.valueOf(300).equals(task.getDeductedCredits())
                 && Boolean.FALSE.equals(task.getCreditsRefunded())));
     }
 
@@ -138,7 +138,7 @@ class SubjectReplacementServiceImplTest {
         });
         doThrow(new BusinessException("积分不足")).when(userService).deductCredits(
                 eq(7L),
-                eq(160),
+                eq(300),
                 eq(CreditUsageType.SUBJECT_REPLACEMENT.getCode()),
                 eq("主体替换-任务9"),
                 eq(9L),
@@ -166,7 +166,7 @@ class SubjectReplacementServiceImplTest {
         SubjectReplacementTask task = createTask();
         task.setId(9L);
         task.setUserId(7L);
-        task.setDeductedCredits(160);
+        task.setDeductedCredits(300);
         task.setCreditsRefunded(false);
         when(mapper.selectById(9L)).thenReturn(task);
 
@@ -180,7 +180,7 @@ class SubjectReplacementServiceImplTest {
 
         service.executeTask(9L);
 
-        verify(userService).refundCredits(7L, 160, "主体替换失败返还-任务9", 9L, "SUBJECT_REPLACEMENT");
+        verify(userService).refundCredits(7L, 300, "主体替换失败返还-任务9", 9L, "SUBJECT_REPLACEMENT");
         assertThat(task.getCreditsRefunded()).isTrue();
         assertThat(task.getStatus()).isEqualTo("failed");
     }
@@ -211,6 +211,7 @@ class SubjectReplacementServiceImplTest {
         verify(seedanceService).generateVideo(captor.capture());
         SeedanceRequest request = captor.getValue();
         assertThat(request.getModel()).isEqualTo("doubao-seedance-2-0-260128");
+        assertThat(request.getResolution()).isEqualTo("720p");
         assertThat(request.getContents())
                 .anySatisfy(content -> {
                     assertThat(content.getType()).isEqualTo("video_url");
@@ -234,7 +235,7 @@ class SubjectReplacementServiceImplTest {
         SubjectReplacementTask task = createTask();
         task.setId(9L);
         task.setUserId(7L);
-        task.setDeductedCredits(160);
+        task.setDeductedCredits(300);
         task.setCreditsRefunded(true);
         when(mapper.selectById(9L)).thenReturn(task);
 
@@ -248,7 +249,7 @@ class SubjectReplacementServiceImplTest {
 
         service.executeTask(9L);
 
-        verify(userService, never()).refundCredits(any(), eq(160), any(), any(), any());
+        verify(userService, never()).refundCredits(any(), eq(300), any(), any(), any());
     }
 
     private static Executor directExecutor() {

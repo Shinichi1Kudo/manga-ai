@@ -49,6 +49,11 @@ public class SeedanceRequest implements Serializable {
     private String ratio = "16:9";
 
     /**
+     * 视频清晰度: 480p / 720p / 1080p 等
+     */
+    private String resolution;
+
+    /**
      * 是否生成音频
      */
     private Boolean generateAudio;

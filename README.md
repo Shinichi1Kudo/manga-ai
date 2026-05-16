@@ -69,6 +69,7 @@
 - ✅ 首页 GPT-Image2 生图入口与独立工作台
 - ✅ 支持文生图和上传参考图后的图生图
 - ✅ 支持 1K / 2K / 4K 清晰度选择
+- ✅ 底层切换到 Toapis `/v1/images/generations` 异步任务接口
 - ✅ 最近任务分页展示、按图片比例预览和大图缩放/下载
 - ✅ 参考图与生成结果自动上传 OSS
 - ✅ 上游返回第三方 OSS 图片 URL 时也会重新下载并上传到自有 OSS，避免部署后裂图
@@ -327,9 +328,9 @@ python manage.py runserver 8000
 |------|------|------|-------|
 | Seedance 2.0 VIP | 15/秒 | 32/秒 | 69/秒 |
 | Seedance 2.0 Fast | 12/秒 | 25/秒 | 不支持 |
-| Kling v3 Omni | 15/秒 | 32/秒 | 69/秒 |
+| Kling v3 Omni | 11/秒 | 11/秒 | 11/秒 |
 
-其他操作：普通图片生成 6 积分/张，GPT-Image2 生图 12 积分/次，剧本解析 2 积分/次。主体替换按 32 积分/秒计费，生成失败自动返还。
+其他操作：普通图片生成 6 积分/张，GPT-Image2 生图 12 积分/次，剧本解析 2 积分/次。主体替换按 60 积分/秒计费，生成失败自动返还。
 
 ## 分镜文本格式
 
@@ -386,9 +387,10 @@ volcengine:
     model: doubao-pro-32k
 
 gpt-image2:
-  api-key: ${GPT_IMAGE2_API_KEY}
-  base-url: https://api.airiver.cn/v1
+  api-key: ${TOAPIS_API_KEY}
+  base-url: https://toapis.com/v1
   model: gpt-image-2
+  poll-interval: 3000
 ```
 
 ### 前端配置

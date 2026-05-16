@@ -117,6 +117,7 @@ class SeedanceServiceImplTest {
         request.setPrompt("请对@视频1执行视频对象替换");
         request.setDuration(8);
         request.setRatio("9:16");
+        request.setResolution("720p");
         request.setGenerateAudio(true);
         request.setWatermark(false);
 
@@ -158,6 +159,7 @@ class SeedanceServiceImplTest {
                     return "Bearer test-toapis-key".equals(authorization)
                             && body != null
                             && body.contains("\"model\":\"doubao-seedance-2-0-260128\"")
+                            && body.contains("\"resolution\":\"720p\"")
                             && body.contains("\"image_with_roles\":[{\"role\":\"reference_image\",\"url\":\"https://example.com/ref.png\"}]")
                             && body.contains("\"video_with_roles\":[{\"role\":\"reference_video\",\"url\":\"https://example.com/input.mp4\"}]");
                 }),
