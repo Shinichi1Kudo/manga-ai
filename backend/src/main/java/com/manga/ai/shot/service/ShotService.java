@@ -191,4 +191,11 @@ public interface ShotService {
      * @return 积分预览信息
      */
     Map<String, Object> getVideoCreditPreview(Long shotId);
+
+    /**
+     * 获取分镜当前激活的视频URL
+     * @param shotId 分镜ID
+     * @return 视频URL，无视频时返回null
+     */
+    String getShotVideoUrl(Long shotId);
 }

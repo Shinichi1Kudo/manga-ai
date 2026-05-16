@@ -10,9 +10,17 @@ import com.manga.ai.shot.dto.ShotVideoAssetVO;
 import com.manga.ai.shot.service.ShotService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.core.io.InputStreamResource;
+import org.springframework.core.io.Resource;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.io.InputStream;
+import java.net.URL;
+import java.net.URLConnection;
 import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.List;
@@ -305,5 +313,47 @@ public class ShotController {
         log.info("重新排序分镜: episodeId={}, reviewStatus={}, shotIds={}", episodeId, reviewStatus, shotIds);
         shotService.reorderShots(episodeId, shotIds, reviewStatus);
         return Result.success();
+    }
+
+    /**
+     * 下载分镜视频
+     */
+    @GetMapping("/{shotId}/download")
+    public ResponseEntity<Resource> downloadShot(
+            @PathVariable Long shotId,
+            @RequestParam(value = "filename", required = false, defaultValue = "shot.mp4") String filename) {
+        log.info("下载分镜视频: shotId={}, filename={}", shotId, filename);
+
+        String videoUrl = shotService.getShotVideoUrl(shotId);
+        if (videoUrl == null || videoUrl.isBlank()) {
+            return ResponseEntity.notFound().build();
+        }
+
+        try {
+            URL url = new URL(videoUrl);
+            URLConnection connection = url.openConnection();
+            connection.setConnectTimeout(30000);
+            connection.setReadTimeout(60000);
+            InputStream inputStream = connection.getInputStream();
+            String contentType = connection.getContentType();
+            if (contentType == null || contentType.isBlank()) {
+                contentType = "video/mp4";
+            }
+
+            // 确保文件名以 .mp4 结尾
+            if (!filename.toLowerCase().endsWith(".mp4")) {
+                filename = filename + ".mp4";
+            }
+
+            InputStreamResource resource = new InputStreamResource(inputStream);
+            return ResponseEntity.ok()
+                    .contentType(MediaType.parseMediaType(contentType))
+                    .header(HttpHeaders.CONTENT_DISPOSITION,
+                            "attachment; filename=\"" + filename + "\"")
+                    .body(resource);
+        } catch (Exception e) {
+            log.error("下载分镜视频失败: shotId={}, videoUrl={}", shotId, videoUrl, e);
+            return ResponseEntity.internalServerError().build();
+        }
     }
 }

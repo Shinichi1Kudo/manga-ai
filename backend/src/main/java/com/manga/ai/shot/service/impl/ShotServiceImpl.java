@@ -2836,4 +2836,25 @@ public class ShotServiceImpl implements ShotService {
 
         return result;
     }
+
+    @Override
+    public String getShotVideoUrl(Long shotId) {
+        // 优先从激活的视频资产获取
+        LambdaQueryWrapper<ShotVideoAsset> assetWrapper = new LambdaQueryWrapper<>();
+        assetWrapper.eq(ShotVideoAsset::getShotId, shotId)
+                .eq(ShotVideoAsset::getIsActive, 1)
+                .last("LIMIT 1");
+        ShotVideoAsset activeAsset = shotVideoAssetMapper.selectOne(assetWrapper);
+        if (activeAsset != null && activeAsset.getVideoUrl() != null && !activeAsset.getVideoUrl().isBlank()) {
+            return activeAsset.getVideoUrl();
+        }
+
+        // 回退到 shot 表
+        Shot shot = shotMapper.selectById(shotId);
+        if (shot != null && shot.getVideoUrl() != null && !shot.getVideoUrl().isBlank()) {
+            return shot.getVideoUrl();
+        }
+
+        return null;
+    }
 }
