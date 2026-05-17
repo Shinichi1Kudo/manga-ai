@@ -14,6 +14,32 @@
     <meta property="og:type" content="website">
     <meta property="og:url" content="{{ seo.canonical_url }}">
     <meta property="og:image" content="{{ seo.image_url }}">
+    <!-- 百度站长验证（在百度站长平台获取验证码后替换 content） -->
+    <meta name="baidu-site-verification" content="codeva-ulsAwK4V3X" />
+    <!-- 百度移动适配 -->
+    <meta name="applicable-device" content="pc,mobile">
+    <meta http-equiv="Cache-Control" content="no-siteapp">
+    <meta http-equiv="Cache-Control" content="no-transform">
+    <!-- 结构化数据 -->
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "WebApplication",
+      "name": "海带 AI 内容智能创作平台",
+      "url": "{{ seo.canonical_url }}",
+      "description": "{{ seo.description }}",
+      "applicationCategory": "Multimedia",
+      "operatingSystem": "Web",
+      "offers": {
+        "@type": "Offer",
+        "price": "0",
+        "priceCurrency": "CNY"
+      }
+    }
+    </script>
+    <meta name="applicable-device" content="pc,mobile">
+    <meta http-equiv="Cache-Control" content="no-siteapp">
+    <meta http-equiv="Cache-Control" content="no-transform">
     <link rel="icon" type="image/png" href="/site-logo.png?v=20260515">
     <link rel="apple-touch-icon" href="/site-logo.png?v=20260515">
 
@@ -1294,5 +1320,20 @@
         <span class="text-xs text-white/60" style="writing-mode: vertical-rl; letter-spacing: 2px;">回收站</span>
     </a>
     {% endif %}
+
+    <!-- 百度自动推送 -->
+    <script>
+    (function(){
+        var bp = document.createElement('script');
+        var curProtocol = window.location.protocol.split(':')[0];
+        if (curProtocol === 'https') {
+            bp.src = 'https://zz.bdstatic.com/linksubmit/push.js';
+        } else {
+            bp.src = 'http://push.zhanzhang.baidu.com/push.js';
+        }
+        var s = document.getElementsByTagName('script')[0];
+        s.parentNode.insertBefore(bp, s);
+    })();
+    </script>
 </body>
 </html>
