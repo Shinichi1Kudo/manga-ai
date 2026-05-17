@@ -49,6 +49,7 @@ public class UserServiceImpl implements UserService {
 
     // 验证码有效期（分钟）
     private static final int CODE_EXPIRE_MINUTES = 10;
+    private static final int NEW_USER_REWARD_CREDITS = 20;
 
     public UserServiceImpl(UserMapper userMapper, EmailVerificationMapper emailVerificationMapper, JwtUtil jwtUtil, TokenService tokenService) {
         this.userMapper = userMapper;
@@ -133,7 +134,7 @@ public class UserServiceImpl implements UserService {
         user.setEmail(email);
         user.setPassword(passwordEncoder.encode(password));
         user.setNickname(request.getNickname() != null ? request.getNickname() : email.split("@")[0]);
-        user.setCredits(10); // 新用户赠送10积分
+        user.setCredits(NEW_USER_REWARD_CREDITS);
         user.setStatus(1);
         user.setCreatedAt(LocalDateTime.now());
         user.setUpdatedAt(LocalDateTime.now());
