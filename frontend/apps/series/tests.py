@@ -1135,10 +1135,20 @@ class CommerceFlowTests(TestCase):
 
 
 class CommerceHomeGroupingTests(TestCase):
-    def test_home_template_contains_short_drama_and_ecommerce_groups(self):
+    def test_home_template_switches_short_drama_and_ecommerce_tabs(self):
         template_path = Path(settings.BASE_DIR) / 'templates/series/series_list.html'
         template = template_path.read_text(encoding='utf-8')
 
+        self.assertIn('role="tablist"', template)
+        self.assertIn('data-series-tab="drama"', template)
+        self.assertIn('data-series-tab="commerce"', template)
+        self.assertIn('id="dramaSeriesPanel"', template)
+        self.assertIn('id="commerceSeriesPanel"', template)
+        self.assertIn('aria-controls="dramaSeriesPanel"', template)
+        self.assertIn('aria-controls="commerceSeriesPanel"', template)
+        self.assertIn('function activateSeriesTab(tabName)', template)
+        self.assertIn('dramaPanel.hidden = isCommerce', template)
+        self.assertIn('commercePanel.hidden = !isCommerce', template)
         self.assertIn('短剧系列', template)
         self.assertIn('电商系列', template)
         self.assertIn('创建电商系列', template)

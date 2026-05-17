@@ -129,34 +129,48 @@
 
 <!-- Series List -->
 <div class="mt-8">
-    <h2 class="text-2xl font-bold mb-6">我的系列</h2>
-    <div class="grid gap-8 xl:grid-cols-[minmax(0,1.25fr)_minmax(320px,0.75fr)]">
-        <section>
-            <div class="mb-4 flex items-center justify-between">
-                <h3 class="text-lg font-semibold">短剧系列</h3>
-                <a href="/init/" data-login-required="true" class="text-sm font-semibold text-violet-200 hover:text-white">创建短剧系列</a>
-            </div>
-            <div id="seriesList" class="grid md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-2 gap-6">
-                <div class="glass-card p-8 text-center col-span-full">
-                    <div class="spinner mx-auto mb-4"></div>
-                    <p class="text-white/50">加载中...</p>
-                </div>
-            </div>
-
-            <!-- Pagination -->
-            <div id="pagination" class="flex justify-center items-center gap-4 mt-8"></div>
-        </section>
-
-        <section>
-            <div class="mb-4 flex items-center justify-between">
-                <h3 class="text-lg font-semibold">电商系列</h3>
-                <a href="/commerce/" data-login-required="true" class="text-sm font-semibold text-emerald-200 hover:text-white">查看全部</a>
-            </div>
-            <div id="commerceSeriesHomeList" class="grid gap-4">
-                <div class="glass-card p-6 text-white/50">加载中...</div>
-            </div>
-        </section>
+    <div class="mb-6 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+        <h2 class="text-2xl font-bold">我的系列</h2>
+        <div class="series-type-tabs" role="tablist" aria-label="我的系列类型">
+            <button type="button" class="series-type-tab active" role="tab" id="dramaSeriesTab" aria-selected="true" aria-controls="dramaSeriesPanel" data-series-tab="drama">
+                <i data-lucide="clapperboard" class="w-4 h-4"></i>
+                <span>短剧</span>
+            </button>
+            <button type="button" class="series-type-tab" role="tab" id="commerceSeriesTab" aria-selected="false" aria-controls="commerceSeriesPanel" data-series-tab="commerce">
+                <i data-lucide="shopping-bag" class="w-4 h-4"></i>
+                <span>电商</span>
+            </button>
+        </div>
     </div>
+
+    <section id="dramaSeriesPanel" role="tabpanel" aria-labelledby="dramaSeriesTab" data-series-panel="drama">
+        <div class="mb-4 flex items-center justify-between">
+            <h3 class="text-lg font-semibold">短剧系列</h3>
+            <a href="/init/" data-login-required="true" class="text-sm font-semibold text-violet-200 hover:text-white">创建短剧系列</a>
+        </div>
+        <div id="seriesList" class="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+            <div class="glass-card p-8 text-center col-span-full">
+                <div class="spinner mx-auto mb-4"></div>
+                <p class="text-white/50">加载中...</p>
+            </div>
+        </div>
+
+        <!-- Pagination -->
+        <div id="pagination" class="flex justify-center items-center gap-4 mt-8"></div>
+    </section>
+
+    <section id="commerceSeriesPanel" role="tabpanel" aria-labelledby="commerceSeriesTab" data-series-panel="commerce" hidden>
+        <div class="mb-4 flex items-center justify-between">
+            <h3 class="text-lg font-semibold">电商系列</h3>
+            <a href="/commerce/" data-login-required="true" class="text-sm font-semibold text-emerald-200 hover:text-white">查看全部</a>
+        </div>
+        <div id="commerceSeriesHomeList" class="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
+            <div class="glass-card p-8 text-center col-span-full">
+                <div class="spinner mx-auto mb-4"></div>
+                <p class="text-white/50">加载中...</p>
+            </div>
+        </div>
+    </section>
 </div>
 
 <!-- Feature Showcase -->
@@ -416,6 +430,29 @@ function renderAnonymousSeriesPrompt() {
             </div>
         `;
     }
+}
+
+function activateSeriesTab(tabName) {
+    const isCommerce = tabName === 'commerce';
+    const dramaPanel = document.getElementById('dramaSeriesPanel');
+    const commercePanel = document.getElementById('commerceSeriesPanel');
+    const dramaTab = document.querySelector('[data-series-tab="drama"]');
+    const commerceTab = document.querySelector('[data-series-tab="commerce"]');
+
+    if (!dramaPanel || !commercePanel || !dramaTab || !commerceTab) return;
+
+    dramaPanel.hidden = isCommerce;
+    commercePanel.hidden = !isCommerce;
+    dramaTab.classList.toggle('active', !isCommerce);
+    commerceTab.classList.toggle('active', isCommerce);
+    dramaTab.setAttribute('aria-selected', String(!isCommerce));
+    commerceTab.setAttribute('aria-selected', String(isCommerce));
+}
+
+function initSeriesTypeTabs() {
+    document.querySelectorAll('[data-series-tab]').forEach(tab => {
+        tab.addEventListener('click', () => activateSeriesTab(tab.dataset.seriesTab));
+    });
 }
 
 function loadCommerceSeriesHome() {
@@ -1176,6 +1213,8 @@ function stopPolling(seriesId) {
 
 document.addEventListener('DOMContentLoaded', function() {
     initLoginRequiredLinks();
+    initSeriesTypeTabs();
+    activateSeriesTab('drama');
     loadShowcaseAssets();
     initShowcaseVideoControls();
     if (!IS_AUTHENTICATED) {
@@ -1686,6 +1725,42 @@ function getCookie(name) {
     font-weight: 900;
     letter-spacing: 0;
     box-shadow: 0 8px 18px rgba(6, 78, 59, 0.18);
+}
+
+.series-type-tabs {
+    display: inline-grid;
+    grid-template-columns: repeat(2, minmax(92px, 1fr));
+    gap: 4px;
+    align-items: center;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 12px;
+    background: rgba(255, 255, 255, 0.045);
+    padding: 4px;
+}
+
+.series-type-tab {
+    display: inline-flex;
+    min-height: 40px;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+    border-radius: 8px;
+    color: rgba(255, 255, 255, 0.58);
+    font-size: 14px;
+    font-weight: 800;
+    line-height: 1;
+    transition: background 160ms ease, color 160ms ease, box-shadow 160ms ease;
+}
+
+.series-type-tab:hover {
+    color: rgba(255, 255, 255, 0.88);
+    background: rgba(255, 255, 255, 0.055);
+}
+
+.series-type-tab.active {
+    background: linear-gradient(135deg, rgba(124, 58, 237, 0.92), rgba(20, 184, 166, 0.88));
+    color: white;
+    box-shadow: 0 10px 24px rgba(20, 184, 166, 0.15);
 }
 
 @media (max-width: 980px) {
