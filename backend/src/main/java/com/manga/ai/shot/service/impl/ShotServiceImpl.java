@@ -225,7 +225,7 @@ public class ShotServiceImpl implements ShotService {
 
     private String convertToApiModel(String videoModel, String resolution) {
         if (videoModel == null || videoModel.isEmpty()) {
-            return "doubao-seedance-2-0-fast-260128"; // 默认 Fast 模型
+            return "doubao-seedance-2-0-260128"; // 默认标准模型
         }
         switch (videoModel) {
             case "seedance-2.0":
