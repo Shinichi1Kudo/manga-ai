@@ -1090,7 +1090,30 @@ class CreditAdminDashboardTests(TestCase):
 
 
 class CommerceFlowTests(TestCase):
-    def test_commerce_create_forwards_default_ratio_and_fixed_style(self):
+    def test_commerce_create_forwards_selected_ratio_and_fixed_style(self):
+        session = self.client.session
+        session['token'] = 'token-1'
+        session.save()
+        backend_client = Mock()
+        backend_client.post.return_value = {'id': 10}
+
+        with patch('apps.series.views.get_client', return_value=backend_client):
+            response = self.client.post('/commerce/series/create/', {
+                'name': '小雅女装种草号',
+                'default_aspect_ratio': '1:1',
+            })
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response['Location'], '/commerce/series/10/')
+        backend_client.post.assert_called_once_with('/v1/commerce/series', {
+            'name': '小雅女装种草号',
+            'category': 'clothing',
+            'visualStyle': 'realistic',
+            'defaultAspectRatio': '1:1',
+            'enabledContentTypes': ['talking', 'try_on'],
+        })
+
+    def test_commerce_create_defaults_to_douyin_vertical_ratio(self):
         session = self.client.session
         session['token'] = 'token-1'
         session.save()
@@ -1101,14 +1124,23 @@ class CommerceFlowTests(TestCase):
             response = self.client.post('/commerce/series/create/', {'name': '小雅女装种草号'})
 
         self.assertEqual(response.status_code, 302)
-        self.assertEqual(response['Location'], '/commerce/series/10/')
         backend_client.post.assert_called_once_with('/v1/commerce/series', {
             'name': '小雅女装种草号',
             'category': 'clothing',
             'visualStyle': 'realistic',
-            'defaultAspectRatio': '3:4',
+            'defaultAspectRatio': '9:16',
             'enabledContentTypes': ['talking', 'try_on'],
         })
+
+    def test_commerce_create_template_exposes_ratio_picker_defaulting_to_nine_sixteen(self):
+        template_path = Path(settings.BASE_DIR) / 'templates/commerce/series_create.html'
+        template = template_path.read_text(encoding='utf-8')
+
+        self.assertIn('name="default_aspect_ratio"', template)
+        self.assertIn('value="9:16"', template)
+        self.assertIn('selected', template)
+        self.assertIn('抖音', template)
+        self.assertNotIn('默认画幅：3:4', template)
 
     def test_model_detail_template_does_not_expose_clothing_version_features(self):
         template_path = Path(settings.BASE_DIR) / 'templates/commerce/model_detail.html'

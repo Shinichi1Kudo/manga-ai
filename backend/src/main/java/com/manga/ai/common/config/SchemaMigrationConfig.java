@@ -26,6 +26,7 @@ public class SchemaMigrationConfig {
     public ApplicationRunner propAssetEpisodeIdMigrationRunner() {
         return args -> {
             ensurePropAssetEpisodeIdColumn();
+            ensureCommerceTables();
             ensureSubjectReplacementTaskTable();
             ensureGptImage2TaskTable();
             ensurePerformanceIndexes();
@@ -34,6 +35,10 @@ public class SchemaMigrationConfig {
 
     private void ensurePropAssetEpisodeIdColumn() {
         try (Connection connection = dataSource.getConnection()) {
+            if (!hasTable(connection, "prop_asset")) {
+                log.debug("跳过数据库迁移: prop_asset 表不存在");
+                return;
+            }
             if (hasColumn(connection, "prop_asset", "episode_id")) {
                 ensureIndex(connection);
                 return;
@@ -51,6 +56,18 @@ public class SchemaMigrationConfig {
         } catch (Exception e) {
             log.error("数据库迁移失败: prop_asset.episode_id", e);
             throw new IllegalStateException("数据库迁移失败: prop_asset.episode_id", e);
+        }
+    }
+
+    private boolean hasTable(Connection connection, String tableName) throws Exception {
+        DatabaseMetaData metaData = connection.getMetaData();
+        try (ResultSet tables = metaData.getTables(connection.getCatalog(), null, tableName, null)) {
+            if (tables.next()) {
+                return true;
+            }
+        }
+        try (ResultSet tables = metaData.getTables(connection.getCatalog(), null, tableName.toUpperCase(), null)) {
+            return tables.next();
         }
     }
 
@@ -161,6 +178,34 @@ public class SchemaMigrationConfig {
         }
     }
 
+    private void ensureCommerceTables() {
+        try (Connection connection = dataSource.getConnection()) {
+            String productName = connection.getMetaData().getDatabaseProductName();
+            boolean mysql = productName != null && productName.toLowerCase().contains("mysql");
+            try (Statement statement = connection.createStatement()) {
+                statement.execute(mysql ? mysqlCommerceSeriesSql() : genericCommerceSeriesSql());
+                statement.execute(mysql ? mysqlCommerceModelSql() : genericCommerceModelSql());
+                statement.execute(mysql ? mysqlCommerceProductSql() : genericCommerceProductSql());
+                statement.execute(mysql ? mysqlCommerceProjectSql() : genericCommerceProjectSql());
+                statement.execute(mysql ? mysqlCommerceShotSql() : genericCommerceShotSql());
+            }
+            ensureIndex(connection, "idx_commerce_series_user_created", "commerce_series", "user_id, created_at");
+            ensureIndex(connection, "idx_commerce_series_user_status", "commerce_series", "user_id, status");
+            ensureIndex(connection, "idx_commerce_model_series_created", "commerce_model", "series_id, created_at");
+            ensureIndex(connection, "idx_commerce_model_user_status", "commerce_model", "user_id, status");
+            ensureIndex(connection, "idx_commerce_product_model_created", "commerce_product", "model_id, created_at");
+            ensureIndex(connection, "idx_commerce_product_series_created", "commerce_product", "series_id, created_at");
+            ensureIndex(connection, "idx_commerce_product_user_status", "commerce_product", "user_id, status");
+            ensureIndex(connection, "idx_commerce_project_product_created", "commerce_project", "product_id, created_at");
+            ensureIndex(connection, "idx_commerce_project_user_status", "commerce_project", "user_id, status");
+            ensureIndex(connection, "idx_commerce_shot_project_order", "commerce_shot", "project_id, sort_order");
+            ensureIndex(connection, "idx_commerce_shot_generation_status", "commerce_shot", "generation_status");
+        } catch (Exception e) {
+            log.error("数据库迁移失败: commerce tables", e);
+            throw new IllegalStateException("数据库迁移失败: commerce tables", e);
+        }
+    }
+
     private void ensureGptImage2TaskTable() {
         try (Connection connection = dataSource.getConnection()) {
             String productName = connection.getMetaData().getDatabaseProductName();
@@ -263,6 +308,190 @@ public class SchemaMigrationConfig {
                 + "seed BIGINT,"
                 + "deducted_credits INT DEFAULT NULL,"
                 + "credits_refunded BOOLEAN DEFAULT FALSE,"
+                + "created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,"
+                + "updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
+                + ")";
+    }
+
+    private String mysqlCommerceSeriesSql() {
+        return "CREATE TABLE IF NOT EXISTS commerce_series ("
+                + "id BIGINT AUTO_INCREMENT PRIMARY KEY,"
+                + "user_id BIGINT NOT NULL,"
+                + "name VARCHAR(120) NOT NULL,"
+                + "category VARCHAR(40) NOT NULL DEFAULT 'clothing',"
+                + "visual_style VARCHAR(40) NOT NULL DEFAULT 'realistic',"
+                + "default_aspect_ratio VARCHAR(10) NOT NULL DEFAULT '9:16',"
+                + "enabled_content_types VARCHAR(120) NOT NULL DEFAULT 'talking,try_on',"
+                + "status VARCHAR(30) NOT NULL DEFAULT 'active',"
+                + "created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,"
+                + "updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,"
+                + "is_deleted TINYINT(1) NOT NULL DEFAULT 0"
+                + ")";
+    }
+
+    private String genericCommerceSeriesSql() {
+        return "CREATE TABLE IF NOT EXISTS commerce_series ("
+                + "id BIGINT AUTO_INCREMENT PRIMARY KEY,"
+                + "user_id BIGINT NOT NULL,"
+                + "name VARCHAR(120) NOT NULL,"
+                + "category VARCHAR(40) NOT NULL DEFAULT 'clothing',"
+                + "visual_style VARCHAR(40) NOT NULL DEFAULT 'realistic',"
+                + "default_aspect_ratio VARCHAR(10) NOT NULL DEFAULT '9:16',"
+                + "enabled_content_types VARCHAR(120) NOT NULL DEFAULT 'talking,try_on',"
+                + "status VARCHAR(30) NOT NULL DEFAULT 'active',"
+                + "created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,"
+                + "updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,"
+                + "is_deleted BOOLEAN NOT NULL DEFAULT FALSE"
+                + ")";
+    }
+
+    private String mysqlCommerceModelSql() {
+        return "CREATE TABLE IF NOT EXISTS commerce_model ("
+                + "id BIGINT AUTO_INCREMENT PRIMARY KEY,"
+                + "series_id BIGINT NOT NULL,"
+                + "user_id BIGINT NOT NULL,"
+                + "name VARCHAR(80) NOT NULL,"
+                + "source_type VARCHAR(30) NOT NULL DEFAULT 'ai',"
+                + "gender_age VARCHAR(80),"
+                + "body_profile VARCHAR(200),"
+                + "style_tags VARCHAR(255),"
+                + "speaking_persona VARCHAR(200),"
+                + "appearance_prompt TEXT,"
+                + "base_image_url VARCHAR(1024),"
+                + "status VARCHAR(30) NOT NULL DEFAULT 'generating',"
+                + "created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,"
+                + "updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,"
+                + "is_deleted TINYINT(1) NOT NULL DEFAULT 0"
+                + ")";
+    }
+
+    private String genericCommerceModelSql() {
+        return "CREATE TABLE IF NOT EXISTS commerce_model ("
+                + "id BIGINT AUTO_INCREMENT PRIMARY KEY,"
+                + "series_id BIGINT NOT NULL,"
+                + "user_id BIGINT NOT NULL,"
+                + "name VARCHAR(80) NOT NULL,"
+                + "source_type VARCHAR(30) NOT NULL DEFAULT 'ai',"
+                + "gender_age VARCHAR(80),"
+                + "body_profile VARCHAR(200),"
+                + "style_tags VARCHAR(255),"
+                + "speaking_persona VARCHAR(200),"
+                + "appearance_prompt CLOB,"
+                + "base_image_url VARCHAR(1024),"
+                + "status VARCHAR(30) NOT NULL DEFAULT 'generating',"
+                + "created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,"
+                + "updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,"
+                + "is_deleted BOOLEAN NOT NULL DEFAULT FALSE"
+                + ")";
+    }
+
+    private String mysqlCommerceProductSql() {
+        return "CREATE TABLE IF NOT EXISTS commerce_product ("
+                + "id BIGINT AUTO_INCREMENT PRIMARY KEY,"
+                + "model_id BIGINT NOT NULL,"
+                + "series_id BIGINT NOT NULL,"
+                + "user_id BIGINT NOT NULL,"
+                + "name VARCHAR(120) NOT NULL,"
+                + "image_url VARCHAR(1024) NOT NULL,"
+                + "product_type VARCHAR(60),"
+                + "selling_points TEXT,"
+                + "fabric_fit_color_size TEXT,"
+                + "target_audience VARCHAR(255),"
+                + "price_offer VARCHAR(255),"
+                + "try_on_requirements TEXT,"
+                + "status VARCHAR(30) NOT NULL DEFAULT 'active',"
+                + "created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,"
+                + "updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,"
+                + "is_deleted TINYINT(1) NOT NULL DEFAULT 0"
+                + ")";
+    }
+
+    private String genericCommerceProductSql() {
+        return "CREATE TABLE IF NOT EXISTS commerce_product ("
+                + "id BIGINT AUTO_INCREMENT PRIMARY KEY,"
+                + "model_id BIGINT NOT NULL,"
+                + "series_id BIGINT NOT NULL,"
+                + "user_id BIGINT NOT NULL,"
+                + "name VARCHAR(120) NOT NULL,"
+                + "image_url VARCHAR(1024) NOT NULL,"
+                + "product_type VARCHAR(60),"
+                + "selling_points CLOB,"
+                + "fabric_fit_color_size CLOB,"
+                + "target_audience VARCHAR(255),"
+                + "price_offer VARCHAR(255),"
+                + "try_on_requirements CLOB,"
+                + "status VARCHAR(30) NOT NULL DEFAULT 'active',"
+                + "created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,"
+                + "updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,"
+                + "is_deleted BOOLEAN NOT NULL DEFAULT FALSE"
+                + ")";
+    }
+
+    private String mysqlCommerceProjectSql() {
+        return "CREATE TABLE IF NOT EXISTS commerce_project ("
+                + "id BIGINT AUTO_INCREMENT PRIMARY KEY,"
+                + "series_id BIGINT NOT NULL,"
+                + "model_id BIGINT NOT NULL,"
+                + "product_id BIGINT NOT NULL,"
+                + "user_id BIGINT NOT NULL,"
+                + "content_type VARCHAR(30) NOT NULL,"
+                + "aspect_ratio VARCHAR(10) NOT NULL DEFAULT '9:16',"
+                + "model_image_url VARCHAR(1024) NOT NULL,"
+                + "product_image_url VARCHAR(1024) NOT NULL,"
+                + "status VARCHAR(30) NOT NULL DEFAULT 'draft',"
+                + "error_message TEXT,"
+                + "created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,"
+                + "updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP"
+                + ")";
+    }
+
+    private String genericCommerceProjectSql() {
+        return "CREATE TABLE IF NOT EXISTS commerce_project ("
+                + "id BIGINT AUTO_INCREMENT PRIMARY KEY,"
+                + "series_id BIGINT NOT NULL,"
+                + "model_id BIGINT NOT NULL,"
+                + "product_id BIGINT NOT NULL,"
+                + "user_id BIGINT NOT NULL,"
+                + "content_type VARCHAR(30) NOT NULL,"
+                + "aspect_ratio VARCHAR(10) NOT NULL DEFAULT '9:16',"
+                + "model_image_url VARCHAR(1024) NOT NULL,"
+                + "product_image_url VARCHAR(1024) NOT NULL,"
+                + "status VARCHAR(30) NOT NULL DEFAULT 'draft',"
+                + "error_message CLOB,"
+                + "created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,"
+                + "updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
+                + ")";
+    }
+
+    private String mysqlCommerceShotSql() {
+        return "CREATE TABLE IF NOT EXISTS commerce_shot ("
+                + "id BIGINT AUTO_INCREMENT PRIMARY KEY,"
+                + "project_id BIGINT NOT NULL,"
+                + "sort_order INT NOT NULL,"
+                + "title VARCHAR(120) NOT NULL,"
+                + "visual_description TEXT NOT NULL,"
+                + "voiceover_text TEXT,"
+                + "duration_seconds INT NOT NULL DEFAULT 5,"
+                + "video_url VARCHAR(1024),"
+                + "generation_status VARCHAR(30) NOT NULL DEFAULT 'draft',"
+                + "error_message TEXT,"
+                + "created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,"
+                + "updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP"
+                + ")";
+    }
+
+    private String genericCommerceShotSql() {
+        return "CREATE TABLE IF NOT EXISTS commerce_shot ("
+                + "id BIGINT AUTO_INCREMENT PRIMARY KEY,"
+                + "project_id BIGINT NOT NULL,"
+                + "sort_order INT NOT NULL,"
+                + "title VARCHAR(120) NOT NULL,"
+                + "visual_description CLOB NOT NULL,"
+                + "voiceover_text CLOB,"
+                + "duration_seconds INT NOT NULL DEFAULT 5,"
+                + "video_url VARCHAR(1024),"
+                + "generation_status VARCHAR(30) NOT NULL DEFAULT 'draft',"
+                + "error_message CLOB,"
                 + "created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,"
                 + "updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
                 + ")";

@@ -44,7 +44,7 @@ public class CommerceServiceImpl implements CommerceService {
 
     private static final String DEFAULT_CATEGORY = "clothing";
     private static final String DEFAULT_VISUAL_STYLE = "realistic";
-    private static final String DEFAULT_ASPECT_RATIO = "3:4";
+    private static final String DEFAULT_ASPECT_RATIO = "9:16";
     private static final List<String> DEFAULT_CONTENT_TYPES = List.of("talking", "try_on");
     private static final List<String> ALLOWED_ASPECT_RATIOS = Arrays.asList("3:4", "9:16", "1:1", "16:9");
     private static final List<String> ALLOWED_CONTENT_TYPES = Arrays.asList("talking", "try_on");

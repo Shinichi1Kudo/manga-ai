@@ -11,6 +11,10 @@ import requests
 from api.backend_client import BackendClient, BackendAPIError
 
 
+COMMERCE_ASPECT_RATIOS = ('9:16', '3:4', '1:1', '16:9')
+DEFAULT_COMMERCE_ASPECT_RATIO = '9:16'
+
+
 def get_client(request):
     """获取带认证Token的BackendClient"""
     token = request.session.get('token')
@@ -296,7 +300,10 @@ def commerce_series_create(request):
     """创建电商系列"""
     if request.method == 'POST':
         name = request.POST.get('name', '').strip()
-        form_data = {'name': name}
+        default_aspect_ratio = request.POST.get('default_aspect_ratio', DEFAULT_COMMERCE_ASPECT_RATIO).strip()
+        if default_aspect_ratio not in COMMERCE_ASPECT_RATIOS:
+            default_aspect_ratio = DEFAULT_COMMERCE_ASPECT_RATIO
+        form_data = {'name': name, 'default_aspect_ratio': default_aspect_ratio}
         if not name:
             messages.error(request, '请输入电商系列名称')
             return render(request, 'commerce/series_create.html', {'form_data': form_data})
@@ -307,7 +314,7 @@ def commerce_series_create(request):
                 'name': name,
                 'category': 'clothing',
                 'visualStyle': 'realistic',
-                'defaultAspectRatio': '3:4',
+                'defaultAspectRatio': default_aspect_ratio,
                 'enabledContentTypes': ['talking', 'try_on'],
             })
             messages.success(request, f'电商系列 "{name}" 创建成功')
@@ -316,7 +323,9 @@ def commerce_series_create(request):
             messages.error(request, f'创建失败: {e.message}')
             return render(request, 'commerce/series_create.html', {'form_data': form_data})
 
-    return render(request, 'commerce/series_create.html')
+    return render(request, 'commerce/series_create.html', {
+        'form_data': {'default_aspect_ratio': DEFAULT_COMMERCE_ASPECT_RATIO}
+    })
 
 
 def commerce_series_detail(request, series_id):
@@ -416,7 +425,9 @@ def commerce_product_create(request, model_id):
 def commerce_project_create(request, product_id):
     """从商品创建带货内容项目"""
     content_type = request.POST.get('content_type', 'talking').strip() or 'talking'
-    aspect_ratio = request.POST.get('aspect_ratio', '3:4').strip() or '3:4'
+    aspect_ratio = request.POST.get('aspect_ratio', DEFAULT_COMMERCE_ASPECT_RATIO).strip()
+    if aspect_ratio not in COMMERCE_ASPECT_RATIOS:
+        aspect_ratio = DEFAULT_COMMERCE_ASPECT_RATIO
     client = get_client(request)
     try:
         result = client.post(f'/v1/commerce/products/{product_id}/projects', {

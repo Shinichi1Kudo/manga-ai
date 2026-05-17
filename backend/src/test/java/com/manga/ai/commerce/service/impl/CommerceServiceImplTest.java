@@ -62,7 +62,7 @@ class CommerceServiceImplTest {
     }
 
     @Test
-    void createSeriesDefaultsToClothingRealisticAndThreeFour() {
+    void createSeriesDefaultsToClothingRealisticAndNineSixteen() {
         UserContextHolder.setUserId(9L);
         CommerceSeriesCreateRequest request = new CommerceSeriesCreateRequest();
         request.setName("小雅女装种草号");
@@ -71,7 +71,7 @@ class CommerceServiceImplTest {
 
         assertThat(result.getCategory()).isEqualTo("clothing");
         assertThat(result.getVisualStyle()).isEqualTo("realistic");
-        assertThat(result.getDefaultAspectRatio()).isEqualTo("3:4");
+        assertThat(result.getDefaultAspectRatio()).isEqualTo("9:16");
     }
 
     @Test

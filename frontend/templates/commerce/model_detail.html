@@ -30,11 +30,13 @@
                             <form method="post" action="/commerce/products/{{ product.id }}/projects/create/">
                                 {% csrf_token %}
                                 <input type="hidden" name="content_type" value="talking">
+                                <input type="hidden" name="aspect_ratio" value="9:16">
                                 <button class="w-full rounded-lg bg-sky-500 px-3 py-2 text-sm font-semibold text-white">生成口播</button>
                             </form>
                             <form method="post" action="/commerce/products/{{ product.id }}/projects/create/">
                                 {% csrf_token %}
                                 <input type="hidden" name="content_type" value="try_on">
+                                <input type="hidden" name="aspect_ratio" value="9:16">
                                 <button class="w-full rounded-lg bg-emerald-500 px-3 py-2 text-sm font-semibold text-white">生成试穿</button>
                             </form>
                         </div>

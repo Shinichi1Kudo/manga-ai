@@ -4,7 +4,7 @@ CREATE TABLE IF NOT EXISTS commerce_series (
     name VARCHAR(120) NOT NULL,
     category VARCHAR(40) NOT NULL DEFAULT 'clothing',
     visual_style VARCHAR(40) NOT NULL DEFAULT 'realistic',
-    default_aspect_ratio VARCHAR(10) NOT NULL DEFAULT '3:4',
+    default_aspect_ratio VARCHAR(10) NOT NULL DEFAULT '9:16',
     enabled_content_types VARCHAR(120) NOT NULL DEFAULT 'talking,try_on',
     status VARCHAR(30) NOT NULL DEFAULT 'active',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,

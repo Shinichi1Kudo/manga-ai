@@ -28,10 +28,16 @@
             </div>
 
             <div class="rounded-xl border border-emerald-300/20 bg-emerald-300/10 p-4">
-                <p class="font-semibold text-emerald-100">默认画幅：3:4</p>
+                <label for="defaultAspectRatio" class="mb-2 block font-semibold text-emerald-100">默认画幅</label>
+                <select id="defaultAspectRatio" name="default_aspect_ratio" class="input-modern w-full">
+                    <option value="9:16" {% if form_data.default_aspect_ratio|default:"9:16" == "9:16" %}selected{% endif %}>9:16 - 抖音 / 快手 / 视频号全屏竖屏</option>
+                    <option value="3:4" {% if form_data.default_aspect_ratio == "3:4" %}selected{% endif %}>3:4 - 真人模特 / 服装试穿竖图</option>
+                    <option value="1:1" {% if form_data.default_aspect_ratio == "1:1" %}selected{% endif %}>1:1 - 商品卡片 / 方图投放素材</option>
+                    <option value="16:9" {% if form_data.default_aspect_ratio == "16:9" %}selected{% endif %}>16:9 - 横屏展示 / 店铺详情素材</option>
+                </select>
                 <div class="mt-3 grid gap-2 text-sm text-white/65 md:grid-cols-2">
-                    <p>3:4：默认，适合真人模特、服装试穿、商品竖图展示。</p>
-                    <p>9:16：抖音、快手、视频号等全屏竖屏视频。</p>
+                    <p>9:16：默认，抖音、快手、视频号等全屏竖屏视频。</p>
+                    <p>3:4：适合真人模特、服装试穿、商品竖图展示。</p>
                     <p>1:1：商品卡片、头像封面、方图投放素材。</p>
                     <p>16:9：横屏展示、店铺详情素材、电脑端预览。</p>
                 </div>
