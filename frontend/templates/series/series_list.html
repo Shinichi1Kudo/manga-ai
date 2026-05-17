@@ -76,20 +76,23 @@
             <div class="home-action-row">
                 <a href="/init/" data-login-required="true" class="home-action home-action-primary">
                     <i data-lucide="plus" class="w-5 h-5"></i>
-                    <span>创建新系列</span>
+                    <span>创建短剧系列</span>
                 </a>
                 <a href="/episodes/" data-login-required="true" class="home-action home-action-warm">
                     <i data-lucide="film" class="w-5 h-5"></i>
                     <span>剧集制作</span>
                 </a>
-                <button type="button" class="home-action home-action-disabled" disabled aria-disabled="true" title="等待上线，功能还在研制中">
+                <a href="/commerce/series/create/" data-login-required="true" class="home-action home-action-emerald">
                     <i data-lucide="shopping-bag" class="w-5 h-5"></i>
                     <span class="home-action-copy">
-                        <span>电商带货</span>
-                        <small>等待上线，功能研制中</small>
+                        <span>创建电商系列</span>
+                        <small>服装 / 真人写实</small>
                     </span>
-                    <span class="home-coming-soon-badge">待上线</span>
-                </button>
+                </a>
+                <a href="/commerce/" data-login-required="true" class="home-action home-action-sky">
+                    <i data-lucide="shopping-cart" class="w-5 h-5"></i>
+                    <span>电商带货</span>
+                </a>
             </div>
         </div>
 
@@ -127,15 +130,33 @@
 <!-- Series List -->
 <div class="mt-8">
     <h2 class="text-2xl font-bold mb-6">我的系列</h2>
-    <div id="seriesList" class="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
-        <div class="glass-card p-8 text-center col-span-full">
-            <div class="spinner mx-auto mb-4"></div>
-            <p class="text-white/50">加载中...</p>
-        </div>
-    </div>
+    <div class="grid gap-8 xl:grid-cols-[minmax(0,1.25fr)_minmax(320px,0.75fr)]">
+        <section>
+            <div class="mb-4 flex items-center justify-between">
+                <h3 class="text-lg font-semibold">短剧系列</h3>
+                <a href="/init/" data-login-required="true" class="text-sm font-semibold text-violet-200 hover:text-white">创建短剧系列</a>
+            </div>
+            <div id="seriesList" class="grid md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-2 gap-6">
+                <div class="glass-card p-8 text-center col-span-full">
+                    <div class="spinner mx-auto mb-4"></div>
+                    <p class="text-white/50">加载中...</p>
+                </div>
+            </div>
 
-    <!-- Pagination -->
-    <div id="pagination" class="flex justify-center items-center gap-4 mt-8"></div>
+            <!-- Pagination -->
+            <div id="pagination" class="flex justify-center items-center gap-4 mt-8"></div>
+        </section>
+
+        <section>
+            <div class="mb-4 flex items-center justify-between">
+                <h3 class="text-lg font-semibold">电商系列</h3>
+                <a href="/commerce/" data-login-required="true" class="text-sm font-semibold text-emerald-200 hover:text-white">查看全部</a>
+            </div>
+            <div id="commerceSeriesHomeList" class="grid gap-4">
+                <div class="glass-card p-6 text-white/50">加载中...</div>
+            </div>
+        </section>
+    </div>
 </div>
 
 <!-- Feature Showcase -->
@@ -385,6 +406,74 @@ function renderAnonymousSeriesPrompt() {
     `;
     document.getElementById('pagination').innerHTML = '';
     safeCreateIcons();
+
+    const commerceContainer = document.getElementById('commerceSeriesHomeList');
+    if (commerceContainer) {
+        commerceContainer.innerHTML = `
+            <div class="glass-card p-6 text-center">
+                <h3 class="font-semibold">登录后查看电商系列</h3>
+                <p class="mt-2 text-sm text-white/50">创建模特，添加商品，生成带货视频。</p>
+            </div>
+        `;
+    }
+}
+
+function loadCommerceSeriesHome() {
+    const container = document.getElementById('commerceSeriesHomeList');
+    if (!container) return;
+    container.innerHTML = '<div class="glass-card p-6 text-white/50">加载中...</div>';
+
+    fetch('/commerce/api/series/')
+        .then(response => {
+            if (response.status === 401) {
+                return response.json().then(result => {
+                    const error = new Error(result.message || '请先登录');
+                    error.status = 401;
+                    throw error;
+                });
+            }
+            return response.json();
+        })
+        .then(result => {
+            const list = result.data || [];
+            if (!list.length) {
+                container.innerHTML = `
+                    <div class="glass-card p-6">
+                        <h3 class="font-semibold">还没有电商系列</h3>
+                        <p class="mt-2 text-sm text-white/50">第一版支持服装、真人写实、3:4 默认画幅。</p>
+                        <a href="/commerce/series/create/" data-login-required="true" class="mt-4 inline-flex rounded-lg bg-emerald-500 px-3 py-2 text-sm font-semibold text-white">创建电商系列</a>
+                    </div>
+                `;
+                initLoginRequiredLinks();
+                return;
+            }
+            container.innerHTML = list.slice(0, 3).map(item => `
+                <a href="/commerce/series/${item.id}/" class="glass-card block p-4 transition hover:border-emerald-300/40">
+                    <div class="mb-2 flex items-center justify-between gap-3">
+                        <h4 class="font-semibold">${escapeHomeHtml(item.name || '未命名电商系列')}</h4>
+                        <span class="rounded-full bg-emerald-400/15 px-2 py-1 text-xs text-emerald-100">${item.defaultAspectRatio || '3:4'}</span>
+                    </div>
+                    <p class="text-sm text-white/45">服装 / 真人写实 / 口播种草 / 试穿展示</p>
+                </a>
+            `).join('');
+        })
+        .catch(err => {
+            if (err.status === 401) {
+                renderAnonymousSeriesPrompt();
+                return;
+            }
+            container.innerHTML = `<div class="glass-card p-6 text-red-300">加载失败: ${escapeHomeHtml(err.message)}</div>`;
+        });
+}
+
+function escapeHomeHtml(value) {
+    return String(value).replace(/[&<>"']/g, char => ({
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#039;'
+    }[char]));
 }
 
 function updateShowcaseAudioButton(button, muted) {
@@ -1094,6 +1183,7 @@ document.addEventListener('DOMContentLoaded', function() {
         return;
     }
     loadSeries(1);
+    loadCommerceSeriesHome();
 });
 
 document.getElementById('showcaseVideoModalClose')?.addEventListener('click', closeShowcaseVideoModal);

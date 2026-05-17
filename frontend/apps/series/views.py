@@ -274,6 +274,186 @@ def gpt_image2_page(request):
     return render(request, 'series/gpt_image2.html')
 
 
+def commerce_series_list(request):
+    """电商带货系列列表"""
+    return render(request, 'commerce/series_list.html')
+
+
+def commerce_series_api(request):
+    """API: 获取电商系列列表"""
+    client = get_client(request)
+    try:
+        result = client.get('/v1/commerce/series')
+        return JsonResponse({'data': result})
+    except BackendAPIError as e:
+        status = 401 if e.status_code == 401 else 500
+        return JsonResponse({'code': e.status_code, 'message': e.message, 'data': []}, status=status)
+
+
+@csrf_exempt
+@require_http_methods(["GET", "POST"])
+def commerce_series_create(request):
+    """创建电商系列"""
+    if request.method == 'POST':
+        name = request.POST.get('name', '').strip()
+        form_data = {'name': name}
+        if not name:
+            messages.error(request, '请输入电商系列名称')
+            return render(request, 'commerce/series_create.html', {'form_data': form_data})
+
+        client = get_client(request)
+        try:
+            result = client.post('/v1/commerce/series', {
+                'name': name,
+                'category': 'clothing',
+                'visualStyle': 'realistic',
+                'defaultAspectRatio': '3:4',
+                'enabledContentTypes': ['talking', 'try_on'],
+            })
+            messages.success(request, f'电商系列 "{name}" 创建成功')
+            return redirect('series:commerce_series_detail', series_id=result.get('id'))
+        except BackendAPIError as e:
+            messages.error(request, f'创建失败: {e.message}')
+            return render(request, 'commerce/series_create.html', {'form_data': form_data})
+
+    return render(request, 'commerce/series_create.html')
+
+
+def commerce_series_detail(request, series_id):
+    """电商系列详情"""
+    client = get_client(request)
+    try:
+        series = client.get(f'/v1/commerce/series/{series_id}')
+        models = client.get(f'/v1/commerce/series/{series_id}/models')
+    except BackendAPIError as e:
+        messages.error(request, f'获取电商系列失败: {e.message}')
+        return redirect('series:commerce_series_list')
+
+    return render(request, 'commerce/series_detail.html', {
+        'commerce_series': series,
+        'models': models,
+    })
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def commerce_model_create(request, series_id):
+    """创建电商模特"""
+    client = get_client(request)
+    try:
+        payload = {
+            'name': request.POST.get('name', '').strip(),
+            'sourceType': request.POST.get('source_type', 'ai').strip() or 'ai',
+            'genderAge': request.POST.get('gender_age', '').strip(),
+            'bodyProfile': request.POST.get('body_profile', '').strip(),
+            'styleTags': request.POST.get('style_tags', '').strip(),
+            'speakingPersona': request.POST.get('speaking_persona', '').strip(),
+            'appearancePrompt': request.POST.get('appearance_prompt', '').strip(),
+            'baseImageUrl': request.POST.get('base_image_url', '').strip(),
+        }
+        result = client.post(f'/v1/commerce/series/{series_id}/models', payload)
+        messages.success(request, f'模特 "{payload["name"]}" 已创建')
+        return redirect('series:commerce_model_detail', model_id=result.get('id'))
+    except BackendAPIError as e:
+        messages.error(request, f'创建模特失败: {e.message}')
+        return redirect('series:commerce_series_detail', series_id=series_id)
+
+
+def commerce_model_detail(request, model_id):
+    """电商模特详情"""
+    client = get_client(request)
+    try:
+        products = client.get(f'/v1/commerce/models/{model_id}/products')
+    except BackendAPIError as e:
+        messages.error(request, f'获取模特商品失败: {e.message}')
+        products = []
+
+    # 后端第一版没有单独模特详情接口，页面用商品列表和路径参数即可工作。
+    return render(request, 'commerce/model_detail.html', {
+        'model_id': model_id,
+        'products': products,
+    })
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def commerce_model_confirm(request, model_id):
+    """锁定电商模特"""
+    client = get_client(request)
+    try:
+        client.post(f'/v1/commerce/models/{model_id}/confirm')
+        messages.success(request, '模特已锁定')
+    except BackendAPIError as e:
+        messages.error(request, f'锁定失败: {e.message}')
+    return redirect('series:commerce_model_detail', model_id=model_id)
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def commerce_product_create(request, model_id):
+    """创建电商商品"""
+    client = get_client(request)
+    try:
+        payload = {
+            'name': request.POST.get('name', '').strip(),
+            'imageUrl': request.POST.get('image_url', '').strip(),
+            'productType': request.POST.get('product_type', '').strip(),
+            'sellingPoints': request.POST.get('selling_points', '').strip(),
+            'fabricFitColorSize': request.POST.get('fabric_fit_color_size', '').strip(),
+            'targetAudience': request.POST.get('target_audience', '').strip(),
+            'priceOffer': request.POST.get('price_offer', '').strip(),
+            'tryOnRequirements': request.POST.get('try_on_requirements', '').strip(),
+        }
+        client.post(f'/v1/commerce/models/{model_id}/products', payload)
+        messages.success(request, f'商品 "{payload["name"]}" 已添加')
+    except BackendAPIError as e:
+        messages.error(request, f'添加商品失败: {e.message}')
+    return redirect('series:commerce_model_detail', model_id=model_id)
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def commerce_project_create(request, product_id):
+    """从商品创建带货内容项目"""
+    content_type = request.POST.get('content_type', 'talking').strip() or 'talking'
+    aspect_ratio = request.POST.get('aspect_ratio', '3:4').strip() or '3:4'
+    client = get_client(request)
+    try:
+        result = client.post(f'/v1/commerce/products/{product_id}/projects', {
+            'contentType': content_type,
+            'aspectRatio': aspect_ratio,
+        })
+        return redirect('series:commerce_project_detail', project_id=result.get('id'))
+    except BackendAPIError as e:
+        messages.error(request, f'生成内容失败: {e.message}')
+        return redirect(request.META.get('HTTP_REFERER', 'series:commerce_series_list'))
+
+
+def commerce_project_detail(request, project_id):
+    """电商带货项目详情"""
+    client = get_client(request)
+    try:
+        project = client.get(f'/v1/commerce/projects/{project_id}')
+    except BackendAPIError as e:
+        messages.error(request, f'获取带货项目失败: {e.message}')
+        return redirect('series:commerce_series_list')
+
+    return render(request, 'commerce/project_detail.html', {'project': project})
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def commerce_project_generate_video(request, project_id):
+    """生成电商带货项目视频"""
+    client = get_client(request)
+    try:
+        client.post(f'/v1/commerce/projects/{project_id}/generate-video')
+        messages.success(request, '电商带货视频已生成')
+    except BackendAPIError as e:
+        messages.error(request, f'生成视频失败: {e.message}')
+    return redirect('series:commerce_project_detail', project_id=project_id)
+
+
 @csrf_exempt
 @require_http_methods(["GET", "POST"])
 def subject_replacement_tasks(request):

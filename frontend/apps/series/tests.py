@@ -639,16 +639,18 @@ class GptImage2HomeTests(TestCase):
         self.assertNotIn('id="gptImage2Modal"', template)
         self.assertNotIn('function openGptImage2Modal()', template)
 
-    def test_home_page_has_disabled_ecommerce_button_under_workbench(self):
+    def test_home_page_has_ecommerce_entries_under_workbench(self):
         template_path = Path(settings.BASE_DIR) / 'templates/series/series_list.html'
         template = template_path.read_text(encoding='utf-8')
 
         workbench_block = template.split('基础工作台', 1)[1].split('AI 工具', 1)[0]
         self.assertIn('电商带货', workbench_block)
-        self.assertIn('home-action-disabled', workbench_block)
-        self.assertIn('disabled', workbench_block)
-        self.assertIn('等待上线', workbench_block)
-        self.assertIn('功能研制中', workbench_block)
+        self.assertIn('创建电商系列', workbench_block)
+        self.assertIn('href="/commerce/"', workbench_block)
+        self.assertIn('href="/commerce/series/create/"', workbench_block)
+        self.assertNotIn('home-action-disabled', workbench_block)
+        self.assertNotIn('等待上线', workbench_block)
+        self.assertNotIn('功能研制中', workbench_block)
         self.assertIn('<div class="home-action-group">\n            <div class="home-action-label">基础工作台</div>', template)
         self.assertIn('<div class="home-action-group home-action-group-accent">\n            <div class="home-action-label">AI 工具</div>', template)
         self.assertIn('<div class="home-action-group home-action-group-account">\n            <div class="home-action-label">资产与账户</div>', template)
@@ -1085,3 +1087,73 @@ class CreditAdminDashboardTests(TestCase):
         self.assertIn('drawYAxisLabels', template)
         self.assertIn('drawXAxisLabels', template)
         self.assertIn('window.addEventListener(\'resize\'', template)
+
+
+class CommerceFlowTests(TestCase):
+    def test_commerce_create_forwards_default_ratio_and_fixed_style(self):
+        session = self.client.session
+        session['token'] = 'token-1'
+        session.save()
+        backend_client = Mock()
+        backend_client.post.return_value = {'id': 10}
+
+        with patch('apps.series.views.get_client', return_value=backend_client):
+            response = self.client.post('/commerce/series/create/', {'name': '小雅女装种草号'})
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response['Location'], '/commerce/series/10/')
+        backend_client.post.assert_called_once_with('/v1/commerce/series', {
+            'name': '小雅女装种草号',
+            'category': 'clothing',
+            'visualStyle': 'realistic',
+            'defaultAspectRatio': '3:4',
+            'enabledContentTypes': ['talking', 'try_on'],
+        })
+
+    def test_model_detail_template_does_not_expose_clothing_version_features(self):
+        template_path = Path(settings.BASE_DIR) / 'templates/commerce/model_detail.html'
+        template = template_path.read_text(encoding='utf-8')
+
+        self.assertIn('商品列表', template)
+        self.assertIn('生成口播', template)
+        self.assertIn('生成试穿', template)
+        self.assertNotIn('生成新服装', template)
+        self.assertNotIn('服装 Tab', template)
+
+    def test_project_generate_video_forwards_to_backend(self):
+        session = self.client.session
+        session['token'] = 'token-1'
+        session.save()
+        backend_client = Mock()
+
+        with patch('apps.series.views.get_client', return_value=backend_client):
+            response = self.client.post('/commerce/projects/88/generate-video/')
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response['Location'], '/commerce/projects/88/')
+        backend_client.post.assert_called_once_with('/v1/commerce/projects/88/generate-video')
+
+
+class CommerceHomeGroupingTests(TestCase):
+    def test_home_template_contains_short_drama_and_ecommerce_groups(self):
+        template_path = Path(settings.BASE_DIR) / 'templates/series/series_list.html'
+        template = template_path.read_text(encoding='utf-8')
+
+        self.assertIn('短剧系列', template)
+        self.assertIn('电商系列', template)
+        self.assertIn('创建电商系列', template)
+        self.assertIn('href="/commerce/"', template)
+
+    def test_commerce_series_api_forwards_to_backend(self):
+        session = self.client.session
+        session['token'] = 'token-1'
+        session.save()
+        backend_client = Mock()
+        backend_client.get.return_value = [{'id': 10, 'name': '小雅女装种草号'}]
+
+        with patch('apps.series.views.get_client', return_value=backend_client):
+            response = self.client.get('/commerce/api/series/')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['data'][0]['name'], '小雅女装种草号')
+        backend_client.get.assert_called_once_with('/v1/commerce/series')

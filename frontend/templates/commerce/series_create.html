@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+
+{% block title %}创建电商系列 - 海带 AI 内容智能创作平台{% endblock %}
+
+{% block content %}
+<div class="mx-auto max-w-3xl py-8">
+    <a href="/commerce/" class="text-sm text-white/50 hover:text-white">← 返回电商系列</a>
+    <div class="glass-card mt-5 p-6">
+        <h1 class="text-2xl font-bold">创建电商系列</h1>
+        <p class="mt-2 text-sm text-white/50">第一版固定为服装品类和真人写实风格。</p>
+
+        <form method="post" class="mt-6 space-y-5">
+            {% csrf_token %}
+            <div>
+                <label class="mb-2 block text-sm text-white/70">系列名称</label>
+                <input name="name" value="{{ form_data.name|default:'' }}" required class="input-modern w-full" placeholder="例如：小雅女装种草号">
+            </div>
+
+            <div class="grid gap-3 md:grid-cols-2">
+                <div class="rounded-xl border border-white/10 bg-white/[0.04] p-4">
+                    <p class="text-sm text-white/45">品类</p>
+                    <p class="mt-1 font-semibold">服装</p>
+                </div>
+                <div class="rounded-xl border border-white/10 bg-white/[0.04] p-4">
+                    <p class="text-sm text-white/45">视觉风格</p>
+                    <p class="mt-1 font-semibold">真人写实</p>
+                </div>
+            </div>
+
+            <div class="rounded-xl border border-emerald-300/20 bg-emerald-300/10 p-4">
+                <p class="font-semibold text-emerald-100">默认画幅：3:4</p>
+                <div class="mt-3 grid gap-2 text-sm text-white/65 md:grid-cols-2">
+                    <p>3:4：默认，适合真人模特、服装试穿、商品竖图展示。</p>
+                    <p>9:16：抖音、快手、视频号等全屏竖屏视频。</p>
+                    <p>1:1：商品卡片、头像封面、方图投放素材。</p>
+                    <p>16:9：横屏展示、店铺详情素材、电脑端预览。</p>
+                </div>
+            </div>
+
+            <div class="flex justify-end">
+                <button type="submit" class="rounded-xl bg-emerald-500 px-5 py-2.5 font-semibold text-white hover:bg-emerald-400">创建系列</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}

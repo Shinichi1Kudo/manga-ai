@@ -1,0 +1,580 @@
+package com.manga.ai.commerce.service.impl;
+
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.manga.ai.commerce.dto.CommerceModelCreateRequest;
+import com.manga.ai.commerce.dto.CommerceModelVO;
+import com.manga.ai.commerce.dto.CommerceProductCreateRequest;
+import com.manga.ai.commerce.dto.CommerceProductVO;
+import com.manga.ai.commerce.dto.CommerceProjectCreateRequest;
+import com.manga.ai.commerce.dto.CommerceProjectVO;
+import com.manga.ai.commerce.dto.CommerceSeriesCreateRequest;
+import com.manga.ai.commerce.dto.CommerceSeriesVO;
+import com.manga.ai.commerce.dto.CommerceShotVO;
+import com.manga.ai.commerce.entity.CommerceModel;
+import com.manga.ai.commerce.entity.CommerceProduct;
+import com.manga.ai.commerce.entity.CommerceProject;
+import com.manga.ai.commerce.entity.CommerceSeries;
+import com.manga.ai.commerce.entity.CommerceShot;
+import com.manga.ai.commerce.mapper.CommerceModelMapper;
+import com.manga.ai.commerce.mapper.CommerceProductMapper;
+import com.manga.ai.commerce.mapper.CommerceProjectMapper;
+import com.manga.ai.commerce.mapper.CommerceSeriesMapper;
+import com.manga.ai.commerce.mapper.CommerceShotMapper;
+import com.manga.ai.commerce.service.CommerceService;
+import com.manga.ai.common.constants.CreditConstants;
+import com.manga.ai.common.enums.CreditUsageType;
+import com.manga.ai.common.exception.BusinessException;
+import com.manga.ai.user.service.UserService;
+import com.manga.ai.user.service.impl.UserServiceImpl.UserContextHolder;
+import com.manga.ai.video.dto.SeedanceRequest;
+import com.manga.ai.video.dto.SeedanceResponse;
+import com.manga.ai.video.service.SeedanceService;
+import lombok.RequiredArgsConstructor;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
+
+@Service
+@RequiredArgsConstructor
+public class CommerceServiceImpl implements CommerceService {
+
+    private static final String DEFAULT_CATEGORY = "clothing";
+    private static final String DEFAULT_VISUAL_STYLE = "realistic";
+    private static final String DEFAULT_ASPECT_RATIO = "3:4";
+    private static final List<String> DEFAULT_CONTENT_TYPES = List.of("talking", "try_on");
+    private static final List<String> ALLOWED_ASPECT_RATIOS = Arrays.asList("3:4", "9:16", "1:1", "16:9");
+    private static final List<String> ALLOWED_CONTENT_TYPES = Arrays.asList("talking", "try_on");
+
+    private final CommerceSeriesMapper seriesMapper;
+    private final CommerceModelMapper modelMapper;
+    private final CommerceProductMapper productMapper;
+    private final CommerceProjectMapper projectMapper;
+    private final CommerceShotMapper shotMapper;
+    private final SeedanceService seedanceService;
+    private final UserService userService;
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public CommerceSeriesVO createSeries(CommerceSeriesCreateRequest request) {
+        Long userId = requireUserId();
+        if (request == null || isBlank(request.getName())) {
+            throw new BusinessException("请输入电商系列名称");
+        }
+
+        String aspectRatio = defaultIfBlank(request.getDefaultAspectRatio(), DEFAULT_ASPECT_RATIO);
+        if (!ALLOWED_ASPECT_RATIOS.contains(aspectRatio)) {
+            throw new BusinessException("不支持的画幅比例");
+        }
+
+        List<String> contentTypes = request.getEnabledContentTypes() == null || request.getEnabledContentTypes().isEmpty()
+                ? DEFAULT_CONTENT_TYPES
+                : request.getEnabledContentTypes();
+
+        CommerceSeries series = new CommerceSeries();
+        series.setUserId(userId);
+        series.setName(request.getName().trim());
+        series.setCategory(defaultIfBlank(request.getCategory(), DEFAULT_CATEGORY));
+        series.setVisualStyle(defaultIfBlank(request.getVisualStyle(), DEFAULT_VISUAL_STYLE));
+        series.setDefaultAspectRatio(aspectRatio);
+        series.setEnabledContentTypes(String.join(",", contentTypes));
+        series.setStatus("active");
+        series.setIsDeleted(0);
+        series.setCreatedAt(LocalDateTime.now());
+        series.setUpdatedAt(LocalDateTime.now());
+        seriesMapper.insert(series);
+
+        return toSeriesVO(series);
+    }
+
+    @Override
+    public List<CommerceSeriesVO> listSeries() {
+        Long userId = requireUserId();
+        LambdaQueryWrapper<CommerceSeries> wrapper = new LambdaQueryWrapper<>();
+        wrapper.eq(CommerceSeries::getUserId, userId)
+                .orderByDesc(CommerceSeries::getCreatedAt);
+        return seriesMapper.selectList(wrapper).stream().map(this::toSeriesVO).toList();
+    }
+
+    @Override
+    public CommerceSeriesVO getSeries(Long seriesId) {
+        return toSeriesVO(requireSeries(seriesId));
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public CommerceModelVO createModel(Long seriesId, CommerceModelCreateRequest request) {
+        Long userId = requireUserId();
+        CommerceSeries series = requireSeries(seriesId);
+        if (!series.getUserId().equals(userId)) {
+            throw new BusinessException("无权访问该电商系列");
+        }
+        if (request == null || isBlank(request.getName())) {
+            throw new BusinessException("请输入模特名称");
+        }
+
+        CommerceModel model = new CommerceModel();
+        model.setSeriesId(seriesId);
+        model.setUserId(userId);
+        model.setName(request.getName().trim());
+        model.setSourceType(defaultIfBlank(request.getSourceType(), "ai"));
+        model.setGenderAge(trimToNull(request.getGenderAge()));
+        model.setBodyProfile(trimToNull(request.getBodyProfile()));
+        model.setStyleTags(trimToNull(request.getStyleTags()));
+        model.setSpeakingPersona(trimToNull(request.getSpeakingPersona()));
+        model.setAppearancePrompt(trimToNull(request.getAppearancePrompt()));
+        model.setBaseImageUrl(trimToNull(request.getBaseImageUrl()));
+        model.setStatus(isBlank(model.getBaseImageUrl()) ? "generating" : "pending_review");
+        model.setIsDeleted(0);
+        model.setCreatedAt(LocalDateTime.now());
+        model.setUpdatedAt(LocalDateTime.now());
+        modelMapper.insert(model);
+        return toModelVO(model);
+    }
+
+    @Override
+    public List<CommerceModelVO> listModels(Long seriesId) {
+        Long userId = requireUserId();
+        requireSeries(seriesId);
+        LambdaQueryWrapper<CommerceModel> wrapper = new LambdaQueryWrapper<>();
+        wrapper.eq(CommerceModel::getSeriesId, seriesId)
+                .eq(CommerceModel::getUserId, userId)
+                .orderByDesc(CommerceModel::getCreatedAt);
+        return modelMapper.selectList(wrapper).stream().map(this::toModelVO).toList();
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public CommerceModelVO confirmModel(Long modelId) {
+        CommerceModel model = requireModel(modelId);
+        if (isBlank(model.getBaseImageUrl())) {
+            throw new BusinessException("模特基础图缺失，无法锁定");
+        }
+        model.setStatus("locked");
+        model.setUpdatedAt(LocalDateTime.now());
+        modelMapper.updateById(model);
+        return toModelVO(model);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public CommerceProductVO createProduct(Long modelId, CommerceProductCreateRequest request) {
+        Long userId = requireUserId();
+        CommerceModel model = requireModel(modelId);
+        if (!model.getUserId().equals(userId)) {
+            throw new BusinessException("无权访问该模特");
+        }
+        if (request == null || isBlank(request.getName())) {
+            throw new BusinessException("请输入商品名称");
+        }
+        if (isBlank(request.getImageUrl())) {
+            throw new BusinessException("请上传商品图片");
+        }
+
+        CommerceProduct product = new CommerceProduct();
+        product.setModelId(modelId);
+        product.setSeriesId(model.getSeriesId());
+        product.setUserId(userId);
+        product.setName(request.getName().trim());
+        product.setImageUrl(request.getImageUrl().trim());
+        product.setProductType(trimToNull(request.getProductType()));
+        product.setSellingPoints(trimToNull(request.getSellingPoints()));
+        product.setFabricFitColorSize(trimToNull(request.getFabricFitColorSize()));
+        product.setTargetAudience(trimToNull(request.getTargetAudience()));
+        product.setPriceOffer(trimToNull(request.getPriceOffer()));
+        product.setTryOnRequirements(trimToNull(request.getTryOnRequirements()));
+        product.setStatus("active");
+        product.setIsDeleted(0);
+        product.setCreatedAt(LocalDateTime.now());
+        product.setUpdatedAt(LocalDateTime.now());
+        productMapper.insert(product);
+        return toProductVO(product);
+    }
+
+    @Override
+    public List<CommerceProductVO> listProducts(Long modelId) {
+        Long userId = requireUserId();
+        requireModel(modelId);
+        LambdaQueryWrapper<CommerceProduct> wrapper = new LambdaQueryWrapper<>();
+        wrapper.eq(CommerceProduct::getModelId, modelId)
+                .eq(CommerceProduct::getUserId, userId)
+                .orderByDesc(CommerceProduct::getCreatedAt);
+        return productMapper.selectList(wrapper).stream().map(this::toProductVO).toList();
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public CommerceProjectVO createProject(Long productId, CommerceProjectCreateRequest request) {
+        Long userId = requireUserId();
+        CommerceProduct product = requireProduct(productId);
+        if (!product.getUserId().equals(userId)) {
+            throw new BusinessException("无权访问该商品");
+        }
+        CommerceModel model = requireModel(product.getModelId());
+        if (!"locked".equals(model.getStatus())) {
+            throw new BusinessException("请先审核并锁定模特");
+        }
+        if (isBlank(model.getBaseImageUrl())) {
+            throw new BusinessException("模特基础图缺失，无法生成视频");
+        }
+        if (isBlank(product.getImageUrl())) {
+            throw new BusinessException("商品图片缺失，无法生成视频");
+        }
+
+        String contentType = request == null ? "talking" : defaultIfBlank(request.getContentType(), "talking");
+        if (!ALLOWED_CONTENT_TYPES.contains(contentType)) {
+            throw new BusinessException("不支持的内容类型");
+        }
+        String aspectRatio = request == null ? DEFAULT_ASPECT_RATIO : defaultIfBlank(request.getAspectRatio(), DEFAULT_ASPECT_RATIO);
+        if (!ALLOWED_ASPECT_RATIOS.contains(aspectRatio)) {
+            throw new BusinessException("不支持的画幅比例");
+        }
+
+        CommerceProject project = new CommerceProject();
+        project.setSeriesId(product.getSeriesId());
+        project.setModelId(model.getId());
+        project.setProductId(product.getId());
+        project.setUserId(userId);
+        project.setContentType(contentType);
+        project.setAspectRatio(aspectRatio);
+        project.setModelImageUrl(model.getBaseImageUrl());
+        project.setProductImageUrl(product.getImageUrl());
+        project.setStatus("draft");
+        project.setCreatedAt(LocalDateTime.now());
+        project.setUpdatedAt(LocalDateTime.now());
+        projectMapper.insert(project);
+
+        List<CommerceShot> shots = buildDraftShots(project, model, product);
+        shots.forEach(shotMapper::insert);
+
+        CommerceProjectVO vo = toProjectVO(project);
+        vo.setShots(shots.stream().map(this::toShotVO).toList());
+        return vo;
+    }
+
+    @Override
+    public CommerceProjectVO getProject(Long projectId) {
+        CommerceProject project = requireProject(projectId);
+        LambdaQueryWrapper<CommerceShot> wrapper = new LambdaQueryWrapper<>();
+        wrapper.eq(CommerceShot::getProjectId, projectId)
+                .orderByAsc(CommerceShot::getSortOrder);
+        CommerceProjectVO vo = toProjectVO(project);
+        vo.setShots(shotMapper.selectList(wrapper).stream().map(this::toShotVO).toList());
+        return vo;
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public CommerceProjectVO generateProjectVideo(Long projectId) {
+        CommerceProject project = requireProject(projectId);
+        if (isBlank(project.getModelImageUrl()) || isBlank(project.getProductImageUrl())) {
+            throw new BusinessException("模特图和商品图不能为空");
+        }
+
+        LambdaQueryWrapper<CommerceShot> wrapper = new LambdaQueryWrapper<>();
+        wrapper.eq(CommerceShot::getProjectId, projectId)
+                .orderByAsc(CommerceShot::getSortOrder);
+        List<CommerceShot> shots = shotMapper.selectList(wrapper);
+        if (shots == null || shots.isEmpty()) {
+            throw new BusinessException("请先生成带货分镜");
+        }
+
+        int requiredCredits = shots.stream()
+                .mapToInt(shot -> CreditConstants.calculateCredits("720p", shot.getDurationSeconds(), "seedance-2.0-fast"))
+                .sum();
+        userService.deductCredits(project.getUserId(), requiredCredits, CreditUsageType.VIDEO_GENERATION.getCode(),
+                "电商带货视频生成-项目" + projectId, projectId, "COMMERCE_PROJECT");
+
+        boolean completed = true;
+        String firstError = null;
+        for (CommerceShot shot : shots) {
+            try {
+                shot.setGenerationStatus("generating");
+                shot.setErrorMessage(null);
+                shot.setUpdatedAt(LocalDateTime.now());
+                shotMapper.updateById(shot);
+
+                SeedanceResponse response = seedanceService.generateVideo(buildVideoRequest(project, shot));
+                if ("completed".equalsIgnoreCase(response.getStatus()) || "succeeded".equalsIgnoreCase(response.getStatus())) {
+                    shot.setVideoUrl(response.getVideoUrl());
+                    shot.setGenerationStatus("completed");
+                } else {
+                    completed = false;
+                    firstError = response.getErrorMessage() != null ? response.getErrorMessage() : "视频生成失败";
+                    shot.setGenerationStatus("failed");
+                    shot.setErrorMessage(firstError);
+                }
+            } catch (Exception e) {
+                completed = false;
+                firstError = e.getMessage();
+                shot.setGenerationStatus("failed");
+                shot.setErrorMessage(e.getMessage());
+            } finally {
+                shot.setUpdatedAt(LocalDateTime.now());
+                shotMapper.updateById(shot);
+            }
+        }
+
+        if (!completed) {
+            userService.refundCredits(project.getUserId(), requiredCredits,
+                    "电商带货视频生成失败返还-项目" + projectId, projectId, "COMMERCE_PROJECT");
+            project.setStatus("failed");
+            project.setErrorMessage(firstError);
+        } else {
+            project.setStatus("completed");
+            project.setErrorMessage(null);
+        }
+        project.setUpdatedAt(LocalDateTime.now());
+        projectMapper.updateById(project);
+
+        CommerceProjectVO vo = toProjectVO(project);
+        vo.setShots(shots.stream().map(this::toShotVO).toList());
+        return vo;
+    }
+
+    private Long requireUserId() {
+        Long userId = UserContextHolder.getUserId();
+        if (userId == null) {
+            throw new BusinessException(401, "未登录");
+        }
+        return userId;
+    }
+
+    private CommerceSeries requireSeries(Long seriesId) {
+        Long userId = requireUserId();
+        CommerceSeries series = seriesMapper.selectById(seriesId);
+        if (series == null || !userId.equals(series.getUserId())) {
+            throw new BusinessException("电商系列不存在");
+        }
+        return series;
+    }
+
+    private CommerceModel requireModel(Long modelId) {
+        Long userId = requireUserId();
+        CommerceModel model = modelMapper.selectById(modelId);
+        if (model == null || !userId.equals(model.getUserId())) {
+            throw new BusinessException("模特不存在");
+        }
+        return model;
+    }
+
+    private CommerceProduct requireProduct(Long productId) {
+        Long userId = requireUserId();
+        CommerceProduct product = productMapper.selectById(productId);
+        if (product == null || !userId.equals(product.getUserId())) {
+            throw new BusinessException("商品不存在");
+        }
+        return product;
+    }
+
+    private CommerceProject requireProject(Long projectId) {
+        Long userId = requireUserId();
+        CommerceProject project = projectMapper.selectById(projectId);
+        if (project == null || !userId.equals(project.getUserId())) {
+            throw new BusinessException("带货视频项目不存在");
+        }
+        return project;
+    }
+
+    private CommerceSeriesVO toSeriesVO(CommerceSeries series) {
+        CommerceSeriesVO vo = new CommerceSeriesVO();
+        vo.setId(series.getId());
+        vo.setName(series.getName());
+        vo.setCategory(series.getCategory());
+        vo.setVisualStyle(series.getVisualStyle());
+        vo.setDefaultAspectRatio(series.getDefaultAspectRatio());
+        vo.setEnabledContentTypes(splitCsv(series.getEnabledContentTypes()));
+        vo.setStatus(series.getStatus());
+        vo.setCreatedAt(series.getCreatedAt());
+        vo.setUpdatedAt(series.getUpdatedAt());
+        return vo;
+    }
+
+    private CommerceModelVO toModelVO(CommerceModel model) {
+        CommerceModelVO vo = new CommerceModelVO();
+        vo.setId(model.getId());
+        vo.setSeriesId(model.getSeriesId());
+        vo.setName(model.getName());
+        vo.setSourceType(model.getSourceType());
+        vo.setGenderAge(model.getGenderAge());
+        vo.setBodyProfile(model.getBodyProfile());
+        vo.setStyleTags(model.getStyleTags());
+        vo.setSpeakingPersona(model.getSpeakingPersona());
+        vo.setAppearancePrompt(model.getAppearancePrompt());
+        vo.setBaseImageUrl(model.getBaseImageUrl());
+        vo.setStatus(model.getStatus());
+        vo.setCreatedAt(model.getCreatedAt());
+        vo.setUpdatedAt(model.getUpdatedAt());
+        return vo;
+    }
+
+    private CommerceProductVO toProductVO(CommerceProduct product) {
+        CommerceProductVO vo = new CommerceProductVO();
+        vo.setId(product.getId());
+        vo.setModelId(product.getModelId());
+        vo.setSeriesId(product.getSeriesId());
+        vo.setName(product.getName());
+        vo.setImageUrl(product.getImageUrl());
+        vo.setProductType(product.getProductType());
+        vo.setSellingPoints(product.getSellingPoints());
+        vo.setFabricFitColorSize(product.getFabricFitColorSize());
+        vo.setTargetAudience(product.getTargetAudience());
+        vo.setPriceOffer(product.getPriceOffer());
+        vo.setTryOnRequirements(product.getTryOnRequirements());
+        vo.setStatus(product.getStatus());
+        vo.setCreatedAt(product.getCreatedAt());
+        vo.setUpdatedAt(product.getUpdatedAt());
+        return vo;
+    }
+
+    private CommerceProjectVO toProjectVO(CommerceProject project) {
+        CommerceProjectVO vo = new CommerceProjectVO();
+        vo.setId(project.getId());
+        vo.setSeriesId(project.getSeriesId());
+        vo.setModelId(project.getModelId());
+        vo.setProductId(project.getProductId());
+        vo.setContentType(project.getContentType());
+        vo.setAspectRatio(project.getAspectRatio());
+        vo.setModelImageUrl(project.getModelImageUrl());
+        vo.setProductImageUrl(project.getProductImageUrl());
+        vo.setStatus(project.getStatus());
+        vo.setErrorMessage(project.getErrorMessage());
+        vo.setCreatedAt(project.getCreatedAt());
+        vo.setUpdatedAt(project.getUpdatedAt());
+        return vo;
+    }
+
+    private CommerceShotVO toShotVO(CommerceShot shot) {
+        CommerceShotVO vo = new CommerceShotVO();
+        vo.setId(shot.getId());
+        vo.setProjectId(shot.getProjectId());
+        vo.setSortOrder(shot.getSortOrder());
+        vo.setTitle(shot.getTitle());
+        vo.setVisualDescription(shot.getVisualDescription());
+        vo.setVoiceoverText(shot.getVoiceoverText());
+        vo.setDurationSeconds(shot.getDurationSeconds());
+        vo.setVideoUrl(shot.getVideoUrl());
+        vo.setGenerationStatus(shot.getGenerationStatus());
+        vo.setErrorMessage(shot.getErrorMessage());
+        return vo;
+    }
+
+    private SeedanceRequest buildVideoRequest(CommerceProject project, CommerceShot shot) {
+        SeedanceRequest request = new SeedanceRequest();
+        request.setPrompt(shot.getVisualDescription() + "\n口播：" + defaultIfBlank(shot.getVoiceoverText(), ""));
+        request.setDuration(shot.getDurationSeconds() != null ? shot.getDurationSeconds() : 5);
+        request.setResolution("720p");
+        request.setRatio(project.getAspectRatio());
+        request.setWidth(videoWidth(project.getAspectRatio()));
+        request.setHeight(videoHeight(project.getAspectRatio()));
+        request.setGenerateAudio(true);
+        request.setWatermark(false);
+        request.setModel("doubao-seedance-2-0-fast-260128");
+
+        SeedanceRequest.ReferenceContent modelRef = imageReference(project.getModelImageUrl());
+        SeedanceRequest.ReferenceContent productRef = imageReference(project.getProductImageUrl());
+        request.setContents(List.of(modelRef, productRef));
+        return request;
+    }
+
+    private SeedanceRequest.ReferenceContent imageReference(String url) {
+        SeedanceRequest.ReferenceContent content = new SeedanceRequest.ReferenceContent();
+        content.setType("image_url");
+        content.setRole("reference_image");
+        SeedanceRequest.ImageUrl imageUrl = new SeedanceRequest.ImageUrl();
+        imageUrl.setUrl(url);
+        content.setImageUrl(imageUrl);
+        return content;
+    }
+
+    private int videoWidth(String aspectRatio) {
+        return switch (defaultIfBlank(aspectRatio, DEFAULT_ASPECT_RATIO)) {
+            case "9:16" -> 720;
+            case "1:1" -> 960;
+            case "16:9" -> 1280;
+            case "3:4" -> 834;
+            default -> 834;
+        };
+    }
+
+    private int videoHeight(String aspectRatio) {
+        return switch (defaultIfBlank(aspectRatio, DEFAULT_ASPECT_RATIO)) {
+            case "9:16" -> 1280;
+            case "1:1" -> 960;
+            case "16:9" -> 720;
+            case "3:4" -> 1112;
+            default -> 1112;
+        };
+    }
+
+    private List<CommerceShot> buildDraftShots(CommerceProject project, CommerceModel model, CommerceProduct product) {
+        List<String[]> script = "try_on".equals(project.getContentType())
+                ? tryOnScript(product)
+                : talkingScript(product);
+
+        List<CommerceShot> shots = new ArrayList<>();
+        for (int i = 0; i < script.size(); i++) {
+            String[] item = script.get(i);
+            CommerceShot shot = new CommerceShot();
+            shot.setProjectId(project.getId());
+            shot.setSortOrder(i + 1);
+            shot.setTitle(item[0]);
+            shot.setVisualDescription(item[1].replace("{model}", model.getName()).replace("{product}", product.getName()));
+            shot.setVoiceoverText(item[2].replace("{product}", product.getName()));
+            shot.setDurationSeconds(5);
+            shot.setGenerationStatus("draft");
+            shot.setCreatedAt(LocalDateTime.now());
+            shot.setUpdatedAt(LocalDateTime.now());
+            shots.add(shot);
+        }
+        return shots;
+    }
+
+    private List<String[]> talkingScript(CommerceProduct product) {
+        String points = defaultIfBlank(product.getSellingPoints(), "版型、材质和上身效果");
+        String audience = defaultIfBlank(product.getTargetAudience(), "日常通勤和想要轻松穿搭的人群");
+        return List.of(
+                new String[]{"开场种草", "真人写实模特 {model} 出镜，身边展示商品 {product} 的清晰商品图，画面干净高级。", "今天分享这件{product}，很适合日常快速出门。"},
+                new String[]{"卖点讲解", "模特指向商品图旁的卖点字幕，突出商品细节：商品卖点包括" + points + "。", "它的重点是" + points + "。"},
+                new String[]{"细节展示", "商品图放大展示面料、版型、颜色和细节，模特在旁边自然讲解。", "细节处理比较实用，上身不会显得累赘。"},
+                new String[]{"适合人群", "模特以轻松口播方式说明适合场景，画面保留商品图和人群标签。", "更推荐给" + audience + "。"},
+                new String[]{"收尾引导", "模特微笑看向镜头，商品图定格展示，字幕给出购买理由。", "喜欢这种风格的话，可以直接看同款。"}
+        );
+    }
+
+    private List<String[]> tryOnScript(CommerceProduct product) {
+        String requirements = defaultIfBlank(product.getTryOnRequirements(), "正面、侧面、转身和细节特写");
+        return List.of(
+                new String[]{"正面展示", "真人写实模特 {model} 穿上商品图中的 {product}，正面站立展示整体版型，画面必须同时参考模特基础图和商品图。", "先看正面，上身版型很直观。"},
+                new String[]{"走动展示", "模特穿着商品自然走动，展示衣服随动作的垂感和轮廓，商品颜色和款式严格参考商品图。", "走动的时候也能看到它的线条感。"},
+                new String[]{"侧面展示", "模特侧身展示腰线、肩线和长度，保持真人写实质感。", "侧面看更能判断修身和遮肉效果。"},
+                new String[]{"细节特写", "镜头切到商品面料、袖口、下摆或重点设计，展示要求：" + requirements + "。", "细节位置也给大家看清楚。"},
+                new String[]{"场景收尾", "模特穿着商品完成一次通勤风定格展示，商品图作为角落参考卡片出现。", "整体很适合日常搭配，实穿度不错。"}
+        );
+    }
+
+    private List<String> splitCsv(String value) {
+        if (isBlank(value)) {
+            return List.of();
+        }
+        return Arrays.stream(value.split(","))
+                .map(String::trim)
+                .filter(item -> !item.isEmpty())
+                .toList();
+    }
+
+    private String defaultIfBlank(String value, String defaultValue) {
+        return isBlank(value) ? defaultValue : value.trim();
+    }
+
+    private String trimToNull(String value) {
+        return isBlank(value) ? null : value.trim();
+    }
+
+    private boolean isBlank(String value) {
+        return value == null || value.trim().isEmpty();
+    }
+}
