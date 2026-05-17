@@ -156,6 +156,37 @@ class GptImage2ServiceImplTest {
     }
 
     @Test
+    void generateRejectsProviderUnsupportedNineToTwentyOneBeforeDeductingCredits() {
+        GptImage2TaskMapper mapper = mock(GptImage2TaskMapper.class);
+        UserService userService = mock(UserService.class);
+        Executor executor = mock(Executor.class);
+        GptImage2ServiceImpl service = new GptImage2ServiceImpl(
+                mock(OssService.class),
+                userService,
+                mapper,
+                executor
+        );
+        ReflectionTestUtils.setField(service, "apiKey", "test-key");
+        GptImage2GenerateRequest request = new GptImage2GenerateRequest();
+        request.setPrompt("扫描件修复");
+        request.setAspectRatio("9:21");
+        request.setResolution("4k");
+
+        UserContextHolder.setUserId(7L);
+        try {
+            assertThatThrownBy(() -> service.generate(request))
+                    .isInstanceOf(BusinessException.class)
+                    .hasMessageContaining("当前模型暂不支持 9:21");
+        } finally {
+            UserContextHolder.clear();
+        }
+
+        verify(mapper, never()).insert(any(GptImage2Task.class));
+        verify(userService, never()).deductCredits(anyLong(), anyInt(), anyString(), anyString(), anyLong(), anyString());
+        verify(executor, never()).execute(any(Runnable.class));
+    }
+
+    @Test
     void generateDoesNotStartBackgroundTaskWhenCreditDeductionFails() {
         GptImage2TaskMapper mapper = mock(GptImage2TaskMapper.class);
         UserService userService = mock(UserService.class);

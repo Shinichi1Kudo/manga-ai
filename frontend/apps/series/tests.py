@@ -279,9 +279,9 @@ class SiteBrandingTests(TestCase):
         ]
         combined = '\n'.join(path.read_text(encoding='utf-8') for path in templates)
 
-        self.assertIn('海带 AI 智能短剧制作系统', combined)
+        self.assertIn('海带 AI 内容智能创作平台', combined)
         self.assertNotIn('Manga AI', combined)
-        self.assertIn('aria-label="海带 AI 智能短剧制作系统"', combined)
+        self.assertIn('aria-label="海带 AI 内容智能创作平台"', combined)
 
     def test_haidai_brand_wordmark_has_distinct_styling(self):
         template_root = Path(settings.BASE_DIR) / 'templates'
@@ -294,7 +294,7 @@ class SiteBrandingTests(TestCase):
 
         self.assertIn('brand-wordmark', combined)
         self.assertIn('brand-name">海带</span>', combined)
-        self.assertIn('brand-subtitle">AI 智能短剧制作系统</span>', combined)
+        self.assertIn('brand-subtitle">AI 内容智能创作平台</span>', combined)
 
     def test_brand_uses_oss_backed_logo_image(self):
         template_root = Path(settings.BASE_DIR) / 'templates'
@@ -311,6 +311,71 @@ class SiteBrandingTests(TestCase):
         self.assertIn('class="brand-logo-img', combined)
         nav_brand = combined.split('<a href="/" class="flex items-center gap-3 group">', 1)[1].split('</a>', 1)[0]
         self.assertNotIn('data-lucide=', nav_brand)
+
+
+class SearchEngineVisibilityTests(TestCase):
+    def test_robots_txt_allows_public_pages_and_points_to_sitemap(self):
+        response = self.client.get('/robots.txt')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response['Content-Type'], 'text/plain; charset=utf-8')
+        body = response.content.decode('utf-8')
+        self.assertIn('User-agent: *', body)
+        self.assertIn('Allow: /$', body)
+        self.assertIn('Allow: /subject-replacement/$', body)
+        self.assertIn('Allow: /gpt-image2/$', body)
+        self.assertIn('Disallow: /api/', body)
+        self.assertIn('Disallow: /admin/', body)
+        self.assertIn('Disallow: /assets/', body)
+        self.assertIn('Disallow: /credits/', body)
+        self.assertIn('Disallow: /user/', body)
+        self.assertIn('Sitemap: https://www.yzmovie.cn/sitemap.xml', body)
+
+    def test_sitemap_xml_lists_public_landing_pages(self):
+        response = self.client.get('/sitemap.xml')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response['Content-Type'], 'application/xml; charset=utf-8')
+        body = response.content.decode('utf-8')
+        self.assertIn('<loc>https://www.yzmovie.cn/</loc>', body)
+        self.assertIn('<loc>https://www.yzmovie.cn/subject-replacement/</loc>', body)
+        self.assertIn('<loc>https://www.yzmovie.cn/gpt-image2/</loc>', body)
+        self.assertNotIn('/auth/login/', body)
+        self.assertNotIn('/assets/library/', body)
+        self.assertNotIn('/credits/records/', body)
+
+    def test_home_page_has_search_engine_meta_tags(self):
+        response = self.client.get('/')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, '<meta name="description"', html=False)
+        self.assertContains(response, 'AI短剧创作、分镜生成、角色资产、主体替换、GPT-Image2生图', html=False)
+        self.assertContains(response, '<meta name="keywords"', html=False)
+        self.assertContains(response, '<meta name="robots" content="index,follow">', html=False)
+        self.assertContains(response, '<link rel="canonical" href="https://www.yzmovie.cn/">', html=False)
+        self.assertContains(response, '<meta property="og:title" content="海带 AI 内容智能创作平台">', html=False)
+        self.assertContains(response, '<meta property="og:url" content="https://www.yzmovie.cn/">', html=False)
+
+    def test_public_tool_landing_pages_are_crawlable(self):
+        expected = {
+            '/subject-replacement/': 'https://www.yzmovie.cn/subject-replacement/',
+            '/gpt-image2/': 'https://www.yzmovie.cn/gpt-image2/',
+        }
+
+        for path, canonical_url in expected.items():
+            with self.subTest(path=path):
+                response = self.client.get(path)
+
+                self.assertEqual(response.status_code, 200)
+                self.assertContains(response, '<meta name="robots" content="index,follow">', html=False)
+                self.assertContains(response, f'<link rel="canonical" href="{canonical_url}">', html=False)
+
+    def test_private_pages_are_marked_noindex(self):
+        response = self.client.get('/auth/login/')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, '<meta name="robots" content="noindex,nofollow">', html=False)
+        self.assertContains(response, '<link rel="canonical" href="https://www.yzmovie.cn/auth/login/">', html=False)
 
 
 class SubjectReplacementCreditButtonTests(TestCase):
@@ -638,7 +703,8 @@ class GptImage2HomeTests(TestCase):
         self.assertIn('const GPT_IMAGE2_SUPPORTED_ASPECTS_BY_RESOLUTION', template)
         self.assertIn('function refreshGptImage2AspectOptions()', template)
         self.assertIn("resolutionSelect?.addEventListener('change', refreshGptImage2AspectOptions);", template)
-        self.assertIn("['16:9', '9:16', '2:1', '1:2', '21:9', '9:21']", template)
+        self.assertIn("['16:9', '9:16', '2:1', '1:2', '21:9']", template)
+        self.assertNotIn('value="9:21"', template)
 
     def test_gpt_image2_generate_forwards_to_backend(self):
         session = self.client.session

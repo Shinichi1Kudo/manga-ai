@@ -101,7 +101,7 @@ public class UserServiceImpl implements UserService {
             SimpleMailMessage message = new SimpleMailMessage();
             message.setFrom(fromEmail);
             message.setTo(email);
-            message.setSubject("【海带 AI 智能短剧制作系统】验证码");
+            message.setSubject("【海带 AI 内容智能创作平台】验证码");
             message.setText("您的验证码是：" + code + "，有效期" + CODE_EXPIRE_MINUTES + "分钟，请勿泄露给他人。");
             mailSender.send(message);
             log.info("验证码发送成功: email={}", email);

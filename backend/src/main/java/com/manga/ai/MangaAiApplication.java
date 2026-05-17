@@ -7,7 +7,7 @@ import org.springframework.scheduling.annotation.EnableAsync;
 import org.springframework.scheduling.annotation.EnableScheduling;
 
 /**
- * 海带 AI 智能短剧制作系统 - 主启动类
+ * 海带 AI 内容智能创作平台 - 主启动类
  *
  * @author manga-ai
  */

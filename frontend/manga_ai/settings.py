@@ -51,6 +51,7 @@ TEMPLATES = [
                 'django.contrib.messages.context_processors.messages',
                 'django.template.context_processors.media',
                 'django.template.context_processors.static',
+                'apps.series.seo.seo_context',
             ],
         },
     },
@@ -92,6 +93,9 @@ SESSION_COOKIE_SAMESITE = 'Lax'
 # 后端 API 配置
 BACKEND_API_URL = os.environ.get('BACKEND_API_URL', 'http://localhost:8081/api')
 BACKEND_API_TIMEOUT = int(os.environ.get('BACKEND_API_TIMEOUT', 180))  # 支持视频上传等较大的请求
+
+# 站点公开域名，用于 canonical、sitemap、robots 等搜索引擎入口
+SITE_URL = os.environ.get('SITE_URL', 'https://www.yzmovie.cn')
 
 # 文件存储路径
 STORAGE_PATH = os.environ.get('STORAGE_PATH', str(BASE_DIR.parent / 'storage'))

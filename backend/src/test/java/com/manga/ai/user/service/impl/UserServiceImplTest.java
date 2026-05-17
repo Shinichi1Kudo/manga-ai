@@ -36,6 +36,6 @@ class UserServiceImplTest {
         service.sendCode(request);
 
         verify(mailSender).send(argThat((SimpleMailMessage message) ->
-                "【海带 AI 智能短剧制作系统】验证码".equals(message.getSubject())));
+                "【海带 AI 内容智能创作平台】验证码".equals(message.getSubject())));
     }
 }

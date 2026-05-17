@@ -55,7 +55,7 @@ public class GptImage2ServiceImpl implements GptImage2Service {
     );
     private static final List<String> ALLOWED_ASPECT_RATIOS = Arrays.asList(
             "1:1", "3:2", "2:3", "4:3", "3:4", "5:4", "4:5",
-            "16:9", "9:16", "2:1", "1:2", "21:9", "9:21"
+            "16:9", "9:16", "2:1", "1:2", "21:9"
     );
     private static final List<String> ALLOWED_RESOLUTIONS = Arrays.asList(
             "1k", "2k", "4k"
@@ -65,7 +65,7 @@ public class GptImage2ServiceImpl implements GptImage2Service {
     );
     private static final List<String> ASPECT_RATIOS_2K = ALLOWED_ASPECT_RATIOS;
     private static final List<String> ASPECT_RATIOS_4K = Arrays.asList(
-            "16:9", "9:16", "2:1", "1:2", "21:9", "9:21"
+            "16:9", "9:16", "2:1", "1:2", "21:9"
     );
     private static final long MAX_IMAGE_SIZE = 10L * 1024 * 1024;
     private static final int MAX_GENERATE_ATTEMPTS = 3;
@@ -533,6 +533,9 @@ public class GptImage2ServiceImpl implements GptImage2Service {
             return "1:1";
         }
         String ratio = aspectRatio.trim();
+        if ("9:21".equals(ratio)) {
+            throw new BusinessException(400, "当前模型暂不支持 9:21 图片比例，请选择 9:16 或 1:2");
+        }
         if (!ALLOWED_ASPECT_RATIOS.contains(ratio)) {
             throw new BusinessException(400, "不支持的图片比例");
         }
