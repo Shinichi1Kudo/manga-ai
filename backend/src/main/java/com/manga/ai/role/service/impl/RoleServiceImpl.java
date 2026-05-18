@@ -31,6 +31,8 @@ import com.manga.ai.common.service.OssService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.BeanUtils;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -40,6 +42,8 @@ import org.springframework.transaction.support.TransactionTemplate;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.concurrent.Executor;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.stream.Collectors;
 
 /**
@@ -60,6 +64,10 @@ public class RoleServiceImpl implements RoleService {
     private final TransactionTemplate transactionTemplate;
     private final OssService ossService;
     private final UserService userService;
+
+    @Autowired
+    @Qualifier("imageGenerateExecutor")
+    private Executor imageGenerateExecutor;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -121,7 +129,12 @@ public class RoleServiceImpl implements RoleService {
         role.setDeductedCredits(requiredCredits);
         roleMapper.updateById(role);
 
-        // 保存必要参数，用于事务提交后启动异步任务
+        // 创建生成中的资产记录（在当前事务中），确保前端能立即看到资产
+        long[] assetResult = imageGenerateService.createGeneratingAsset(role.getId(), 1, null, null);
+        Long generatingAssetId = assetResult[0];
+        Long previousActiveAssetId = assetResult[1] > 0 ? assetResult[1] : null;
+
+        // 保存必要参数，用于事务提交后提交到异步线程池
         Long roleId = role.getId();
         String aspectRatio = request.getAspectRatio();
         String quality = request.getQuality();
@@ -130,13 +143,20 @@ public class RoleServiceImpl implements RoleService {
         Boolean detailedView = request.getDetailedView();
         Boolean faceCloseupView = request.getFaceCloseupView();
 
-        // 在事务提交后启动异步任务，避免异步任务在事务提交前执行导致找不到数据
+        // 事务提交后提交到异步线程池，不占用HTTP请求线程
         TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
             @Override
             public void afterCommit() {
-                log.info("事务已提交，启动异步生成任务: roleId={}", roleId);
-                imageGenerateService.generateCharacterAssets(roleId, null, null, null,
-                        aspectRatio, quality, styleKeywords, originalPrompt, detailedView, faceCloseupView);
+                try {
+                    imageGenerateExecutor.execute(() -> {
+                        log.info("异步生图任务开始: roleId={}", roleId);
+                        imageGenerateService.generateCharacterAssets(roleId, 1, generatingAssetId, previousActiveAssetId,
+                                aspectRatio, quality, styleKeywords, originalPrompt, detailedView, faceCloseupView);
+                    });
+                    log.info("异步生图任务已提交: roleId={}", roleId);
+                } catch (RejectedExecutionException e) {
+                    log.error("生图线程池已满，任务被拒绝: roleId={}", roleId, e);
+                }
             }
         });
 
@@ -438,28 +458,39 @@ public class RoleServiceImpl implements RoleService {
         role.setDeductedCredits(requiredCredits);
         roleMapper.updateById(role);
 
-        // 启动异步生成（在事务提交后）
-        // 只要有参考图就使用图生图，不管是新服装还是重新生成
-        if (hasReferenceImage) {
-            log.info("使用图生图模式: referenceImageUrl={}", referenceImageUrl);
-            imageGenerateService.generateNewClothingWithReference(
-                    roleId,
-                    clothingId,
-                    generatingAssetId,
-                    previousActiveAssetId,
-                    referenceImageUrl,
-                    modifiedPrompt,
-                    clothingName,
-                    request.getAspectRatio(),
-                    request.getQuality(),
-                    request.getStyleKeywords(),
-                    request.getOriginalPrompt(),
-                    request.getDetailedView()
-            );
-        } else {
-            log.info("使用文生图模式");
-            imageGenerateService.generateCharacterAssets(roleId, clothingId, generatingAssetId, previousActiveAssetId,
-                    request.getAspectRatio(), request.getQuality(), request.getStyleKeywords(), request.getOriginalPrompt(), request.getDetailedView());
+        // 异步提交生图任务（不占用HTTP请求线程）
+        final Long finalRoleId = roleId;
+        final Long finalAssetId = generatingAssetId;
+        final Long finalPrevAssetId = previousActiveAssetId;
+        final String finalAspectRatio = request.getAspectRatio();
+        final String finalQuality = request.getQuality();
+        final String finalStyleKeywords = request.getStyleKeywords();
+        final String finalOriginalPrompt = request.getOriginalPrompt();
+        final Boolean finalDetailedView = request.getDetailedView();
+        final Integer finalClothingIdAsync = clothingId;
+        final String finalClothingName = clothingName;
+        final String finalModifiedPrompt = modifiedPrompt;
+        final boolean finalHasRef = hasReferenceImage;
+        final String finalRefUrl = referenceImageUrl;
+
+        try {
+            imageGenerateExecutor.execute(() -> {
+                if (finalHasRef) {
+                    log.info("异步图生图任务开始: roleId={}, refUrl={}", finalRoleId, finalRefUrl);
+                    imageGenerateService.generateNewClothingWithReference(
+                            finalRoleId, finalClothingIdAsync, finalAssetId, finalPrevAssetId,
+                            finalRefUrl, finalModifiedPrompt, finalClothingName,
+                            finalAspectRatio, finalQuality, finalStyleKeywords, finalOriginalPrompt, finalDetailedView);
+                } else {
+                    log.info("异歩文生图任务开始: roleId={}", finalRoleId);
+                    imageGenerateService.generateCharacterAssets(finalRoleId, finalClothingIdAsync,
+                            finalAssetId, finalPrevAssetId, finalAspectRatio, finalQuality,
+                            finalStyleKeywords, finalOriginalPrompt, finalDetailedView, null);
+                }
+            });
+            log.info("异步重新生图任务已提交: roleId={}", roleId);
+        } catch (RejectedExecutionException e) {
+            log.error("生图线程池已满，重新生成被拒绝: roleId={}", roleId, e);
         }
 
         log.info("重新生成角色图片: roleId={}, clothingId={}, version={}, isNewClothing={}",

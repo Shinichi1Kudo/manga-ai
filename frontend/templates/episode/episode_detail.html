@@ -1578,8 +1578,8 @@
                             <select class="resolution-select bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-xs focus:border-blue-400 focus:outline-none cursor-pointer"
                                     data-field="resolution"
                                     data-shot-id="{{ shot.id }}">
-                                <option value="480p" {% if shot.resolution == '480p' %}selected{% endif %}>高清</option>
-                                <option value="720p" {% if shot.resolution == '720p' or not shot.resolution %}selected{% endif %}>超清</option>
+                                <option value="480p" {% if shot.resolution == '480p' or not shot.resolution %}selected{% endif %}>高清</option>
+                                <option value="720p" {% if shot.resolution == '720p' %}selected{% endif %}>超清</option>
                                 <option value="1080p" {% if shot.resolution == '1080p' %}selected{% endif %} class="vip-only">4K</option>
                             </select>
                         </div>
@@ -1588,8 +1588,8 @@
                             <select class="video-model-select bg-white/5 border border-white/10 rounded px-2 py-1 text-white text-xs focus:border-blue-400 focus:outline-none cursor-pointer"
                                     data-field="videoModel"
                                     data-shot-id="{{ shot.id }}">
-                                <option value="seedance-2.0-fast" {% if shot.videoModel == 'seedance-2.0-fast' or not shot.videoModel %}selected{% endif %}>Seedance 2.0 Fast VIP</option>
-                                <option value="seedance-2.0" {% if shot.videoModel == 'seedance-2.0' %}selected{% endif %}>Seedance 2.0 VIP</option>
+                                <option value="seedance-2.0" {% if shot.videoModel == 'seedance-2.0' or not shot.videoModel %}selected{% endif %}>Seedance 2.0 VIP</option>
+                                <option value="seedance-2.0-fast" {% if shot.videoModel == 'seedance-2.0-fast' %}selected{% endif %}>Seedance 2.0 Fast VIP</option>
                                 <option value="kling-v3-omni" {% if shot.videoModel == 'kling-v3-omni' %}selected{% endif %}>Kling v3 Omni</option>
                             </select>
                         </div>
@@ -1760,9 +1760,9 @@ function getShotCardData(card) {
         id: card.dataset.shotId,
         generationStatus: parseInt(card.dataset.status || '0', 10),
         duration: parseInt(card.querySelector('.duration-select')?.value || '5', 10),
-        resolution: card.querySelector('.resolution-select')?.value || '720p',
+        resolution: card.querySelector('.resolution-select')?.value || '480p',
         aspectRatio: card.querySelector('.aspect-ratio-select')?.value || '16:9',
-        videoModel: card.querySelector('.video-model-select')?.value || 'seedance-2.0-fast',
+        videoModel: card.querySelector('.video-model-select')?.value || 'seedance-2.0',
         videoUrl: card.dataset.videoUrl || '',
         thumbnailUrl: card.dataset.thumbnailUrl || '',
         videoSource: card.dataset.videoSource || '',

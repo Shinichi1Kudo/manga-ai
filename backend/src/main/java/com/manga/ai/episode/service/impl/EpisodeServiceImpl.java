@@ -1304,7 +1304,7 @@ public class EpisodeServiceImpl implements EpisodeService {
                         info.setPreviewUrl(activeAsset.getFilePath());
                     }
                     info.setIsNew(false);
-                    info.setSelected(!isLocked);
+                    info.setSelected(false); // 已存在场景默认不选中
                 } else {
                     info.setIsLocked(false);
                     info.setHasAssets(false);
@@ -1349,7 +1349,7 @@ public class EpisodeServiceImpl implements EpisodeService {
                         info.setPreviewUrl(activePropAsset.getFilePath());
                     }
                     info.setIsNew(false);
-                    info.setSelected(!isLocked);
+                    info.setSelected(false); // 已存在道具默认不选中
                 } else {
                     info.setIsLocked(false);
                     info.setHasAssets(false);

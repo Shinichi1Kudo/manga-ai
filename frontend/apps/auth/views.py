@@ -111,7 +111,7 @@ def register_view(request):
                     request.session['user_id'] = user_data.get('id')
                     request.session['email'] = user_data.get('email')
                     request.session['nickname'] = user_data.get('nickname')
-                    messages.success(request, '注册成功，已赠送10积分')
+                    messages.success(request, '注册成功，已赠送20积分')
                     return redirect('/')
                 else:
                     messages.error(request, data.get('message', '注册失败'))

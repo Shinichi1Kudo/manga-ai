@@ -6,6 +6,7 @@ import com.alibaba.fastjson2.JSONObject;
 import com.manga.ai.llm.dto.LLMRequest;
 import com.manga.ai.llm.dto.LLMResponse;
 import com.manga.ai.llm.service.DoubaoLLMService;
+import jakarta.annotation.PostConstruct;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.*;
@@ -38,10 +39,16 @@ public class DoubaoLLMServiceImpl implements DoubaoLLMService {
     private final RestTemplate restTemplate;
 
     public DoubaoLLMServiceImpl() {
+        this.restTemplate = new RestTemplate();
+    }
+
+    @PostConstruct
+    public void init() {
         SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
         factory.setConnectTimeout(30000);
-        factory.setReadTimeout(180000); // 3分钟超时，剧本解析可能较慢
-        this.restTemplate = new RestTemplate(factory);
+        factory.setReadTimeout(timeout); // 使用配置的超时时间
+        this.restTemplate.setRequestFactory(factory);
+        log.info("LLM RestTemplate 初始化: connectTimeout=30s, readTimeout={}s", timeout / 1000);
     }
 
     @Override

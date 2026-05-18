@@ -20,13 +20,16 @@ import com.manga.ai.video.dto.SeedanceResponse;
 import com.manga.ai.video.service.SeedanceService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.BeanUtils;
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.core.task.TaskRejectedException;
+import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
+import jakarta.annotation.PostConstruct;
 import java.io.IOException;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -396,70 +399,179 @@ public class SubjectReplacementServiceImpl implements SubjectReplacementService 
     }
 
     private String buildPrompt(List<SubjectReplacementItemDTO> replacements) {
+        boolean hasPerson = replacements.stream().anyMatch(
+                item -> "person".equals(normalizeReplacementType(item.getReplacementType())));
+        boolean hasObject = replacements.stream().anyMatch(
+                item -> "object".equals(normalizeReplacementType(item.getReplacementType())));
+
+        if (hasPerson && !hasObject) {
+            return buildPersonOnlyPrompt(replacements);
+        }
+        if (hasObject && !hasPerson) {
+            return buildObjectOnlyPrompt(replacements);
+        }
+        return buildMixedPrompt(replacements);
+    }
+
+    /**
+     * 纯人物替换提示词——只替换人物，其他全部原封不动
+     */
+    private String buildPersonOnlyPrompt(List<SubjectReplacementItemDTO> replacements) {
         StringBuilder prompt = new StringBuilder();
-        boolean hasPerson = false;
-        boolean hasObject = false;
-        prompt.append("请对@视频1执行视频对象替换。\n\n");
-        prompt.append("保持原视频的镜头运动、构图、时长、节奏、背景、光线、动作轨迹、遮挡关系、交互关系和未指定内容不变。");
-        prompt.append("只替换下方映射表中明确指定的对象，不替换其他人物、物品或背景元素。\n\n");
-        prompt.append("对象替换映射：\n");
+        prompt.append("请对@视频1中指定的人物进行替换，其他所有内容一律保持原样，不得做任何改动。\n\n");
 
-        int index = 1;
-        for (SubjectReplacementItemDTO item : replacements) {
-            String replacementType = normalizeReplacementType(item.getReplacementType());
-            boolean personType = "person".equals(replacementType);
-            hasPerson = hasPerson || personType;
-            hasObject = hasObject || !personType;
+        prompt.append("【核心原则】\n");
+        prompt.append("- 只替换下面映射表中列出的目标人物。\n");
+        prompt.append("- 除指定人物外，原视频中的背景、道具、物品、场景、光线、其他人物、镜头运动、构图、时长、节奏全部原封不动。\n");
+        prompt.append("- 不得新增任何人物、物品或视觉元素。\n");
+        prompt.append("- 不得移除或隐藏任何原视频中存在但不在映射表中的人物或元素。\n");
+        prompt.append("- 多个指定人物同时出现、遮挡或交叉时，各自按对应映射替换。\n\n");
 
-            prompt.append(index).append(". 替换类型：").append(replacementTypeLabel(replacementType))
-                    .append("。将@视频1中【").append(item.getSourceObject());
-            List<String> hints = new ArrayList<>();
-            if (!isBlank(item.getAppearTime())) {
-                hints.add("出现时间：" + item.getAppearTime());
-            }
-            if (!isBlank(item.getScreenPosition())) {
-                hints.add("画面位置：" + item.getScreenPosition());
-            }
-            if (!isBlank(item.getAppearanceHint())) {
-                hints.add("语言改成" + item.getAppearanceHint());
-            }
-            if (!hints.isEmpty()) {
-                prompt.append("；").append(String.join("；", hints));
-            }
-            prompt.append("】替换为【").append(replacementTargetPrompt(index, item)).append("】。\n");
-            index++;
-        }
+        prompt.append("人物替换映射：\n");
+        appendPersonMappings(prompt, replacements);
+        prompt.append("\n");
 
-        prompt.append("\n替换要求：\n");
-        prompt.append("- 参考图按 content 数组中的 image_url 顺序编号：第1个 image_url 是图1，第2个 image_url 是图2，以此类推。\n");
-        prompt.append("- 每个映射只允许使用对应编号的参考图，不要把图1、图2或其他参考图串用。\n");
-        prompt.append("- 每个替换对象必须与原视频中的目标对象一一对应，不要串换。\n");
-        prompt.append("- 如果映射中填写了“语言改成xxx”，则将替换对象涉及的口播、字幕、可见文字或语言风格改成xxx；没有填写语言时，不额外改变语言。\n");
-        if (hasPerson) {
-            prompt.append("- 替换类型为人物时：必须替换为参考图中的人物身份，不得只替换服装、颜色或发型，不得保留原视频人物的脸、五官、脸型或年龄感。\n");
-            prompt.append("- 人物可见脸部时，以对应参考图的人脸和身份特征为准；保留原视频动作、姿态、表情节奏、走位、手势和运镜，但不要保留原人物长相。\n");
-            prompt.append("- 人物补充描述较短时，仍以参考图的完整人物身份为主，不要只执行文字里提到的局部特征。\n");
-        }
-        if (hasObject) {
-            prompt.append("- 替换类型为物品时：不要执行人物换脸、人物身份迁移或人脸约束，只替换指定物品本身。\n");
-            prompt.append("- 物品以对应参考图的外观为准，包括形状、材质、颜色、纹理、结构和可见文字/图案；保留原物品的位置、大小关系、运动轨迹、遮挡关系和被手持/触碰方式。\n");
-        }
-        prompt.append("- 未列入映射表的内容全部保持原样。\n");
-        prompt.append("- 多个对象同时出现、遮挡或交叉时，严格按照用户描述进行替换。\n");
+        prompt.append("人物替换要求：\n");
+        prompt.append("- 参考图按请求中 image_url 数组顺序编号：第1个 image_url 是图1，第2个是图2，以此类推。每个映射只使用对应编号的参考图，严禁串用。\n");
+        prompt.append("- 必须完整替换为参考图中的人物身份，包括脸型、五官、发型、年龄感、肤色、妆容、服装和整体气质，不得只换局部特征。\n");
+        prompt.append("- 不得保留原视频人物的脸、五官、脸型或年龄感。\n");
+        prompt.append("- 保留原视频人物的动作、姿态、表情节奏、走位、手势、站位和运镜。\n");
+        prompt.append("- 如果映射中填写了「语言改成xxx」，则仅对该人物涉及的口播和语言风格进行修改。\n");
+        prompt.append("- 人物的补充描述是对参考图身份的补充说明，以参考图完整人物特征为主。\n\n");
+        appendPurityRules(prompt);
         return prompt.toString();
     }
 
-    private String replacementTargetPrompt(int index, SubjectReplacementItemDTO item) {
-        String replacementType = normalizeReplacementType(item.getReplacementType());
-        String targetDescription = item.getTargetDescription();
-        if ("object".equals(replacementType)) {
-            return "第" + index + "张参考图/图" + index
-                    + "中的同一物品外观。只替换该物品本身，形状、材质、颜色、纹理、结构和可见文字/图案以参考图为准；替换后物品补充描述为："
-                    + targetDescription;
+    /**
+     * 纯物品替换提示词——只替换物品，其他全部原封不动
+     */
+    private String buildObjectOnlyPrompt(List<SubjectReplacementItemDTO> replacements) {
+        StringBuilder prompt = new StringBuilder();
+        prompt.append("请对@视频1中指定的物品进行替换，其他所有内容一律保持原样，不得做任何改动。\n\n");
+
+        prompt.append("【核心原则】\n");
+        prompt.append("- 只替换下面映射表中列出的目标物品。\n");
+        prompt.append("- 原视频中的所有人物（包括脸部、身份、服装、动作）不得做任何改变。不得执行人物换脸或人物身份迁移。\n");
+        prompt.append("- 原视频中的背景、场景、光线、镜头运动、构图、时长、节奏全部原封不动。\n");
+        prompt.append("- 不得新增任何物品或视觉元素。\n");
+        prompt.append("- 不得移除或隐藏任何原视频中存在但不在映射表中的物品或元素。\n");
+        prompt.append("- 多个指定物品同时出现、遮挡或交叉时，各自按对应映射替换。\n\n");
+
+        prompt.append("物品替换映射：\n");
+        appendObjectMappings(prompt, replacements);
+        prompt.append("\n");
+
+        prompt.append("物品替换要求：\n");
+        prompt.append("- 参考图按请求中 image_url 数组顺序编号：第1个 image_url 是图1，第2个是图2，以此类推。每个映射只使用对应编号的参考图，严禁串用。\n");
+        prompt.append("- 只替换指定物品本身，以对应参考图的外观为准，包括形状、材质、颜色、纹理、结构和可见文字/图案。\n");
+        prompt.append("- 保留原物品在画面中的位置、大小比例、运动轨迹、遮挡关系和被手持/触碰方式。\n");
+        prompt.append("- 不要因替换物品而改变与其交互的人物的动作、姿态或手部位置。\n");
+        prompt.append("- 如果映射中填写了「语言改成xxx」，则仅对该物品上可见的文字语言进行修改，不要添加额外文字。\n\n");
+        appendPurityRules(prompt);
+        return prompt.toString();
+    }
+
+    /**
+     * 混合替换提示词——人物和物品都有，需要分别约束
+     */
+    private String buildMixedPrompt(List<SubjectReplacementItemDTO> replacements) {
+        StringBuilder prompt = new StringBuilder();
+        prompt.append("请对@视频1中指定的人物和物品进行替换，其他所有内容一律保持原样，不得做任何改动。\n\n");
+
+        prompt.append("【核心原则】\n");
+        prompt.append("- 只替换下面映射表中列出的目标人物和物品，映射表未列出的内容全部原封不动。\n");
+        prompt.append("- 不得新增任何人物、物品或视觉元素。\n");
+        prompt.append("- 不得移除或隐藏原视频中任何未在映射表中列出的内容。\n");
+        prompt.append("- 背景、场景、光线、镜头运动、构图、时长、节奏全部保持不变。\n\n");
+
+        prompt.append("替换映射：\n");
+        appendPersonMappings(prompt, replacements);
+        int personCount = (int) replacements.stream()
+                .filter(i -> "person".equals(normalizeReplacementType(i.getReplacementType()))).count();
+        appendObjectMappings(prompt, replacements);
+        prompt.append("\n");
+
+        // 人物约束（如果有）
+        if (personCount > 0) {
+            prompt.append("人物替换要求：\n");
+            prompt.append("- 只替换映射表中的人物项，不碰映射表中标记为物品的项，也不碰映射表外的任何内容。\n");
+            prompt.append("- 参考图按请求中 image_url 数组顺序编号，每个映射只使用对应编号的参考图，严禁串用。\n");
+            prompt.append("- 必须完整替换为参考图中的人物身份，包括脸型、五官、发型、年龄感、肤色、妆容、服装和整体气质。\n");
+            prompt.append("- 不得保留原视频人物的脸、五官、脸型或年龄感。\n");
+            prompt.append("- 保留原视频人物的动作、姿态、表情节奏、走位、手势、站位和运镜。\n");
+            prompt.append("- 如果映射中填写了「语言改成xxx」，则仅对该人物涉及的口播和语言风格进行修改。\n");
+            prompt.append("- 人物补充描述是对参考图身份的补充说明。\n\n");
         }
-        return "第" + index + "张参考图/图" + index
-                + "中的同一人物/角色身份。必须完整迁移参考图人物身份，包括脸型、五官、发型、年龄感、肤色、妆容、服装和整体气质；替换后人物补充描述为："
-                + targetDescription;
+
+        // 物品约束（如果有）
+        if (replacements.size() > personCount) {
+            prompt.append("物品替换要求：\n");
+            prompt.append("- 只替换映射表中标记为物品的项，不碰人物项和映射表外的任何内容。\n");
+            prompt.append("- 每个映射只使用对应编号的参考图，严禁串用。\n");
+            prompt.append("- 只替换指定物品本身，以参考图外观为准，包括形状、材质、颜色、纹理、结构和可见文字/图案。\n");
+            prompt.append("- 保留原物品的位置、大小比例、运动轨迹、遮挡关系和被手持/触碰方式。\n");
+            prompt.append("- 不要因替换物品而改变与其交互的人物的动作、姿态或手部位置。\n");
+            prompt.append("- 原视频中所有人物（包括脸部、身份、服装、动作）不做任何改变，不执行人物换脸或身份迁移。\n\n");
+        }
+
+        appendPurityRules(prompt);
+        return prompt.toString();
+    }
+
+    private void appendPersonMappings(StringBuilder prompt, List<SubjectReplacementItemDTO> replacements) {
+        int index = 1;
+        for (SubjectReplacementItemDTO item : replacements) {
+            if (!"person".equals(normalizeReplacementType(item.getReplacementType()))) {
+                continue;
+            }
+            prompt.append(index).append(". 【人物】将@视频1中【").append(item.getSourceObject());
+            appendItemHints(prompt, item);
+            prompt.append("】替换为第").append(index).append("张参考图（图").append(index)
+                    .append("）中的同一人物身份，补充描述：").append(item.getTargetDescription()).append("。\n");
+            index++;
+        }
+    }
+
+    private void appendObjectMappings(StringBuilder prompt, List<SubjectReplacementItemDTO> replacements) {
+        int index = 1;
+        for (SubjectReplacementItemDTO item : replacements) {
+            if (!"object".equals(normalizeReplacementType(item.getReplacementType()))) {
+                continue;
+            }
+            prompt.append(index).append(". 【物品】将@视频1中【").append(item.getSourceObject());
+            appendItemHints(prompt, item);
+            prompt.append("】替换为第").append(index).append("张参考图（图").append(index)
+                    .append("）中的同一物品外观，补充描述：").append(item.getTargetDescription()).append("。\n");
+            index++;
+        }
+    }
+
+    private void appendItemHints(StringBuilder prompt, SubjectReplacementItemDTO item) {
+        List<String> hints = new ArrayList<>();
+        if (!isBlank(item.getAppearTime())) {
+            hints.add("出现时间：" + item.getAppearTime());
+        }
+        if (!isBlank(item.getScreenPosition())) {
+            hints.add("画面位置：" + item.getScreenPosition());
+        }
+        if (!isBlank(item.getAppearanceHint())) {
+            hints.add("语言改成" + item.getAppearanceHint());
+        }
+        if (!hints.isEmpty()) {
+            prompt.append("（").append(String.join("；", hints)).append("）");
+        }
+    }
+
+    /**
+     * 画面纯净度规则——所有模板共用
+     */
+    private void appendPurityRules(StringBuilder prompt) {
+        prompt.append("画面纯净度要求：\n");
+        prompt.append("- 生成的视频画面必须完全纯净，不得出现任何水印、Logo、品牌标识、平台名称、网址、二维码或任何形式的标记。\n");
+        prompt.append("- 不得在画面中添加任何字幕、文字、标题或台词文本，除非映射表中明确要求修改语言。\n");
+        prompt.append("- 如果原视频中含有水印、Logo或字幕，替换后不得保留也不得新增。\n");
+        prompt.append("- 不要添加片头、片尾或制作方署名信息。\n");
+        prompt.append("- 输出结果就是纯画面内容，没有任何后期叠加元素。\n");
     }
 
     private SubjectReplacementTaskVO toVO(SubjectReplacementTask task) {
@@ -827,5 +939,158 @@ public class SubjectReplacementServiceImpl implements SubjectReplacementService 
             return "webp";
         }
         return "png";
+    }
+
+    /**
+     * 启动时自动恢复因服务重启丢失的异步任务
+     */
+    @PostConstruct
+    public void recoverStuckTasksOnStartup() {
+        try {
+            int recovered = recoverStuckTasks(3);
+            if (recovered > 0) {
+                log.info("启动时已恢复 {} 个卡住的主体替换任务", recovered);
+            }
+        } catch (Exception e) {
+            log.error("启动恢复主体替换任务失败", e);
+        }
+    }
+
+    /**
+     * 每60秒检查一次卡住的主体替换任务（running 超过5分钟）
+     */
+    @Scheduled(fixedRate = 60000)
+    public void scheduledRecoverStuckTasks() {
+        try {
+            int recovered = recoverStuckTasks(5);
+            if (recovered > 0) {
+                log.info("定时恢复 {} 个卡住的主体替换任务", recovered);
+            }
+        } catch (Exception e) {
+            log.error("定时恢复主体替换任务失败", e);
+        }
+    }
+
+    @Override
+    public int recoverStuckTasks(int stuckMinutes) {
+        LocalDateTime timeout = LocalDateTime.now().minusMinutes(stuckMinutes);
+        LambdaQueryWrapper<SubjectReplacementTask> wrapper = new LambdaQueryWrapper<>();
+        wrapper.eq(SubjectReplacementTask::getStatus, "running")
+                .lt(SubjectReplacementTask::getUpdatedAt, timeout);
+
+        List<SubjectReplacementTask> stuckTasks = taskMapper.selectList(wrapper);
+        if (stuckTasks.isEmpty()) {
+            return 0;
+        }
+
+        log.info("发现 {} 个卡住的主体替换任务（超过{}分钟），开始恢复", stuckTasks.size(), stuckMinutes);
+        int recovered = 0;
+        for (SubjectReplacementTask task : stuckTasks) {
+            try {
+                if (recoverSingleTask(task)) {
+                    recovered++;
+                }
+            } catch (Exception e) {
+                log.error("恢复主体替换任务失败: taskId={}", task.getId(), e);
+            }
+        }
+        return recovered;
+    }
+
+    /**
+     * 恢复单个卡住的任务：查询火山引擎状态并更新
+     */
+    private boolean recoverSingleTask(SubjectReplacementTask task) {
+        String volcengineTaskId = task.getVolcengineTaskId();
+        if (isBlank(volcengineTaskId)) {
+            // 没有火山任务ID，无法查询状态，标记为失败并退款
+            task.setStatus("failed");
+            task.setErrorMessage("任务处理中断，请重新提交");
+            task.setCompletedAt(LocalDateTime.now());
+            task.setUpdatedAt(LocalDateTime.now());
+            refundCreditsIfNeeded(task);
+            taskMapper.updateById(task);
+            log.info("恢复任务失败(无火山任务ID): taskId={}", task.getId());
+            return true;
+        }
+
+        try {
+            var response = seedanceService.queryTaskStatus(volcengineTaskId);
+            if (response == null || response.getStatus() == null) {
+                // 查询失败，状态未知，保持 running 但更新 updated_at 防止重复检查
+                task.setUpdatedAt(LocalDateTime.now());
+                taskMapper.updateById(task);
+                return false;
+            }
+
+            if ("completed".equalsIgnoreCase(response.getStatus())
+                    || "succeeded".equalsIgnoreCase(response.getStatus())) {
+                // 火山端已完成，更新任务状态
+                task.setStatus("succeeded");
+                task.setOutputVideoUrl(firstNonBlankStr(response.getVideoUrl(), response.getProviderVideoUrl()));
+                task.setThumbnailUrl(response.getThumbnailUrl());
+                task.setGenerationDuration(task.getSubmittedAt() != null
+                        ? (int) (java.time.Duration.between(task.getSubmittedAt(), LocalDateTime.now()).getSeconds())
+                        : null);
+                task.setCompletedAt(LocalDateTime.now());
+                task.setUpdatedAt(LocalDateTime.now());
+                taskMapper.updateById(task);
+                log.info("恢复任务成功: taskId={}, videoUrl={}", task.getId(), task.getOutputVideoUrl());
+                return true;
+            } else if ("failed".equalsIgnoreCase(response.getStatus())) {
+                task.setStatus("failed");
+                task.setErrorMessage(truncateMessage(toFriendlyError(response.getErrorMessage())));
+                task.setCompletedAt(LocalDateTime.now());
+                task.setUpdatedAt(LocalDateTime.now());
+                refundCreditsIfNeeded(task);
+                taskMapper.updateById(task);
+                log.info("恢复任务失败(火山端已失败): taskId={}", task.getId());
+                return true;
+            } else if ("in_progress".equalsIgnoreCase(response.getStatus())
+                    || "processing".equalsIgnoreCase(response.getStatus())
+                    || "pending".equalsIgnoreCase(response.getStatus())) {
+                // 火山端仍在处理，重新提交到线程池继续轮询
+                task.setUpdatedAt(LocalDateTime.now());
+                taskMapper.updateById(task);
+                try {
+                    videoGenerateExecutor.execute(() -> executeTask(task.getId()));
+                    log.info("恢复任务重新提交轮询: taskId={}", task.getId());
+                } catch (Exception execEx) {
+                    log.warn("恢复任务重新提交失败: taskId={}", task.getId(), execEx);
+                }
+                return true;
+            } else {
+                // 未知状态
+                log.warn("恢复任务遇到未知火山状态: taskId={}, volcStatus={}", task.getId(), response.getStatus());
+                task.setUpdatedAt(LocalDateTime.now());
+                taskMapper.updateById(task);
+                return false;
+            }
+        } catch (Exception e) {
+            log.error("查询火山任务状态失败: taskId={}, volcTaskId={}", task.getId(), volcengineTaskId, e);
+            // 查询异常，保持 running 状态，更新 updated_at 避免短期内重复查询
+            task.setUpdatedAt(LocalDateTime.now());
+            taskMapper.updateById(task);
+            return false;
+        }
+    }
+
+    private String firstNonBlankStr(String... values) {
+        if (values == null) {
+            return null;
+        }
+        for (String value : values) {
+            if (value != null && !value.isBlank()) {
+                return value;
+            }
+        }
+        return null;
+    }
+
+    private String truncateMessage(String message) {
+        if (message == null) {
+            return null;
+        }
+        return message.length() > 500 ? message.substring(0, 497) + "..." : message;
     }
 }

@@ -50,4 +50,11 @@ public interface SubjectReplacementService {
      * 上传参考图
      */
     String uploadReferenceImage(MultipartFile file);
+
+    /**
+     * 恢复卡住的任务（启动时或定时调用）
+     * 检查 running 状态超过指定分钟数的任务，尝试查询火山引擎状态进行恢复
+     * @return 恢复的任务数量
+     */
+    int recoverStuckTasks(int stuckMinutes);
 }

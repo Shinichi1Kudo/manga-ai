@@ -225,7 +225,7 @@ public class ShotServiceImpl implements ShotService {
 
     private String convertToApiModel(String videoModel, String resolution) {
         if (videoModel == null || videoModel.isEmpty()) {
-            return "doubao-seedance-2-0-fast-260128"; // 默认 Fast 模型
+            return "doubao-seedance-2-0-260128"; // 默认标准模型
         }
         switch (videoModel) {
             case "seedance-2.0":
@@ -1681,10 +1681,10 @@ public class ShotServiceImpl implements ShotService {
             List<AssetReference> references = collectShotVideoReferences(shot, seriesId, referenceUrls, result);
             log.info("去重后参考图数量: {}", references.size());
 
-            // 参考图数量限制检查（最多9张）
-            if (references.size() > 9) {
-                log.warn("参考图数量超过9张，按优先级截取前9张: shotId={}, count={}", shotId, references.size());
-                references = new ArrayList<>(references.subList(0, 9));
+            // 参考图数量限制检查（ToAPIs Seedance API限制最多7张）
+            if (references.size() > 7) {
+                log.warn("参考图数量超过7张(API限制)，按优先级截取前7张: shotId={}, count={}", shotId, references.size());
+                references = new ArrayList<>(references.subList(0, 7));
             }
 
             for (AssetReference ref : references) {
@@ -2280,6 +2280,10 @@ public class ShotServiceImpl implements ShotService {
             PromptWithReferences promptReferences) {
         List<AssetReference> references = new ArrayList<>();
 
+        // 1. 分镜直接绑定的角色、道具、场景 — 最重要，排最前面，确保不被截掉
+        addShotBoundAssetReferences(shot, seriesId, references);
+
+        // 2. 提示词自动匹配的参考图
         if (promptReferences != null && promptReferences.getReferenceImages() != null
                 && !promptReferences.getReferenceImages().isEmpty()) {
             log.info("提示词自动匹配参考图数量: {}", promptReferences.getReferenceImages().size());
@@ -2288,6 +2292,7 @@ public class ShotServiceImpl implements ShotService {
             }
         }
 
+        // 3. 前端传入的参考图
         if (frontendReferenceUrls != null && !frontendReferenceUrls.isEmpty()) {
             log.info("使用前端传入的参考图: {} 张", frontendReferenceUrls.size());
             for (String url : frontendReferenceUrls) {
@@ -2295,11 +2300,11 @@ public class ShotServiceImpl implements ShotService {
             }
         }
 
+        // 4. DB中存储的参考图（权重最低）
         List<AssetReference> dbReferences = getReferenceImagesFromDB(shot.getId());
         log.info("从 shot_reference_image 表获取参考图数量: {}", dbReferences.size());
         references.addAll(dbReferences);
 
-        addShotBoundAssetReferences(shot, seriesId, references);
         return dedupeReferences(references);
     }
 
