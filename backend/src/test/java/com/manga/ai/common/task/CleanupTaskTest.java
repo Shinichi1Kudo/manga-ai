@@ -1,5 +1,6 @@
 package com.manga.ai.common.task;
 
+import com.manga.ai.asset.mapper.RoleAssetMapper;
 import com.manga.ai.common.enums.RoleStatus;
 import com.manga.ai.common.enums.SeriesStatus;
 import com.manga.ai.common.enums.ShotGenerationStatus;
@@ -34,7 +35,8 @@ class CleanupTaskTest {
                 mock(PropMapper.class),
                 mock(GptImage2Service.class),
                 roleMapper,
-                mock(ShotMapper.class)
+                mock(ShotMapper.class),
+                mock(RoleAssetMapper.class)
         );
 
         cleanupTask.cleanupStuckInitializingSeries();
@@ -64,7 +66,8 @@ class CleanupTaskTest {
                 mock(PropMapper.class),
                 mock(GptImage2Service.class),
                 mock(RoleMapper.class),
-                shotMapper
+                shotMapper,
+                mock(RoleAssetMapper.class)
         );
 
         cleanupTask.cleanupStuckGeneratingShots();

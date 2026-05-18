@@ -1,6 +1,10 @@
 package com.manga.ai.common.task;
 
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
+import com.manga.ai.asset.entity.RoleAsset;
+import com.manga.ai.asset.mapper.RoleAssetMapper;
+import com.manga.ai.common.enums.AssetStatus;
 import com.manga.ai.common.enums.EpisodeStatus;
 import com.manga.ai.common.enums.RoleStatus;
 import com.manga.ai.common.enums.SeriesStatus;
@@ -37,6 +41,7 @@ public class CleanupTask {
     private final GptImage2Service gptImage2Service;
     private final RoleMapper roleMapper;
     private final ShotMapper shotMapper;
+    private final RoleAssetMapper roleAssetMapper;
 
     /**
      * 每天凌晨3点清理过期的回收站系列
@@ -187,6 +192,30 @@ public class CleanupTask {
             }
         } catch (Exception e) {
             log.error("清理卡住的分镜视频生成任务失败", e);
+        }
+    }
+
+    /**
+     * 每分钟检查一次卡在生成中的角色资产（角色生图）
+     * 如果 role_asset status=0(GENERATING) 超过8分钟，标记为失败。
+     * 根因：角色生图在HTTP请求线程中同步执行，请求超时/中断后资产状态永远停留在GENERATING。
+     */
+    @Scheduled(fixedRate = 60000)
+    public void cleanupStuckGeneratingRoleAssets() {
+        try {
+            LocalDateTime timeout = LocalDateTime.now().minusMinutes(8);
+            LambdaUpdateWrapper<RoleAsset> wrapper = new LambdaUpdateWrapper<>();
+            wrapper.eq(RoleAsset::getStatus, AssetStatus.GENERATING.getCode())
+                    .lt(RoleAsset::getCreatedAt, timeout)
+                    .set(RoleAsset::getStatus, AssetStatus.FAILED.getCode())
+                    .set(RoleAsset::getUpdatedAt, LocalDateTime.now());
+
+            int failed = roleAssetMapper.update(null, wrapper);
+            if (failed > 0) {
+                log.warn("已自动标记 {} 个卡在生成中超过8分钟的角色资产为失败", failed);
+            }
+        } catch (Exception e) {
+            log.error("清理卡住的角色资产失败", e);
         }
     }
 }
