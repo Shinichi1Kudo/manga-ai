@@ -251,7 +251,8 @@ public class AssetServiceImpl implements AssetService {
 
         log.info("getClothingsByRoleId: roleId={}, 返回{}个服装", roleId, result.size());
 
-        // 填充 detailedView 和 clothingPrompt 字段（来自元数据）
+        Role role = roleMapper.selectById(roleId);
+        // 填充 detailedView 和展示用 clothingPrompt 字段
         for (RoleAsset asset : result) {
             LambdaQueryWrapper<AssetMetadata> metadataWrapper = new LambdaQueryWrapper<>();
             metadataWrapper.eq(AssetMetadata::getAssetId, asset.getId())
@@ -259,12 +260,8 @@ public class AssetServiceImpl implements AssetService {
             AssetMetadata metadata = assetMetadataMapper.selectOne(metadataWrapper);
             if (metadata != null) {
                 asset.setDetailedView(metadata.getDetailedView());
-                // 如果 clothingPrompt 为空，从 AssetMetadata 回填
-                if ((asset.getClothingPrompt() == null || asset.getClothingPrompt().trim().isEmpty())
-                        && metadata.getUserPrompt() != null && !metadata.getUserPrompt().trim().isEmpty()) {
-                    asset.setClothingPrompt(metadata.getUserPrompt());
-                }
             }
+            applyDisplayPrompt(asset, role, metadata);
         }
 
         return result;
@@ -281,24 +278,43 @@ public class AssetServiceImpl implements AssetService {
 
     @Override
     public String getAssetPrompt(Long assetId) {
-        // 优先从 RoleAsset.clothingPrompt 获取
         RoleAsset roleAsset = roleAssetMapper.selectById(assetId);
-        if (roleAsset != null && roleAsset.getClothingPrompt() != null && !roleAsset.getClothingPrompt().trim().isEmpty()) {
-            return roleAsset.getClothingPrompt();
+        if (roleAsset == null) {
+            return null;
         }
+        Role role = roleMapper.selectById(roleAsset.getRoleId());
 
-        // 回退到 AssetMetadata
         LambdaQueryWrapper<AssetMetadata> wrapper = new LambdaQueryWrapper<>();
         wrapper.eq(AssetMetadata::getAssetId, assetId)
                 .select(AssetMetadata::getUserPrompt, AssetMetadata::getPrompt);
         AssetMetadata metadata = assetMetadataMapper.selectOne(wrapper);
-        if (metadata == null) {
-            return null;
+
+        return resolveDisplayPrompt(roleAsset, role, metadata);
+    }
+
+    private void applyDisplayPrompt(RoleAsset asset, Role role, AssetMetadata metadata) {
+        String displayPrompt = resolveDisplayPrompt(asset, role, metadata);
+        if (displayPrompt != null && !displayPrompt.trim().isEmpty()) {
+            asset.setClothingPrompt(displayPrompt);
         }
-        // 优先返回用户原始提示词，如果没有则返回系统构建的提示词
-        return metadata.getUserPrompt() != null && !metadata.getUserPrompt().trim().isEmpty()
-                ? metadata.getUserPrompt()
-                : metadata.getPrompt();
+    }
+
+    private String resolveDisplayPrompt(RoleAsset asset, Role role, AssetMetadata metadata) {
+        if (asset != null && asset.getClothingId() != null && asset.getClothingId() == 1) {
+            String originalPrompt = role != null ? role.getOriginalPrompt() : null;
+            if (originalPrompt != null && !originalPrompt.trim().isEmpty()) {
+                return originalPrompt;
+            }
+        }
+        String clothingPrompt = asset != null ? asset.getClothingPrompt() : null;
+        if (clothingPrompt != null && !clothingPrompt.trim().isEmpty()) {
+            return clothingPrompt;
+        }
+        String userPrompt = metadata != null ? metadata.getUserPrompt() : null;
+        if (userPrompt != null && !userPrompt.trim().isEmpty()) {
+            return userPrompt;
+        }
+        return metadata != null ? metadata.getPrompt() : null;
     }
 
     @Override
@@ -374,7 +390,7 @@ public class AssetServiceImpl implements AssetService {
             // 1. 获取该系列所有角色ID
             LambdaQueryWrapper<Role> roleWrapper = new LambdaQueryWrapper<>();
             roleWrapper.eq(Role::getSeriesId, seriesId)
-                    .select(Role::getId);
+                    .select(Role::getId, Role::getOriginalPrompt, Role::getCustomPrompt);
             List<Role> roles = roleMapper.selectList(roleWrapper);
 
             if (roles.isEmpty()) {
@@ -385,6 +401,8 @@ public class AssetServiceImpl implements AssetService {
             List<Long> roleIds = roles.stream()
                     .map(Role::getId)
                     .collect(java.util.stream.Collectors.toList());
+            java.util.Map<Long, Role> roleMap = roles.stream()
+                    .collect(java.util.stream.Collectors.toMap(Role::getId, role -> role));
 
             // 2. 批量获取所有角色的资产
             LambdaQueryWrapper<RoleAsset> assetWrapper = new LambdaQueryWrapper<>();
@@ -475,17 +493,13 @@ public class AssetServiceImpl implements AssetService {
                         selectedAsset = versions.get(0);
                     }
 
-                    // 填充 detailedView 和 clothingPrompt
+                    // 填充 detailedView 和展示用 clothingPrompt
                     if (selectedAsset != null) {
                         AssetMetadata metadata = metadataMap.get(selectedAsset.getId());
                         if (metadata != null) {
                             selectedAsset.setDetailedView(metadata.getDetailedView());
-                            // 如果 clothingPrompt 为空，从 AssetMetadata 回填
-                            if ((selectedAsset.getClothingPrompt() == null || selectedAsset.getClothingPrompt().trim().isEmpty())
-                                    && metadata.getUserPrompt() != null && !metadata.getUserPrompt().trim().isEmpty()) {
-                                selectedAsset.setClothingPrompt(metadata.getUserPrompt());
-                            }
                         }
+                        applyDisplayPrompt(selectedAsset, roleMap.get(roleId), metadata);
                         roleClothings.add(selectedAsset);
                     }
                 }

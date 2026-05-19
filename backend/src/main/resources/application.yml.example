@@ -48,6 +48,7 @@ volcengine:
   ark:
     api-key: YOUR_API_KEY
     model: doubao-seedream-5-0-260128
+    lite-model: doubao-seedream-5-0-lite-260128
     base-url: https://ark.cn-beijing.volces.com/api/v3
     timeout: 120000
   seedance:
@@ -67,6 +68,16 @@ gpt-image2:
   timeout: 300000
   poll-interval: 3000
   stale-timeout: 1800000
+
+commerce:
+  model-profile:
+    api-key: ${TOAPIS_API_KEY:${gpt-image2.api-key:YOUR_API_KEY}}
+    base-url: https://toapis.com/v1
+    model: deepseek-v4-pro
+  model-image:
+    api-key: ${volcengine.ark.api-key}
+    base-url: https://ark.cn-beijing.volces.com/api/v3
+    model: doubao-seedream-5-0-260128
 
 # 文件存储配置
 storage:

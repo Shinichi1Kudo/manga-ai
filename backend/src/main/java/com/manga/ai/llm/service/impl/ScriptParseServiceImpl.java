@@ -324,6 +324,8 @@ public class ScriptParseServiceImpl implements ScriptParseService {
         prompt.append("**错误示例**（太简略）：\n");
         prompt.append("萧凛挑起盖头质问沈清棠。\n\n");
 
+        appendNoSubtitleVideoRules(prompt);
+
         prompt.append("## 镜头类型与运镜\n");
         prompt.append("### 景别\n");
         prompt.append("- 远景：展示环境全貌，人物渺小，适合开场/环境交代\n");
@@ -516,6 +518,8 @@ public class ScriptParseServiceImpl implements ScriptParseService {
         prompt.append("**错误示例**（太简略）：\n");
         prompt.append("小明说今天要开学了。\n\n");
 
+        appendNoSubtitleVideoRules(prompt);
+
         prompt.append("## 场景说明\n");
         prompt.append("- sceneName: 场景名称，描述该分镜发生的环境\n\n");
 
@@ -582,6 +586,13 @@ public class ScriptParseServiceImpl implements ScriptParseService {
         prompt.append("- **禁止孤立分镜**：不要让每个分镜只讲自己的内容；相邻分镜必须存在因果、动作延续、视线匹配、反应镜头或声音桥至少一种衔接。\n");
         prompt.append("- **镜头组节奏**：连续动作可拆成“动作发起 -> 反应 -> 结果/转折”，对白可拆成“说话者 -> 听者反应 -> 关系变化”，场景转换要用声音、道具或情绪余波过渡。\n");
         prompt.append("- 生成前检查 shotNumber 顺序：每个分镜都应回答“它从上一镜接住了什么，又把什么递给下一镜”。\n\n");
+    }
+
+    private void appendNoSubtitleVideoRules(StringBuilder prompt) {
+        prompt.append("## 视频画面文字禁令（最高优先级）\n");
+        prompt.append("- 禁止字幕，禁止画面文字，禁止屏幕文字、标题、文字贴片、弹幕、水印、片头片尾文字或任何可读文字出现在最终视频画面中。\n");
+        prompt.append("- 不要生成字幕，不要添加标题，不要在画面中出现文字贴片，不要把台词写成画面字幕。\n");
+        prompt.append("- description 可以保留角色对白作为剧情和声音信息，但只能描述真实画面动作、表情、环境和声音，不得把对白设计成视觉字幕或屏幕文字。\n\n");
     }
 
     /**

@@ -530,6 +530,10 @@ public class SeriesServiceImpl implements SeriesService {
             if (charStyle == null || charStyle.isEmpty()) {
                 charStyle = seriesStyle;
             }
+            String charStyleKey = charData.getString("styleKey");
+            if (charStyleKey == null || charStyleKey.isEmpty()) {
+                charStyleKey = seriesStyle;
+            }
 
             // 创建角色记录
             Role role = new Role();
@@ -540,6 +544,11 @@ public class SeriesServiceImpl implements SeriesService {
             role.setCustomPrompt(charData.getString("customPrompt"));
             role.setOriginalPrompt(charData.getString("originalPrompt"));
             role.setStyleKeywords(charStyle);
+            role.setStyleKey(charStyleKey);
+            role.setAspectRatio(charData.getString("aspectRatio"));
+            role.setQuality(charData.getString("quality"));
+            role.setDetailedView(Boolean.TRUE.equals(charData.getBoolean("detailedView")));
+            role.setFaceCloseupView(Boolean.TRUE.equals(charData.getBoolean("faceCloseupView")));
             role.setExtractConfidence(new BigDecimal("1.0"));
             role.setCreatedAt(LocalDateTime.now());
             role.setUpdatedAt(LocalDateTime.now());
@@ -569,6 +578,8 @@ public class SeriesServiceImpl implements SeriesService {
                     .quality(charData.getString("quality"))
                     .customPrompt(role.getCustomPrompt())
                     .originalPrompt(charData.getString("originalPrompt"))
+                    .detailedView(charData.getBoolean("detailedView"))
+                    .faceCloseupView(charData.getBoolean("faceCloseupView"))
                     .seriesId(seriesId)
                     .roleId(role.getId())
                     .build();

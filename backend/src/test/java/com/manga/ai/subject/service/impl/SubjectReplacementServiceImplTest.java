@@ -49,7 +49,7 @@ class SubjectReplacementServiceImplTest {
         String prompt = invokeBuildPrompt(service, List.of(item));
 
         assertThat(prompt).contains("语言改成英语");
-        assertThat(prompt).contains("如果映射中填写了“语言改成xxx”");
+        assertThat(prompt).contains("如果映射中填写了「语言改成xxx」");
         assertThat(prompt).doesNotContain("语言：英语");
         assertThat(prompt).doesNotContain("外观定位信息：英语");
     }

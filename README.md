@@ -87,11 +87,24 @@
 - ✅ 每张图片扣除 6 积分，失败自动返还并写入积分流水
 - ✅ 未登录用户可浏览入口，上传/生成前统一提示登录
 
+### 电商带货（MVP 已完成）
+- ✅ 首页“我的系列”拆分短剧 / 电商 Tab，基础工作台新增电商工作台分组和重磅上新标识
+- ✅ 电商系列创建，默认服装品类、真人写实视觉风格和 9:16 竖屏画幅
+- ✅ 电商模特创建流程：性别、年龄类型、人种风格、身材选择，一键生成模特提示词（1 积分）
+- ✅ 模特图异步生成：先落库生成中状态，刷新或新标签页可看到占位卡片，失败展示并支持重新生成
+- ✅ 模特生成使用火山 Ark 图片接口，固定 16:9 人物三视图（含大头特写），结果上传 OSS
+- ✅ 模特生成扣除 6 积分，生成失败可重新提交；生成中和创建中均做防连点保护
+- ✅ 模特列表行式展示，完整展示模特图比例、名称、性别、类型、人种、身材和提示词
+- ✅ 商品添加仅收集商品名称、商品类型和商品图片，商品图上传 OSS 后保存，避免临时 URL 失效
+- ✅ 商品列表改为先选择口播种草 / 试穿展示，再填写对应生成参数，避免同时展示两套表单
+- ✅ 带货项目支持口播种草和试穿展示两类轻量分镜，视频生成使用“模特图 + 商品图”参考图
+- ✅ 已锁定模特的“去绑定商品”入口暂时置灰并标记“等待上线”，保留后续商品绑定入口位置
+
 ### 品牌与运营后台（已完成）
 - ✅ 网站品牌统一为“海带 AI 内容智能创作平台”
 - ✅ 站点 Logo 与 favicon 走 OSS 签名 URL，部署后不依赖本地临时文件
 - ✅ 首页基础工作台、AI 工具、资产与账户分组排版
-- ✅ 首页基础工作台新增“电商带货”待上线入口，AI 工具和资产与账户卡片保持独立高度
+- ✅ 首页基础工作台新增电商工作台分组，创建电商系列入口与电商带货入口独立展示
 - ✅ 首页我的系列卡片科技感视觉优化
 - ✅ 首页“今日更新”公告栏，展示 Seedance 2.0、真人人脸与 Kling v3 Omni 更新
 - ✅ 工藤新一专属积分管理后台，支持查看全站余额、今日消耗明细、近 3 天流水分页和使用趋势
@@ -99,6 +112,12 @@
 
 ## 近期更新
 
+- 电商带货 MVP 上线：新增电商系列、AI 模特、商品、带货项目和分镜数据链路；首页我的系列拆分短剧 / 电商 Tab，电商工作台带“重磅上新”标识。
+- 电商模特生成升级：用户只选择性别、年龄类型、人种风格和身材，系统通过 Toapis `deepseek-v4-pro` 生成提示词，再调用火山 Ark 生成 16:9 人物三视图（含大头特写）并上传 OSS。
+- 电商商品流程收敛：添加商品只上传商品图并填写名称/类型；商品列表先选择口播种草或试穿展示，再填写对应参数，商品图不使用临时 URL。
+- 电商生成状态持久化：模特创建先写入数据库并显示生成中占位，刷新和新标签页可恢复；生成失败在前端展示，并支持重新生成。
+- 电商积分规则：模特提示词生成扣 1 积分，模特图生成扣 6 积分；新用户注册赠送积分提升至 20。
+- 角色与分镜生成提示词保护：人物三视图增加空手约束，分镜视频生成增加无字幕、无标题、无画面文字兜底。
 - 视频生成并发限流：原 `corePoolSize=6` 是全局线程池，不是每用户；现在视频生成改为每用户最多 15 路、全局最多 100 路、队列最多 1000 个任务，超出后提示“生成人数过多请稍后再试”。
 - 分镜生成兜底恢复：分镜视频生成中超过 1 小时仍未完成会自动恢复为待生成，避免异常中断后页面长期卡住。
 - 角色创建和角色审核体验优化：角色名改为必填并提示只填人名；高级生成方式默认收起；支持自行上传人物全身图、按比例裁剪和真人风格风险提示；生成新服装描述必填并沿用角色原图片风格。
@@ -107,7 +126,7 @@
 - 剧集详情文本显示修复：清理分镜剧情中异常混入的资产标签和 OSS URL，避免用户在剧情或音效字段看到长串链接。
 - 剧集制作和分镜列表性能优化：剧集详情分镜列表改为轻量查询并补充索引，前端并行接口收集优化，减少进入剧集制作详情页的等待。
 - 积分管理后台增强：最近积分流水支持按用户昵称模糊搜索，便于查看单个用户消耗情况。
-- 首页基础工作台新增电商带货待上线按钮：入口置灰并提示“功能研制中”，同时调整工作台布局，避免新增入口拉高 AI 工具和资产与账户分组背景框。
+- 首页基础工作台新增电商工作台：创建电商系列和电商带货入口独立成组展示，电商工作台带“重磅上新”视觉标识。
 - 视频生成链路升级：Seedance 2.0 Fast VIP、Seedance 2.0 VIP、主体替换视频生成统一切换到 Toapis `/v1/videos/generations`，新增提交请求元数据记录，方便排查实际入参。
 - Kling v3 Omni 接入：分镜生成新增 `Kling v3 Omni` 选项，按 Omni 规则构造 `image_list` 与 `<<<image_N>>>` 引用，默认 `audio=true` 且不传 `video_list`，避免音频互斥问题。
 - 分镜生成状态同步：点击生成后直接进入“生成中”，生成开始时间、参考图、模型、分辨率等参数随请求写入后端，新标签页和刷新后可恢复一致状态。
@@ -144,6 +163,7 @@ manga-ai/
 ├── backend/                    # Spring Boot 后端
 │   └── src/main/java/com/manga/ai/
 │       ├── asset/              # 资产管理模块
+│       ├── commerce/           # 电商带货模块
 │       ├── common/             # 通用配置、枚举、工具类
 │       ├── episode/            # 剧集管理模块
 │       ├── gptimage/           # GPT-Image2 生图模块
@@ -165,13 +185,14 @@ manga-ai/
     │   ├── asset/              # 资产管理
     │   ├── auth/               # 用户认证
     │   ├── role/               # 角色管理
-    │   └── series/             # 系列与剧集管理
+    │   └── series/             # 系列、剧集与电商前端路由
     ├── static/                 # 首页演示图片/视频等静态素材
     ├── manga_ai/               # Django项目配置
     └── templates/              # HTML模板
         ├── auth/               # 登录注册页面
         ├── credits/            # 积分记录页面
         │   └── admin_dashboard.html # 积分管理后台
+        ├── commerce/           # 电商系列、模特、商品和项目页面
         ├── series/gpt_image2.html   # GPT-Image2 生图工作台
         ├── subject_replacement/# 视频主体替换页面
         ├── series/             # 系列、角色审核页面
@@ -225,6 +246,11 @@ manga-ai/
 | `shot_video_asset_metadata` | 视频生成参数记录 |
 | `subject_replacement_task` | 视频主体替换任务记录 |
 | `gpt_image2_task` | GPT-Image2 生图任务记录 |
+| `commerce_series` | 电商系列信息 |
+| `commerce_model` | 电商模特基础形象与生成状态 |
+| `commerce_product` | 电商商品信息 |
+| `commerce_project` | 电商带货内容项目 |
+| `commerce_shot` | 电商带货分镜 |
 | `credit_record` | 积分消费记录 |
 
 ## 工作流程
@@ -238,6 +264,12 @@ manga-ai/
 ```
 选择系列 → 创建剧集 → 输入剧本 → LLM解析 →
 审核分镜 → 生成场景/道具资产 → 生成分镜视频 → 导出
+```
+
+### 3. 电商带货流程
+```
+创建电商系列 → 创建 AI 模特 → 生成提示词 → 异步生成模特图 →
+锁定模特 → 添加商品图 → 选择口播/试穿 → 生成带货项目分镜 → 生成视频
 ```
 
 ## 快速开始
@@ -338,6 +370,24 @@ python manage.py runserver 8000
 - `GET /v1/gpt-image2/latest` - 获取最近一次生图任务
 - `POST /v1/gpt-image2/upload-reference` - 上传图生图参考图
 
+### 电商带货
+- `GET /v1/commerce/series` - 获取电商系列列表
+- `POST /v1/commerce/series` - 创建电商系列
+- `GET /v1/commerce/series/{seriesId}` - 获取电商系列详情
+- `GET /v1/commerce/series/{seriesId}/models` - 获取系列模特列表
+- `POST /v1/commerce/models/prompt` - 生成电商模特提示词（扣除 1 积分）
+- `POST /v1/commerce/series/{seriesId}/models` - 创建电商模特占位记录
+- `POST /v1/commerce/models/{modelId}/generate-image` - 异步生成电商模特图（扣除 6 积分）
+- `POST /v1/commerce/models/{modelId}/confirm` - 锁定电商模特
+- `POST /v1/commerce/models/{modelId}/unlock` - 解锁电商模特
+- `POST /v1/commerce/models/{modelId}/regenerate` - 重新生成电商模特图
+- `GET /v1/commerce/models/{modelId}/products` - 获取模特下商品列表
+- `POST /v1/commerce/products/upload-image` - 上传商品图到 OSS
+- `POST /v1/commerce/models/{modelId}/products` - 添加商品
+- `POST /v1/commerce/products/{productId}/projects` - 创建口播种草或试穿展示项目
+- `GET /v1/commerce/projects/{projectId}` - 获取带货项目详情
+- `POST /v1/commerce/projects/{projectId}/generate-video` - 生成带货视频
+
 ### 运营后台
 - `GET /v1/admin/credits/dashboard` - 获取积分管理后台数据（专属管理员）
 - `GET /v1/common/site-logo` - 获取 OSS 站点 Logo 签名 URL
@@ -351,7 +401,7 @@ python manage.py runserver 8000
 | Seedance 2.0 Fast VIP | 11/秒 | 22/秒 | 不支持 |
 | Kling v3 Omni | 不支持 | 15/秒 | 16/秒 |
 
-其他操作：普通图片生成 6 积分/张，GPT-Image2 生图 6 积分/张，剧本解析 2 积分/次。主体替换按 60 积分/秒计费，生成失败自动返还。
+其他操作：普通图片生成 6 积分/张，GPT-Image2 生图 6 积分/张，剧本解析 2 积分/次，电商模特提示词生成 1 积分/次，电商模特图生成 6 积分/次。主体替换按 60 积分/秒计费，生成失败自动返还。
 
 ## 分镜文本格式
 
@@ -389,10 +439,12 @@ aliyun:
 
 # 火山引擎配置
 volcengine:
-  # 图片生成
-  seedream:
+  # 火山 Ark 图片生成
+  ark:
     api-key: ${VOLCENGINE_API_KEY}
-    model: seedream-5.0-lite
+    model: doubao-seedream-5-0-260128
+    lite-model: doubao-seedream-5-0-lite-260128
+    base-url: https://ark.cn-beijing.volces.com/api/v3
 
   # 视频生成
   seedance:
@@ -412,6 +464,16 @@ gpt-image2:
   base-url: https://toapis.com/v1
   model: gpt-image-2
   poll-interval: 3000
+
+commerce:
+  model-profile:
+    api-key: ${TOAPIS_API_KEY}
+    base-url: https://toapis.com/v1
+    model: deepseek-v4-pro
+  model-image:
+    api-key: ${VOLCENGINE_API_KEY}
+    base-url: https://ark.cn-beijing.volces.com/api/v3
+    model: doubao-seedream-5-0-260128
 
 video:
   executor:
@@ -516,12 +578,14 @@ BACKEND_API_URL = 'http://localhost:8081/api'
 - [x] 海带品牌 Logo OSS 化与站点 favicon 接入
 - [x] 视频主体替换功能与首页演示区
 - [x] GPT-Image2 独立生图工作台、清晰度选择、任务分页与 6 积分/张计费
+- [x] 电商带货 MVP：电商系列、AI 模特、商品图 OSS、口播/试穿项目与分镜生成
 - [x] 首页今日更新公告栏
 - [x] 变更文档目录
 
 ### 进行中
 - [ ] 剧集导出功能
 - [ ] 批量视频生成进度体验继续优化
+- [ ] 电商商品绑定与带货视频生成体验继续完善
 - [ ] 首页营销展示素材持续替换与补充
 
 ### 待开发

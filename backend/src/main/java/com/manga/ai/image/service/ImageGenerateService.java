@@ -16,6 +16,13 @@ public interface ImageGenerateService {
     ImageGenerateResponse generateCharacterSheet(ImageGenerateRequest request);
 
     /**
+     * 生成电商模特基础形象图（文生图）
+     * @param request 生成请求
+     * @return 生成结果
+     */
+    ImageGenerateResponse generateCommerceModelImage(ImageGenerateRequest request);
+
+    /**
      * 基于参考图生成新服装（图生图）
      * @param request 生成请求（包含参考图URL）
      * @return 生成结果

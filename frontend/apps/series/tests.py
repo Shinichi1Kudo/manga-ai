@@ -3,6 +3,7 @@ from pathlib import Path
 from unittest.mock import Mock, patch
 
 from django.conf import settings
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase
 
 from api.backend_client import BackendAPIError
@@ -481,6 +482,7 @@ class SeriesReviewAssetGateTests(TestCase):
         template = template_path.read_text(encoding='utf-8')
 
         self.assertIn('data-role-style-keywords="{{ role.styleKeywords|default:series.styleKeywords|default:\'\' }}"', template)
+        self.assertIn('data-role-style-key="{{ role.styleKey|default:\'\' }}"', template)
         self.assertIn('服装描述 <span class="text-red-400">*</span>', template)
         self.assertIn('id="newClothingPrompt"', template)
         self.assertIn('required data-required-message="请填写服装描述"', template)
@@ -488,9 +490,46 @@ class SeriesReviewAssetGateTests(TestCase):
         self.assertIn('disabled', template.split('id="newClothingStyle"', 1)[1].split('</select>', 1)[0])
         self.assertIn('该风格来自角色创建时的图片风格，生成新服装时保持一致', template)
         self.assertIn('applyLockedNewClothingStyle(roleCard)', template)
-        self.assertIn('const roleStyleKey = roleCard?.dataset?.roleStyleKeywords ||', template)
+        self.assertIn('const roleStyleKey = roleCard?.dataset?.roleStyleKey', template)
+        self.assertIn("resolveStyleKey('', roleCard?.dataset?.roleStyleKeywords || '')", template)
         self.assertIn("showToast('请填写服装描述', 'error');", template)
         self.assertNotIn('服装描述（可选）', template)
+
+    def test_series_review_role_cards_show_role_creation_settings(self):
+        template_path = Path(settings.BASE_DIR) / 'templates/series/series_review.html'
+        template = template_path.read_text(encoding='utf-8')
+
+        self.assertIn('role-creation-settings', template)
+        self.assertIn('创建配置', template)
+        self.assertIn('系列风格', template)
+        self.assertIn('data-style-key="{{ role.styleKey|default:\'\' }}"', template)
+        self.assertIn('data-style-keywords="{{ role.styleKeywords|default:\'\' }}"', template)
+        self.assertIn('role-creation-style', template)
+        self.assertIn('initRoleCreationSettingsDisplay', template)
+        self.assertIn('resolveStyleKey', template)
+        self.assertNotIn('{{ role.styleKeywords|default:"-" }}', template)
+        self.assertIn('人物比例', template)
+        self.assertIn('{{ role.aspectRatio|default:"-" }}', template)
+        self.assertIn('清晰度', template)
+        self.assertIn('role-creation-quality', template)
+        self.assertIn('QUALITY_NAMES', template)
+        self.assertIn('高级方式', template)
+        self.assertIn('{% if role.detailedView or role.faceCloseupView %}', template)
+        self.assertIn('已启用', template)
+        self.assertIn('未启用', template)
+        self.assertIn('精细三视图', template)
+        self.assertIn('大头特写+三视图', template)
+        self.assertGreater(template.index('<!-- Prompt Info -->'), template.index('role-creation-settings'))
+        settings_to_prompt = template.split('role-creation-settings', 1)[1].split('<!-- Prompt Info -->', 1)[0]
+        self.assertNotIn('lg:grid-cols-5', settings_to_prompt)
+
+    def test_series_review_default_role_prompt_prefers_original_prompt_over_system_prompt(self):
+        template_path = Path(settings.BASE_DIR) / 'templates/series/series_review.html'
+        template = template_path.read_text(encoding='utf-8')
+
+        self.assertIn('{% if role.assets.0.clothingId == 1 %}', template)
+        self.assertIn("role.originalPrompt|default:role.assets.0.clothingPrompt|default:'暂无提示词'", template)
+        self.assertNotIn("role.assets.0.clothingPrompt|default:role.originalPrompt|default:role.customPrompt", template)
 
 
 class RoleNameGuidanceTests(TestCase):
@@ -648,6 +687,22 @@ class GptImage2HomeTests(TestCase):
         self.assertIn('创建电商系列', workbench_block)
         self.assertIn('href="/commerce/"', workbench_block)
         self.assertIn('href="/commerce/series/create/"', workbench_block)
+        self.assertIn('<div class="home-action-subgroup-label">短剧工作台</div>', workbench_block)
+        self.assertIn('home-commerce-launch', workbench_block)
+        self.assertIn('home-commerce-label', workbench_block)
+        self.assertIn('<span>电商工作台</span>', workbench_block)
+        self.assertIn('home-commerce-launch-badge', workbench_block)
+        self.assertIn('data-lucide="zap"', workbench_block)
+        self.assertIn('重磅上新', workbench_block)
+        ecommerce_create_block = workbench_block.split('href="/commerce/series/create/"', 1)[1].split('</a>', 1)[0]
+        self.assertIn('data-lucide="plus"', ecommerce_create_block)
+        self.assertIn('home-action-commerce-primary', ecommerce_create_block)
+        self.assertIn('<span>创建电商系列</span>', ecommerce_create_block)
+        self.assertNotIn('home-action-copy', ecommerce_create_block)
+        self.assertNotIn('<small>', ecommerce_create_block)
+        self.assertNotIn('data-lucide="shopping-bag"', ecommerce_create_block)
+        self.assertIn('.home-commerce-launch .home-action {', template)
+        self.assertIn('justify-content: center;', template.split('.home-commerce-launch .home-action {', 1)[1].split('}', 1)[0])
         self.assertNotIn('home-action-disabled', workbench_block)
         self.assertNotIn('等待上线', workbench_block)
         self.assertNotIn('功能研制中', workbench_block)
@@ -665,6 +720,10 @@ class GptImage2HomeTests(TestCase):
         account_group_style = template.split('.home-action-group-account {', 1)[1].split('}', 1)[0]
         self.assertIn('flex-grow: 0.72;', account_group_style)
         self.assertIn('min-width: 210px;', account_group_style)
+        commerce_launch_style = template.split('.home-commerce-launch {', 1)[1].split('}', 1)[0]
+        self.assertIn('position: relative;', commerce_launch_style)
+        self.assertIn('overflow: hidden;', commerce_launch_style)
+        self.assertIn('border-color: rgba(251, 191, 36, 0.38);', commerce_launch_style)
 
     def test_credit_records_home_button_has_no_leading_icon(self):
         template_path = Path(settings.BASE_DIR) / 'templates/series/series_list.html'
@@ -1136,6 +1195,10 @@ class CommerceFlowTests(TestCase):
         template_path = Path(settings.BASE_DIR) / 'templates/commerce/series_create.html'
         template = template_path.read_text(encoding='utf-8')
 
+        header_block = template.split('<div class="glass-card', 1)[0]
+        self.assertIn('href="/"', header_block)
+        self.assertIn('返回首页', header_block)
+        self.assertNotIn('返回电商系列', header_block)
         self.assertIn('name="default_aspect_ratio"', template)
         self.assertIn('value="9:16"', template)
         self.assertIn('selected', template)
@@ -1151,6 +1214,608 @@ class CommerceFlowTests(TestCase):
         self.assertIn('生成试穿', template)
         self.assertNotIn('生成新服装', template)
         self.assertNotIn('服装 Tab', template)
+
+    def test_commerce_product_form_only_collects_name_type_and_uploaded_image(self):
+        template_path = Path(settings.BASE_DIR) / 'templates/commerce/model_detail.html'
+        template = template_path.read_text(encoding='utf-8')
+
+        form_block = template.split('添加商品</h2>', 1)[1].split('</form>', 1)[0]
+        self.assertIn('enctype="multipart/form-data"', form_block)
+        self.assertIn('name="name"', form_block)
+        self.assertIn('name="product_type"', form_block)
+        self.assertIn('name="product_image"', form_block)
+        self.assertIn('type="file"', form_block)
+        self.assertIn('accept="image/jpeg,image/png,image/webp"', form_block)
+        self.assertNotIn('name="image_url"', form_block)
+        self.assertNotIn('name="selling_points"', form_block)
+        self.assertNotIn('name="fabric_fit_color_size"', form_block)
+        self.assertNotIn('name="target_audience"', form_block)
+        self.assertNotIn('name="price_offer"', form_block)
+        self.assertNotIn('name="try_on_requirements"', form_block)
+        product_card_block = template.split('{% for product in products %}', 1)[1].split('{% empty %}', 1)[0]
+        self.assertIn('product.productType', product_card_block)
+        self.assertNotIn('product.sellingPoints', product_card_block)
+
+    def test_commerce_product_video_forms_collect_content_specific_settings_after_mode_choice(self):
+        template_path = Path(settings.BASE_DIR) / 'templates/commerce/model_detail.html'
+        template = template_path.read_text(encoding='utf-8')
+
+        product_card_block = template.split('{% for product in products %}', 1)[1].split('{% empty %}', 1)[0]
+        self.assertIn('commerce-product-card', product_card_block)
+        self.assertIn('commerce-video-mode-choice', product_card_block)
+        self.assertIn('data-commerce-video-mode="talking"', product_card_block)
+        self.assertIn('data-commerce-video-mode="try_on"', product_card_block)
+        self.assertIn('data-commerce-video-empty', product_card_block)
+        self.assertIn('data-commerce-video-panel="talking"', product_card_block)
+        self.assertIn('data-commerce-video-panel="try_on"', product_card_block)
+        self.assertIn('hidden', product_card_block)
+        self.assertIn('selectCommerceProductVideoMode', template)
+        self.assertNotIn('mt-4 grid grid-cols-2 gap-2', product_card_block)
+
+        talking_form = template.split('value="talking"', 1)[1].split('</form>', 1)[0]
+        self.assertIn('name="selling_points"', talking_form)
+        self.assertIn('name="target_audience"', talking_form)
+        self.assertIn('name="price_offer"', talking_form)
+        try_on_form = template.split('value="try_on"', 1)[1].split('</form>', 1)[0]
+        self.assertIn('name="try_on_requirements"', try_on_form)
+        self.assertNotIn('name="selling_points"', try_on_form)
+        self.assertNotIn('name="price_offer"', try_on_form)
+
+    def test_commerce_product_create_uploads_image_before_creating_product(self):
+        session = self.client.session
+        session['token'] = 'token-1'
+        session.save()
+        image = SimpleUploadedFile('product.png', b'fake-png', content_type='image/png')
+        backend_client = Mock()
+        backend_client.upload.return_value = {'url': 'https://oss.example.com/commerce/products/product.png'}
+
+        with patch('apps.series.views.get_client', return_value=backend_client):
+            response = self.client.post('/commerce/models/66/products/create/', {
+                'name': '冰丝防晒衬衫',
+                'product_type': '上衣',
+                'product_image': image,
+                'selling_points': '不应该提前提交',
+            })
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response['Location'], '/commerce/models/66/')
+        backend_client.upload.assert_called_once()
+        self.assertEqual(backend_client.upload.call_args.args[0], '/v1/commerce/products/upload-image')
+        backend_client.post.assert_called_once_with('/v1/commerce/models/66/products', {
+            'name': '冰丝防晒衬衫',
+            'imageUrl': 'https://oss.example.com/commerce/products/product.png',
+            'productType': '上衣',
+        })
+
+    def test_commerce_project_create_forwards_content_specific_settings(self):
+        session = self.client.session
+        session['token'] = 'token-1'
+        session.save()
+        backend_client = Mock()
+        backend_client.post.side_effect = [
+            {'id': 88},
+            {'id': 89},
+        ]
+
+        with patch('apps.series.views.get_client', return_value=backend_client):
+            talking_response = self.client.post('/commerce/products/77/projects/create/', {
+                'content_type': 'talking',
+                'aspect_ratio': '9:16',
+                'selling_points': '凉感显瘦',
+                'target_audience': '通勤人群',
+                'price_offer': '限时优惠',
+            })
+            try_on_response = self.client.post('/commerce/products/77/projects/create/', {
+                'content_type': 'try_on',
+                'aspect_ratio': '9:16',
+                'try_on_requirements': '通勤街景、室内全身镜、户外自然光',
+                'selling_points': '试穿不该提交卖点',
+            })
+
+        self.assertEqual(talking_response['Location'], '/commerce/projects/88/')
+        self.assertEqual(try_on_response['Location'], '/commerce/projects/89/')
+        self.assertEqual(backend_client.post.call_args_list[0].args[1], {
+            'contentType': 'talking',
+            'aspectRatio': '9:16',
+            'sellingPoints': '凉感显瘦',
+            'targetAudience': '通勤人群',
+            'priceOffer': '限时优惠',
+        })
+        self.assertEqual(backend_client.post.call_args_list[1].args[1], {
+            'contentType': 'try_on',
+            'aspectRatio': '9:16',
+            'tryOnRequirements': '通勤街景、室内全身镜、户外自然光',
+        })
+
+    def test_commerce_series_list_template_links_back_to_home(self):
+        template_path = Path(settings.BASE_DIR) / 'templates/commerce/series_list.html'
+        template = template_path.read_text(encoding='utf-8')
+
+        header_block = template.split('电商系列</h1>', 1)[1].split('<div id="commerceSeriesList"', 1)[0]
+        self.assertIn('href="/"', header_block)
+        self.assertIn('data-lucide="arrow-left"', header_block)
+        self.assertIn('返回首页', header_block)
+        self.assertIn('创建电商系列', header_block)
+
+    def test_commerce_series_detail_template_lists_models_as_rows_with_full_image_preview(self):
+        template_path = Path(settings.BASE_DIR) / 'templates/commerce/series_detail.html'
+        template = template_path.read_text(encoding='utf-8')
+
+        self.assertIn('commerce-model-list', template)
+        self.assertIn('commerce-model-row', template)
+        self.assertIn('commerce-model-preview', template)
+        self.assertIn('object-contain', template)
+        self.assertIn('模特名称', template)
+        self.assertIn('性别', template)
+        self.assertIn('年龄与类型', template)
+        self.assertIn('人种风格', template)
+        self.assertIn('身材', template)
+        self.assertIn('模特图比例', template)
+        self.assertIn('模特提示词', template)
+        self.assertIn('model.gender', template)
+        self.assertIn('model.modelType', template)
+        self.assertIn('model.ethnicity', template)
+        self.assertIn('model.bodyProfile', template)
+        self.assertIn('model.modelAspectRatio', template)
+        self.assertIn('model.appearancePrompt', template)
+        self.assertIn('commerce-model-summary', template)
+        self.assertIn('commerce-model-prompt-preview', template)
+        self.assertNotIn('commerce-model-prompt-preview line-clamp-2', template)
+        self.assertIn('去绑定商品（等待上线）', template)
+        action_block = template.split('<div class="mt-3 grid gap-2 sm:grid-cols-2">', 1)[1]
+        locked_block = action_block.split("{% if model.status == 'locked' %}", 1)[1].split("{% elif model.status == 'pending_review' %}", 1)[0]
+        self.assertIn('commerce-model-bind-disabled', locked_block)
+        self.assertIn('disabled', locked_block)
+        self.assertIn('aria-disabled="true"', locked_block)
+        self.assertNotIn('href="/commerce/models/{{ model.id }}/"', locked_block)
+        self.assertIn('锁定', template)
+        self.assertIn('解锁', template)
+        self.assertIn('重新生成（6积分）', template)
+        self.assertIn('/commerce/models/{{ model.id }}/confirm/', template)
+        self.assertIn('/commerce/models/{{ model.id }}/unlock/', template)
+        self.assertIn('/commerce/models/{{ model.id }}/regenerate/', template)
+        self.assertIn('{% if model.status == \'locked\' %}', template)
+        self.assertIn('{% elif model.status == \'pending_review\' %}', template)
+        self.assertIn('commerce-model-unlock-form', template)
+        self.assertIn('sm:grid-cols-2', template)
+        self.assertIn('sm:col-span-2', template)
+        self.assertNotIn('{% if model.status == \'locked\' %}\n                                    <a href="/commerce/models/{{ model.id }}/" class="rounded-lg bg-cyan-500 px-3 py-2 text-center text-sm font-semibold text-white transition hover:bg-cyan-400">去绑定商品</a>\n                                    <form method="post" action="/commerce/models/{{ model.id }}/unlock/" class="commerce-model-unlock-form">\n                                        {% csrf_token %}\n                                        <button type="submit" class="w-full rounded-lg border border-white/10 bg-white/[0.06] px-3 py-2 text-sm font-semibold text-white/75 transition hover:bg-white/[0.1]">解锁</button>\n                                    </form>\n                                    <form method="post" action="/commerce/models/{{ model.id }}/regenerate/"', template)
+        self.assertNotIn('commerce-model-details', template)
+        self.assertNotIn('展开完整信息', template)
+        self.assertNotIn('<details', template)
+        self.assertNotIn('</details>', template)
+        self.assertNotIn('max-h-28 overflow-y-auto', template)
+        self.assertIn('bg-[rgba(8,12,28,0.42)]', template)
+        self.assertIn('shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]', template)
+        self.assertIn('border-t border-white/[0.08]', template)
+        self.assertIn('text-white/[0.42]', template)
+        self.assertIn('bg-white/[0.05]', locked_block)
+        self.assertIn('text-white/35', locked_block)
+        self.assertNotIn('rounded-2xl', template)
+        self.assertNotIn('border-l-4 border-l-emerald-300/70', template)
+        self.assertNotIn('shadow-[0_16px_42px_rgba(0,0,0,0.22)]', template)
+        self.assertNotIn('bg-gradient-to-br from-white/[0.08] via-white/[0.035] to-emerald-300/[0.05]', template)
+        self.assertIn('序号', template)
+        self.assertIn('commerce-model-title', template)
+        self.assertIn('commerce-model-actions', template)
+        self.assertNotIn('查看详情', template)
+        self.assertIn('min-h-[168px]', template)
+        self.assertIn('max-h-[248px]', template)
+        self.assertNotIn('mb-3 flex items-center justify-between gap-3', template)
+        self.assertNotIn('min-h-[118px]', template)
+        self.assertNotIn('max-h-[176px]', template)
+        self.assertNotIn('min-h-[140px]', template)
+        self.assertNotIn('max-h-[220px]', template)
+        self.assertIn('待锁定', template)
+        self.assertIn('生成中', template)
+        self.assertIn('commerce-model-spinner', template)
+        self.assertIn('animate-spin', template)
+        self.assertIn('pollCommerceModelList', template)
+        self.assertIn('setInterval(pollCommerceModelList', template)
+        self.assertIn("'.commerce-model-row[data-model-status=\"queued\"], .commerce-model-row[data-model-status=\"generating\"]'", template)
+        self.assertIn("freshList.innerHTML", template)
+        self.assertIn('生成失败', template)
+        self.assertIn('重新生成（6积分）', template)
+        self.assertIn('/commerce/models/{{ model.id }}/regenerate/', template)
+        self.assertIn('{{ model.errorMessage|default:"模特图生成失败，请重新生成" }}', template)
+        self.assertNotIn('data-preview-src="{{ model.baseImageUrl }}"', template)
+        self.assertNotIn('commerceModelPreviewModal', template)
+        self.assertNotIn('commercePreviewZoomIn', template)
+        self.assertNotIn('commercePreviewZoomOut', template)
+        self.assertNotIn('commercePreviewImage.style.transform', template)
+        self.assertNotIn('cursor-zoom-in', template)
+        self.assertNotIn('md:grid-cols-2', template)
+        self.assertNotIn('sm:grid-cols-[220px_minmax(0,1fr)]', template)
+
+    def test_commerce_series_detail_shows_generating_placeholder_from_backend_models_without_created_query(self):
+        session = self.client.session
+        session['token'] = 'token-1'
+        session['email'] = 'tester@example.com'
+        session.save()
+        backend_client = Mock()
+
+        def backend_get(endpoint):
+            if endpoint == '/v1/commerce/series/10':
+                return {
+                    'id': 10,
+                    'name': '小雅女装种草号',
+                    'defaultAspectRatio': '9:16',
+                }
+            if endpoint == '/v1/commerce/series/10/models':
+                return [{
+                    'id': 66,
+                    'seriesId': 10,
+                    'name': '看看',
+                    'genderAge': '男 / 成熟男性 / 中国',
+                    'bodyProfile': '标准匀称',
+                    'appearancePrompt': '成熟中国男性，五官立体，气质稳重。',
+                    'modelAspectRatio': '16:9',
+                    'status': 'generating',
+                    'baseImageUrl': '',
+                }]
+            raise AssertionError(f'unexpected endpoint: {endpoint}')
+
+        backend_client.get.side_effect = backend_get
+
+        with patch('apps.series.views.get_client', return_value=backend_client):
+            response = self.client.get('/commerce/series/10/')
+
+        self.assertEqual(response.status_code, 200)
+        html = response.content.decode('utf-8')
+        self.assertIn('看看', html)
+        self.assertIn('男', html)
+        self.assertIn('成熟男性', html)
+        self.assertIn('中国', html)
+        self.assertIn('commerce-model-spinner', html)
+        self.assertIn('animate-spin', html)
+        self.assertIn('生成中', html)
+        backend_client.post.assert_not_called()
+
+    def test_commerce_series_detail_shows_queued_placeholder_from_backend_models_without_created_query(self):
+        session = self.client.session
+        session['token'] = 'token-1'
+        session['email'] = 'tester@example.com'
+        session.save()
+        backend_client = Mock()
+
+        def backend_get(endpoint):
+            if endpoint == '/v1/commerce/series/10':
+                return {
+                    'id': 10,
+                    'name': '小雅女装种草号',
+                    'defaultAspectRatio': '9:16',
+                }
+            if endpoint == '/v1/commerce/series/10/models':
+                return [{
+                    'id': 66,
+                    'seriesId': 10,
+                    'name': '刚创建',
+                    'genderAge': '女 / 年轻美女 / 中国',
+                    'bodyProfile': '标准匀称',
+                    'appearancePrompt': '年轻中国女性，五官清爽，气质亲和。',
+                    'modelAspectRatio': '16:9',
+                    'status': 'queued',
+                    'baseImageUrl': '',
+                }]
+            raise AssertionError(f'unexpected endpoint: {endpoint}')
+
+        backend_client.get.side_effect = backend_get
+
+        with patch('apps.series.views.get_client', return_value=backend_client):
+            response = self.client.get('/commerce/series/10/')
+
+        self.assertEqual(response.status_code, 200)
+        html = response.content.decode('utf-8')
+        self.assertIn('刚创建', html)
+        self.assertIn('commerce-model-spinner', html)
+        self.assertIn('animate-spin', html)
+        self.assertIn('生成中', html)
+        backend_client.post.assert_not_called()
+
+    def test_commerce_model_regenerate_forwards_to_backend_and_returns_to_series(self):
+        session = self.client.session
+        session['token'] = 'token-1'
+        session.save()
+        backend_client = Mock()
+        backend_client.post.return_value = {'id': 66, 'seriesId': 10, 'name': '妹妹'}
+
+        with patch('apps.series.views.get_client', return_value=backend_client):
+            response = self.client.post('/commerce/models/66/regenerate/')
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response['Location'], '/commerce/series/10/')
+        backend_client.post.assert_called_once_with('/v1/commerce/models/66/regenerate')
+
+    def test_commerce_model_confirm_and_unlock_return_to_series(self):
+        session = self.client.session
+        session['token'] = 'token-1'
+        session.save()
+        backend_client = Mock()
+        backend_client.post.side_effect = [
+            {'id': 66, 'seriesId': 10, 'name': '妹妹'},
+            {'id': 66, 'seriesId': 10, 'name': '妹妹'},
+        ]
+
+        with patch('apps.series.views.get_client', return_value=backend_client):
+            confirm_response = self.client.post('/commerce/models/66/confirm/')
+            unlock_response = self.client.post('/commerce/models/66/unlock/')
+
+        self.assertEqual(confirm_response.status_code, 302)
+        self.assertEqual(confirm_response['Location'], '/commerce/series/10/')
+        self.assertEqual(unlock_response.status_code, 302)
+        self.assertEqual(unlock_response['Location'], '/commerce/series/10/')
+        self.assertEqual(backend_client.post.call_args_list[0].args[0], '/v1/commerce/models/66/confirm')
+        self.assertEqual(backend_client.post.call_args_list[1].args[0], '/v1/commerce/models/66/unlock')
+
+    def test_commerce_model_detail_requires_locked_model_before_binding_products(self):
+        session = self.client.session
+        session['token'] = 'token-1'
+        session.save()
+        backend_client = Mock()
+        backend_client.get.return_value = {
+            'id': 66,
+            'seriesId': 10,
+            'status': 'pending_review',
+        }
+
+        with patch('apps.series.views.get_client', return_value=backend_client):
+            response = self.client.get('/commerce/models/66/')
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response['Location'], '/commerce/series/10/')
+        backend_client.get.assert_called_once_with('/v1/commerce/models/66')
+
+    def test_commerce_failed_model_retry_button_prevents_double_submit(self):
+        template_path = Path(settings.BASE_DIR) / 'templates/commerce/series_detail.html'
+        template = template_path.read_text(encoding='utf-8')
+
+        self.assertIn('commerce-model-regenerate-form', template)
+        self.assertIn('commerce-model-regenerate-button', template)
+        self.assertIn('isCommerceModelRegenerating', template)
+        self.assertIn("button.textContent = '重新生成中...'", template)
+
+    def test_commerce_model_prompt_input_is_disabled_while_generating_prompt(self):
+        template_path = Path(settings.BASE_DIR) / 'templates/commerce/series_detail.html'
+        template = template_path.read_text(encoding='utf-8')
+
+        self.assertIn('生成提示词（1积分）', template)
+        self.assertIn('大概花费15秒', template)
+        self.assertIn('不需要描述服装', template)
+        self.assertIn('promptInput.disabled = true', template)
+        self.assertIn('promptInput.readOnly = true', template)
+        self.assertIn("promptInput.classList.add('opacity-60', 'cursor-not-allowed', 'pointer-events-none')", template)
+        self.assertIn("'pointer-events-none'", template)
+        self.assertIn('promptInput.disabled = false', template)
+        self.assertIn('promptInput.readOnly = false', template)
+        self.assertIn("promptInput.classList.remove('opacity-60', 'cursor-not-allowed', 'pointer-events-none')", template)
+
+    def test_commerce_model_prompt_forwards_guided_choices(self):
+        session = self.client.session
+        session['token'] = 'token-1'
+        session.save()
+        backend_client = Mock()
+        backend_client.post.return_value = {
+            'name': '小雅',
+            'prompt': '年轻东亚女性，五官清爽，性格亲和自然，适合女装种草。'
+        }
+
+        with patch('apps.series.views.get_client', return_value=backend_client):
+            response = self.client.post(
+                '/commerce/series/10/models/prompt/',
+                data=json.dumps({
+                    'name': '小雅',
+                    'gender': '女',
+                    'model_type': '年轻美女',
+                    'ethnicity': '中国',
+                    'body_profile': '微胖亲和',
+                }),
+                content_type='application/json',
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['name'], '小雅')
+        self.assertEqual(response.json()['prompt'], '年轻东亚女性，五官清爽，性格亲和自然，适合女装种草。')
+        self.assertNotIn('身材设定', response.json()['prompt'])
+        backend_client.post.assert_called_once_with('/v1/commerce/models/prompt', {
+            'gender': '女',
+            'modelType': '年轻美女',
+            'ethnicity': '中国',
+            'bodyProfile': '微胖亲和',
+        })
+
+    def test_commerce_model_create_stays_on_series_and_forwards_confirmed_prompt(self):
+        session = self.client.session
+        session['token'] = 'token-1'
+        session.save()
+        backend_client = Mock()
+        backend_client.post.return_value = {'id': 66, 'name': '小雅'}
+
+        with patch('apps.series.views.get_client', return_value=backend_client):
+            response = self.client.post('/commerce/series/10/models/create/', {
+                'name': '小雅',
+                'gender': '女',
+                'model_type': '年轻美女',
+                'ethnicity': '中国',
+                'body_profile': '丰满曲线',
+                'model_aspect_ratio': '9:16',
+                'appearance_prompt': '年轻东亚女性，五官清爽，性格亲和自然，适合女装种草。',
+                'source_type': 'uploaded',
+                'base_image_url': 'https://oss.example.com/model.png',
+            })
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response['Location'], '/commerce/series/10/?created_model=1&created_model_id=66')
+        backend_client.post.assert_called_once_with('/v1/commerce/series/10/models', {
+            'name': '小雅',
+            'sourceType': 'ai',
+            'gender': '女',
+            'modelType': '年轻美女',
+            'ethnicity': '中国',
+            'bodyProfile': '丰满曲线',
+            'modelAspectRatio': '16:9',
+            'appearancePrompt': '年轻东亚女性，五官清爽，性格亲和自然，适合女装种草。',
+        })
+
+    def test_commerce_model_start_image_generation_forwards_to_backend(self):
+        session = self.client.session
+        session['token'] = 'token-1'
+        session.save()
+        backend_client = Mock()
+        backend_client.post.return_value = {'id': 66, 'status': 'generating'}
+
+        with patch('apps.series.views.get_client', return_value=backend_client):
+            response = self.client.post('/commerce/models/66/generate-image/')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json()['success'])
+        backend_client.post.assert_called_once_with('/v1/commerce/models/66/generate-image')
+
+    def test_commerce_model_create_forces_recommended_sixteen_nine_model_ratio(self):
+        session = self.client.session
+        session['token'] = 'token-1'
+        session.save()
+        backend_client = Mock()
+        backend_client.post.return_value = {'id': 66, 'name': '小雅'}
+
+        with patch('apps.series.views.get_client', return_value=backend_client):
+            self.client.post('/commerce/series/10/models/create/', {
+                'name': '小雅',
+                'gender': '女',
+                'model_type': '年轻美女',
+                'ethnicity': '中国',
+                'model_aspect_ratio': '3:4',
+                'appearance_prompt': '年轻东亚女性，五官清爽，性格亲和自然，适合女装种草。',
+            })
+
+        backend_client.post.assert_called_once()
+        payload = backend_client.post.call_args.args[1]
+        self.assertEqual(payload['modelAspectRatio'], '16:9')
+
+    def test_commerce_model_create_requires_model_name_before_backend(self):
+        session = self.client.session
+        session['token'] = 'token-1'
+        session.save()
+        backend_client = Mock()
+
+        with patch('apps.series.views.get_client', return_value=backend_client):
+            response = self.client.post('/commerce/series/10/models/create/', {
+                'name': '',
+                'gender': '女',
+                'model_type': '年轻美女',
+                'ethnicity': '中国',
+                'appearance_prompt': '年轻东亚女性，五官清爽，性格亲和自然，适合女装种草。',
+            })
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response['Location'], '/commerce/series/10/')
+        backend_client.post.assert_not_called()
+
+    def test_commerce_model_create_requires_generated_prompt_before_backend(self):
+        session = self.client.session
+        session['token'] = 'token-1'
+        session.save()
+        backend_client = Mock()
+
+        with patch('apps.series.views.get_client', return_value=backend_client):
+            response = self.client.post('/commerce/series/10/models/create/', {
+                'name': '小雅',
+                'gender': '男',
+                'model_type': '年轻帅哥',
+                'ethnicity': '中国',
+                'appearance_prompt': '',
+            })
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response['Location'], '/commerce/series/10/')
+        backend_client.post.assert_not_called()
+
+    def test_commerce_model_create_rejects_gender_type_mismatch_before_backend(self):
+        session = self.client.session
+        session['token'] = 'token-1'
+        session.save()
+        backend_client = Mock()
+
+        with patch('apps.series.views.get_client', return_value=backend_client):
+            response = self.client.post('/commerce/series/10/models/create/', {
+                'name': '小雅',
+                'gender': '男',
+                'model_type': '年轻美女',
+                'ethnicity': '中国',
+            })
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response['Location'], '/commerce/series/10/')
+        backend_client.post.assert_not_called()
+
+    def test_commerce_series_detail_template_only_exposes_simple_ai_model_choices(self):
+        template_path = Path(settings.BASE_DIR) / 'templates/commerce/series_detail.html'
+        template = template_path.read_text(encoding='utf-8')
+
+        self.assertIn('模特名称', template)
+        self.assertIn('name="name" required', template)
+        self.assertIn('id="commerceModelCreateButton"', template)
+        self.assertIn('autocomplete="off"', template)
+        self.assertIn('data-created-model="{{ model_created|yesno:"true,false" }}"', template)
+        self.assertIn('data-created-model-id="{{ created_model_id|default:"" }}"', template)
+        self.assertIn('data-start-image-url="/commerce/models/{{ created_model_id }}/generate-image/"', template)
+        self.assertIn('startCreatedCommerceModelImageGeneration()', template)
+        self.assertIn('resetCommerceModelForm()', template)
+        self.assertIn('创建模特（6积分）', template)
+        self.assertIn('updateCommerceModelCreateState', template)
+        self.assertIn('createButton.disabled = !canSubmit', template)
+        self.assertIn('event.preventDefault()', template)
+        self.assertIn('createButton.textContent = \'创建中...\'', template)
+        self.assertIn('if (result.name && !nameInput.value.trim())', template)
+        self.assertIn('nameInput.value = result.name;', template)
+        self.assertIn('性别', template)
+        self.assertIn('年龄与类型', template)
+        self.assertIn('人种风格', template)
+        self.assertIn('身材', template)
+        self.assertIn('生成提示词', template)
+        self.assertIn('name="appearance_prompt"', template)
+        self.assertIn('required', template)
+        self.assertIn('/commerce/series/{{ commerce_series.id }}/models/prompt/', template)
+        self.assertIn('name="gender"', template)
+        self.assertIn('name="model_type"', template)
+        self.assertIn('name="ethnicity"', template)
+        self.assertIn('name="body_profile"', template)
+        self.assertIn('name="model_aspect_ratio"', template)
+        self.assertIn('value="16:9"', template)
+        self.assertIn('固定 16:9', template)
+        self.assertNotIn('9:16（竖屏预览）', template)
+        self.assertNotIn('3:4（封面模特）', template)
+        self.assertIn('标准匀称', template)
+        self.assertIn('微胖亲和', template)
+        self.assertIn('丰满曲线', template)
+        self.assertIn('大码胖模特', template)
+        self.assertIn('中国', template)
+        self.assertIn('亚洲', template)
+        self.assertIn('华人', template)
+        self.assertIn('日韩', template)
+        self.assertIn('AI 生成模特', template)
+        self.assertIn('年轻美女', template)
+        self.assertIn('年轻帅哥', template)
+        self.assertIn('小女孩', template)
+        self.assertIn('data-gender="男"', template)
+        self.assertIn('data-gender="儿童"', template)
+        self.assertIn('filterCommerceModelTypes', template)
+        self.assertNotIn('name="source_type"', template)
+        self.assertNotIn('name="base_image_url"', template)
+        self.assertNotIn('name="style_tags"', template)
+        self.assertNotIn('name="speaking_persona"', template)
+
+    def test_commerce_model_create_locks_form_controls_while_submitting(self):
+        template_path = Path(settings.BASE_DIR) / 'templates/commerce/series_detail.html'
+        template = template_path.read_text(encoding='utf-8')
+
+        self.assertIn('function setCommerceModelFormLocked(locked)', template)
+        self.assertIn("form.querySelectorAll('input, select, textarea, button')", template)
+        self.assertIn("field.setAttribute('aria-disabled', 'true')", template)
+        self.assertIn("field.classList.add('opacity-60', 'cursor-not-allowed', 'pointer-events-none')", template)
+        self.assertIn('field.readOnly = true', template)
+        self.assertIn('field.tabIndex = -1', template)
+        self.assertIn('setCommerceModelFormLocked(true)', template)
+        self.assertIn("createButton.disabled = true", template)
 
     def test_project_generate_video_forwards_to_backend(self):
         session = self.client.session

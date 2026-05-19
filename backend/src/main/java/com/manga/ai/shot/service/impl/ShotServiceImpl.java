@@ -97,6 +97,9 @@ public class ShotServiceImpl implements ShotService {
     private static final String VIDEO_SOURCE_MANUAL = "manual";
     private static final String VIDEO_SOURCE_SYSTEM = "system";
     private static final String VIDEO_MODEL_MANUAL_UPLOAD = "manual-upload";
+    private static final String VIDEO_NO_SUBTITLE_GUARD =
+            "画面约束（最高优先级）：生成视频画面中禁止出现任何字幕、标题、文字贴片、屏幕文字、对白文字、弹幕、水印、片头片尾字幕或任何可读文字；"
+                    + "不要生成字幕，不要把台词显示成文字。";
 
     private final ShotMapper shotMapper;
     private final ShotCharacterMapper shotCharacterMapper;
@@ -835,6 +838,7 @@ public class ShotServiceImpl implements ShotService {
             if (prompt == null || prompt.trim().isEmpty()) {
                 prompt = seedanceService.buildShotPrompt(shotId);
             }
+            prompt = appendNoSubtitleVideoGuard(prompt);
 
             // 创建生成请求
             SeedanceRequest request = new SeedanceRequest();
@@ -1694,6 +1698,7 @@ public class ShotServiceImpl implements ShotService {
             SeedanceRequest request = new SeedanceRequest();
             request.setModel(convertToApiModel(shot.getVideoModel(), shot.getResolution()));
             String finalPrompt = appendReferenceGuide(result.getPrompt(), references, request.getModel());
+            finalPrompt = appendNoSubtitleVideoGuard(finalPrompt);
             request.setPrompt(finalPrompt);
             request.setDuration(shot.getDuration() != null ? shot.getDuration() : 5);
             request.setShotId(shotId);
@@ -1895,6 +1900,17 @@ public class ShotServiceImpl implements ShotService {
             return "";
         }
         return detail;
+    }
+
+    private String appendNoSubtitleVideoGuard(String prompt) {
+        String basePrompt = prompt != null ? prompt.trim() : "";
+        if (basePrompt.contains(VIDEO_NO_SUBTITLE_GUARD)) {
+            return basePrompt;
+        }
+        if (basePrompt.isEmpty()) {
+            return VIDEO_NO_SUBTITLE_GUARD;
+        }
+        return basePrompt + "\n" + VIDEO_NO_SUBTITLE_GUARD;
     }
 
     /**

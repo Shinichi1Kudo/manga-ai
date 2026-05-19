@@ -33,6 +33,11 @@ public class RoleDetailVO implements Serializable {
     private String customPrompt;
     private String originalPrompt;
     private String styleKeywords;
+    private String styleKey;
+    private String aspectRatio;
+    private String quality;
+    private Boolean detailedView;
+    private Boolean faceCloseupView;
     private String originalText;
     private BigDecimal extractConfidence;
     private LocalDateTime createdAt;

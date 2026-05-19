@@ -25,6 +25,8 @@ class ScriptParseServiceImplTest {
 
         assertContinuityRules(defaultPrompt);
         assertContinuityRules(detailedPrompt);
+        assertNoSubtitleRules(defaultPrompt);
+        assertNoSubtitleRules(detailedPrompt);
     }
 
     private String invokePrompt(ScriptParseServiceImpl service, String methodName) throws Exception {
@@ -40,5 +42,14 @@ class ScriptParseServiceImplTest {
         assertThat(prompt).contains("禁止孤立分镜");
         assertThat(prompt).contains("上一镜的动作、视线、情绪、道具或声音");
         assertThat(prompt).contains("下一镜的视觉或情绪钩子");
+    }
+
+    private void assertNoSubtitleRules(String prompt) {
+        assertThat(prompt).contains("禁止字幕");
+        assertThat(prompt).contains("禁止画面文字");
+        assertThat(prompt).contains("不要生成字幕");
+        assertThat(prompt).contains("不要添加标题");
+        assertThat(prompt).contains("不要在画面中出现文字贴片");
+        assertThat(prompt).contains("不要把台词写成画面字幕");
     }
 }

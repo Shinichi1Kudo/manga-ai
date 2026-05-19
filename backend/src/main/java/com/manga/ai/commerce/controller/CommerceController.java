@@ -3,11 +3,13 @@ package com.manga.ai.commerce.controller;
 import com.manga.ai.commerce.dto.CommerceModelCreateRequest;
 import com.manga.ai.commerce.dto.CommerceModelVO;
 import com.manga.ai.commerce.dto.CommerceProductCreateRequest;
+import com.manga.ai.commerce.dto.CommerceProductUploadResult;
 import com.manga.ai.commerce.dto.CommerceProductVO;
 import com.manga.ai.commerce.dto.CommerceProjectCreateRequest;
 import com.manga.ai.commerce.dto.CommerceProjectVO;
 import com.manga.ai.commerce.dto.CommerceSeriesCreateRequest;
 import com.manga.ai.commerce.dto.CommerceSeriesVO;
+import com.manga.ai.commerce.service.dto.CommerceModelProfile;
 import com.manga.ai.commerce.service.CommerceService;
 import com.manga.ai.common.result.Result;
 import lombok.RequiredArgsConstructor;
@@ -17,6 +19,8 @@ import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.util.List;
 
@@ -47,6 +51,16 @@ public class CommerceController {
         return Result.success(commerceService.listModels(seriesId));
     }
 
+    @PostMapping("/models/prompt")
+    public Result<CommerceModelProfile> generateModelPrompt(@RequestBody CommerceModelCreateRequest request) {
+        return Result.success(commerceService.generateModelPrompt(
+                "",
+                request.getGender(),
+                request.getModelType(),
+                request.getEthnicity(),
+                request.getBodyProfile()));
+    }
+
     @PostMapping("/series/{seriesId}/models")
     public Result<CommerceModelVO> createModel(
             @PathVariable Long seriesId,
@@ -54,9 +68,29 @@ public class CommerceController {
         return Result.success(commerceService.createModel(seriesId, request));
     }
 
+    @PostMapping("/models/{modelId}/generate-image")
+    public Result<CommerceModelVO> startModelImageGeneration(@PathVariable Long modelId) {
+        return Result.success(commerceService.startModelImageGeneration(modelId));
+    }
+
+    @GetMapping("/models/{modelId}")
+    public Result<CommerceModelVO> getModel(@PathVariable Long modelId) {
+        return Result.success(commerceService.getModel(modelId));
+    }
+
     @PostMapping("/models/{modelId}/confirm")
     public Result<CommerceModelVO> confirmModel(@PathVariable Long modelId) {
         return Result.success(commerceService.confirmModel(modelId));
+    }
+
+    @PostMapping("/models/{modelId}/unlock")
+    public Result<CommerceModelVO> unlockModel(@PathVariable Long modelId) {
+        return Result.success(commerceService.unlockModel(modelId));
+    }
+
+    @PostMapping("/models/{modelId}/regenerate")
+    public Result<CommerceModelVO> regenerateModel(@PathVariable Long modelId) {
+        return Result.success(commerceService.regenerateModel(modelId));
     }
 
     @GetMapping("/models/{modelId}/products")
@@ -69,6 +103,12 @@ public class CommerceController {
             @PathVariable Long modelId,
             @RequestBody CommerceProductCreateRequest request) {
         return Result.success(commerceService.createProduct(modelId, request));
+    }
+
+    @PostMapping("/products/upload-image")
+    public Result<CommerceProductUploadResult> uploadProductImage(
+            @RequestParam(value = "file", required = false) MultipartFile file) {
+        return Result.success(new CommerceProductUploadResult(commerceService.uploadProductImage(file)));
     }
 
     @PostMapping("/products/{productId}/projects")

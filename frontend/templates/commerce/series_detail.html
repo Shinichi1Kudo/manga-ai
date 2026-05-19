@@ -15,17 +15,80 @@
             </div>
 
             <h2 class="mb-4 text-lg font-semibold">模特列表</h2>
-            <div class="grid gap-4 md:grid-cols-2">
+            <div class="commerce-model-list space-y-4">
                 {% for model in models %}
-                    <a href="/commerce/models/{{ model.id }}/" class="rounded-xl border border-white/10 bg-white/[0.04] p-4 transition hover:border-emerald-300/35">
-                        <div class="aspect-[3/4] overflow-hidden rounded-lg bg-black/25">
+                    <article class="commerce-model-row rounded-lg border border-white/10 bg-[rgba(8,12,28,0.42)] p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)] transition hover:border-cyan-100/20 hover:bg-white/[0.045]" data-model-status="{{ model.status }}">
+                        <div class="commerce-model-preview flex min-h-[168px] items-center justify-center overflow-hidden rounded-md border border-white/[0.08] bg-black/25">
                             {% if model.baseImageUrl %}
-                                <img src="{{ model.baseImageUrl }}" alt="{{ model.name }}" class="h-full w-full object-cover">
+                                <img src="{{ model.baseImageUrl }}" alt="{{ model.name }}" class="max-h-[248px] w-full object-contain" loading="lazy">
+                            {% elif model.status == 'failed' %}
+                                <div class="flex h-32 w-full items-center justify-center text-sm font-semibold text-red-200">生成失败</div>
+                            {% else %}
+                                <div class="flex h-32 w-full flex-col items-center justify-center gap-3 text-sm text-white/45">
+                                    <span class="commerce-model-spinner h-8 w-8 animate-spin rounded-full border-2 border-white/15 border-t-emerald-300"></span>
+                                    <span>生成中</span>
+                                </div>
                             {% endif %}
                         </div>
-                        <h3 class="mt-3 font-semibold">{{ model.name }}</h3>
-                        <p class="mt-1 text-sm text-white/45">{{ model.status }}</p>
-                    </a>
+                        <div class="mt-3 border-t border-white/[0.08] px-1 pt-3">
+                            <div class="flex flex-wrap items-center justify-between gap-2">
+                                <h3 class="commerce-model-title flex min-w-0 items-center gap-2 font-semibold text-white/90">
+                                    <span class="shrink-0 rounded-full border border-white/10 bg-white/[0.045] px-2 py-0.5 text-[11px] font-semibold text-white/[0.42]">序号 {{ forloop.counter }}</span>
+                                    <span class="min-w-0 truncate">{{ model.name }}</span>
+                                </h3>
+                                <div class="commerce-model-actions flex shrink-0 items-center gap-2">
+                                    {% if model.status == 'locked' %}
+                                        <span class="status-badge status-locked">已锁定</span>
+                                    {% elif model.status == 'pending_review' %}
+                                        <span class="status-badge status-pending">待锁定</span>
+                                    {% elif model.status == 'generating' or model.status == 'queued' %}
+                                        <span class="status-badge status-initializing">生成中</span>
+                                    {% elif model.status == 'failed' %}
+                                        <span class="status-badge status-failed">生成失败</span>
+                                    {% else %}
+                                        <span class="status-badge status-pending">{{ model.status }}</span>
+                                    {% endif %}
+                                </div>
+                            </div>
+                            <div class="commerce-model-summary mt-2 flex flex-wrap gap-1.5 text-xs">
+                                <span class="rounded-full bg-white/[0.045] px-2 py-1 text-white/65">{{ model.gender|default:"AI 生成模特" }}</span>
+                                <span class="rounded-full bg-white/[0.045] px-2 py-1 text-white/65">{{ model.modelType|default:"-" }}</span>
+                                <span class="rounded-full bg-white/[0.045] px-2 py-1 text-white/65">{{ model.ethnicity|default:"-" }}</span>
+                                <span class="rounded-full bg-white/[0.045] px-2 py-1 text-white/65">{{ model.bodyProfile|default:"标准匀称" }}</span>
+                                <span class="rounded-full bg-white/[0.045] px-2 py-1 text-white/65">{{ model.modelAspectRatio|default:"16:9" }}</span>
+                            </div>
+                            <div class="mt-2 text-xs leading-5 text-white/45">
+                                <span class="font-semibold text-white/50">模特提示词：</span>
+                                <span class="commerce-model-prompt-preview block whitespace-pre-wrap break-words text-white/60">{{ model.appearancePrompt|default:"-" }}</span>
+                            </div>
+                            {% if model.status == 'failed' %}
+                                <p class="mt-2 text-sm text-red-200/80">{{ model.errorMessage|default:"模特图生成失败，请重新生成" }}</p>
+                            {% endif %}
+                            <div class="mt-3 grid gap-2 sm:grid-cols-2">
+                                {% if model.status == 'locked' %}
+                                    <button type="button" disabled aria-disabled="true" class="commerce-model-bind-disabled w-full cursor-not-allowed rounded-lg border border-white/10 bg-white/[0.05] px-3 py-2 text-center text-sm font-semibold text-white/35">去绑定商品（等待上线）</button>
+                                    <form method="post" action="/commerce/models/{{ model.id }}/unlock/" class="commerce-model-unlock-form">
+                                        {% csrf_token %}
+                                        <button type="submit" class="w-full rounded-lg border border-white/10 bg-white/[0.06] px-3 py-2 text-sm font-semibold text-white/75 transition hover:bg-white/[0.1]">解锁</button>
+                                    </form>
+                                {% elif model.status == 'pending_review' %}
+                                    <form method="post" action="/commerce/models/{{ model.id }}/confirm/" class="commerce-model-confirm-form">
+                                        {% csrf_token %}
+                                        <button type="submit" class="w-full rounded-lg bg-emerald-500 px-3 py-2 text-sm font-semibold text-white transition hover:bg-emerald-400">锁定</button>
+                                    </form>
+                                    <form method="post" action="/commerce/models/{{ model.id }}/regenerate/" class="commerce-model-regenerate-form sm:col-span-2">
+                                        {% csrf_token %}
+                                        <button type="submit" class="commerce-model-regenerate-button w-full rounded-lg border border-amber-200/20 bg-amber-300/10 px-3 py-2 text-sm font-semibold text-amber-100 transition hover:bg-amber-300/15 disabled:cursor-not-allowed disabled:bg-white/15 disabled:text-white/45">重新生成（6积分）</button>
+                                    </form>
+                                {% elif model.status == 'failed' %}
+                                    <form method="post" action="/commerce/models/{{ model.id }}/regenerate/" class="commerce-model-regenerate-form sm:col-span-3">
+                                        {% csrf_token %}
+                                        <button type="submit" class="commerce-model-regenerate-button w-full rounded-lg bg-emerald-500 px-4 py-2 text-sm font-semibold text-white transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:bg-white/15 disabled:text-white/45">重新生成（6积分）</button>
+                                    </form>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </article>
                 {% empty %}
                     <div class="rounded-xl border border-dashed border-white/15 p-6 text-white/45">还没有模特，先在右侧创建一个。</div>
                 {% endfor %}
@@ -34,22 +97,344 @@
 
         <aside class="glass-card p-6">
             <h2 class="text-lg font-semibold">创建模特</h2>
-            <form method="post" action="/commerce/series/{{ commerce_series.id }}/models/create/" class="mt-4 space-y-3">
+            <form id="commerceModelForm" method="post" action="/commerce/series/{{ commerce_series.id }}/models/create/" data-prompt-url="/commerce/series/{{ commerce_series.id }}/models/prompt/" data-created-model="{{ model_created|yesno:"true,false" }}" data-created-model-id="{{ created_model_id|default:"" }}" data-start-image-url="/commerce/models/{{ created_model_id }}/generate-image/" autocomplete="off" class="mt-4 space-y-3">
                 {% csrf_token %}
-                <input name="name" required class="input-modern w-full" placeholder="模特名称，只填名字/昵称">
-                <select name="source_type" class="input-modern w-full">
-                    <option value="ai">AI 生成模特</option>
-                    <option value="uploaded">上传真人参考图</option>
-                </select>
-                <input name="base_image_url" class="input-modern w-full" placeholder="基础形象图 URL（上传后填入）">
-                <input name="body_profile" class="input-modern w-full" placeholder="身高/体型/尺码，例如 168cm，M码">
-                <input name="style_tags" class="input-modern w-full" placeholder="气质风格，例如 通勤、轻熟、简约">
-                <input name="speaking_persona" class="input-modern w-full" placeholder="口播人设，例如 亲切真实">
-                <textarea name="appearance_prompt" rows="4" class="input-modern w-full" placeholder="外貌、特点和气质描述"></textarea>
-                <p class="rounded-lg border border-amber-300/25 bg-amber-300/10 p-3 text-xs text-amber-100">上传真人参考图时请确保拥有授权；真人素材可能触发上游隐私或素材审核。</p>
-                <button class="w-full rounded-xl bg-emerald-500 px-4 py-2.5 font-semibold text-white hover:bg-emerald-400">创建模特</button>
+                <div class="rounded-xl border border-emerald-300/20 bg-emerald-300/10 p-3">
+                    <p class="text-sm font-semibold text-emerald-100">AI 生成模特</p>
+                    <p class="mt-1 text-xs text-white/55">选择基础类型后，系统会自动生成适合服装带货的模特描述。</p>
+                </div>
+                <label class="block">
+                    <span class="mb-1 block text-sm font-medium text-white/70">模特名称</span>
+                    <input name="name" required autocomplete="off" class="input-modern w-full" placeholder="请输入模特名称，例如小雅">
+                </label>
+                <label class="block">
+                    <span class="mb-1 block text-sm font-medium text-white/70">性别</span>
+                    <select id="commerceModelGender" name="gender" required class="input-modern w-full">
+                        <option value="女">女</option>
+                        <option value="男">男</option>
+                        <option value="儿童">儿童</option>
+                    </select>
+                </label>
+                <label class="block">
+                    <span class="mb-1 block text-sm font-medium text-white/70">年龄与类型</span>
+                    <select id="commerceModelType" name="model_type" required class="input-modern w-full">
+                        <option value="年轻美女" data-gender="女">年轻美女</option>
+                        <option value="成熟女性" data-gender="女">成熟女性</option>
+                        <option value="中年女性" data-gender="女">中年女性</option>
+                        <option value="老年女性" data-gender="女">老年女性</option>
+                        <option value="高级感女模特" data-gender="女">高级感女模特</option>
+                        <option value="亲和素人女性" data-gender="女">亲和素人女性</option>
+                        <option value="年轻帅哥" data-gender="男">年轻帅哥</option>
+                        <option value="成熟男性" data-gender="男">成熟男性</option>
+                        <option value="中年男性" data-gender="男">中年男性</option>
+                        <option value="老年男性" data-gender="男">老年男性</option>
+                        <option value="高级感男模特" data-gender="男">高级感男模特</option>
+                        <option value="亲和素人男性" data-gender="男">亲和素人男性</option>
+                        <option value="小女孩" data-gender="儿童">小女孩</option>
+                        <option value="小男孩" data-gender="儿童">小男孩</option>
+                        <option value="中性儿童" data-gender="儿童">中性儿童</option>
+                    </select>
+                </label>
+                <label class="block">
+                    <span class="mb-1 block text-sm font-medium text-white/70">人种风格</span>
+                    <select id="commerceModelEthnicity" name="ethnicity" required class="input-modern w-full">
+                        <option value="中国">中国</option>
+                        <option value="华人">华人</option>
+                        <option value="东亚">东亚</option>
+                        <option value="日韩">日韩</option>
+                        <option value="亚洲">亚洲</option>
+                        <option value="欧美">欧美</option>
+                        <option value="东南亚">东南亚</option>
+                        <option value="南亚">南亚</option>
+                        <option value="拉美">拉美</option>
+                        <option value="中东">中东</option>
+                        <option value="非洲">非洲</option>
+                        <option value="混血感">混血感</option>
+                    </select>
+                </label>
+                <label class="block">
+                    <span class="mb-1 block text-sm font-medium text-white/70">身材</span>
+                    <select id="commerceModelBodyProfile" name="body_profile" required class="input-modern w-full">
+                        <option value="标准匀称" selected>标准匀称</option>
+                        <option value="纤细修长">纤细修长</option>
+                        <option value="高挑模特">高挑模特</option>
+                        <option value="微胖亲和">微胖亲和</option>
+                        <option value="丰满曲线">丰满曲线</option>
+                        <option value="大码胖模特">大码/胖模特</option>
+                    </select>
+                </label>
+                <label class="block">
+                    <span class="mb-1 block text-sm font-medium text-white/70">模特图比例</span>
+                    <input name="model_aspect_ratio" value="16:9" readonly required class="input-modern w-full opacity-70" aria-describedby="commerceModelAspectRatioHint">
+                    <p id="commerceModelAspectRatioHint" class="mt-1 text-xs text-white/45">固定 16:9，便于生成左侧大头特写和右侧完整三视图；视频画幅后面仍可单独选。</p>
+                </label>
+                <div class="rounded-xl border border-white/10 bg-white/[0.03] p-3">
+                    <div class="flex items-center justify-between gap-3">
+                        <span class="text-sm font-medium text-white/70">模特提示词 <span class="text-red-300">*</span></span>
+                        <button id="commerceModelPromptButton" type="button" class="rounded-lg bg-white/10 px-3 py-1.5 text-sm font-semibold text-white/80 transition hover:bg-white/15">生成提示词（1积分）</button>
+                    </div>
+                    <p class="mt-2 text-xs text-white/45">温馨提示：生成提示词大概花费15秒；这里只描述人物外貌、身形、气质和镜头感觉，不需要描述服装。</p>
+                    <textarea id="commerceModelPrompt" name="appearance_prompt" required rows="5" autocomplete="off" class="input-modern mt-3 w-full resize-y" placeholder="先点击生成提示词，也可以在生成后手动微调。提示词需描述角色特点、外貌、性格和镜头感觉，不需要描述服装。"></textarea>
+                    <p id="commerceModelPromptStatus" class="mt-2 min-h-[1rem] text-xs text-white/45"></p>
+                </div>
+                <button id="commerceModelCreateButton" class="w-full rounded-xl bg-emerald-500 px-4 py-2.5 font-semibold text-white transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:bg-white/15 disabled:text-white/45">创建模特（6积分）</button>
             </form>
         </aside>
     </div>
 </div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function filterCommerceModelTypes() {
+    const genderSelect = document.getElementById('commerceModelGender');
+    const typeSelect = document.getElementById('commerceModelType');
+    if (!genderSelect || !typeSelect) {
+        return;
+    }
+
+    const selectedGender = genderSelect.value;
+    let firstAvailableValue = '';
+    Array.from(typeSelect.options).forEach((option) => {
+        const matchesGender = option.dataset.gender === selectedGender;
+        option.hidden = !matchesGender;
+        option.disabled = !matchesGender;
+        if (matchesGender && !firstAvailableValue) {
+            firstAvailableValue = option.value;
+        }
+    });
+
+    const currentOption = typeSelect.options[typeSelect.selectedIndex];
+    if (!currentOption || currentOption.disabled) {
+        typeSelect.value = firstAvailableValue;
+    }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    const genderSelect = document.getElementById('commerceModelGender');
+    if (genderSelect) {
+        genderSelect.addEventListener('change', filterCommerceModelTypes);
+    }
+    filterCommerceModelTypes();
+
+    const form = document.getElementById('commerceModelForm');
+    const promptButton = document.getElementById('commerceModelPromptButton');
+    const promptInput = document.getElementById('commerceModelPrompt');
+    const status = document.getElementById('commerceModelPromptStatus');
+    const createButton = document.getElementById('commerceModelCreateButton');
+    const nameInput = form ? form.elements.name : null;
+    let isPromptGenerating = false;
+    let isModelCreating = false;
+
+    function setCommerceModelFormLocked(locked) {
+        if (!form) {
+            return;
+        }
+        form.querySelectorAll('input, select, textarea, button').forEach((field) => {
+            if (locked) {
+                field.dataset.previousTabIndex = field.getAttribute('tabindex') || '';
+                field.setAttribute('aria-disabled', 'true');
+                field.classList.add('opacity-60', 'cursor-not-allowed', 'pointer-events-none');
+                field.tabIndex = -1;
+                if (field.tagName === 'INPUT' || field.tagName === 'TEXTAREA') {
+                    field.readOnly = true;
+                }
+            } else {
+                field.removeAttribute('aria-disabled');
+                field.classList.remove('opacity-60', 'cursor-not-allowed', 'pointer-events-none');
+                const previousTabIndex = field.dataset.previousTabIndex;
+                if (previousTabIndex) {
+                    field.setAttribute('tabindex', previousTabIndex);
+                } else {
+                    field.removeAttribute('tabindex');
+                }
+                delete field.dataset.previousTabIndex;
+                if (field.tagName === 'INPUT' || field.tagName === 'TEXTAREA') {
+                    field.readOnly = false;
+                }
+            }
+        });
+    }
+
+    function updateCommerceModelCreateState() {
+        if (!createButton || !nameInput || !promptInput) {
+            return;
+        }
+        const canSubmit = nameInput.value.trim().length > 0
+            && promptInput.value.trim().length > 0
+            && !isPromptGenerating
+            && !isModelCreating;
+        createButton.disabled = !canSubmit;
+    }
+
+    function resetCommerceModelForm() {
+        if (!form) {
+            return;
+        }
+        form.reset();
+        if (form.elements.model_aspect_ratio) {
+            form.elements.model_aspect_ratio.value = '16:9';
+        }
+        if (status) {
+            status.textContent = '';
+        }
+        isPromptGenerating = false;
+        isModelCreating = false;
+        setCommerceModelFormLocked(false);
+        filterCommerceModelTypes();
+        updateCommerceModelCreateState();
+    }
+
+    async function startCreatedCommerceModelImageGeneration() {
+        if (!form || form.dataset.createdModel !== 'true' || !form.dataset.createdModelId) {
+            return;
+        }
+        try {
+            const response = await fetch(form.dataset.startImageUrl, {method: 'POST'});
+            const result = await response.json();
+            if (!response.ok || !result.success) {
+                throw new Error(result.error || '启动模特图生成失败');
+            }
+        } catch (error) {
+            if (status) {
+                status.textContent = error.message || '启动模特图生成失败';
+            }
+        }
+    }
+
+    if (form && promptButton && promptInput && status && createButton && nameInput) {
+        if (form.dataset.createdModel === 'true') {
+            startCreatedCommerceModelImageGeneration();
+            resetCommerceModelForm();
+            if (window.history && window.history.replaceState) {
+                window.history.replaceState({}, document.title, window.location.pathname);
+            }
+        }
+        nameInput.addEventListener('input', updateCommerceModelCreateState);
+        promptInput.addEventListener('input', updateCommerceModelCreateState);
+        form.addEventListener('submit', (event) => {
+            updateCommerceModelCreateState();
+            if (createButton.disabled) {
+                event.preventDefault();
+                return;
+            }
+            isModelCreating = true;
+            setCommerceModelFormLocked(true);
+            createButton.disabled = true;
+            createButton.textContent = '创建中...';
+        });
+        updateCommerceModelCreateState();
+
+        promptButton.addEventListener('click', async () => {
+            isPromptGenerating = true;
+            updateCommerceModelCreateState();
+            promptButton.disabled = true;
+            promptInput.disabled = true;
+            promptInput.readOnly = true;
+            promptInput.classList.add('opacity-60', 'cursor-not-allowed', 'pointer-events-none');
+            promptButton.textContent = '生成中...';
+            status.textContent = '正在生成提示词，大概花费15秒，已扣除1积分。';
+            try {
+                const response = await fetch(form.dataset.promptUrl, {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        gender: form.elements.gender.value,
+                        model_type: form.elements.model_type.value,
+                        ethnicity: form.elements.ethnicity.value,
+                        body_profile: form.elements.body_profile.value,
+                    }),
+                });
+                const result = await response.json();
+                if (!response.ok || !result.success) {
+                    throw new Error(result.error || '生成提示词失败');
+                }
+                if (result.name && !nameInput.value.trim()) {
+                    nameInput.value = result.name;
+                }
+                promptInput.value = result.prompt || '';
+                status.textContent = '提示词已生成，可微调后创建模特。';
+                updateCommerceModelCreateState();
+            } catch (error) {
+                status.textContent = error.message || '生成提示词失败';
+            } finally {
+                isPromptGenerating = false;
+                promptButton.disabled = false;
+                promptInput.disabled = false;
+                promptInput.readOnly = false;
+                promptInput.classList.remove('opacity-60', 'cursor-not-allowed', 'pointer-events-none');
+                promptButton.textContent = '生成提示词（1积分）';
+                updateCommerceModelCreateState();
+            }
+        });
+    }
+
+    let isCommerceModelRegenerating = false;
+    function bindCommerceModelRegenerateForms() {
+        document.querySelectorAll('.commerce-model-regenerate-form').forEach((regenerateForm) => {
+            if (regenerateForm.dataset.bound === 'true') {
+                return;
+            }
+            regenerateForm.dataset.bound = 'true';
+            regenerateForm.addEventListener('submit', (event) => {
+                if (isCommerceModelRegenerating) {
+                    event.preventDefault();
+                    return;
+                }
+                const button = regenerateForm.querySelector('.commerce-model-regenerate-button');
+                isCommerceModelRegenerating = true;
+                if (button) {
+                    button.disabled = true;
+                    button.textContent = '重新生成中...';
+                }
+            });
+        });
+    }
+
+    const activeModelSelector = '.commerce-model-row[data-model-status="queued"], .commerce-model-row[data-model-status="generating"]';
+    const modelList = document.querySelector('.commerce-model-list');
+    let commerceModelPollTimer = null;
+
+    function hasActiveCommerceModelGeneration() {
+        return !!document.querySelector(activeModelSelector);
+    }
+
+    async function pollCommerceModelList() {
+        if (!modelList) {
+            return;
+        }
+        try {
+            const response = await fetch(window.location.pathname, {
+                headers: {'X-Requested-With': 'XMLHttpRequest'},
+                cache: 'no-store',
+            });
+            if (!response.ok) {
+                return;
+            }
+            const html = await response.text();
+            const parser = new DOMParser();
+            const doc = parser.parseFromString(html, 'text/html');
+            const freshList = doc.querySelector('.commerce-model-list');
+            if (!freshList) {
+                return;
+            }
+            modelList.innerHTML = freshList.innerHTML;
+            bindCommerceModelRegenerateForms();
+            if (!hasActiveCommerceModelGeneration() && commerceModelPollTimer) {
+                window.clearInterval(commerceModelPollTimer);
+                commerceModelPollTimer = null;
+            }
+        } catch (error) {
+            // 下一轮轮询会继续尝试刷新列表。
+        }
+    }
+
+    bindCommerceModelRegenerateForms();
+    if (hasActiveCommerceModelGeneration()) {
+        commerceModelPollTimer = setInterval(pollCommerceModelList, 5000);
+    }
+
+});
+</script>
 {% endblock %}

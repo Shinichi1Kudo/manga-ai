@@ -10,4 +10,8 @@ public class CommerceProjectCreateRequest implements Serializable {
 
     private String contentType;
     private String aspectRatio;
+    private String sellingPoints;
+    private String targetAudience;
+    private String priceOffer;
+    private String tryOnRequirements;
 }

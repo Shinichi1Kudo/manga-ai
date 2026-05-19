@@ -10,6 +10,8 @@ import com.manga.ai.common.enums.SeriesStatus;
 import com.manga.ai.asset.mapper.AssetMetadataMapper;
 import com.manga.ai.common.exception.BusinessException;
 import com.manga.ai.common.service.OssService;
+import com.manga.ai.image.dto.ImageGenerateRequest;
+import com.manga.ai.image.dto.ImageGenerateResponse;
 import com.manga.ai.image.service.ImageGenerateService;
 import com.manga.ai.episode.mapper.EpisodeMapper;
 import com.manga.ai.role.entity.Role;
@@ -262,7 +264,12 @@ class SeriesServiceImplTest {
                     "roleName": "林墨",
                     "customPrompt": "年轻程序员",
                     "originalPrompt": "年轻程序员",
+                    "styleKey": "realistic",
+                    "styleKeywords": "cinematic realistic portrait style",
                     "aspectRatio": "9:16",
+                    "quality": "uhd",
+                    "detailedView": false,
+                    "faceCloseupView": true,
                     "uploadedImageUrl": "https://movie-agent.oss-cn-beijing.aliyuncs.com/characters/linmo.png"
                 }]
                 """);
@@ -284,7 +291,67 @@ class SeriesServiceImplTest {
         ArgumentCaptor<Role> roleCaptor = ArgumentCaptor.forClass(Role.class);
         verify(roleMapper).updateById(roleCaptor.capture());
         assertThat(roleCaptor.getValue().getStatus()).isEqualTo(RoleStatus.PENDING_REVIEW.getCode());
+        assertThat(roleCaptor.getValue().getStyleKey()).isEqualTo("realistic");
+        assertThat(roleCaptor.getValue().getStyleKeywords()).isEqualTo("cinematic realistic portrait style");
+        assertThat(roleCaptor.getValue().getAspectRatio()).isEqualTo("9:16");
+        assertThat(roleCaptor.getValue().getQuality()).isEqualTo("uhd");
+        assertThat(roleCaptor.getValue().getDetailedView()).isFalse();
+        assertThat(roleCaptor.getValue().getFaceCloseupView()).isTrue();
         verify(imageGenerateService, never()).generateCharacterSheet(any());
+    }
+
+    @Test
+    void asyncProcessCharactersPassesCreationSettingsToImageGeneration() {
+        SeriesMapper seriesMapper = mock(SeriesMapper.class);
+        RoleMapper roleMapper = mock(RoleMapper.class);
+        RoleAssetMapper roleAssetMapper = mock(RoleAssetMapper.class);
+        ImageGenerateService imageGenerateService = mock(ImageGenerateService.class);
+        SeriesServiceImpl service = createService(
+                seriesMapper,
+                roleMapper,
+                roleAssetMapper,
+                mock(AssetMetadataMapper.class),
+                imageGenerateService
+        );
+        Series series = new Series();
+        series.setId(12L);
+        series.setStyleKeywords("realistic");
+        when(seriesMapper.selectById(12L)).thenReturn(series);
+        when(roleMapper.insert(any(Role.class))).thenAnswer(invocation -> {
+            invocation.<Role>getArgument(0).setId(89L);
+            return 1;
+        });
+        ImageGenerateResponse failedResponse = new ImageGenerateResponse();
+        failedResponse.setStatus("failed");
+        failedResponse.setErrorMessage("skip asset save");
+        when(imageGenerateService.generateCharacterSheet(any(ImageGenerateRequest.class))).thenReturn(failedResponse);
+
+        service.asyncProcessCharacters(12L, """
+                [{
+                    "roleName": "周也",
+                    "customPrompt": "清冷短发女生",
+                    "originalPrompt": "清冷短发女生",
+                    "styleKey": "realistic",
+                    "styleKeywords": "cinematic realistic portrait style",
+                    "aspectRatio": "9:16",
+                    "quality": "uhd",
+                    "detailedView": false,
+                    "faceCloseupView": true
+                }]
+                """);
+
+        ArgumentCaptor<ImageGenerateRequest> requestCaptor = ArgumentCaptor.forClass(ImageGenerateRequest.class);
+        verify(imageGenerateService).generateCharacterSheet(requestCaptor.capture());
+        ImageGenerateRequest request = requestCaptor.getValue();
+        assertThat(request.getAspectRatio()).isEqualTo("9:16");
+        assertThat(request.getQuality()).isEqualTo("uhd");
+        assertThat(request.getStyleKeywords()).isEqualTo("cinematic realistic portrait style");
+        assertThat(request.getDetailedView()).isFalse();
+        assertThat(request.getFaceCloseupView()).isTrue();
+
+        ArgumentCaptor<Role> roleCaptor = ArgumentCaptor.forClass(Role.class);
+        verify(roleMapper).insert(roleCaptor.capture());
+        assertThat(roleCaptor.getValue().getStyleKey()).isEqualTo("realistic");
     }
 
     private SeriesServiceImpl createService(SeriesMapper seriesMapper, RoleMapper roleMapper) {

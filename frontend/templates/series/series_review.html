@@ -100,7 +100,7 @@
 <!-- Role Cards Container -->
 <div class="space-y-6" id="roleContainer">
 {% for role in roles %}
-<div class="glass-card glass-card-hover p-6 role-card" id="role-{{ role.id }}" data-role-id="{{ role.id }}" data-role-status="{{ role.status }}" data-has-usable-asset="{{ role.has_usable_asset|yesno:'true,false' }}" data-custom-prompt="{{ role.customPrompt|default:'' }}" data-original-prompt="{{ role.originalPrompt|default:'' }}" data-role-style-keywords="{{ role.styleKeywords|default:series.styleKeywords|default:'' }}">
+<div class="glass-card glass-card-hover p-6 role-card" id="role-{{ role.id }}" data-role-id="{{ role.id }}" data-role-status="{{ role.status }}" data-has-usable-asset="{{ role.has_usable_asset|yesno:'true,false' }}" data-custom-prompt="{{ role.customPrompt|default:'' }}" data-original-prompt="{{ role.originalPrompt|default:'' }}" data-role-style-key="{{ role.styleKey|default:'' }}" data-role-style-keywords="{{ role.styleKeywords|default:series.styleKeywords|default:'' }}">
     <!-- Role Header -->
     <div class="flex items-start justify-between mb-4">
         <div class="flex items-center gap-4">
@@ -393,14 +393,40 @@
         </div>
         {% endif %}
     </div>
-
+    <div class="role-creation-settings mb-3 flex flex-wrap items-center gap-2 rounded-lg border border-white/10 bg-black/15 px-3 py-2 text-xs text-white/55">
+        <span class="mr-1 inline-flex items-center gap-1 font-semibold text-white/65">
+            <i data-lucide="settings-2" class="h-3.5 w-3.5"></i>创建配置
+        </span>
+        <span class="inline-flex items-center gap-1.5 rounded-full bg-white/[0.06] px-2.5 py-1">
+            <span class="text-white/35">系列风格</span>
+            <span class="role-creation-style text-white/80" data-style-key="{{ role.styleKey|default:'' }}" data-style-keywords="{{ role.styleKeywords|default:'' }}">-</span>
+        </span>
+        <span class="inline-flex items-center gap-1.5 rounded-full bg-white/[0.06] px-2.5 py-1">
+            <span class="text-white/35">人物比例</span>
+            <span class="text-white/80">{{ role.aspectRatio|default:"-" }}</span>
+        </span>
+        <span class="inline-flex items-center gap-1.5 rounded-full bg-white/[0.06] px-2.5 py-1">
+            <span class="text-white/35">清晰度</span>
+            <span class="role-creation-quality text-white/80" data-quality="{{ role.quality|default:'' }}">{{ role.quality|default:"-" }}</span>
+        </span>
+        <span class="inline-flex items-center gap-1.5 rounded-full bg-white/[0.06] px-2.5 py-1">
+            <span class="text-white/35">高级方式</span>
+            <span class="{% if role.detailedView or role.faceCloseupView %}text-emerald-200{% else %}text-white/60{% endif %}">
+                {% if role.detailedView or role.faceCloseupView %}已启用{% else %}未启用{% endif %}
+            </span>
+        </span>
+        <span class="inline-flex items-center gap-1.5 rounded-full bg-white/[0.06] px-2.5 py-1">
+            <span class="text-white/35">选用方式</span>
+            <span class="text-white/80">{% if role.detailedView %}精细三视图{% elif role.faceCloseupView %}大头特写+三视图{% else %}-{% endif %}</span>
+        </span>
+    </div>
     <!-- Prompt Info -->
     <div class="p-4 rounded-xl bg-violet-500/10 border border-violet-500/20">
         <div class="text-xs text-violet-300 mb-1 flex items-center gap-1">
             <i data-lucide="sparkles" class="w-3 h-3"></i>提示词
         </div>
-        <div class="text-sm text-white/80 prompt-display truncate" title="{{ role.assets.0.clothingPrompt|default:role.originalPrompt|default:role.customPrompt|default:'暂无提示词' }}">
-            {{ role.assets.0.clothingPrompt|default:role.originalPrompt|default:role.customPrompt|default:'暂无提示词' }}
+        <div class="text-sm text-white/80 prompt-display truncate" title="{% if role.assets.0.clothingId == 1 %}{{ role.originalPrompt|default:role.assets.0.clothingPrompt|default:'暂无提示词' }}{% else %}{{ role.assets.0.clothingPrompt|default:role.originalPrompt|default:'暂无提示词' }}{% endif %}">
+            {% if role.assets.0.clothingId == 1 %}{{ role.originalPrompt|default:role.assets.0.clothingPrompt|default:'暂无提示词' }}{% else %}{{ role.assets.0.clothingPrompt|default:role.originalPrompt|default:'暂无提示词' }}{% endif %}
         </div>
     </div>
 </div>
@@ -1082,6 +1108,29 @@ const STYLE_NAMES = {
     'chibi': 'Q版卡通'
 };
 
+const QUALITY_NAMES = {
+    'hd': '高清',
+    'uhd': '超清',
+    'standard': '标准',
+    'ultra': '超清'
+};
+
+function resolveStyleKey(styleKey, styleKeywords) {
+    if (styleKey && STYLE_NAMES[styleKey]) {
+        return styleKey;
+    }
+    if (styleKeywords && STYLE_NAMES[styleKeywords]) {
+        return styleKeywords;
+    }
+    if (styleKeywords) {
+        const matched = Object.entries(STYLE_PRESETS).find(([, value]) => value === styleKeywords);
+        if (matched) {
+            return matched[0];
+        }
+    }
+    return styleKey || '';
+}
+
 // 页面加载时初始化风格名称显示
 (function initStyleDisplay() {
     const styleKeywordsDisplay = document.getElementById('styleKeywordsDisplay');
@@ -1095,6 +1144,19 @@ const STYLE_NAMES = {
         }
     }
 })();
+
+function initRoleCreationSettingsDisplay() {
+    document.querySelectorAll('.role-creation-style').forEach(item => {
+        const styleKey = resolveStyleKey(item.dataset.styleKey || '', item.dataset.styleKeywords || '');
+        item.textContent = styleKey ? (STYLE_NAMES[styleKey] || styleKey) : '-';
+    });
+    document.querySelectorAll('.role-creation-quality').forEach(item => {
+        const quality = item.dataset.quality || '';
+        item.textContent = quality ? (QUALITY_NAMES[quality] || quality) : '-';
+    });
+}
+
+initRoleCreationSettingsDisplay();
 
 // 人物精细三视图默认提示词
 const DETAILED_THREE_VIEW_PROMPT = `一张高精度，干净极简的角色设定板/人物三视图参考页，纯白背景，整体像游戏角色建模设定图，时装人物设定sheet、角色turnaround board，排版整齐清晰，信息分区明确，写实高级质感，统一光线、统一人物一致性。
@@ -1626,7 +1688,10 @@ function applyLockedNewClothingStyle(roleCard) {
     const styleSelect = document.getElementById('newClothingStyle');
     if (!styleSelect) return;
     const seriesStyle = document.getElementById('styleKeywordsDisplay')?.dataset?.styleKeywords || '';
-    const roleStyleKey = roleCard?.dataset?.roleStyleKeywords || seriesStyle || '';
+    const roleStyleKey = roleCard?.dataset?.roleStyleKey
+        || resolveStyleKey('', roleCard?.dataset?.roleStyleKeywords || '')
+        || seriesStyle
+        || '';
     styleSelect.disabled = false;
     styleSelect.value = roleStyleKey;
     if (!styleSelect.value && seriesStyle) {
@@ -3596,6 +3661,7 @@ async function submitAddRole(event) {
             originalPrompt: originalPrompt,
             aspectRatio: aspectRatio,
             quality: quality,
+            styleKey: styleKey,
             styleKeywords: styleKeywords,
             detailedView: manualUploadEnabled ? false : detailedView,
             faceCloseupView: manualUploadEnabled ? false : faceCloseupView,

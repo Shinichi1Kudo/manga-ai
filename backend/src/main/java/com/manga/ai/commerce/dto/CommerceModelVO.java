@@ -19,7 +19,9 @@ public class CommerceModelVO implements Serializable {
     private String speakingPersona;
     private String appearancePrompt;
     private String baseImageUrl;
+    private String modelAspectRatio;
     private String status;
+    private String errorMessage;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
 }

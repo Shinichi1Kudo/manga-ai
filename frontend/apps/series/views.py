@@ -13,6 +13,15 @@ from api.backend_client import BackendClient, BackendAPIError
 
 COMMERCE_ASPECT_RATIOS = ('9:16', '3:4', '1:1', '16:9')
 DEFAULT_COMMERCE_ASPECT_RATIO = '9:16'
+DEFAULT_COMMERCE_MODEL_ASPECT_RATIO = '16:9'
+COMMERCE_MODEL_TYPES_BY_GENDER = {
+    '女': ('年轻美女', '成熟女性', '中年女性', '老年女性', '高级感女模特', '亲和素人女性'),
+    '男': ('年轻帅哥', '成熟男性', '中年男性', '老年男性', '高级感男模特', '亲和素人男性'),
+    '儿童': ('小女孩', '小男孩', '中性儿童'),
+}
+COMMERCE_MODEL_ETHNICITIES = ('中国', '华人', '东亚', '日韩', '亚洲', '东南亚', '南亚', '欧美', '拉美', '中东', '非洲', '混血感')
+COMMERCE_MODEL_BODY_PROFILES = ('标准匀称', '纤细修长', '高挑模特', '微胖亲和', '丰满曲线', '大码胖模特')
+DEFAULT_COMMERCE_MODEL_BODY_PROFILE = '标准匀称'
 
 
 def get_client(request):
@@ -340,38 +349,142 @@ def commerce_series_detail(request, series_id):
 
     return render(request, 'commerce/series_detail.html', {
         'commerce_series': series,
-        'models': models,
+        'models': [_enrich_commerce_model(model) for model in (models or [])],
+        'model_created': request.GET.get('created_model') == '1',
+        'created_model_id': request.GET.get('created_model_id', ''),
     })
+
+
+def _enrich_commerce_model(model):
+    model = dict(model or {})
+    parts = [part.strip() for part in (model.get('genderAge') or '').split('/')]
+    model['gender'] = parts[0] if len(parts) > 0 and parts[0] else ''
+    model['modelType'] = parts[1] if len(parts) > 1 and parts[1] else ''
+    model['ethnicity'] = parts[2] if len(parts) > 2 and parts[2] else ''
+    if not model.get('modelAspectRatio'):
+        model['modelAspectRatio'] = DEFAULT_COMMERCE_MODEL_ASPECT_RATIO
+    return model
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def commerce_model_prompt(request, series_id):
+    """生成电商模特提示词"""
+    try:
+        data = json.loads(request.body or '{}')
+    except json.JSONDecodeError:
+        return JsonResponse({'success': False, 'error': '请求格式错误'}, status=400)
+
+    gender = (data.get('gender') or '').strip()
+    model_type = (data.get('model_type') or data.get('modelType') or '').strip()
+    ethnicity = (data.get('ethnicity') or '').strip()
+    body_profile = (data.get('body_profile') or data.get('bodyProfile') or DEFAULT_COMMERCE_MODEL_BODY_PROFILE).strip()
+    validation_error = _validate_commerce_model_choices(gender, model_type, ethnicity)
+    if validation_error:
+        return JsonResponse({'success': False, 'error': validation_error}, status=400)
+    if body_profile not in COMMERCE_MODEL_BODY_PROFILES:
+        return JsonResponse({'success': False, 'error': '请选择身材类型'}, status=400)
+
+    client = get_client(request)
+    try:
+        result = client.post('/v1/commerce/models/prompt', {
+            'gender': gender,
+            'modelType': model_type,
+            'ethnicity': ethnicity,
+            'bodyProfile': body_profile,
+        })
+        return JsonResponse({
+            'success': True,
+            'name': result.get('name', ''),
+            'prompt': result.get('prompt', ''),
+        })
+    except BackendAPIError as e:
+        return JsonResponse({'success': False, 'error': e.message}, status=400)
 
 
 @csrf_exempt
 @require_http_methods(["POST"])
 def commerce_model_create(request, series_id):
     """创建电商模特"""
+    name = request.POST.get('name', '').strip()
+    gender = request.POST.get('gender', '').strip()
+    model_type = request.POST.get('model_type', '').strip()
+    ethnicity = request.POST.get('ethnicity', '').strip()
+    body_profile = request.POST.get('body_profile', DEFAULT_COMMERCE_MODEL_BODY_PROFILE).strip()
+    model_aspect_ratio = DEFAULT_COMMERCE_MODEL_ASPECT_RATIO
+    appearance_prompt = request.POST.get('appearance_prompt', '').strip()
+    if not name:
+        messages.error(request, '请输入模特名称')
+        return redirect('series:commerce_series_detail', series_id=series_id)
+    validation_error = _validate_commerce_model_choices(gender, model_type, ethnicity)
+    if validation_error:
+        messages.error(request, validation_error)
+        return redirect('series:commerce_series_detail', series_id=series_id)
+    if body_profile not in COMMERCE_MODEL_BODY_PROFILES:
+        messages.error(request, '请选择身材类型')
+        return redirect('series:commerce_series_detail', series_id=series_id)
+    if not appearance_prompt:
+        messages.error(request, '请先生成并确认模特提示词')
+        return redirect('series:commerce_series_detail', series_id=series_id)
+
     client = get_client(request)
     try:
         payload = {
-            'name': request.POST.get('name', '').strip(),
-            'sourceType': request.POST.get('source_type', 'ai').strip() or 'ai',
-            'genderAge': request.POST.get('gender_age', '').strip(),
-            'bodyProfile': request.POST.get('body_profile', '').strip(),
-            'styleTags': request.POST.get('style_tags', '').strip(),
-            'speakingPersona': request.POST.get('speaking_persona', '').strip(),
-            'appearancePrompt': request.POST.get('appearance_prompt', '').strip(),
-            'baseImageUrl': request.POST.get('base_image_url', '').strip(),
+            'name': name,
+            'sourceType': 'ai',
+            'gender': gender,
+            'modelType': model_type,
+            'ethnicity': ethnicity,
+            'bodyProfile': body_profile,
+            'modelAspectRatio': model_aspect_ratio,
+            'appearancePrompt': appearance_prompt,
         }
         result = client.post(f'/v1/commerce/series/{series_id}/models', payload)
-        messages.success(request, f'模特 "{payload["name"]}" 已创建')
-        return redirect('series:commerce_model_detail', model_id=result.get('id'))
+        model_name = result.get('name') or payload['name']
+        model_id = result.get('id')
+        messages.success(request, f'模特 "{model_name}" 已创建，基础形象正在生成中')
+        redirect_url = f'/commerce/series/{series_id}/?created_model=1'
+        if model_id:
+            redirect_url += f'&created_model_id={model_id}'
+        return redirect(redirect_url)
     except BackendAPIError as e:
         messages.error(request, f'创建模特失败: {e.message}')
         return redirect('series:commerce_series_detail', series_id=series_id)
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def commerce_model_generate_image(request, model_id):
+    """启动电商模特基础图生成"""
+    client = get_client(request)
+    try:
+        result = client.post(f'/v1/commerce/models/{model_id}/generate-image')
+        return JsonResponse({'success': True, 'model': result})
+    except BackendAPIError as e:
+        return JsonResponse({'success': False, 'error': e.message}, status=400)
+
+
+def _validate_commerce_model_choices(gender, model_type, ethnicity):
+    allowed_model_types = COMMERCE_MODEL_TYPES_BY_GENDER.get(gender, ())
+    if not gender or gender not in COMMERCE_MODEL_TYPES_BY_GENDER:
+        return '请选择模特性别'
+    if not model_type or model_type not in allowed_model_types:
+        return '模特类型与性别不匹配，请重新选择'
+    if not ethnicity or ethnicity not in COMMERCE_MODEL_ETHNICITIES:
+        return '请选择人种风格'
+    return ''
 
 
 def commerce_model_detail(request, model_id):
     """电商模特详情"""
     client = get_client(request)
     try:
+        model = client.get(f'/v1/commerce/models/{model_id}')
+        if model.get('status') != 'locked':
+            messages.error(request, '请先锁定模特再绑定商品')
+            series_id = model.get('seriesId')
+            if series_id:
+                return redirect('series:commerce_series_detail', series_id=series_id)
         products = client.get(f'/v1/commerce/models/{model_id}/products')
     except BackendAPIError as e:
         messages.error(request, f'获取模特商品失败: {e.message}')
@@ -390,10 +503,46 @@ def commerce_model_confirm(request, model_id):
     """锁定电商模特"""
     client = get_client(request)
     try:
-        client.post(f'/v1/commerce/models/{model_id}/confirm')
+        result = client.post(f'/v1/commerce/models/{model_id}/confirm')
         messages.success(request, '模特已锁定')
+        series_id = result.get('seriesId')
+        if series_id:
+            return redirect('series:commerce_series_detail', series_id=series_id)
     except BackendAPIError as e:
         messages.error(request, f'锁定失败: {e.message}')
+    return redirect('series:commerce_model_detail', model_id=model_id)
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def commerce_model_unlock(request, model_id):
+    """解锁电商模特"""
+    client = get_client(request)
+    try:
+        result = client.post(f'/v1/commerce/models/{model_id}/unlock')
+        messages.success(request, '模特已解锁')
+        series_id = result.get('seriesId')
+        if series_id:
+            return redirect('series:commerce_series_detail', series_id=series_id)
+    except BackendAPIError as e:
+        messages.error(request, f'解锁失败: {e.message}')
+    return redirect('series:commerce_model_detail', model_id=model_id)
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def commerce_model_regenerate(request, model_id):
+    """重新生成失败的电商模特图"""
+    client = get_client(request)
+    try:
+        result = client.post(f'/v1/commerce/models/{model_id}/regenerate')
+        model_name = result.get('name') or model_id
+        messages.success(request, f'模特 "{model_name}" 已重新提交生成')
+        series_id = result.get('seriesId')
+        if series_id:
+            return redirect('series:commerce_series_detail', series_id=series_id)
+    except BackendAPIError as e:
+        messages.error(request, f'重新生成模特失败: {e.message}')
     return redirect('series:commerce_model_detail', model_id=model_id)
 
 
@@ -403,15 +552,28 @@ def commerce_product_create(request, model_id):
     """创建电商商品"""
     client = get_client(request)
     try:
+        product_image = request.FILES.get('product_image')
+        if not product_image:
+            messages.error(request, '请上传商品图片')
+            return redirect('series:commerce_model_detail', model_id=model_id)
+        allowed_types = {'image/jpeg', 'image/png', 'image/webp'}
+        filename = (product_image.name or '').lower()
+        if product_image.content_type not in allowed_types and not filename.endswith(('.jpg', '.jpeg', '.png', '.webp')):
+            messages.error(request, '只支持 JPG、PNG、WEBP 格式的商品图片')
+            return redirect('series:commerce_model_detail', model_id=model_id)
+        if product_image.size and product_image.size > 10 * 1024 * 1024:
+            messages.error(request, '商品图片大小不能超过10MB')
+            return redirect('series:commerce_model_detail', model_id=model_id)
+        files = {'file': (product_image.name, product_image.read(), product_image.content_type or 'application/octet-stream')}
+        upload_result = client.upload('/v1/commerce/products/upload-image', files)
+        image_url = (upload_result or {}).get('url', '').strip()
+        if not image_url:
+            messages.error(request, '商品图片上传失败')
+            return redirect('series:commerce_model_detail', model_id=model_id)
         payload = {
             'name': request.POST.get('name', '').strip(),
-            'imageUrl': request.POST.get('image_url', '').strip(),
+            'imageUrl': image_url,
             'productType': request.POST.get('product_type', '').strip(),
-            'sellingPoints': request.POST.get('selling_points', '').strip(),
-            'fabricFitColorSize': request.POST.get('fabric_fit_color_size', '').strip(),
-            'targetAudience': request.POST.get('target_audience', '').strip(),
-            'priceOffer': request.POST.get('price_offer', '').strip(),
-            'tryOnRequirements': request.POST.get('try_on_requirements', '').strip(),
         }
         client.post(f'/v1/commerce/models/{model_id}/products', payload)
         messages.success(request, f'商品 "{payload["name"]}" 已添加')
@@ -430,10 +592,25 @@ def commerce_project_create(request, product_id):
         aspect_ratio = DEFAULT_COMMERCE_ASPECT_RATIO
     client = get_client(request)
     try:
-        result = client.post(f'/v1/commerce/products/{product_id}/projects', {
+        payload = {
             'contentType': content_type,
             'aspectRatio': aspect_ratio,
-        })
+        }
+        if content_type == 'talking':
+            selling_points = request.POST.get('selling_points', '').strip()
+            target_audience = request.POST.get('target_audience', '').strip()
+            price_offer = request.POST.get('price_offer', '').strip()
+            if selling_points:
+                payload['sellingPoints'] = selling_points
+            if target_audience:
+                payload['targetAudience'] = target_audience
+            if price_offer:
+                payload['priceOffer'] = price_offer
+        elif content_type == 'try_on':
+            try_on_requirements = request.POST.get('try_on_requirements', '').strip()
+            if try_on_requirements:
+                payload['tryOnRequirements'] = try_on_requirements
+        result = client.post(f'/v1/commerce/products/{product_id}/projects', payload)
         return redirect('series:commerce_project_detail', project_id=result.get('id'))
     except BackendAPIError as e:
         messages.error(request, f'生成内容失败: {e.message}')

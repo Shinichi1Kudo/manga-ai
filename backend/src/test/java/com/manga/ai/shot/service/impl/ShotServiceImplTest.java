@@ -535,6 +535,37 @@ class ShotServiceImplTest {
     }
 
     @Test
+    void generatedVideoPromptAlwaysAppendsNoSubtitleGuard() {
+        ShotMapper shotMapper = mock(ShotMapper.class);
+        Shot shot = new Shot();
+        shot.setId(642L);
+        shot.setEpisodeId(11L);
+        shot.setShotNumber(10);
+        shot.setStatus(ShotStatus.PENDING_REVIEW.getCode());
+        shot.setUserPrompt("角色对话，字幕显示台词");
+        shot.setDuration(6);
+        shot.setResolution("720p");
+        shot.setAspectRatio("16:9");
+        shot.setVideoModel("seedance-2.0-fast");
+        shot.setGenerationStatus(ShotGenerationStatus.GENERATING.getCode());
+        when(shotMapper.selectById(642L)).thenReturn(shot);
+
+        SeedanceService seedanceService = mock(SeedanceService.class);
+        SeedanceResponse response = new SeedanceResponse();
+        response.setStatus("completed");
+        response.setVideoUrl("https://example.com/no-subtitle.mp4");
+        when(seedanceService.generateVideo(any(SeedanceRequest.class))).thenReturn(response);
+
+        createService(shotMapper, seedanceService).doGenerateVideo(642L);
+
+        ArgumentCaptor<SeedanceRequest> requestCaptor = ArgumentCaptor.forClass(SeedanceRequest.class);
+        verify(seedanceService).generateVideo(requestCaptor.capture());
+        String prompt = requestCaptor.getValue().getPrompt();
+        assertThat(prompt).contains("角色对话，字幕显示台词");
+        assertNoSubtitleVideoGuard(prompt);
+    }
+
+    @Test
     void completedVideoGenerationWithoutVideoUrlIsTreatedAsFailure() {
         ShotMapper shotMapper = mock(ShotMapper.class);
         Shot shot = new Shot();
@@ -847,6 +878,7 @@ class ShotServiceImplTest {
                 .contains("人物【沈清欢-红衣】必须使用 <<<image_2>>>")
                 .contains("画面中的沈清欢-红衣必须以 <<<image_2>>> 为人物外观参考")
                 .doesNotContain("frontend：页面参考图");
+        assertNoSubtitleVideoGuard(request.getPrompt());
     }
 
     @Test
@@ -929,6 +961,7 @@ class ShotServiceImplTest {
                 .contains("[图1] scene：沈府回廊")
                 .contains("[图2] role：沈清欢-红衣")
                 .doesNotContain("<<<image_1>>>");
+        assertNoSubtitleVideoGuard(requestCaptor.getValue().getPrompt());
     }
 
     @Test
@@ -1029,6 +1062,18 @@ class ShotServiceImplTest {
 
     private ShotServiceImpl createService(ShotMapper shotMapper) {
         return createService(shotMapper, mock(SeedanceService.class));
+    }
+
+    private void assertNoSubtitleVideoGuard(String prompt) {
+        assertThat(prompt)
+                .contains("禁止出现任何字幕")
+                .contains("标题")
+                .contains("文字贴片")
+                .contains("屏幕文字")
+                .contains("对白文字")
+                .contains("水印")
+                .contains("不要生成字幕")
+                .contains("不要把台词显示成文字");
     }
 
     private ShotServiceImpl createService(ShotMapper shotMapper, SeedanceService seedanceService) {

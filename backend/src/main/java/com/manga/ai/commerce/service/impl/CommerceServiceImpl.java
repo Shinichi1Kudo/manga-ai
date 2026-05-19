@@ -1,6 +1,7 @@
 package com.manga.ai.commerce.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.manga.ai.commerce.dto.CommerceModelCreateRequest;
 import com.manga.ai.commerce.dto.CommerceModelVO;
 import com.manga.ai.commerce.dto.CommerceProductCreateRequest;
@@ -20,24 +21,38 @@ import com.manga.ai.commerce.mapper.CommerceProductMapper;
 import com.manga.ai.commerce.mapper.CommerceProjectMapper;
 import com.manga.ai.commerce.mapper.CommerceSeriesMapper;
 import com.manga.ai.commerce.mapper.CommerceShotMapper;
+import com.manga.ai.commerce.service.CommerceModelProfileService;
 import com.manga.ai.commerce.service.CommerceService;
+import com.manga.ai.commerce.service.dto.CommerceModelProfile;
 import com.manga.ai.common.constants.CreditConstants;
 import com.manga.ai.common.enums.CreditUsageType;
 import com.manga.ai.common.exception.BusinessException;
+import com.manga.ai.common.service.OssService;
+import com.manga.ai.image.dto.ImageGenerateRequest;
+import com.manga.ai.image.dto.ImageGenerateResponse;
+import com.manga.ai.image.service.ImageGenerateService;
 import com.manga.ai.user.service.UserService;
 import com.manga.ai.user.service.impl.UserServiceImpl.UserContextHolder;
 import com.manga.ai.video.dto.SeedanceRequest;
 import com.manga.ai.video.dto.SeedanceResponse;
 import com.manga.ai.video.service.SeedanceService;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
+import org.springframework.web.multipart.MultipartFile;
 
+import java.io.IOException;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.concurrent.Executor;
 
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class CommerceServiceImpl implements CommerceService {
@@ -45,9 +60,17 @@ public class CommerceServiceImpl implements CommerceService {
     private static final String DEFAULT_CATEGORY = "clothing";
     private static final String DEFAULT_VISUAL_STYLE = "realistic";
     private static final String DEFAULT_ASPECT_RATIO = "9:16";
+    private static final String DEFAULT_MODEL_ASPECT_RATIO = "16:9";
     private static final List<String> DEFAULT_CONTENT_TYPES = List.of("talking", "try_on");
     private static final List<String> ALLOWED_ASPECT_RATIOS = Arrays.asList("3:4", "9:16", "1:1", "16:9");
     private static final List<String> ALLOWED_CONTENT_TYPES = Arrays.asList("talking", "try_on");
+    private static final List<String> FEMALE_MODEL_TYPES = List.of("年轻美女", "成熟女性", "中年女性", "老年女性", "高级感女模特", "亲和素人女性");
+    private static final List<String> MALE_MODEL_TYPES = List.of("年轻帅哥", "成熟男性", "中年男性", "老年男性", "高级感男模特", "亲和素人男性");
+    private static final List<String> CHILD_MODEL_TYPES = List.of("小女孩", "小男孩", "中性儿童");
+    private static final List<String> ALLOWED_ETHNICITIES = List.of("中国", "华人", "东亚", "日韩", "亚洲", "东南亚", "南亚", "欧美", "拉美", "中东", "非洲", "混血感");
+    private static final List<String> ALLOWED_BODY_PROFILES = List.of("标准匀称", "纤细修长", "高挑模特", "微胖亲和", "丰满曲线", "大码胖模特");
+    private static final List<String> ALLOWED_PRODUCT_IMAGE_TYPES = List.of("image/jpeg", "image/png", "image/webp");
+    private static final long MAX_PRODUCT_IMAGE_SIZE = 10L * 1024 * 1024;
 
     private final CommerceSeriesMapper seriesMapper;
     private final CommerceModelMapper modelMapper;
@@ -56,6 +79,11 @@ public class CommerceServiceImpl implements CommerceService {
     private final CommerceShotMapper shotMapper;
     private final SeedanceService seedanceService;
     private final UserService userService;
+    private final CommerceModelProfileService modelProfileService;
+    private final ImageGenerateService imageGenerateService;
+    private final OssService ossService;
+    @Qualifier("imageGenerateExecutor")
+    private final Executor imageGenerateExecutor;
 
     @Override
     @Transactional(rollbackFor = Exception.class)
@@ -105,6 +133,29 @@ public class CommerceServiceImpl implements CommerceService {
     }
 
     @Override
+    public CommerceModelProfile generateModelPrompt(String preferredName, String gender, String modelType, String ethnicity, String bodyProfile) {
+        Long userId = requireUserId();
+        validateModelChoices(gender, modelType, ethnicity);
+        String resolvedBodyProfile = resolveBodyProfile(bodyProfile);
+        userService.deductCredits(
+                userId,
+                CreditConstants.CREDITS_PER_COMMERCE_MODEL_PROMPT,
+                CreditUsageType.IMAGE_GENERATION.getCode(),
+                "电商模特提示词生成",
+                userId,
+                "MODEL_PROMPT"
+        );
+        CommerceModelProfile profile = modelProfileService.generateProfile(
+                "",
+                gender.trim(),
+                modelType.trim(),
+                ethnicity.trim(),
+                resolvedBodyProfile);
+        ensureProfileBodyProfile(profile, resolvedBodyProfile);
+        return profile;
+    }
+
+    @Override
     @Transactional(rollbackFor = Exception.class)
     public CommerceModelVO createModel(Long seriesId, CommerceModelCreateRequest request) {
         Long userId = requireUserId();
@@ -112,26 +163,103 @@ public class CommerceServiceImpl implements CommerceService {
         if (!series.getUserId().equals(userId)) {
             throw new BusinessException("无权访问该电商系列");
         }
-        if (request == null || isBlank(request.getName())) {
+        if (request == null) {
+            throw new BusinessException("请选择模特信息");
+        }
+        if (isBlank(request.getName())) {
             throw new BusinessException("请输入模特名称");
         }
+        validateModelChoices(request.getGender(), request.getModelType(), request.getEthnicity());
+        if (isBlank(request.getAppearancePrompt())) {
+            throw new BusinessException("请先生成并确认模特提示词");
+        }
+        String gender = request.getGender().trim();
+        String modelType = request.getModelType().trim();
+        String ethnicity = request.getEthnicity().trim();
+        String bodyProfile = resolveBodyProfile(request.getBodyProfile());
+        String modelName = request.getName().trim();
+        String appearancePrompt = request.getAppearancePrompt().trim();
+        String modelAspectRatio = DEFAULT_MODEL_ASPECT_RATIO;
 
         CommerceModel model = new CommerceModel();
         model.setSeriesId(seriesId);
         model.setUserId(userId);
-        model.setName(request.getName().trim());
-        model.setSourceType(defaultIfBlank(request.getSourceType(), "ai"));
-        model.setGenderAge(trimToNull(request.getGenderAge()));
-        model.setBodyProfile(trimToNull(request.getBodyProfile()));
-        model.setStyleTags(trimToNull(request.getStyleTags()));
-        model.setSpeakingPersona(trimToNull(request.getSpeakingPersona()));
-        model.setAppearancePrompt(trimToNull(request.getAppearancePrompt()));
-        model.setBaseImageUrl(trimToNull(request.getBaseImageUrl()));
-        model.setStatus(isBlank(model.getBaseImageUrl()) ? "generating" : "pending_review");
+        model.setName(modelName);
+        model.setSourceType("ai");
+        model.setGenderAge(gender + " / " + modelType + " / " + ethnicity);
+        model.setBodyProfile(bodyProfile);
+        model.setStyleTags("真人写实, 电商带货");
+        model.setSpeakingPersona(null);
+        model.setAppearancePrompt(appearancePrompt);
+        model.setBaseImageUrl(null);
+        model.setModelAspectRatio(modelAspectRatio);
+        model.setStatus("queued");
+        model.setErrorMessage(null);
         model.setIsDeleted(0);
         model.setCreatedAt(LocalDateTime.now());
         model.setUpdatedAt(LocalDateTime.now());
         modelMapper.insert(model);
+
+        return toModelVO(model);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public CommerceModelVO startModelImageGeneration(Long modelId) {
+        CommerceModel model = requireModel(modelId);
+        if ("generating".equals(model.getStatus())) {
+            return toModelVO(model);
+        }
+        if (!"queued".equals(model.getStatus())) {
+            throw new BusinessException("只有待生成的模特可以启动图片生成");
+        }
+        if (isBlank(model.getAppearancePrompt())) {
+            throw new BusinessException("模特提示词缺失，无法生成图片");
+        }
+
+        model.setBaseImageUrl(null);
+        model.setStatus("generating");
+        model.setErrorMessage(null);
+        model.setUpdatedAt(LocalDateTime.now());
+        modelMapper.updateById(model);
+        executeCommerceModelImageGenerationAfterCommit(model.getId());
+        return toModelVO(model);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public CommerceModelVO regenerateModel(Long modelId) {
+        CommerceModel model = requireModel(modelId);
+        if ("queued".equals(model.getStatus()) || "generating".equals(model.getStatus())) {
+            throw new BusinessException("当前模特正在生成中，请稍后再试");
+        }
+        if ("locked".equals(model.getStatus())) {
+            throw new BusinessException("已锁定模特需要先解锁才能重新生成");
+        }
+        if (!"failed".equals(model.getStatus())
+                && !"pending_review".equals(model.getStatus())) {
+            throw new BusinessException("当前模特状态不可重新生成");
+        }
+        if (isBlank(model.getAppearancePrompt())) {
+            throw new BusinessException("模特提示词缺失，无法重新生成");
+        }
+
+        userService.deductCredits(
+                model.getUserId(),
+                CreditConstants.CREDITS_PER_IMAGE,
+                CreditUsageType.IMAGE_GENERATION.getCode(),
+                "电商模特重新生成-" + model.getName(),
+                modelId,
+                "COMMERCE_MODEL"
+        );
+
+        model.setStatus("generating");
+        model.setErrorMessage(null);
+        model.setBaseImageUrl(null);
+        model.setUpdatedAt(LocalDateTime.now());
+        modelMapper.updateById(model);
+
+        executeCommerceModelImageGenerationAfterCommit(model.getId());
         return toModelVO(model);
     }
 
@@ -147,13 +275,34 @@ public class CommerceServiceImpl implements CommerceService {
     }
 
     @Override
+    public CommerceModelVO getModel(Long modelId) {
+        return toModelVO(requireModel(modelId));
+    }
+
+    @Override
     @Transactional(rollbackFor = Exception.class)
     public CommerceModelVO confirmModel(Long modelId) {
         CommerceModel model = requireModel(modelId);
         if (isBlank(model.getBaseImageUrl())) {
             throw new BusinessException("模特基础图缺失，无法锁定");
         }
+        if (!"pending_review".equals(model.getStatus()) && !"locked".equals(model.getStatus())) {
+            throw new BusinessException("只有待锁定的模特可以锁定");
+        }
         model.setStatus("locked");
+        model.setUpdatedAt(LocalDateTime.now());
+        modelMapper.updateById(model);
+        return toModelVO(model);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public CommerceModelVO unlockModel(Long modelId) {
+        CommerceModel model = requireModel(modelId);
+        if (!"locked".equals(model.getStatus())) {
+            throw new BusinessException("只有已锁定的模特可以解锁");
+        }
+        model.setStatus("pending_review");
         model.setUpdatedAt(LocalDateTime.now());
         modelMapper.updateById(model);
         return toModelVO(model);
@@ -166,6 +315,9 @@ public class CommerceServiceImpl implements CommerceService {
         CommerceModel model = requireModel(modelId);
         if (!model.getUserId().equals(userId)) {
             throw new BusinessException("无权访问该模特");
+        }
+        if (!"locked".equals(model.getStatus())) {
+            throw new BusinessException("请先锁定模特再绑定商品");
         }
         if (request == null || isBlank(request.getName())) {
             throw new BusinessException("请输入商品名称");
@@ -181,11 +333,11 @@ public class CommerceServiceImpl implements CommerceService {
         product.setName(request.getName().trim());
         product.setImageUrl(request.getImageUrl().trim());
         product.setProductType(trimToNull(request.getProductType()));
-        product.setSellingPoints(trimToNull(request.getSellingPoints()));
-        product.setFabricFitColorSize(trimToNull(request.getFabricFitColorSize()));
-        product.setTargetAudience(trimToNull(request.getTargetAudience()));
-        product.setPriceOffer(trimToNull(request.getPriceOffer()));
-        product.setTryOnRequirements(trimToNull(request.getTryOnRequirements()));
+        product.setSellingPoints(null);
+        product.setFabricFitColorSize(null);
+        product.setTargetAudience(null);
+        product.setPriceOffer(null);
+        product.setTryOnRequirements(null);
         product.setStatus("active");
         product.setIsDeleted(0);
         product.setCreatedAt(LocalDateTime.now());
@@ -203,6 +355,25 @@ public class CommerceServiceImpl implements CommerceService {
                 .eq(CommerceProduct::getUserId, userId)
                 .orderByDesc(CommerceProduct::getCreatedAt);
         return productMapper.selectList(wrapper).stream().map(this::toProductVO).toList();
+    }
+
+    @Override
+    public String uploadProductImage(MultipartFile file) {
+        requireUserId();
+        validateProductImageFile(file);
+        try {
+            String url = ossService.uploadImage(
+                    file.getBytes(),
+                    "commerce/products",
+                    file.getContentType(),
+                    imageExtensionFromFilename(file.getOriginalFilename()));
+            if (isBlank(url)) {
+                throw new BusinessException("商品图片上传失败");
+            }
+            return url;
+        } catch (IOException e) {
+            throw new BusinessException("读取商品图片失败");
+        }
     }
 
     @Override
@@ -232,6 +403,7 @@ public class CommerceServiceImpl implements CommerceService {
         if (!ALLOWED_ASPECT_RATIOS.contains(aspectRatio)) {
             throw new BusinessException("不支持的画幅比例");
         }
+        CommerceProduct shotProduct = copyProductWithProjectSettings(product, request, contentType);
 
         CommerceProject project = new CommerceProject();
         project.setSeriesId(product.getSeriesId());
@@ -247,7 +419,7 @@ public class CommerceServiceImpl implements CommerceService {
         project.setUpdatedAt(LocalDateTime.now());
         projectMapper.insert(project);
 
-        List<CommerceShot> shots = buildDraftShots(project, model, product);
+        List<CommerceShot> shots = buildDraftShots(project, model, shotProduct);
         shots.forEach(shotMapper::insert);
 
         CommerceProjectVO vo = toProjectVO(project);
@@ -405,7 +577,9 @@ public class CommerceServiceImpl implements CommerceService {
         vo.setSpeakingPersona(model.getSpeakingPersona());
         vo.setAppearancePrompt(model.getAppearancePrompt());
         vo.setBaseImageUrl(model.getBaseImageUrl());
+        vo.setModelAspectRatio(model.getModelAspectRatio());
         vo.setStatus(model.getStatus());
+        vo.setErrorMessage(model.getErrorMessage());
         vo.setCreatedAt(model.getCreatedAt());
         vo.setUpdatedAt(model.getUpdatedAt());
         return vo;
@@ -490,6 +664,115 @@ public class CommerceServiceImpl implements CommerceService {
         return content;
     }
 
+    private ImageGenerateRequest buildCommerceModelImageRequest(CommerceModel model) {
+        String gender = parseModelGender(model.getGenderAge());
+        String bodyProfile = resolveBodyProfile(model.getBodyProfile());
+        String prompt = model.getAppearancePrompt();
+        if (!isBlank(bodyProfile)) {
+            prompt = defaultIfBlank(prompt, "") + "\n身材设定：" + bodyProfile;
+        }
+        return ImageGenerateRequest.builder()
+                .roleName(model.getName())
+                .customPrompt(prompt)
+                .originalPrompt(model.getAppearancePrompt())
+                .aspectRatio(DEFAULT_MODEL_ASPECT_RATIO)
+                .quality("4k")
+                .styleKeywords(buildCommerceModelStyleKeywords(gender, bodyProfile))
+                .seriesId(model.getSeriesId())
+                .build();
+    }
+
+    private void executeCommerceModelImageGenerationAfterCommit(Long modelId) {
+        Runnable task = () -> generateCommerceModelImageAsync(modelId);
+        if (TransactionSynchronizationManager.isActualTransactionActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    imageGenerateExecutor.execute(task);
+                }
+            });
+            return;
+        }
+
+        imageGenerateExecutor.execute(task);
+    }
+
+    private void generateCommerceModelImageAsync(Long modelId) {
+        CommerceModel model = modelMapper.selectById(modelId);
+        if (model == null) {
+            log.warn("电商模特异步生图跳过，模特不存在: modelId={}", modelId);
+            return;
+        }
+        try {
+            userService.deductCredits(
+                    model.getUserId(),
+                    CreditConstants.CREDITS_PER_IMAGE,
+                    CreditUsageType.IMAGE_GENERATION.getCode(),
+                    "电商模特生成-" + model.getName(),
+                    model.getSeriesId(),
+                    "COMMERCE_SERIES"
+            );
+            ImageGenerateResponse imageResponse = imageGenerateService.generateCommerceModelImage(buildCommerceModelImageRequest(model));
+            applyCommerceModelImageResult(model, imageResponse);
+        } catch (Exception e) {
+            log.error("电商模特异步生图失败: modelId={}", modelId, e);
+            ImageGenerateResponse failedResponse = new ImageGenerateResponse();
+            failedResponse.setStatus("failed");
+            failedResponse.setErrorMessage(e.getMessage());
+            applyCommerceModelImageResult(model, failedResponse);
+        }
+    }
+
+    private void applyCommerceModelImageResult(CommerceModel model, ImageGenerateResponse imageResponse) {
+        if (imageResponse != null && "success".equals(imageResponse.getStatus()) && !isBlank(imageResponse.getImageUrl())) {
+            model.setBaseImageUrl(imageResponse.getImageUrl().trim());
+            model.setStatus("pending_review");
+            model.setErrorMessage(null);
+        } else {
+            model.setBaseImageUrl(null);
+            model.setStatus("failed");
+            String errorMessage = imageResponse == null ? null : imageResponse.getErrorMessage();
+            model.setErrorMessage(normalizeCommerceModelGenerationError(errorMessage));
+        }
+        model.setUpdatedAt(LocalDateTime.now());
+        UpdateWrapper<CommerceModel> wrapper = new UpdateWrapper<>();
+        wrapper.eq("id", model.getId())
+                .set("base_image_url", model.getBaseImageUrl())
+                .set("status", model.getStatus())
+                .set("error_message", model.getErrorMessage())
+                .set("updated_at", model.getUpdatedAt());
+        modelMapper.update(null, wrapper);
+    }
+
+    private String normalizeCommerceModelGenerationError(String errorMessage) {
+        if (isBlank(errorMessage)) {
+            return "模特图生成失败，请稍后重新生成";
+        }
+        String message = errorMessage.trim();
+        if (message.contains("OutputImageSensitiveContentDetected") || message.toLowerCase().contains("sensitive")) {
+            return "图片内容可能触发安全策略，请调整提示词后重新生成";
+        }
+        return message.length() > 500 ? message.substring(0, 500) : message;
+    }
+
+    private String parseModelGender(String genderAge) {
+        if (isBlank(genderAge)) {
+            return "女";
+        }
+        String trimmed = genderAge.trim();
+        int separator = trimmed.indexOf('/');
+        if (separator > 0) {
+            return trimmed.substring(0, separator).trim();
+        }
+        if (trimmed.contains("儿童")) {
+            return "儿童";
+        }
+        if (trimmed.contains("男")) {
+            return "男";
+        }
+        return "女";
+    }
+
     private int videoWidth(String aspectRatio) {
         return switch (defaultIfBlank(aspectRatio, DEFAULT_ASPECT_RATIO)) {
             case "9:16" -> 720;
@@ -533,6 +816,29 @@ public class CommerceServiceImpl implements CommerceService {
         return shots;
     }
 
+    private CommerceProduct copyProductWithProjectSettings(
+            CommerceProduct product,
+            CommerceProjectCreateRequest request,
+            String contentType) {
+        CommerceProduct copy = new CommerceProduct();
+        copy.setId(product.getId());
+        copy.setModelId(product.getModelId());
+        copy.setSeriesId(product.getSeriesId());
+        copy.setUserId(product.getUserId());
+        copy.setName(product.getName());
+        copy.setImageUrl(product.getImageUrl());
+        copy.setProductType(product.getProductType());
+        if (request != null && "talking".equals(contentType)) {
+            copy.setSellingPoints(trimToNull(request.getSellingPoints()));
+            copy.setTargetAudience(trimToNull(request.getTargetAudience()));
+            copy.setPriceOffer(trimToNull(request.getPriceOffer()));
+        }
+        if (request != null && "try_on".equals(contentType)) {
+            copy.setTryOnRequirements(trimToNull(request.getTryOnRequirements()));
+        }
+        return copy;
+    }
+
     private List<String[]> talkingScript(CommerceProduct product) {
         String points = defaultIfBlank(product.getSellingPoints(), "版型、材质和上身效果");
         String audience = defaultIfBlank(product.getTargetAudience(), "日常通勤和想要轻松穿搭的人群");
@@ -568,6 +874,115 @@ public class CommerceServiceImpl implements CommerceService {
 
     private String defaultIfBlank(String value, String defaultValue) {
         return isBlank(value) ? defaultValue : value.trim();
+    }
+
+    private void validateModelChoices(String gender, String modelType, String ethnicity) {
+        if (isBlank(gender)) {
+            throw new BusinessException("请选择模特性别");
+        }
+        if (isBlank(modelType)) {
+            throw new BusinessException("请选择模特类型");
+        }
+        if (isBlank(ethnicity)) {
+            throw new BusinessException("请选择人种风格");
+        }
+        if (!isAllowedModelType(gender.trim(), modelType.trim())) {
+            throw new BusinessException("模特类型与性别不匹配，请重新选择");
+        }
+        if (!ALLOWED_ETHNICITIES.contains(ethnicity.trim())) {
+            throw new BusinessException("不支持的人种风格");
+        }
+    }
+
+    private boolean isAllowedModelType(String gender, String modelType) {
+        return switch (gender) {
+            case "女" -> FEMALE_MODEL_TYPES.contains(modelType);
+            case "男" -> MALE_MODEL_TYPES.contains(modelType);
+            case "儿童" -> CHILD_MODEL_TYPES.contains(modelType);
+            default -> false;
+        };
+    }
+
+    private String resolveModelAspectRatio(String aspectRatio) {
+        return DEFAULT_MODEL_ASPECT_RATIO;
+    }
+
+    private String resolveBodyProfile(String bodyProfile) {
+        if (isBlank(bodyProfile)) {
+            return "标准匀称";
+        }
+        String trimmed = bodyProfile.trim();
+        if (!ALLOWED_BODY_PROFILES.contains(trimmed)) {
+            throw new BusinessException("不支持的身材类型");
+        }
+        return trimmed;
+    }
+
+    private void ensureProfileBodyProfile(CommerceModelProfile profile, String bodyProfile) {
+        if (profile == null || isBlank(bodyProfile)) {
+            return;
+        }
+        profile.setBodyProfile(bodyProfile);
+        profile.setPrompt(sanitizeVisibleCommerceModelPrompt(profile.getPrompt(), bodyProfile));
+    }
+
+    private void validateProductImageFile(MultipartFile file) {
+        if (file == null || file.isEmpty()) {
+            throw new BusinessException(400, "请选择要上传的商品图片");
+        }
+        String contentType = file.getContentType();
+        String filename = file.getOriginalFilename() == null ? "" : file.getOriginalFilename().toLowerCase();
+        if ((contentType == null || !ALLOWED_PRODUCT_IMAGE_TYPES.contains(contentType))
+                && !filename.endsWith(".jpg")
+                && !filename.endsWith(".jpeg")
+                && !filename.endsWith(".png")
+                && !filename.endsWith(".webp")) {
+            throw new BusinessException(400, "只支持 JPG、PNG、WEBP 格式的商品图片");
+        }
+        if (file.getSize() > MAX_PRODUCT_IMAGE_SIZE) {
+            throw new BusinessException(400, "商品图片大小不能超过10MB");
+        }
+    }
+
+    private String imageExtensionFromFilename(String filename) {
+        if (isBlank(filename) || !filename.contains(".")) {
+            return "png";
+        }
+        String extension = filename.substring(filename.lastIndexOf('.') + 1).toLowerCase();
+        if ("jpeg".equals(extension)) {
+            return "jpg";
+        }
+        if (!List.of("jpg", "png", "webp").contains(extension)) {
+            return "png";
+        }
+        return extension;
+    }
+
+    private String sanitizeVisibleCommerceModelPrompt(String prompt, String bodyProfile) {
+        if (prompt == null) {
+            return null;
+        }
+        String sanitized = prompt
+                .replace("\u773c\u775b", "")
+                .replace("\u773c\u795e", "")
+                .replaceAll("(?i)e" + "yes?", "");
+        if (!isBlank(bodyProfile)) {
+            sanitized = sanitized.replace("身材设定：" + bodyProfile, "");
+            sanitized = sanitized.replace("身材设定:" + bodyProfile, "");
+            sanitized = sanitized.replace(bodyProfile, "");
+        }
+        return sanitized.replaceAll("\\n{3,}", "\n\n").trim();
+    }
+
+    private String buildCommerceModelStyleKeywords(String gender, String bodyProfile) {
+        String bodyKeyword = isBlank(bodyProfile) ? "标准匀称" : bodyProfile.trim();
+        if ("儿童".equals(gender)) {
+            return "真人写实, 电商服装带货, 大头特写, 右侧三视图, 纯白背景, " + bodyKeyword + ", 浅色儿童基础打底服, 不透, 低干扰";
+        }
+        if ("男".equals(gender)) {
+            return "真人写实, 电商服装带货, 大头特写, 右侧三视图, 纯白背景, " + bodyKeyword + ", 男模特, 上半身不穿, 上半身裸露, 普通浅色四角内裤, 纯色无花纹, 基础男士款, 低干扰, 惊艳但真实";
+        }
+        return "真人写实, 电商服装带货, 大头特写, 右侧三视图, 纯白背景, " + bodyKeyword + ", 女模特, 白色微透蕾丝内衣, 低干扰, 惊艳但真实";
     }
 
     private String trimToNull(String value) {

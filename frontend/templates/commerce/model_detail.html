@@ -2,6 +2,40 @@
 
 {% block title %}模特详情 - 电商带货{% endblock %}
 
+{% block extra_css %}
+<style>
+    .commerce-product-card {
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        background: linear-gradient(135deg, rgba(255, 255, 255, 0.075), rgba(255, 255, 255, 0.03));
+        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 18px 48px rgba(0, 0, 0, 0.18);
+    }
+
+    .commerce-video-mode-choice {
+        border: 1px solid rgba(255, 255, 255, 0.10);
+        background: rgba(255, 255, 255, 0.045);
+        color: rgba(255, 255, 255, 0.68);
+        transition: border-color 160ms ease, background 160ms ease, color 160ms ease, box-shadow 160ms ease;
+    }
+
+    .commerce-video-mode-choice:hover {
+        border-color: rgba(165, 243, 252, 0.28);
+        background: rgba(255, 255, 255, 0.075);
+        color: rgba(255, 255, 255, 0.92);
+    }
+
+    .commerce-video-mode-choice.is-active {
+        border-color: rgba(103, 232, 249, 0.45);
+        background: linear-gradient(135deg, rgba(8, 145, 178, 0.28), rgba(16, 185, 129, 0.16));
+        color: #fff;
+        box-shadow: 0 0 0 1px rgba(103, 232, 249, 0.12), 0 12px 30px rgba(8, 145, 178, 0.16);
+    }
+
+    .commerce-video-panel {
+        background: linear-gradient(135deg, rgba(15, 23, 42, 0.70), rgba(2, 6, 23, 0.38));
+    }
+</style>
+{% endblock %}
+
 {% block content %}
 <div class="mx-auto max-w-6xl py-8">
     <a href="/commerce/" class="text-sm text-white/50 hover:text-white">← 返回电商系列</a>
@@ -18,27 +52,80 @@
                 </form>
             </div>
 
-            <div class="grid gap-4 md:grid-cols-2">
+            <div class="space-y-4">
                 {% for product in products %}
-                    <article class="rounded-xl border border-white/10 bg-white/[0.04] p-4">
-                        <div class="aspect-[3/4] overflow-hidden rounded-lg bg-black/25">
-                            <img src="{{ product.imageUrl }}" alt="{{ product.name }}" class="h-full w-full object-cover">
-                        </div>
-                        <h2 class="mt-3 font-semibold">{{ product.name }}</h2>
-                        <p class="mt-1 text-sm text-white/45">{{ product.sellingPoints }}</p>
-                        <div class="mt-4 grid grid-cols-2 gap-2">
-                            <form method="post" action="/commerce/products/{{ product.id }}/projects/create/">
-                                {% csrf_token %}
-                                <input type="hidden" name="content_type" value="talking">
-                                <input type="hidden" name="aspect_ratio" value="9:16">
-                                <button class="w-full rounded-lg bg-sky-500 px-3 py-2 text-sm font-semibold text-white">生成口播</button>
-                            </form>
-                            <form method="post" action="/commerce/products/{{ product.id }}/projects/create/">
-                                {% csrf_token %}
-                                <input type="hidden" name="content_type" value="try_on">
-                                <input type="hidden" name="aspect_ratio" value="9:16">
-                                <button class="w-full rounded-lg bg-emerald-500 px-3 py-2 text-sm font-semibold text-white">生成试穿</button>
-                            </form>
+                    <article class="commerce-product-card rounded-2xl p-3 sm:p-4" data-commerce-product-card>
+                        <div class="flex flex-col gap-4 sm:flex-row">
+                            <div class="flex h-40 w-full flex-none items-center justify-center overflow-hidden rounded-xl border border-white/[0.08] bg-black/25 sm:h-44 sm:w-32">
+                                <img src="{{ product.imageUrl }}" alt="{{ product.name }}" class="h-full w-full object-contain" loading="lazy">
+                            </div>
+                            <div class="min-w-0 flex-1">
+                                <div class="flex flex-wrap items-start justify-between gap-3">
+                                    <div class="min-w-0">
+                                        <h2 class="truncate text-lg font-semibold text-white/95">{{ product.name }}</h2>
+                                        <div class="mt-2 flex flex-wrap gap-2 text-xs">
+                                            <span class="rounded-full border border-white/10 bg-white/[0.045] px-2.5 py-1 text-white/62">{{ product.productType|default:"未设置商品类型" }}</span>
+                                            <span class="rounded-full border border-cyan-200/15 bg-cyan-300/10 px-2.5 py-1 text-cyan-100/75">视频 9:16</span>
+                                        </div>
+                                    </div>
+                                    <span class="rounded-full border border-emerald-200/15 bg-emerald-300/10 px-2.5 py-1 text-xs font-semibold text-emerald-100/80">已绑定</span>
+                                </div>
+
+                                <div class="mt-4 rounded-xl border border-white/[0.08] bg-black/10 p-3">
+                                    <div class="commerce-video-mode-selector grid gap-2 sm:grid-cols-2">
+                                        <button type="button" class="commerce-video-mode-choice flex h-11 items-center justify-center gap-2 rounded-lg px-3 text-sm font-semibold" data-commerce-video-mode="talking" aria-pressed="false">
+                                            <i data-lucide="message-circle" class="h-4 w-4"></i>
+                                            口播种草
+                                        </button>
+                                        <button type="button" class="commerce-video-mode-choice flex h-11 items-center justify-center gap-2 rounded-lg px-3 text-sm font-semibold" data-commerce-video-mode="try_on" aria-pressed="false">
+                                            <i data-lucide="shirt" class="h-4 w-4"></i>
+                                            试穿展示
+                                        </button>
+                                    </div>
+
+                                    <div data-commerce-video-empty class="mt-3 rounded-lg border border-dashed border-white/10 bg-white/[0.025] px-4 py-3 text-center text-sm text-white/42">
+                                        先选择内容类型，再填写生成参数
+                                    </div>
+
+                                    <form method="post" action="/commerce/products/{{ product.id }}/projects/create/" class="commerce-video-panel mt-3 hidden space-y-3 rounded-lg border border-cyan-200/10 p-3" data-commerce-video-panel="talking" hidden>
+                                        {% csrf_token %}
+                                        <input type="hidden" name="content_type" value="talking">
+                                        <input type="hidden" name="aspect_ratio" value="9:16">
+                                        <div class="grid gap-3 sm:grid-cols-3">
+                                            <label class="block sm:col-span-3">
+                                                <span class="mb-1 block text-xs font-semibold text-white/55">核心卖点</span>
+                                                <input name="selling_points" class="input-modern w-full text-sm" placeholder="例如：显瘦、凉感、通勤百搭">
+                                            </label>
+                                            <label class="block">
+                                                <span class="mb-1 block text-xs font-semibold text-white/55">适合人群</span>
+                                                <input name="target_audience" class="input-modern w-full text-sm" placeholder="例如：通勤女性">
+                                            </label>
+                                            <label class="block sm:col-span-2">
+                                                <span class="mb-1 block text-xs font-semibold text-white/55">价格/优惠</span>
+                                                <input name="price_offer" class="input-modern w-full text-sm" placeholder="例如：限时到手价、满减福利">
+                                            </label>
+                                        </div>
+                                        <button class="flex h-10 w-full items-center justify-center gap-2 rounded-lg bg-cyan-500 px-3 text-sm font-semibold text-white transition hover:bg-cyan-400">
+                                            <i data-lucide="wand-sparkles" class="h-4 w-4"></i>
+                                            生成口播
+                                        </button>
+                                    </form>
+
+                                    <form method="post" action="/commerce/products/{{ product.id }}/projects/create/" class="commerce-video-panel mt-3 hidden space-y-3 rounded-lg border border-emerald-200/10 p-3" data-commerce-video-panel="try_on" hidden>
+                                        {% csrf_token %}
+                                        <input type="hidden" name="content_type" value="try_on">
+                                        <input type="hidden" name="aspect_ratio" value="9:16">
+                                        <label class="block">
+                                            <span class="mb-1 block text-xs font-semibold text-white/55">试穿场景</span>
+                                            <textarea name="try_on_requirements" rows="3" class="input-modern w-full resize-y text-sm" placeholder="例如：通勤街景、室内全身镜、户外自然光"></textarea>
+                                        </label>
+                                        <button class="flex h-10 w-full items-center justify-center gap-2 rounded-lg bg-emerald-500 px-3 text-sm font-semibold text-white transition hover:bg-emerald-400">
+                                            <i data-lucide="sparkles" class="h-4 w-4"></i>
+                                            生成试穿
+                                        </button>
+                                    </form>
+                                </div>
+                            </div>
                         </div>
                     </article>
                 {% empty %}
@@ -49,19 +136,58 @@
 
         <aside class="glass-card p-6">
             <h2 class="text-lg font-semibold">添加商品</h2>
-            <form method="post" action="/commerce/models/{{ model_id }}/products/create/" class="mt-4 space-y-3">
+            <form method="post" action="/commerce/models/{{ model_id }}/products/create/" enctype="multipart/form-data" class="mt-4 space-y-3">
                 {% csrf_token %}
                 <input name="name" required class="input-modern w-full" placeholder="商品名称">
-                <input name="image_url" required class="input-modern w-full" placeholder="商品图片 URL">
                 <input name="product_type" class="input-modern w-full" placeholder="商品类型：上衣、裙装、外套">
-                <textarea name="selling_points" rows="3" class="input-modern w-full" placeholder="核心卖点：显瘦、凉感、通勤"></textarea>
-                <input name="fabric_fit_color_size" class="input-modern w-full" placeholder="面料/版型/颜色/尺码">
-                <input name="target_audience" class="input-modern w-full" placeholder="适合人群">
-                <input name="price_offer" class="input-modern w-full" placeholder="价格/优惠">
-                <textarea name="try_on_requirements" rows="3" class="input-modern w-full" placeholder="试穿要求：正面、侧面、转身、细节"></textarea>
+                <label class="block">
+                    <span class="mb-2 block text-sm text-white/65">商品图片</span>
+                    <input type="file" name="product_image" required accept="image/jpeg,image/png,image/webp" class="input-modern w-full">
+                </label>
                 <button class="w-full rounded-xl bg-emerald-500 px-4 py-2.5 font-semibold text-white hover:bg-emerald-400">添加商品</button>
             </form>
         </aside>
     </div>
 </div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function selectCommerceProductVideoMode(button, mode) {
+    const card = button.closest('[data-commerce-product-card]');
+    if (!card) {
+        return;
+    }
+
+    card.querySelectorAll('[data-commerce-video-mode]').forEach((item) => {
+        const isActive = item.dataset.commerceVideoMode === mode;
+        item.classList.toggle('is-active', isActive);
+        item.setAttribute('aria-pressed', isActive ? 'true' : 'false');
+    });
+
+    const emptyState = card.querySelector('[data-commerce-video-empty]');
+    if (emptyState) {
+        emptyState.hidden = true;
+        emptyState.classList.add('hidden');
+    }
+
+    card.querySelectorAll('[data-commerce-video-panel]').forEach((panel) => {
+        const isActive = panel.dataset.commerceVideoPanel === mode;
+        panel.hidden = !isActive;
+        panel.classList.toggle('hidden', !isActive);
+    });
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    document.querySelectorAll('[data-commerce-video-mode]').forEach((button) => {
+        button.addEventListener('click', () => {
+            selectCommerceProductVideoMode(button, button.dataset.commerceVideoMode);
+        });
+    });
+
+    if (typeof safeCreateIcons === 'function') {
+        safeCreateIcons();
+    }
+});
+</script>
 {% endblock %}

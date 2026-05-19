@@ -103,6 +103,11 @@ public class RoleServiceImpl implements RoleService {
         role.setCustomPrompt(request.getCustomPrompt());
         role.setOriginalPrompt(request.getOriginalPrompt());
         role.setStyleKeywords(request.getStyleKeywords());
+        role.setStyleKey(request.getStyleKey());
+        role.setAspectRatio(request.getAspectRatio());
+        role.setQuality(request.getQuality());
+        role.setDetailedView(Boolean.TRUE.equals(request.getDetailedView()));
+        role.setFaceCloseupView(Boolean.TRUE.equals(request.getFaceCloseupView()));
         role.setExtractConfidence(new java.math.BigDecimal("1.0"));
         role.setCreatedAt(LocalDateTime.now());
         role.setUpdatedAt(LocalDateTime.now());
@@ -130,7 +135,11 @@ public class RoleServiceImpl implements RoleService {
         roleMapper.updateById(role);
 
         // 创建生成中的资产记录（在当前事务中），确保前端能立即看到资产
-        long[] assetResult = imageGenerateService.createGeneratingAsset(role.getId(), 1, null, null);
+        String generatingDisplayPrompt = request.getOriginalPrompt();
+        if (generatingDisplayPrompt == null || generatingDisplayPrompt.trim().isEmpty()) {
+            generatingDisplayPrompt = request.getCustomPrompt();
+        }
+        long[] assetResult = imageGenerateService.createGeneratingAsset(role.getId(), 1, null, generatingDisplayPrompt);
         Long generatingAssetId = assetResult[0];
         Long previousActiveAssetId = assetResult[1] > 0 ? assetResult[1] : null;
 

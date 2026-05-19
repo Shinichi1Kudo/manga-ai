@@ -1,6 +1,8 @@
 package com.manga.ai.common.task;
 
 import com.manga.ai.asset.mapper.RoleAssetMapper;
+import com.manga.ai.commerce.entity.CommerceModel;
+import com.manga.ai.commerce.mapper.CommerceModelMapper;
 import com.manga.ai.common.enums.RoleStatus;
 import com.manga.ai.common.enums.SeriesStatus;
 import com.manga.ai.common.enums.ShotGenerationStatus;
@@ -36,7 +38,8 @@ class CleanupTaskTest {
                 mock(GptImage2Service.class),
                 roleMapper,
                 mock(ShotMapper.class),
-                mock(RoleAssetMapper.class)
+                mock(RoleAssetMapper.class),
+                mock(CommerceModelMapper.class)
         );
 
         cleanupTask.cleanupStuckInitializingSeries();
@@ -67,7 +70,8 @@ class CleanupTaskTest {
                 mock(GptImage2Service.class),
                 mock(RoleMapper.class),
                 shotMapper,
-                mock(RoleAssetMapper.class)
+                mock(RoleAssetMapper.class),
+                mock(CommerceModelMapper.class)
         );
 
         cleanupTask.cleanupStuckGeneratingShots();
@@ -77,6 +81,34 @@ class CleanupTaskTest {
                 eq(ShotGenerationStatus.GENERATING.getCode()),
                 argThat(timeout -> timeout.isBefore(LocalDateTime.now().minusMinutes(59))),
                 any(LocalDateTime.class)
+        );
+    }
+
+    @Test
+    void cleanupStuckCommerceModelsFailsQueuedAndGeneratingAfterThirtyMinutes() {
+        CommerceModelMapper commerceModelMapper = mock(CommerceModelMapper.class);
+        CleanupTask cleanupTask = new CleanupTask(
+                mock(SeriesMapper.class),
+                mock(EpisodeMapper.class),
+                mock(SceneMapper.class),
+                mock(PropMapper.class),
+                mock(GptImage2Service.class),
+                mock(RoleMapper.class),
+                mock(ShotMapper.class),
+                mock(RoleAssetMapper.class),
+                commerceModelMapper
+        );
+
+        cleanupTask.cleanupStuckCommerceModels();
+
+        verify(commerceModelMapper).update(
+                eq(null),
+                argThat(wrapper -> {
+                    String sqlSet = wrapper.getSqlSet();
+                    return sqlSet.contains("status=#{")
+                            && sqlSet.contains("error_message=#{")
+                            && sqlSet.contains("updated_at=#{");
+                })
         );
     }
 }

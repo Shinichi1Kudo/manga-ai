@@ -1005,6 +1005,7 @@ function collectCharacterData() {
                 originalPrompt: originalPrompt,
                 aspectRatio: card.querySelector('.character-aspect-ratio').value,
                 quality: card.querySelector('.character-quality').value,
+                styleKey: styleKey,
                 styleKeywords: styleKeywords,
                 detailedView: manualUploadEnabled ? false : detailedView,
                 faceCloseupView: manualUploadEnabled ? false : faceCloseupView,
@@ -1027,7 +1028,9 @@ document.addEventListener('DOMContentLoaded', function() {
         savedCharacters.forEach(char => {
             // 反向查找 style key
             let styleKey = '';
-            if (char.styleKeywords) {
+            if (char.styleKey) {
+                styleKey = char.styleKey;
+            } else if (char.styleKeywords) {
                 for (const [key, value] of Object.entries(STYLE_PRESETS)) {
                     if (value === char.styleKeywords) {
                         styleKey = key;

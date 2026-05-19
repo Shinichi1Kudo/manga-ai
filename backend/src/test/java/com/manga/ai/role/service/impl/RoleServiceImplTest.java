@@ -20,6 +20,7 @@ import com.manga.ai.user.service.impl.UserServiceImpl.UserContextHolder;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
 import java.time.LocalDateTime;
@@ -28,6 +29,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
@@ -39,6 +41,9 @@ class RoleServiceImplTest {
     @AfterEach
     void clearUserContext() {
         UserContextHolder.clear();
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.clearSynchronization();
+        }
     }
 
     @Test
@@ -83,6 +88,87 @@ class RoleServiceImplTest {
         verify(userService, never()).deductCredits(any(), any(Integer.class), any(), any(), any(), any());
         verify(imageGenerateService, never()).generateCharacterAssets(
                 any(), any(), any(), any(), any(), any(), any(), any(), any(), any());
+    }
+
+    @Test
+    void createRolePersistsCreationDisplaySettingsForSeriesReview() {
+        RoleMapper roleMapper = mock(RoleMapper.class);
+        RoleAssetMapper roleAssetMapper = mock(RoleAssetMapper.class);
+        SeriesMapper seriesMapper = mock(SeriesMapper.class);
+        ImageGenerateService imageGenerateService = mock(ImageGenerateService.class);
+        UserService userService = mock(UserService.class);
+        when(roleMapper.selectCount(any())).thenReturn(0L);
+        when(roleMapper.insert(any(Role.class))).thenAnswer(invocation -> {
+            invocation.<Role>getArgument(0).setId(43L);
+            return 1;
+        });
+        when(imageGenerateService.createGeneratingAsset(eq(43L), eq(1), any(), any()))
+                .thenReturn(new long[]{88L, 0L});
+
+        RoleServiceImpl service = createService(roleMapper, roleAssetMapper, seriesMapper, imageGenerateService, userService);
+        RoleCreateRequest request = new RoleCreateRequest();
+        request.setSeriesId(12L);
+        request.setRoleName("顾南");
+        request.setStyleKey("realistic");
+        request.setStyleKeywords("cinematic realistic portrait style");
+        request.setAspectRatio("9:16");
+        request.setQuality("uhd");
+        request.setDetailedView(false);
+        request.setFaceCloseupView(true);
+
+        UserContextHolder.setUserId(7L);
+        TransactionSynchronizationManager.initSynchronization();
+        try {
+            service.createRole(request);
+        } finally {
+            TransactionSynchronizationManager.clearSynchronization();
+        }
+
+        ArgumentCaptor<Role> roleCaptor = ArgumentCaptor.forClass(Role.class);
+        verify(roleMapper).insert(roleCaptor.capture());
+        Role insertedRole = roleCaptor.getValue();
+        assertThat(insertedRole.getStyleKey()).isEqualTo("realistic");
+        assertThat(insertedRole.getStyleKeywords()).isEqualTo("cinematic realistic portrait style");
+        assertThat(insertedRole.getAspectRatio()).isEqualTo("9:16");
+        assertThat(insertedRole.getQuality()).isEqualTo("uhd");
+        assertThat(insertedRole.getDetailedView()).isFalse();
+        assertThat(insertedRole.getFaceCloseupView()).isTrue();
+    }
+
+    @Test
+    void createRoleStoresOriginalPromptOnGeneratingAssetSoSystemPromptIsHiddenWhileGenerating() {
+        RoleMapper roleMapper = mock(RoleMapper.class);
+        RoleAssetMapper roleAssetMapper = mock(RoleAssetMapper.class);
+        SeriesMapper seriesMapper = mock(SeriesMapper.class);
+        ImageGenerateService imageGenerateService = mock(ImageGenerateService.class);
+        UserService userService = mock(UserService.class);
+        when(roleMapper.selectCount(any())).thenReturn(0L);
+        when(roleMapper.insert(any(Role.class))).thenAnswer(invocation -> {
+            invocation.<Role>getArgument(0).setId(44L);
+            return 1;
+        });
+        when(imageGenerateService.createGeneratingAsset(eq(44L), eq(1), any(), any()))
+                .thenReturn(new long[]{89L, 0L});
+
+        RoleServiceImpl service = createService(roleMapper, roleAssetMapper, seriesMapper, imageGenerateService, userService);
+        RoleCreateRequest request = new RoleCreateRequest();
+        request.setSeriesId(12L);
+        request.setRoleName("美女");
+        request.setCustomPrompt("惊艳东方美女\n\n人物三视图系统模板");
+        request.setOriginalPrompt("惊艳东方美女");
+        request.setAspectRatio("16:9");
+        request.setQuality("uhd");
+        request.setDetailedView(true);
+
+        UserContextHolder.setUserId(7L);
+        TransactionSynchronizationManager.initSynchronization();
+        try {
+            service.createRole(request);
+        } finally {
+            TransactionSynchronizationManager.clearSynchronization();
+        }
+
+        verify(imageGenerateService).createGeneratingAsset(eq(44L), eq(1), isNull(), eq("惊艳东方美女"));
     }
 
     @Test

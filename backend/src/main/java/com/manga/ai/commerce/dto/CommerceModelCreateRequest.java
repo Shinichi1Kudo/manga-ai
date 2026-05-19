@@ -10,6 +10,10 @@ public class CommerceModelCreateRequest implements Serializable {
 
     private String name;
     private String sourceType;
+    private String gender;
+    private String modelType;
+    private String ethnicity;
+    private String modelAspectRatio;
     private String genderAge;
     private String bodyProfile;
     private String styleTags;

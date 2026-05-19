@@ -100,6 +100,7 @@ public class SchemaMigrationConfig {
             String productName = connection.getMetaData().getDatabaseProductName();
             boolean mysql = productName != null && productName.toLowerCase().contains("mysql");
             ensureEpisodeDetailShotColumns(connection, mysql);
+            ensureRoleCreationSettingColumns(connection, mysql);
             ensureIndex(connection, "idx_series_user_deleted_created", "series", "user_id, is_deleted, created_at");
             ensureIndex(connection, "idx_role_series_deleted", "role", "series_id, is_deleted");
             ensureIndex(connection, "idx_shot_episode_detail_list", "shot", "episode_id, is_deleted, status, shot_number");
@@ -162,6 +163,24 @@ public class SchemaMigrationConfig {
                 "BOOLEAN DEFAULT FALSE");
     }
 
+    private void ensureRoleCreationSettingColumns(Connection connection, boolean mysql) throws Exception {
+        ensureColumn(connection, mysql, "role", "style_key",
+                "VARCHAR(50) DEFAULT NULL COMMENT '创建角色时选择的前端风格Key'",
+                "VARCHAR(50)");
+        ensureColumn(connection, mysql, "role", "aspect_ratio",
+                "VARCHAR(10) DEFAULT NULL COMMENT '创建角色时选择的人物图片比例'",
+                "VARCHAR(10)");
+        ensureColumn(connection, mysql, "role", "quality",
+                "VARCHAR(20) DEFAULT NULL COMMENT '创建角色时选择的清晰度'",
+                "VARCHAR(20)");
+        ensureColumn(connection, mysql, "role", "detailed_view",
+                "TINYINT(1) DEFAULT 0 COMMENT '创建角色时是否启用精细三视图'",
+                "BOOLEAN DEFAULT FALSE");
+        ensureColumn(connection, mysql, "role", "face_closeup_view",
+                "TINYINT(1) DEFAULT 0 COMMENT '创建角色时是否启用大头特写三视图'",
+                "BOOLEAN DEFAULT FALSE");
+    }
+
     private void ensureSubjectReplacementTaskTable() {
         try (Connection connection = dataSource.getConnection()) {
             String productName = connection.getMetaData().getDatabaseProductName();
@@ -200,6 +219,7 @@ public class SchemaMigrationConfig {
             ensureIndex(connection, "idx_commerce_project_user_status", "commerce_project", "user_id, status");
             ensureIndex(connection, "idx_commerce_shot_project_order", "commerce_shot", "project_id, sort_order");
             ensureIndex(connection, "idx_commerce_shot_generation_status", "commerce_shot", "generation_status");
+            ensureCommerceModelFailureColumns(connection, mysql);
         } catch (Exception e) {
             log.error("数据库迁移失败: commerce tables", e);
             throw new IllegalStateException("数据库迁移失败: commerce tables", e);
@@ -241,6 +261,15 @@ public class SchemaMigrationConfig {
         ensureColumn(connection, mysql, "gpt_image2_task", "credits_refunded",
                 "TINYINT(1) DEFAULT 0 COMMENT '积分是否已返还'",
                 "BOOLEAN DEFAULT FALSE");
+    }
+
+    private void ensureCommerceModelFailureColumns(Connection connection, boolean mysql) throws Exception {
+        ensureColumn(connection, mysql, "commerce_model", "model_aspect_ratio",
+                "VARCHAR(10) DEFAULT '16:9' COMMENT '模特基础图比例'",
+                "VARCHAR(10) DEFAULT '16:9'");
+        ensureColumn(connection, mysql, "commerce_model", "error_message",
+                "VARCHAR(500) DEFAULT NULL COMMENT '模特图生成失败原因'",
+                "VARCHAR(500)");
     }
 
     private void ensureColumn(Connection connection, boolean mysql, String tableName, String columnName,
@@ -358,7 +387,9 @@ public class SchemaMigrationConfig {
                 + "speaking_persona VARCHAR(200),"
                 + "appearance_prompt TEXT,"
                 + "base_image_url VARCHAR(1024),"
+                + "model_aspect_ratio VARCHAR(10) DEFAULT '16:9',"
                 + "status VARCHAR(30) NOT NULL DEFAULT 'generating',"
+                + "error_message VARCHAR(500),"
                 + "created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,"
                 + "updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,"
                 + "is_deleted TINYINT(1) NOT NULL DEFAULT 0"
@@ -378,7 +409,9 @@ public class SchemaMigrationConfig {
                 + "speaking_persona VARCHAR(200),"
                 + "appearance_prompt CLOB,"
                 + "base_image_url VARCHAR(1024),"
+                + "model_aspect_ratio VARCHAR(10) DEFAULT '16:9',"
                 + "status VARCHAR(30) NOT NULL DEFAULT 'generating',"
+                + "error_message VARCHAR(500),"
                 + "created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,"
                 + "updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,"
                 + "is_deleted BOOLEAN NOT NULL DEFAULT FALSE"

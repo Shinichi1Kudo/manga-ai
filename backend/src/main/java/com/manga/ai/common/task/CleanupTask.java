@@ -2,8 +2,11 @@ package com.manga.ai.common.task;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.manga.ai.asset.entity.RoleAsset;
 import com.manga.ai.asset.mapper.RoleAssetMapper;
+import com.manga.ai.commerce.entity.CommerceModel;
+import com.manga.ai.commerce.mapper.CommerceModelMapper;
 import com.manga.ai.common.enums.AssetStatus;
 import com.manga.ai.common.enums.EpisodeStatus;
 import com.manga.ai.common.enums.RoleStatus;
@@ -25,6 +28,7 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
 import java.time.LocalDateTime;
+import java.util.Arrays;
 
 /**
  * 定时清理任务
@@ -42,6 +46,7 @@ public class CleanupTask {
     private final RoleMapper roleMapper;
     private final ShotMapper shotMapper;
     private final RoleAssetMapper roleAssetMapper;
+    private final CommerceModelMapper commerceModelMapper;
 
     /**
      * 每天凌晨3点清理过期的回收站系列
@@ -216,6 +221,30 @@ public class CleanupTask {
             }
         } catch (Exception e) {
             log.error("清理卡住的角色资产失败", e);
+        }
+    }
+
+    /**
+     * 每分钟检查一次卡在生成中的电商模特。
+     * 如果异步生图线程中断，前端轮询会一直看到 queued/generating，这里兜底标记为失败。
+     */
+    @Scheduled(fixedRate = 60000)
+    public void cleanupStuckCommerceModels() {
+        try {
+            LocalDateTime timeout = LocalDateTime.now().minusMinutes(30);
+            UpdateWrapper<CommerceModel> wrapper = new UpdateWrapper<>();
+            wrapper.in("status", Arrays.asList("queued", "generating"))
+                    .lt("updated_at", timeout)
+                    .set("status", "failed")
+                    .set("error_message", "模特图生成超时，请重新生成")
+                    .set("updated_at", LocalDateTime.now());
+
+            int failed = commerceModelMapper.update(null, wrapper);
+            if (failed > 0) {
+                log.warn("已自动标记 {} 个卡住超过30分钟的电商模特为失败", failed);
+            }
+        } catch (Exception e) {
+            log.error("清理卡住的电商模特失败", e);
         }
     }
 }

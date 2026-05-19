@@ -86,6 +86,31 @@ public class Role implements Serializable {
     private String styleKeywords;
 
     /**
+     * 创建角色时选择的前端风格Key
+     */
+    private String styleKey;
+
+    /**
+     * 创建角色时选择的人物图片比例
+     */
+    private String aspectRatio;
+
+    /**
+     * 创建角色时选择的清晰度
+     */
+    private String quality;
+
+    /**
+     * 创建角色时是否启用精细三视图
+     */
+    private Boolean detailedView;
+
+    /**
+     * 创建角色时是否启用大头特写+三视图
+     */
+    private Boolean faceCloseupView;
+
+    /**
      * 原始人物介绍片段
      */
     private String originalText;

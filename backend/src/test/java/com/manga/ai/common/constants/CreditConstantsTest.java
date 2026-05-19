@@ -39,4 +39,9 @@ class CreditConstantsTest {
     void chargesGptImage2PerGeneratedImage() {
         assertThat(CreditConstants.CREDITS_PER_GPT_IMAGE2_IMAGE).isEqualTo(6);
     }
+
+    @Test
+    void chargesOneCreditForCommerceModelPrompt() {
+        assertThat(CreditConstants.CREDITS_PER_COMMERCE_MODEL_PROMPT).isEqualTo(1);
+    }
 }

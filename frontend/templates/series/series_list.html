@@ -73,26 +73,39 @@
     <div class="home-action-board">
         <div class="home-action-group">
             <div class="home-action-label">基础工作台</div>
-            <div class="home-action-row">
-                <a href="/init/" data-login-required="true" class="home-action home-action-primary">
-                    <i data-lucide="plus" class="w-5 h-5"></i>
-                    <span>创建短剧系列</span>
-                </a>
-                <a href="/episodes/" data-login-required="true" class="home-action home-action-warm">
-                    <i data-lucide="film" class="w-5 h-5"></i>
-                    <span>剧集制作</span>
-                </a>
-                <a href="/commerce/series/create/" data-login-required="true" class="home-action home-action-emerald">
-                    <i data-lucide="shopping-bag" class="w-5 h-5"></i>
-                    <span class="home-action-copy">
-                        <span>创建电商系列</span>
-                        <small>服装 / 真人写实</small>
-                    </span>
-                </a>
-                <a href="/commerce/" data-login-required="true" class="home-action home-action-sky">
-                    <i data-lucide="shopping-cart" class="w-5 h-5"></i>
-                    <span>电商带货</span>
-                </a>
+            <div class="home-action-workspaces">
+                <div class="home-action-subgroup">
+                    <div class="home-action-subgroup-label">短剧工作台</div>
+                    <div class="home-action-row">
+                        <a href="/init/" data-login-required="true" class="home-action home-action-primary">
+                            <i data-lucide="plus" class="w-5 h-5"></i>
+                            <span>创建短剧系列</span>
+                        </a>
+                        <a href="/episodes/" data-login-required="true" class="home-action home-action-warm">
+                            <i data-lucide="film" class="w-5 h-5"></i>
+                            <span>剧集制作</span>
+                        </a>
+                    </div>
+                </div>
+                <div class="home-action-subgroup home-action-subgroup-commerce home-commerce-launch">
+                    <div class="home-action-subgroup-label home-commerce-label">
+                        <span>电商工作台</span>
+                        <span class="home-commerce-launch-badge">
+                            <i data-lucide="zap" class="w-3.5 h-3.5"></i>
+                            重磅上新
+                        </span>
+                    </div>
+                    <div class="home-action-row">
+                        <a href="/commerce/series/create/" data-login-required="true" class="home-action home-action-emerald home-action-commerce-primary">
+                            <i data-lucide="plus" class="w-5 h-5"></i>
+                            <span>创建电商系列</span>
+                        </a>
+                        <a href="/commerce/" data-login-required="true" class="home-action home-action-sky">
+                            <i data-lucide="shopping-cart" class="w-5 h-5"></i>
+                            <span>电商带货</span>
+                        </a>
+                    </div>
+                </div>
             </div>
         </div>
 
@@ -1596,7 +1609,110 @@ function getCookie(name) {
     line-height: 1;
 }
 
+.home-action-workspaces {
+    display: grid;
+    gap: 12px;
+}
+
+.home-action-subgroup {
+    border-radius: 14px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: rgba(2, 6, 23, 0.14);
+    padding: 10px;
+}
+
+.home-action-subgroup-commerce {
+    border-color: rgba(45, 212, 191, 0.15);
+    background: linear-gradient(135deg, rgba(16, 185, 129, 0.08), rgba(14, 165, 233, 0.055));
+}
+
+.home-commerce-launch {
+    position: relative;
+    overflow: hidden;
+    border-color: rgba(251, 191, 36, 0.38);
+    background:
+        linear-gradient(135deg, rgba(251, 191, 36, 0.14), rgba(16, 185, 129, 0.14) 46%, rgba(14, 165, 233, 0.1)),
+        rgba(2, 6, 23, 0.18);
+    box-shadow:
+        inset 0 1px 0 rgba(255, 255, 255, 0.1),
+        0 18px 38px rgba(6, 95, 70, 0.2),
+        0 0 0 1px rgba(20, 184, 166, 0.08);
+}
+
+.home-commerce-launch::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    pointer-events: none;
+    background:
+        linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.16), transparent),
+        linear-gradient(135deg, rgba(251, 191, 36, 0.16), transparent 34%, rgba(45, 212, 191, 0.12));
+    transform: translateX(-70%);
+    animation: commerce-launch-sheen 4.8s ease-in-out infinite;
+}
+
+.home-commerce-launch::after {
+    content: "";
+    position: absolute;
+    left: 10px;
+    right: 10px;
+    top: 0;
+    height: 2px;
+    border-radius: 999px;
+    background: linear-gradient(90deg, rgba(251, 191, 36, 0.12), rgba(251, 191, 36, 0.9), rgba(45, 212, 191, 0.78), rgba(14, 165, 233, 0.14));
+    box-shadow: 0 0 18px rgba(251, 191, 36, 0.3);
+}
+
+.home-action-subgroup-label {
+    margin: 0 0 8px 2px;
+    color: rgba(226, 232, 240, 0.62);
+    font-size: 12px;
+    font-weight: 800;
+    line-height: 1;
+}
+
+.home-commerce-label {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    min-height: 24px;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    color: rgba(255, 255, 255, 0.86);
+}
+
+.home-commerce-launch-badge {
+    display: inline-flex;
+    min-width: 0;
+    height: 24px;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    border-radius: 999px;
+    border: 1px solid rgba(253, 224, 71, 0.5);
+    background:
+        linear-gradient(135deg, rgba(254, 240, 138, 0.98), rgba(251, 191, 36, 0.98)),
+        rgba(15, 23, 42, 0.88);
+    padding: 0 9px;
+    color: rgb(69, 26, 3);
+    font-size: 10px;
+    font-weight: 900;
+    line-height: 1;
+    white-space: nowrap;
+    box-shadow:
+        0 9px 22px rgba(251, 191, 36, 0.24),
+        0 0 0 3px rgba(251, 191, 36, 0.08);
+}
+
+.home-commerce-launch-badge i {
+    color: rgb(120, 53, 15);
+}
+
 .home-action-row {
+    position: relative;
+    z-index: 1;
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 10px;
@@ -1637,6 +1753,25 @@ function getCookie(name) {
     background: linear-gradient(135deg, rgba(16, 185, 129, 0.96), rgba(6, 182, 212, 0.92));
     color: rgb(240, 253, 250);
     box-shadow: 0 12px 28px rgba(20, 184, 166, 0.22);
+}
+
+.home-action-commerce-primary {
+    border-color: rgba(254, 240, 138, 0.42);
+    background: linear-gradient(135deg, rgba(245, 158, 11, 0.98), rgba(16, 185, 129, 0.96) 54%, rgba(6, 182, 212, 0.92));
+    box-shadow:
+        0 14px 30px rgba(16, 185, 129, 0.22),
+        0 0 0 1px rgba(251, 191, 36, 0.14);
+}
+
+.home-action-commerce-primary:hover {
+    border-color: rgba(254, 240, 138, 0.62);
+    box-shadow:
+        0 16px 34px rgba(16, 185, 129, 0.28),
+        0 0 22px rgba(251, 191, 36, 0.14);
+}
+
+.home-commerce-launch .home-action {
+    justify-content: center;
 }
 
 .home-action-sky {
@@ -1806,11 +1941,18 @@ function getCookie(name) {
         justify-content: flex-start;
         padding: 0 16px;
     }
+
+    .home-commerce-label {
+        align-items: flex-start;
+        flex-direction: column;
+        gap: 7px;
+    }
 }
 
 @media (prefers-reduced-motion: reduce) {
     .home-announcement::before,
-    .home-announcement-story {
+    .home-announcement-story,
+    .home-commerce-launch::before {
         animation: none;
     }
 
@@ -1832,6 +1974,12 @@ function getCookie(name) {
 @keyframes announcement-sheen {
     0%, 45% { transform: translateX(-100%); }
     70%, 100% { transform: translateX(100%); }
+}
+
+@keyframes commerce-launch-sheen {
+    0%, 42% { transform: translateX(-72%); opacity: 0; }
+    58% { opacity: 1; }
+    78%, 100% { transform: translateX(72%); opacity: 0; }
 }
 
 /* 进度条闪烁动画 */

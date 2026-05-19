@@ -28,7 +28,9 @@ public class CommerceModel implements Serializable {
     private String speakingPersona;
     private String appearancePrompt;
     private String baseImageUrl;
+    private String modelAspectRatio;
     private String status;
+    private String errorMessage;
 
     @TableField(fill = FieldFill.INSERT)
     private LocalDateTime createdAt;

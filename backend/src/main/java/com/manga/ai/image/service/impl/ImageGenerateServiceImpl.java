@@ -42,14 +42,32 @@ import java.time.LocalDateTime;
 @Service
 public class ImageGenerateServiceImpl implements ImageGenerateService {
 
+    private static final String CHARACTER_EMPTY_HANDS_CONSTRAINT =
+            "CRITICAL HANDS CONSTRAINT: empty hands only, hands relaxed and visible, "
+                    + "arms naturally down or A-pose/T-pose. NO objects in hands, "
+                    + "NO holding anything, no computer, no laptop, no documents, no papers, "
+                    + "no folders, no books, no phone, no bag, no weapon, no prop held by the character. ";
+
     @Value("${volcengine.ark.api-key}")
     private String apiKey;
 
     @Value("${volcengine.ark.model:doubao-seedream-5-0-260128}")
     private String model;
 
+    @Value("${volcengine.ark.lite-model:doubao-seedream-5-0-lite-260128}")
+    private String liteModel;
+
     @Value("${volcengine.ark.base-url:https://ark.cn-beijing.volces.com/api/v3}")
     private String baseUrl;
+
+    @Value("${commerce.model-image.api-key:${volcengine.ark.api-key}}")
+    private String commerceModelImageApiKey;
+
+    @Value("${commerce.model-image.base-url:https://ark.cn-beijing.volces.com/api/v3}")
+    private String commerceModelImageBaseUrl;
+
+    @Value("${commerce.model-image.model:doubao-seedream-5-0-260128}")
+    private String commerceModelImageModel;
 
     @Value("${storage.project-path:./storage/projects}")
     private String projectPath;
@@ -128,6 +146,56 @@ public class ImageGenerateServiceImpl implements ImageGenerateService {
             return errorResponse;
         } catch (Exception e) {
             log.error("文生图异常", e);
+            ImageGenerateResponse errorResponse = new ImageGenerateResponse();
+            errorResponse.setStatus("failed");
+            errorResponse.setErrorMessage(e.getMessage());
+            return errorResponse;
+        }
+    }
+
+    @Override
+    public ImageGenerateResponse generateCommerceModelImage(ImageGenerateRequest request) {
+        log.info("电商模特文生图: modelName={}, prompt={}", request.getRoleName(), request.getCustomPrompt());
+
+        try {
+            String prompt = buildCommerceModelPrompt(request);
+
+            JSONObject requestBody = new JSONObject();
+            requestBody.put("model", hasText(commerceModelImageModel) ? commerceModelImageModel.trim() : liteModel);
+            requestBody.put("prompt", prompt);
+            requestBody.put("size", toCommerceModelImageSize(request.getQuality()));
+            requestBody.put("sequential_image_generation", "disabled");
+            requestBody.put("output_format", "png");
+            requestBody.put("response_format", "url");
+            requestBody.put("n", 1);
+            requestBody.put("stream", false);
+            requestBody.put("watermark", false);
+
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.APPLICATION_JSON);
+            headers.set("Authorization", "Bearer " + resolveCommerceModelImageApiKey());
+
+            HttpEntity<String> entity = new HttpEntity<>(requestBody.toJSONString(), headers);
+            String url = trimTrailingSlash(hasText(commerceModelImageBaseUrl) ? commerceModelImageBaseUrl : baseUrl) + "/images/generations";
+
+            log.info("调用火山Ark生成电商模特图: {}", url);
+            ResponseEntity<String> response = restTemplate.exchange(url, HttpMethod.POST, entity, String.class);
+
+            if (response.getStatusCode() == HttpStatus.OK && response.getBody() != null) {
+                return parseAndPersistGeneratedImage(response.getBody(), "commerce-models");
+            }
+            ImageGenerateResponse errorResponse = new ImageGenerateResponse();
+            errorResponse.setStatus("failed");
+            errorResponse.setErrorMessage("图片生成失败: " + response.getStatusCode());
+            return errorResponse;
+        } catch (org.springframework.web.client.HttpClientErrorException e) {
+            log.error("火山API电商模特图调用失败: statusCode={}, responseBody={}", e.getStatusCode(), e.getResponseBodyAsString());
+            ImageGenerateResponse errorResponse = new ImageGenerateResponse();
+            errorResponse.setStatus("failed");
+            errorResponse.setErrorMessage(e.getStatusCode() + ": " + e.getResponseBodyAsString());
+            return errorResponse;
+        } catch (Exception e) {
+            log.error("电商模特文生图异常", e);
             ImageGenerateResponse errorResponse = new ImageGenerateResponse();
             errorResponse.setStatus("failed");
             errorResponse.setErrorMessage(e.getMessage());
@@ -262,17 +330,81 @@ public class ImageGenerateServiceImpl implements ImageGenerateService {
     private ImageGenerateResponse parseResponse(String responseBody) {
         JSONObject json = JSON.parseObject(responseBody);
         ImageGenerateResponse response = new ImageGenerateResponse();
-        response.setStatus("success");
+
+        String providerError = extractProviderError(json);
+        if (hasText(providerError)) {
+            response.setStatus("failed");
+            response.setErrorMessage(providerError);
+            log.warn("图片生成接口返回错误: {}", providerError);
+            return response;
+        }
 
         JSONArray data = json.getJSONArray("data");
         if (data != null && !data.isEmpty()) {
             JSONObject imageData = data.getJSONObject(0);
             String imageUrl = imageData.getString("url");
-            response.setImageUrl(imageUrl);
-            log.info("图片URL: {}", imageUrl);
+            if (hasText(imageUrl)) {
+                response.setStatus("success");
+                response.setImageUrl(imageUrl);
+                log.info("图片URL: {}", imageUrl);
+                return response;
+            }
         }
 
+        response.setStatus("failed");
+        response.setErrorMessage(defaultIfBlank(json.getString("message"), "图片生成接口未返回图片地址"));
+        log.warn("图片生成接口未返回图片地址: {}", responseBody);
         return response;
+    }
+
+    private ImageGenerateResponse parseAndPersistGeneratedImage(String responseBody, String folder) {
+        ImageGenerateResponse response = parseResponse(responseBody);
+        if (response == null || response.getImageUrl() == null || response.getImageUrl().trim().isEmpty()) {
+            return response;
+        }
+
+        String sourceImageUrl = response.getImageUrl();
+        String ossUrl = null;
+        for (int retry = 0; retry < 3 && (ossUrl == null || ossUrl.trim().isEmpty()); retry++) {
+            ossUrl = ossService.uploadImageFromUrl(sourceImageUrl, folder);
+            if ((ossUrl == null || ossUrl.trim().isEmpty()) && retry < 2) {
+                log.warn("电商模特图OSS上传失败，第{}次重试...", retry + 2);
+                try {
+                    Thread.sleep(1000);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    break;
+                }
+            }
+        }
+
+        if (ossUrl == null || ossUrl.trim().isEmpty()) {
+            ImageGenerateResponse errorResponse = new ImageGenerateResponse();
+            errorResponse.setStatus("failed");
+            errorResponse.setErrorMessage("模特图片保存失败，请稍后重试");
+            return errorResponse;
+        }
+
+        response.setImageUrl(ossUrl.trim());
+        log.info("电商模特图已上传到OSS: {}", ossUrl.substring(0, Math.min(80, ossUrl.length())));
+        return response;
+    }
+
+    private String extractProviderError(JSONObject json) {
+        JSONObject error = json.getJSONObject("error");
+        if (error == null) {
+            return null;
+        }
+        String code = error.getString("code");
+        String message = error.getString("message");
+        if (hasText(code) && hasText(message)) {
+            return code.trim() + ": " + message.trim();
+        }
+        return defaultIfBlank(message, code);
+    }
+
+    private String defaultIfBlank(String value, String defaultValue) {
+        return hasText(value) ? value.trim() : defaultValue;
     }
 
     /**
@@ -351,6 +483,7 @@ public class ImageGenerateServiceImpl implements ImageGenerateService {
             // 强调完整全身照 - 必须显示脚
             prompt.append("CRITICAL: Full body views MUST show COMPLETE body from head to FEET. ");
             prompt.append("FEET MUST BE VISIBLE in all body views. ");
+            prompt.append(CHARACTER_EMPTY_HANDS_CONSTRAINT);
             // 强制白色背景
             prompt.append("MUST have PURE WHITE BACKGROUND (#FFFFFF). NO colored background, NO gradient background. ");
             // 禁止文字
@@ -362,7 +495,7 @@ public class ImageGenerateServiceImpl implements ImageGenerateService {
         if (useFaceCloseupLayout) {
             // 大头特写+三视图布局
             prompt.append("Character design sheet in ONE image with STRICT LAYOUT: ");
-            prompt.append("LEFT 1/3 of image: HUGE face close-up portrait showing detailed facial features, beautiful eyes, nose, mouth, and expression. ");
+            prompt.append("LEFT 1/3 of image: HUGE face close-up portrait showing detailed facial features, nose, mouth, and expression. ");
             prompt.append("RIGHT 2/3 of image: Full body three-view showing front view, side view, and back view arranged horizontally. ");
 
             // 中国人面孔要求（如果用户没有指定外国人）
@@ -388,6 +521,7 @@ public class ImageGenerateServiceImpl implements ImageGenerateService {
 
         prompt.append("CRITICAL: Full body views show COMPLETE body from head to FEET. ");
         prompt.append("FEET MUST BE FULLY VISIBLE. ");
+        prompt.append(CHARACTER_EMPTY_HANDS_CONSTRAINT);
         prompt.append("MUST have PURE WHITE BACKGROUND (#FFFFFF). NO colored background, NO gradient background. ");
 
         // 角色描述
@@ -413,6 +547,82 @@ public class ImageGenerateServiceImpl implements ImageGenerateService {
         return prompt.toString();
     }
 
+    private String buildCommerceModelPrompt(ImageGenerateRequest request) {
+        StringBuilder prompt = new StringBuilder();
+        boolean childModel = isCommerceChildModel(request);
+        boolean maleModel = !childModel && isCommerceMaleModel(request);
+        if (request.getCustomPrompt() != null && !request.getCustomPrompt().trim().isEmpty()) {
+            prompt.append(request.getCustomPrompt().trim()).append("\n\n");
+        }
+
+        prompt.append("真人写实电商服装带货模特基础形象图，人物设定板风格，左侧大头特写+右侧三视图布局，纯白背景，干净极简，高级棚拍质感。");
+        prompt.append("左侧约1/3为大头特写，清晰展示五官、肤质、发型和神态；右侧约2/3为正面、侧面、背面完整全身三视图，横向排列。");
+        prompt.append("大头特写与右侧三视图必须是同一个真人模特，五官、发型、肤色、妆容、身形比例一致。");
+        prompt.append("右侧每个视图都是自然站姿、平视镜头，从头顶到脚趾完整入画，显示手臂、手、腿部、脚踝、脚和脚趾，不裁切，脚下保留清晰白色留白。");
+        prompt.append("右侧正面五官尽量与左侧大头特写一致，面部自然、正向平视；侧面为标准侧身侧脸，不回头；背面不露正脸五官。");
+        prompt.append("模特必须惊艳但真实，骨相优越，五官精致有辨识度，镜头吸引力强，气质高级，不要普通路人感。");
+        if (childModel) {
+            prompt.append("儿童模特只穿浅色、低干扰、不透的儿童基础打底背心短裤或童装打底服，清爽自然，绝不成人化。");
+            prompt.append("儿童打底服不能抢占人物识别，便于后续商品图换装和试穿生成。");
+        } else if (maleModel) {
+            prompt.append("成人男模特上半身不穿，必须上半身裸露，胸部、肩膀、手臂自然可见；只穿普通浅色四角内裤，简洁纯色、基础男士款，低干扰、贴身，覆盖必要部位，不带品牌和图案。");
+            prompt.append("整体服装极简，仅保留这一条四角内裤，不添加其他服装层次、复杂花纹或装饰材质，便于后续商品图换装和试穿生成。");
+        } else {
+            prompt.append("成人女模特仅穿白色微透蕾丝内衣（white semi-sheer lace underwear），低干扰、贴身，覆盖必要部位，不带品牌和图案。");
+            prompt.append("女模内衣不能抢占人物识别，便于后续商品图换装和试穿生成。");
+        }
+        prompt.append("模特表情自然亲和，适合短视频口播种草和试穿展示，镜头表现真实可信。");
+        prompt.append("皮肤、头发、五官真实自然，精致耐看，避免网红过度磨皮、廉价妆容和夸张幻想元素。");
+        prompt.append(CHARACTER_EMPTY_HANDS_CONSTRAINT);
+        prompt.append("MUST have PURE WHITE BACKGROUND (#FFFFFF). NO colored background, NO gradient background. ");
+        prompt.append("CRITICAL: one single person only, no duplicate bodies, no extra limbs, no cropped head, no cropped feet. ");
+        prompt.append("NO text, NO words, NO letters, NO numbers, NO captions, NO labels, NO logo, NO watermark, NO brand marks.");
+
+        return prompt.toString();
+    }
+
+    private boolean isCommerceChildModel(ImageGenerateRequest request) {
+        String styleKeywords = request.getStyleKeywords() == null ? "" : request.getStyleKeywords();
+        String customPrompt = request.getCustomPrompt() == null ? "" : request.getCustomPrompt();
+        return styleKeywords.contains("儿童") || customPrompt.contains("儿童") || customPrompt.contains("小女孩") || customPrompt.contains("小男孩");
+    }
+
+    private boolean isCommerceMaleModel(ImageGenerateRequest request) {
+        String styleKeywords = request.getStyleKeywords() == null ? "" : request.getStyleKeywords();
+        String customPrompt = request.getCustomPrompt() == null ? "" : request.getCustomPrompt();
+        return styleKeywords.contains("男模特")
+                || styleKeywords.contains("男模")
+                || styleKeywords.contains("男性")
+                || styleKeywords.contains("男生")
+                || styleKeywords.contains("男士")
+                || styleKeywords.contains("帅哥")
+                || styleKeywords.contains("老头")
+                || styleKeywords.contains("老爷爷")
+                || customPrompt.contains("男性")
+                || customPrompt.contains("男模")
+                || customPrompt.contains("男生")
+                || customPrompt.contains("男士")
+                || customPrompt.contains("帅哥")
+                || customPrompt.contains("老头")
+                || customPrompt.contains("老爷爷")
+                || customPrompt.contains("男装");
+    }
+
+    private String toCommerceModelImageSize(String quality) {
+        return "4096x2304";
+    }
+
+    private String resolveCommerceModelImageApiKey() {
+        return hasText(commerceModelImageApiKey) ? commerceModelImageApiKey.trim() : apiKey;
+    }
+
+    private String trimTrailingSlash(String value) {
+        if (value == null) {
+            return "";
+        }
+        return value.endsWith("/") ? value.substring(0, value.length() - 1) : value;
+    }
+
     /**
      * 构建换装提示词（图生图）
      */
@@ -432,6 +642,7 @@ public class ImageGenerateServiceImpl implements ImageGenerateService {
         // 强调完整全身照 - 必须显示脚
         prompt.append("CRITICAL: Full body views MUST show COMPLETE body from head to FEET. ");
         prompt.append("FEET MUST BE FULLY VISIBLE. ");
+        prompt.append(CHARACTER_EMPTY_HANDS_CONSTRAINT);
 
         // 强制白色背景
         prompt.append("MUST have PURE WHITE BACKGROUND (#FFFFFF). NO colored background, NO gradient background. ");
@@ -1061,9 +1272,8 @@ public class ImageGenerateServiceImpl implements ImageGenerateService {
             roleAssetMapper.updateById(failedAsset);
             asset = failedAsset;
 
-            // 更新提示词元数据（优先使用服装专属提示词，其次使用角色提示词）
-            String newPrompt = clothingPrompt != null && !clothingPrompt.trim().isEmpty()
-                    ? clothingPrompt : role.getCustomPrompt();
+            // 更新提示词元数据（优先使用服装专属提示词，其次使用用户原始提示词）
+            String newPrompt = resolveDisplayPrompt(clothingPrompt, role);
             if (newPrompt != null && !newPrompt.trim().isEmpty()) {
                 LambdaQueryWrapper<AssetMetadata> metadataWrapper = new LambdaQueryWrapper<>();
                 metadataWrapper.eq(AssetMetadata::getAssetId, failedAsset.getId());
@@ -1105,9 +1315,8 @@ public class ImageGenerateServiceImpl implements ImageGenerateService {
 
             roleAssetMapper.insert(asset);
 
-            // 创建新资产时，立即保存提示词到metadata（优先使用服装专属提示词，其次使用角色提示词）
-            String newAssetPrompt = clothingPrompt != null && !clothingPrompt.trim().isEmpty()
-                    ? clothingPrompt : role.getCustomPrompt();
+            // 创建新资产时，立即保存展示用提示词，不保存系统附加模板
+            String newAssetPrompt = resolveDisplayPrompt(clothingPrompt, role);
             if (newAssetPrompt != null && !newAssetPrompt.trim().isEmpty()) {
                 AssetMetadata newMetadata = new AssetMetadata();
                 newMetadata.setAssetId(asset.getId());
@@ -1122,6 +1331,16 @@ public class ImageGenerateServiceImpl implements ImageGenerateService {
         log.info("生成中资产准备完成: assetId={}, roleId={}, clothingId={}, version={}",
                 asset.getId(), role.getId(), clothingId, asset.getVersion());
         return new long[]{asset.getId(), previousActiveAssetId != null ? previousActiveAssetId : 0};
+    }
+
+    private String resolveDisplayPrompt(String clothingPrompt, Role role) {
+        if (clothingPrompt != null && !clothingPrompt.trim().isEmpty()) {
+            return clothingPrompt;
+        }
+        if (role != null && role.getOriginalPrompt() != null && !role.getOriginalPrompt().trim().isEmpty()) {
+            return role.getOriginalPrompt();
+        }
+        return role != null ? role.getCustomPrompt() : null;
     }
 
     /**

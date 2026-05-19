@@ -77,6 +77,11 @@ public class RoleCreateRequest implements Serializable {
     private String styleKeywords;
 
     /**
+     * 前端风格选项Key，用于详情页中文回显
+     */
+    private String styleKey;
+
+    /**
      * 用户原始提示词（不包含系统附加的模板）
      */
     private String originalPrompt;

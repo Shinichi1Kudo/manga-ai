@@ -34,6 +34,11 @@ public class CreditConstants {
     public static final int CREDITS_PER_GPT_IMAGE2_IMAGE = 6;
 
     /**
+     * 电商模特提示词生成积分：1积分/次
+     */
+    public static final int CREDITS_PER_COMMERCE_MODEL_PROMPT = 1;
+
+    /**
      * 剧本解析积分：2积分/次
      */
     public static final int CREDITS_PER_SCRIPT_PARSE = 2;
