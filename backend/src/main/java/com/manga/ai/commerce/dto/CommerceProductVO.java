@@ -4,6 +4,8 @@ import lombok.Data;
 
 import java.io.Serializable;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
+import java.util.List;
 
 @Data
 public class CommerceProductVO implements Serializable {
@@ -20,7 +22,16 @@ public class CommerceProductVO implements Serializable {
     private String targetAudience;
     private String priceOffer;
     private String tryOnRequirements;
+    private List<ProductImageVO> images = new ArrayList<>();
     private String status;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
+
+    @Data
+    public static class ProductImageVO implements Serializable {
+        private static final long serialVersionUID = 1L;
+
+        private String url;
+        private String usage;
+    }
 }

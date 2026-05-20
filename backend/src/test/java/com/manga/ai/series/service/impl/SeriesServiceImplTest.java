@@ -354,6 +354,129 @@ class SeriesServiceImplTest {
         assertThat(roleCaptor.getValue().getStyleKey()).isEqualTo("realistic");
     }
 
+    @Test
+    void asyncProcessCharactersDoesNotFallbackToSeriesStyleForCharacterImageGeneration() {
+        SeriesMapper seriesMapper = mock(SeriesMapper.class);
+        RoleMapper roleMapper = mock(RoleMapper.class);
+        ImageGenerateService imageGenerateService = mock(ImageGenerateService.class);
+        SeriesServiceImpl service = createService(
+                seriesMapper,
+                roleMapper,
+                mock(RoleAssetMapper.class),
+                mock(AssetMetadataMapper.class),
+                imageGenerateService
+        );
+        Series series = new Series();
+        series.setId(12L);
+        series.setStyleKeywords("3d_anime");
+        when(seriesMapper.selectById(12L)).thenReturn(series);
+        when(roleMapper.insert(any(Role.class))).thenAnswer(invocation -> {
+            invocation.<Role>getArgument(0).setId(90L);
+            return 1;
+        });
+        ImageGenerateResponse failedResponse = new ImageGenerateResponse();
+        failedResponse.setStatus("failed");
+        failedResponse.setErrorMessage("skip asset save");
+        when(imageGenerateService.generateCharacterSheet(any(ImageGenerateRequest.class))).thenReturn(failedResponse);
+
+        service.asyncProcessCharacters(12L, """
+                [{
+                    "roleName": "周也",
+                    "customPrompt": "清冷短发女生",
+                    "originalPrompt": "清冷短发女生",
+                    "styleKey": "",
+                    "styleKeywords": "",
+                    "aspectRatio": "16:9",
+                    "quality": "hd",
+                    "detailedView": false,
+                    "faceCloseupView": true
+                }]
+                """);
+
+        ArgumentCaptor<ImageGenerateRequest> requestCaptor = ArgumentCaptor.forClass(ImageGenerateRequest.class);
+        verify(imageGenerateService).generateCharacterSheet(requestCaptor.capture());
+        assertThat(requestCaptor.getValue().getStyleKeywords()).isEmpty();
+
+        ArgumentCaptor<Role> roleCaptor = ArgumentCaptor.forClass(Role.class);
+        verify(roleMapper).insert(roleCaptor.capture());
+        assertThat(roleCaptor.getValue().getStyleKeywords()).isEmpty();
+        assertThat(roleCaptor.getValue().getStyleKey()).isEmpty();
+    }
+
+    @Test
+    void asyncProcessCharactersStoresFinalPromptMetadataForInitialSeriesAssets() {
+        SeriesMapper seriesMapper = mock(SeriesMapper.class);
+        RoleMapper roleMapper = mock(RoleMapper.class);
+        RoleAssetMapper roleAssetMapper = mock(RoleAssetMapper.class);
+        AssetMetadataMapper assetMetadataMapper = mock(AssetMetadataMapper.class);
+        ImageGenerateService imageGenerateService = mock(ImageGenerateService.class);
+        SeriesServiceImpl service = createService(
+                seriesMapper,
+                roleMapper,
+                roleAssetMapper,
+                assetMetadataMapper,
+                imageGenerateService
+        );
+        Series series = new Series();
+        series.setId(12L);
+        series.setStyleKeywords("3d_anime");
+        when(seriesMapper.selectById(12L)).thenReturn(series);
+        when(roleMapper.insert(any(Role.class))).thenAnswer(invocation -> {
+            invocation.<Role>getArgument(0).setId(91L);
+            return 1;
+        });
+        when(roleAssetMapper.insert(any(RoleAsset.class))).thenAnswer(invocation -> {
+            invocation.<RoleAsset>getArgument(0).setId(101L);
+            return 1;
+        });
+        ImageGenerateResponse successResponse = new ImageGenerateResponse();
+        successResponse.setStatus("success");
+        successResponse.setImageUrl("https://example.com/role.png");
+        when(imageGenerateService.generateCharacterSheet(any(ImageGenerateRequest.class))).thenReturn(successResponse);
+        when(imageGenerateService.buildFinalCharacterSheetPrompt(any(ImageGenerateRequest.class)))
+                .thenAnswer(invocation -> {
+                    ImageGenerateRequest request = invocation.getArgument(0);
+                    return request.getCustomPrompt()
+                            + ". Style: " + request.getStyleKeywords() + ". "
+                            + "STRICT LAYOUT in ONE image: "
+                            + "LEFT 1/3: enlarged head-and-shoulders character view for identity reference, same art style as the body views. "
+                            + "RIGHT 2/3: full body three-view showing front view, side view, and back view.";
+                });
+
+        service.asyncProcessCharacters(12L, """
+                [{
+                    "roleName": "楚清辞",
+                    "customPrompt": "古风男性，月白色长袍",
+                    "originalPrompt": "古风男性，月白色长袍",
+                    "styleKey": "chinese_style",
+                    "styleKeywords": "2D guofeng manhua character sheet, Chinese xianxia animation design, ancient Chinese costume reference, clean ink line art, elegant restrained colors, flat cel shading, strictly illustrated 2D finish, no 3D render, no real-person photo look, consistent turnaround",
+                    "aspectRatio": "16:9",
+                    "quality": "hd",
+                    "detailedView": false,
+                    "faceCloseupView": true
+                }]
+                """);
+
+        ArgumentCaptor<AssetMetadata> metadataCaptor = ArgumentCaptor.forClass(AssetMetadata.class);
+        verify(assetMetadataMapper).insert(metadataCaptor.capture());
+        assertThat(metadataCaptor.getValue().getUserPrompt()).isEqualTo("古风男性，月白色长袍");
+        assertThat(metadataCaptor.getValue().getAspectRatio()).isEqualTo("16:9");
+        assertThat(metadataCaptor.getValue().getQuality()).isEqualTo("hd");
+        assertThat(metadataCaptor.getValue().getStyleKey()).isEqualTo("chinese_style");
+        assertThat(metadataCaptor.getValue().getStyleKeywords()).contains("2D guofeng manhua character sheet");
+        assertThat(metadataCaptor.getValue().getDetailedView()).isFalse();
+        assertThat(metadataCaptor.getValue().getFaceCloseupView()).isTrue();
+        assertThat(metadataCaptor.getValue().getPrompt())
+                .contains("Style: 2D guofeng manhua character sheet")
+                .contains("no 3D render")
+                .contains("no real-person photo look")
+                .contains("STRICT LAYOUT in ONE image")
+                .contains("LEFT 1/3: enlarged head-and-shoulders character view")
+                .doesNotContain("3d_anime")
+                .doesNotContain("HUGE face close-up portrait")
+                .doesNotContain("makeup");
+    }
+
     private SeriesServiceImpl createService(SeriesMapper seriesMapper, RoleMapper roleMapper) {
         return createService(seriesMapper, roleMapper, mock(RoleAssetMapper.class));
     }

@@ -3,6 +3,8 @@ package com.manga.ai.commerce.dto;
 import lombok.Data;
 
 import java.io.Serializable;
+import java.util.ArrayList;
+import java.util.List;
 
 @Data
 public class CommerceProjectCreateRequest implements Serializable {
@@ -14,4 +16,8 @@ public class CommerceProjectCreateRequest implements Serializable {
     private String targetAudience;
     private String priceOffer;
     private String tryOnRequirements;
+    private Boolean tryOnFirstFrameEnabled;
+    private String tryOnFirstFrameAspectRatio;
+    private String tryOnFirstFrameResolution;
+    private List<Long> sceneIds = new ArrayList<>();
 }

@@ -110,4 +110,34 @@ public class RoleAsset implements Serializable {
      */
     @TableField(exist = false)
     private Boolean detailedView;
+
+    /**
+     * 是否使用大头特写+三视图布局（来自元数据，非数据库字段）
+     */
+    @TableField(exist = false)
+    private Boolean faceCloseupView;
+
+    /**
+     * 生成该资产版本时选择的图片比例（来自元数据，非数据库字段）
+     */
+    @TableField(exist = false)
+    private String aspectRatio;
+
+    /**
+     * 生成该资产版本时选择的清晰度（来自元数据，非数据库字段）
+     */
+    @TableField(exist = false)
+    private String quality;
+
+    /**
+     * 生成该资产版本时选择的风格Key（来自元数据，非数据库字段）
+     */
+    @TableField(exist = false)
+    private String styleKey;
+
+    /**
+     * 生成该资产版本时使用的风格关键词（来自元数据，非数据库字段）
+     */
+    @TableField(exist = false)
+    private String styleKeywords;
 }

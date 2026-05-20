@@ -69,6 +69,9 @@ public class ImageGenerateServiceImpl implements ImageGenerateService {
     @Value("${commerce.model-image.model:doubao-seedream-5-0-260128}")
     private String commerceModelImageModel;
 
+    @Value("${commerce.try-on-first-frame.model:doubao-seedream-5-0-lite-260128}")
+    private String commerceTryOnFirstFrameModel;
+
     @Value("${storage.project-path:./storage/projects}")
     private String projectPath;
 
@@ -106,7 +109,7 @@ public class ImageGenerateServiceImpl implements ImageGenerateService {
         log.info("文生图: role={}, prompt={}", request.getRoleName(), request.getCustomPrompt());
 
         try {
-            String prompt = buildCharacterSheetPrompt(request);
+            String prompt = buildFinalCharacterSheetPrompt(request);
             String size = convertAspectRatioToSize(request.getAspectRatio(), request.getQuality());
 
             JSONObject requestBody = new JSONObject();
@@ -182,7 +185,7 @@ public class ImageGenerateServiceImpl implements ImageGenerateService {
             ResponseEntity<String> response = restTemplate.exchange(url, HttpMethod.POST, entity, String.class);
 
             if (response.getStatusCode() == HttpStatus.OK && response.getBody() != null) {
-                return parseAndPersistGeneratedImage(response.getBody(), "commerce-models");
+                return parseAndPersistGeneratedImage(response.getBody(), "commerce-models", "模特图片保存失败，请稍后重试");
             }
             ImageGenerateResponse errorResponse = new ImageGenerateResponse();
             errorResponse.setStatus("failed");
@@ -196,6 +199,111 @@ public class ImageGenerateServiceImpl implements ImageGenerateService {
             return errorResponse;
         } catch (Exception e) {
             log.error("电商模特文生图异常", e);
+            ImageGenerateResponse errorResponse = new ImageGenerateResponse();
+            errorResponse.setStatus("failed");
+            errorResponse.setErrorMessage(e.getMessage());
+            return errorResponse;
+        }
+    }
+
+    @Override
+    public ImageGenerateResponse generateCommerceSceneImage(ImageGenerateRequest request) {
+        log.info("电商场景文生图: sceneName={}, prompt={}", request.getRoleName(), request.getCustomPrompt());
+
+        try {
+            JSONObject requestBody = new JSONObject();
+            requestBody.put("model", hasText(commerceTryOnFirstFrameModel) ? commerceTryOnFirstFrameModel.trim() : liteModel);
+            requestBody.put("prompt", request.getCustomPrompt());
+            requestBody.put("size", toCommerceTryOnFirstFrameSize(request.getQuality()));
+            requestBody.put("sequential_image_generation", "disabled");
+            requestBody.put("output_format", "png");
+            requestBody.put("response_format", "url");
+            requestBody.put("n", 1);
+            requestBody.put("stream", false);
+            requestBody.put("watermark", false);
+
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.APPLICATION_JSON);
+            headers.set("Authorization", "Bearer " + resolveCommerceModelImageApiKey());
+
+            HttpEntity<String> entity = new HttpEntity<>(requestBody.toJSONString(), headers);
+            String url = trimTrailingSlash(hasText(commerceModelImageBaseUrl) ? commerceModelImageBaseUrl : baseUrl) + "/images/generations";
+
+            log.info("调用火山Ark生成电商场景图: {}", url);
+            ResponseEntity<String> response = restTemplate.exchange(url, HttpMethod.POST, entity, String.class);
+
+            if (response.getStatusCode() == HttpStatus.OK && response.getBody() != null) {
+                return parseAndPersistGeneratedImage(response.getBody(), "commerce/scenes", "场景图片保存失败，请稍后重试");
+            }
+            ImageGenerateResponse errorResponse = new ImageGenerateResponse();
+            errorResponse.setStatus("failed");
+            errorResponse.setErrorMessage("场景图生成失败: " + response.getStatusCode());
+            return errorResponse;
+        } catch (org.springframework.web.client.HttpClientErrorException e) {
+            log.error("火山API场景图调用失败: statusCode={}, responseBody={}", e.getStatusCode(), e.getResponseBodyAsString());
+            ImageGenerateResponse errorResponse = new ImageGenerateResponse();
+            errorResponse.setStatus("failed");
+            errorResponse.setErrorMessage(e.getStatusCode() + ": " + e.getResponseBodyAsString());
+            return errorResponse;
+        } catch (Exception e) {
+            log.error("电商场景文生图异常", e);
+            ImageGenerateResponse errorResponse = new ImageGenerateResponse();
+            errorResponse.setStatus("failed");
+            errorResponse.setErrorMessage(e.getMessage());
+            return errorResponse;
+        }
+    }
+
+    @Override
+    public ImageGenerateResponse generateCommerceTryOnFirstFrame(ImageGenerateRequest request) {
+        log.info("电商试穿首帧确认图: prompt={}, references={}",
+                request.getCustomPrompt(), request.getReferenceImageUrls());
+
+        try {
+            if (request.getReferenceImageUrls() == null || request.getReferenceImageUrls().size() < 2) {
+                ImageGenerateResponse errorResponse = new ImageGenerateResponse();
+                errorResponse.setStatus("failed");
+                errorResponse.setErrorMessage("试穿首帧至少需要模特图和商品图");
+                return errorResponse;
+            }
+
+            JSONObject requestBody = new JSONObject();
+            requestBody.put("model", hasText(commerceTryOnFirstFrameModel) ? commerceTryOnFirstFrameModel.trim() : liteModel);
+            requestBody.put("prompt", request.getCustomPrompt());
+            requestBody.put("image", request.getReferenceImageUrls());
+            requestBody.put("size", toCommerceTryOnFirstFrameSize(request.getQuality()));
+            requestBody.put("sequential_image_generation", "disabled");
+            requestBody.put("output_format", "png");
+            requestBody.put("response_format", "url");
+            requestBody.put("n", 1);
+            requestBody.put("stream", false);
+            requestBody.put("watermark", false);
+
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.APPLICATION_JSON);
+            headers.set("Authorization", "Bearer " + resolveCommerceModelImageApiKey());
+
+            HttpEntity<String> entity = new HttpEntity<>(requestBody.toJSONString(), headers);
+            String url = trimTrailingSlash(hasText(commerceModelImageBaseUrl) ? commerceModelImageBaseUrl : baseUrl) + "/images/generations";
+
+            log.info("调用火山Ark生成电商试穿首帧: {}", url);
+            ResponseEntity<String> response = restTemplate.exchange(url, HttpMethod.POST, entity, String.class);
+
+            if (response.getStatusCode() == HttpStatus.OK && response.getBody() != null) {
+                return parseAndPersistGeneratedImage(response.getBody(), "commerce/try-on-first-frames", "试穿首帧图片保存失败，请稍后重试");
+            }
+            ImageGenerateResponse errorResponse = new ImageGenerateResponse();
+            errorResponse.setStatus("failed");
+            errorResponse.setErrorMessage("试穿首帧生成失败: " + response.getStatusCode());
+            return errorResponse;
+        } catch (org.springframework.web.client.HttpClientErrorException e) {
+            log.error("火山API试穿首帧调用失败: statusCode={}, responseBody={}", e.getStatusCode(), e.getResponseBodyAsString());
+            ImageGenerateResponse errorResponse = new ImageGenerateResponse();
+            errorResponse.setStatus("failed");
+            errorResponse.setErrorMessage(e.getStatusCode() + ": " + e.getResponseBodyAsString());
+            return errorResponse;
+        } catch (Exception e) {
+            log.error("电商试穿首帧生成异常", e);
             ImageGenerateResponse errorResponse = new ImageGenerateResponse();
             errorResponse.setStatus("failed");
             errorResponse.setErrorMessage(e.getMessage());
@@ -357,7 +465,7 @@ public class ImageGenerateServiceImpl implements ImageGenerateService {
         return response;
     }
 
-    private ImageGenerateResponse parseAndPersistGeneratedImage(String responseBody, String folder) {
+    private ImageGenerateResponse parseAndPersistGeneratedImage(String responseBody, String folder, String saveErrorMessage) {
         ImageGenerateResponse response = parseResponse(responseBody);
         if (response == null || response.getImageUrl() == null || response.getImageUrl().trim().isEmpty()) {
             return response;
@@ -381,12 +489,12 @@ public class ImageGenerateServiceImpl implements ImageGenerateService {
         if (ossUrl == null || ossUrl.trim().isEmpty()) {
             ImageGenerateResponse errorResponse = new ImageGenerateResponse();
             errorResponse.setStatus("failed");
-            errorResponse.setErrorMessage("模特图片保存失败，请稍后重试");
+            errorResponse.setErrorMessage(saveErrorMessage);
             return errorResponse;
         }
 
         response.setImageUrl(ossUrl.trim());
-        log.info("电商模特图已上传到OSS: {}", ossUrl.substring(0, Math.min(80, ossUrl.length())));
+        log.info("生成图片已上传到OSS: {}", ossUrl.substring(0, Math.min(80, ossUrl.length())));
         return response;
     }
 
@@ -453,15 +561,15 @@ public class ImageGenerateServiceImpl implements ImageGenerateService {
                     !request.getCustomPrompt().toLowerCase().contains("face close") &&
                     !request.getCustomPrompt().toLowerCase().contains("face closeup")) {
                     prompt.append("STRICT LAYOUT in ONE image: ");
-                    prompt.append("LEFT 1/3: HUGE face close-up portrait showing detailed facial features, expressions, and makeup. ");
-                    prompt.append("RIGHT 2/3: Full body three-view showing front view, side view, and back view. ");
+                    prompt.append("LEFT 1/3: enlarged head-and-shoulders character view for identity reference, same art style as the body views. ");
+                    prompt.append("RIGHT 2/3: full body three-view showing front view, side view, and back view. ");
                 }
                 // 中国人面孔要求（如果用户没有指定外国人）
                 prompt.append(chineseFaceHint);
                 // 关键：强调一致性
-                prompt.append("CRITICAL CONSISTENCY: The face close-up and all three body views MUST show the SAME EXACT character. ");
-                prompt.append("SAME facial features in close-up and body views, SAME clothing color, SAME hair color, SAME skin tone. ");
-                prompt.append("The face in the close-up MUST match the face on the body views exactly. ");
+                prompt.append("CRITICAL CONSISTENCY: The left identity reference and all three body views MUST show the SAME EXACT character. ");
+                prompt.append("SAME identity, SAME clothing color, SAME hair color, SAME skin tone. ");
+                prompt.append("All panels MUST share the same selected art style. ");
             } else {
                 // 普通三视图布局
                 if (!request.getCustomPrompt().toLowerCase().contains("three view") &&
@@ -495,16 +603,16 @@ public class ImageGenerateServiceImpl implements ImageGenerateService {
         if (useFaceCloseupLayout) {
             // 大头特写+三视图布局
             prompt.append("Character design sheet in ONE image with STRICT LAYOUT: ");
-            prompt.append("LEFT 1/3 of image: HUGE face close-up portrait showing detailed facial features, nose, mouth, and expression. ");
-            prompt.append("RIGHT 2/3 of image: Full body three-view showing front view, side view, and back view arranged horizontally. ");
+            prompt.append("LEFT 1/3 of image: enlarged head-and-shoulders character view for identity reference, same art style as the body views. ");
+            prompt.append("RIGHT 2/3 of image: full body three-view showing front view, side view, and back view arranged horizontally. ");
 
             // 中国人面孔要求（如果用户没有指定外国人）
             prompt.append(chineseFaceHint);
 
             // 关键：强调一致性
-            prompt.append("CRITICAL CONSISTENCY: The face close-up and all three body views MUST show the SAME EXACT character. ");
-            prompt.append("The face in close-up MUST be IDENTICAL to the face on body views. ");
-            prompt.append("SAME facial features, SAME hair, SAME makeup, SAME clothing color across all views. ");
+            prompt.append("CRITICAL CONSISTENCY: The left identity reference and all three body views MUST show the SAME EXACT character. ");
+            prompt.append("SAME identity, SAME hair, SAME clothing color across all views. ");
+            prompt.append("All panels MUST share the same selected art style. ");
         } else {
             // 普通三视图布局
             prompt.append("Character design sheet with three views in ONE image: ");
@@ -545,6 +653,11 @@ public class ImageGenerateServiceImpl implements ImageGenerateService {
         prompt.append("NO text, NO words, NO letters, NO numbers, NO captions, NO labels, NO watermarks, NO Chinese characters, NO English text.");
 
         return prompt.toString();
+    }
+
+    @Override
+    public String buildFinalCharacterSheetPrompt(ImageGenerateRequest request) {
+        return buildCharacterSheetPrompt(request);
     }
 
     private String buildCommerceModelPrompt(ImageGenerateRequest request) {
@@ -610,6 +723,16 @@ public class ImageGenerateServiceImpl implements ImageGenerateService {
 
     private String toCommerceModelImageSize(String quality) {
         return "4096x2304";
+    }
+
+    private String toCommerceTryOnFirstFrameSize(String resolution) {
+        if ("4k".equalsIgnoreCase(resolution)) {
+            return "4K";
+        }
+        if ("3k".equalsIgnoreCase(resolution)) {
+            return "3K";
+        }
+        return "2K";
     }
 
     private String resolveCommerceModelImageApiKey() {
@@ -726,6 +849,12 @@ public class ImageGenerateServiceImpl implements ImageGenerateService {
     @Override
     @Async("taskExecutor")
     public void generateCharacterAssets(Long roleId, Integer clothingId, Long generatingAssetId, Long previousActiveAssetId, String aspectRatio, String quality, String styleKeywords, String originalPrompt, Boolean detailedView, Boolean faceCloseupView) {
+        generateCharacterAssets(roleId, clothingId, generatingAssetId, previousActiveAssetId, aspectRatio, quality, null, styleKeywords, originalPrompt, detailedView, faceCloseupView);
+    }
+
+    @Override
+    @Async("taskExecutor")
+    public void generateCharacterAssets(Long roleId, Integer clothingId, Long generatingAssetId, Long previousActiveAssetId, String aspectRatio, String quality, String styleKey, String styleKeywords, String originalPrompt, Boolean detailedView, Boolean faceCloseupView) {
         log.info("异步生成角色资产: roleId={}, clothingId={}, previousActiveAssetId={}, aspectRatio={}, quality={}, styleKeywords={}, originalPrompt={}, detailedView={}, faceCloseupView={}", roleId, clothingId, previousActiveAssetId, aspectRatio, quality, styleKeywords, originalPrompt, detailedView, faceCloseupView);
 
         Role role = roleMapper.selectById(roleId);
@@ -778,14 +907,14 @@ public class ImageGenerateServiceImpl implements ImageGenerateService {
         String requestQuality = quality != null ? quality :
                 (series != null && series.getQuality() != null ? series.getQuality() : "hd");
         String requestStyleKeywords = styleKeywords != null && !styleKeywords.trim().isEmpty() ? styleKeywords :
-                (role.getStyleKeywords() != null ? role.getStyleKeywords() :
-                (series != null ? series.getStyleKeywords() : ""));
+                (role.getStyleKeywords() != null ? role.getStyleKeywords() : "");
 
         ImageGenerateRequest request = ImageGenerateRequest.builder()
                 .roleName(role.getRoleName())
                 .characterDescription(description.toString())
                 .aspectRatio(requestAspectRatio)
                 .quality(requestQuality)
+                .styleKey(styleKey != null && !styleKey.trim().isEmpty() ? styleKey : role.getStyleKey())
                 .styleKeywords(requestStyleKeywords)
                 .seriesId(role.getSeriesId())
                 .roleId(roleId)
@@ -961,8 +1090,7 @@ public class ImageGenerateServiceImpl implements ImageGenerateService {
         String requestQuality = quality != null ? quality :
                 (series != null && series.getQuality() != null ? series.getQuality() : "hd");
         String requestStyleKeywords = styleKeywords != null && !styleKeywords.trim().isEmpty() ? styleKeywords :
-                (role.getStyleKeywords() != null ? role.getStyleKeywords() :
-                (series != null ? series.getStyleKeywords() : ""));
+                (role.getStyleKeywords() != null ? role.getStyleKeywords() : "");
 
         ImageGenerateRequest request = ImageGenerateRequest.builder()
                 .roleName(role.getRoleName())
@@ -1032,7 +1160,13 @@ public class ImageGenerateServiceImpl implements ImageGenerateService {
     @Override
     @Async("taskExecutor")
     public void generateNewClothingWithReference(Long roleId, Integer clothingId, Long generatingAssetId, Long previousActiveAssetId, String referenceImageUrl, String clothingPrompt, String clothingName, String aspectRatio, String quality, String styleKeywords, String originalPrompt, Boolean detailedView) {
-        log.info("异步生成新服装（图生图）: roleId={}, clothingId={}, referenceUrl={}, clothingName={}, aspectRatio={}, quality={}, styleKeywords={}, originalPrompt={}, detailedView={}", roleId, clothingId, referenceImageUrl, clothingName, aspectRatio, quality, styleKeywords, originalPrompt, detailedView);
+        generateNewClothingWithReference(roleId, clothingId, generatingAssetId, previousActiveAssetId, referenceImageUrl, clothingPrompt, clothingName, aspectRatio, quality, null, styleKeywords, originalPrompt, detailedView);
+    }
+
+    @Override
+    @Async("taskExecutor")
+    public void generateNewClothingWithReference(Long roleId, Integer clothingId, Long generatingAssetId, Long previousActiveAssetId, String referenceImageUrl, String clothingPrompt, String clothingName, String aspectRatio, String quality, String styleKey, String styleKeywords, String originalPrompt, Boolean detailedView) {
+        log.info("异步生成新服装（图生图）: roleId={}, clothingId={}, referenceUrl={}, clothingName={}, aspectRatio={}, quality={}, styleKey={}, styleKeywords={}, originalPrompt={}, detailedView={}", roleId, clothingId, referenceImageUrl, clothingName, aspectRatio, quality, styleKey, styleKeywords, originalPrompt, detailedView);
 
         Role role = roleMapper.selectById(roleId);
         if (role == null) {
@@ -1063,13 +1197,13 @@ public class ImageGenerateServiceImpl implements ImageGenerateService {
         String requestQuality = quality != null ? quality :
                 (series != null && series.getQuality() != null ? series.getQuality() : "hd");
         String requestStyleKeywords = styleKeywords != null && !styleKeywords.trim().isEmpty() ? styleKeywords :
-                (role.getStyleKeywords() != null ? role.getStyleKeywords() :
-                (series != null ? series.getStyleKeywords() : ""));
+                (role.getStyleKeywords() != null ? role.getStyleKeywords() : "");
 
         ImageGenerateRequest request = ImageGenerateRequest.builder()
                 .roleName(role.getRoleName())
                 .aspectRatio(requestAspectRatio)
                 .quality(requestQuality)
+                .styleKey(styleKey != null && !styleKey.trim().isEmpty() ? styleKey : role.getStyleKey())
                 .styleKeywords(requestStyleKeywords)
                 .seriesId(role.getSeriesId())
                 .roleId(roleId)
@@ -1144,7 +1278,13 @@ public class ImageGenerateServiceImpl implements ImageGenerateService {
                     userPrompt = request.getClothingPrompt() != null ? request.getClothingPrompt() : request.getCustomPrompt();
                 }
                 existMetadata.setUserPrompt(userPrompt);
-                existMetadata.setPrompt(userPrompt);
+                existMetadata.setPrompt(buildFinalCharacterSheetPrompt(request));
+                existMetadata.setAspectRatio(request.getAspectRatio());
+                existMetadata.setQuality(request.getQuality());
+                existMetadata.setStyleKey(request.getStyleKey());
+                existMetadata.setStyleKeywords(request.getStyleKeywords());
+                existMetadata.setDetailedView(request.getDetailedView());
+                existMetadata.setFaceCloseupView(request.getFaceCloseupView());
                 assetMetadataMapper.updateById(existMetadata);
                 log.info("更新失败资产的元数据: assetId={}", assetId);
             } else {
@@ -1155,8 +1295,14 @@ public class ImageGenerateServiceImpl implements ImageGenerateService {
                 }
                 AssetMetadata metadata = new AssetMetadata();
                 metadata.setAssetId(assetId);
-                metadata.setPrompt(userPrompt);
+                metadata.setPrompt(buildFinalCharacterSheetPrompt(request));
                 metadata.setUserPrompt(userPrompt);
+                metadata.setAspectRatio(request.getAspectRatio());
+                metadata.setQuality(request.getQuality());
+                metadata.setStyleKey(request.getStyleKey());
+                metadata.setStyleKeywords(request.getStyleKeywords());
+                metadata.setDetailedView(request.getDetailedView());
+                metadata.setFaceCloseupView(request.getFaceCloseupView());
                 metadata.setCreatedAt(LocalDateTime.now());
                 assetMetadataMapper.insert(metadata);
                 log.info("保存失败资产的元数据: assetId={}, prompt={}", assetId, userPrompt);
@@ -1444,7 +1590,7 @@ public class ImageGenerateServiceImpl implements ImageGenerateService {
             if (request.getReferenceImageUrl() != null && !request.getReferenceImageUrl().isEmpty()) {
                 usedPrompt = buildClothingChangePrompt(request);
             } else {
-                usedPrompt = buildCharacterSheetPrompt(request);
+                usedPrompt = buildFinalCharacterSheetPrompt(request);
             }
 
             // 用户原始输入的提示词（优先使用originalPrompt，这是不含系统模板的用户原始输入）
@@ -1473,7 +1619,11 @@ public class ImageGenerateServiceImpl implements ImageGenerateService {
                 existMetadata.setImageWidth(response.getWidth());
                 existMetadata.setImageHeight(response.getHeight());
                 existMetadata.setAspectRatio(request.getAspectRatio());
+                existMetadata.setQuality(request.getQuality());
+                existMetadata.setStyleKey(request.getStyleKey());
+                existMetadata.setStyleKeywords(request.getStyleKeywords());
                 existMetadata.setDetailedView(request.getDetailedView());
+                existMetadata.setFaceCloseupView(request.getFaceCloseupView());
                 assetMetadataMapper.updateById(existMetadata);
             } else {
                 // 不存在，创建新的
@@ -1486,7 +1636,11 @@ public class ImageGenerateServiceImpl implements ImageGenerateService {
                 metadata.setImageWidth(response.getWidth());
                 metadata.setImageHeight(response.getHeight());
                 metadata.setAspectRatio(request.getAspectRatio());
+                metadata.setQuality(request.getQuality());
+                metadata.setStyleKey(request.getStyleKey());
+                metadata.setStyleKeywords(request.getStyleKeywords());
                 metadata.setDetailedView(request.getDetailedView());
+                metadata.setFaceCloseupView(request.getFaceCloseupView());
                 metadata.setGenerationTimeMs(0L);
                 metadata.setCreatedAt(LocalDateTime.now());
                 assetMetadataMapper.insert(metadata);

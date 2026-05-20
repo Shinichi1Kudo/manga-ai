@@ -118,7 +118,11 @@ CREATE TABLE IF NOT EXISTS asset_metadata (
     image_width INT,
     image_height INT,
     aspect_ratio VARCHAR(10),
+    quality VARCHAR(20),
+    style_key VARCHAR(50),
+    style_keywords VARCHAR(500),
     detailed_view BOOLEAN DEFAULT FALSE,
+    face_closeup_view BOOLEAN DEFAULT FALSE,
     generation_time_ms BIGINT,
     api_response CLOB,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP

@@ -6,6 +6,8 @@ import com.manga.ai.commerce.dto.CommerceProductCreateRequest;
 import com.manga.ai.commerce.dto.CommerceProductVO;
 import com.manga.ai.commerce.dto.CommerceProjectCreateRequest;
 import com.manga.ai.commerce.dto.CommerceProjectVO;
+import com.manga.ai.commerce.dto.CommerceSceneBatchCreateRequest;
+import com.manga.ai.commerce.dto.CommerceSceneVO;
 import com.manga.ai.commerce.dto.CommerceSeriesCreateRequest;
 import com.manga.ai.commerce.dto.CommerceSeriesVO;
 import com.manga.ai.commerce.service.dto.CommerceModelProfile;
@@ -42,9 +44,15 @@ public interface CommerceService {
 
     String uploadProductImage(MultipartFile file);
 
+    List<CommerceSceneVO> listScenes(Long seriesId);
+
+    List<CommerceSceneVO> createSceneBatch(Long seriesId, CommerceSceneBatchCreateRequest request);
+
     CommerceProjectVO createProject(Long productId, CommerceProjectCreateRequest request);
 
     CommerceProjectVO getProject(Long projectId);
+
+    CommerceProjectVO confirmTryOnFirstFrame(Long projectId);
 
     CommerceProjectVO generateProjectVideo(Long projectId);
 }

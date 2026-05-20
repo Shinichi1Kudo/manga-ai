@@ -25,6 +25,14 @@ public class CommerceProject implements Serializable {
     private String aspectRatio;
     private String modelImageUrl;
     private String productImageUrl;
+    private String sceneImageUrlsJson;
+    private Integer tryOnFirstFrameEnabled;
+    private String tryOnFirstFrameAspectRatio;
+    private String tryOnFirstFrameResolution;
+    private String tryOnFirstFrameUrl;
+    private String tryOnFirstFrameStatus;
+    private String tryOnFirstFrameError;
+    private Integer tryOnFirstFrameConfirmed;
     private String status;
     private String errorMessage;
 

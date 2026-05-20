@@ -100,7 +100,7 @@
 <!-- Role Cards Container -->
 <div class="space-y-6" id="roleContainer">
 {% for role in roles %}
-<div class="glass-card glass-card-hover p-6 role-card" id="role-{{ role.id }}" data-role-id="{{ role.id }}" data-role-status="{{ role.status }}" data-has-usable-asset="{{ role.has_usable_asset|yesno:'true,false' }}" data-custom-prompt="{{ role.customPrompt|default:'' }}" data-original-prompt="{{ role.originalPrompt|default:'' }}" data-role-style-key="{{ role.styleKey|default:'' }}" data-role-style-keywords="{{ role.styleKeywords|default:series.styleKeywords|default:'' }}">
+<div class="glass-card glass-card-hover p-6 role-card" id="role-{{ role.id }}" data-role-id="{{ role.id }}" data-role-status="{{ role.status }}" data-has-usable-asset="{{ role.has_usable_asset|yesno:'true,false' }}" data-custom-prompt="{{ role.customPrompt|default:'' }}" data-original-prompt="{{ role.originalPrompt|default:'' }}" data-role-style-key="{{ role.styleKey|default:'' }}" data-role-style-keywords="{{ role.styleKeywords|default:'' }}" data-role-aspect-ratio="{{ role.aspectRatio|default:'' }}" data-role-quality="{{ role.quality|default:'' }}" data-role-detailed-view="{{ role.detailedView|yesno:'true,false' }}" data-role-face-closeup-view="{{ role.faceCloseupView|yesno:'true,false' }}">
     <!-- Role Header -->
     <div class="flex items-start justify-between mb-4">
         <div class="flex items-center gap-4">
@@ -167,6 +167,12 @@
                  data-is-active="{{ asset.isActive }}"
                  data-status="{{ asset.status }}"
                  data-prompt="{{ asset.clothingPrompt|default:'' }}"
+                 data-aspect-ratio="{{ asset.aspectRatio|default:role.aspectRatio|default:'' }}"
+                 data-quality="{{ asset.quality|default:role.quality|default:'' }}"
+                 data-style-key="{{ asset.styleKey|default:role.styleKey|default:'' }}"
+                 data-style-keywords="{{ asset.styleKeywords|default:role.styleKeywords|default:'' }}"
+                 data-detailed-view="{{ asset.detailedView|yesno:'true,false' }}"
+                 data-face-closeup-view="{{ asset.faceCloseupView|yesno:'true,false' }}"
                  data-generating="false"
                  onclick="selectClothing(this)">
                 {% if asset.clothingId == 1 %}
@@ -226,7 +232,12 @@
                  data-is-active="{{ asset.isActive }}"
                  data-status="{{ asset.status }}"
                  data-prompt="{{ asset.clothingPrompt|default:'' }}"
+                 data-aspect-ratio="{{ asset.aspectRatio|default:role.aspectRatio|default:'' }}"
+                 data-quality="{{ asset.quality|default:role.quality|default:'' }}"
+                 data-style-key="{{ asset.styleKey|default:role.styleKey|default:'' }}"
+                 data-style-keywords="{{ asset.styleKeywords|default:role.styleKeywords|default:'' }}"
                  data-detailed-view="{{ asset.detailedView|yesno:'true,false' }}"
+                 data-face-closeup-view="{{ asset.faceCloseupView|yesno:'true,false' }}"
                  data-generating="{% if asset.status == 0 %}true{% else %}false{% endif %}"
                  onclick="selectClothing(this)">
                 <!-- 默认服装标识 - 只有clothingId=1才显示星星 -->
@@ -329,7 +340,12 @@
                  data-is-active="{{ asset.isActive }}"
                  data-status="{{ asset.status }}"
                  data-prompt="{{ asset.clothingPrompt|default:'' }}"
+                 data-aspect-ratio="{{ asset.aspectRatio|default:role.aspectRatio|default:'' }}"
+                 data-quality="{{ asset.quality|default:role.quality|default:'' }}"
+                 data-style-key="{{ asset.styleKey|default:role.styleKey|default:'' }}"
+                 data-style-keywords="{{ asset.styleKeywords|default:role.styleKeywords|default:'' }}"
                  data-detailed-view="{{ asset.detailedView|yesno:'true,false' }}"
+                 data-face-closeup-view="{{ asset.faceCloseupView|yesno:'true,false' }}"
                  data-generating="{% if asset.status == 0 %}true{% else %}false{% endif %}"
                  onclick="selectClothing(this)">
                 {% if asset.clothingId == 1 %}
@@ -399,25 +415,25 @@
         </span>
         <span class="inline-flex items-center gap-1.5 rounded-full bg-white/[0.06] px-2.5 py-1">
             <span class="text-white/35">系列风格</span>
-            <span class="role-creation-style text-white/80" data-style-key="{{ role.styleKey|default:'' }}" data-style-keywords="{{ role.styleKeywords|default:'' }}">-</span>
+            <span class="role-creation-style text-white/80" data-style-key="{{ role.assets.0.styleKey|default:role.styleKey|default:'' }}" data-style-keywords="{{ role.assets.0.styleKeywords|default:role.styleKeywords|default:'' }}">-</span>
         </span>
         <span class="inline-flex items-center gap-1.5 rounded-full bg-white/[0.06] px-2.5 py-1">
             <span class="text-white/35">人物比例</span>
-            <span class="text-white/80">{{ role.aspectRatio|default:"-" }}</span>
+            <span class="role-creation-aspect-ratio text-white/80">{{ role.assets.0.aspectRatio|default:role.aspectRatio|default:"-" }}</span>
         </span>
         <span class="inline-flex items-center gap-1.5 rounded-full bg-white/[0.06] px-2.5 py-1">
             <span class="text-white/35">清晰度</span>
-            <span class="role-creation-quality text-white/80" data-quality="{{ role.quality|default:'' }}">{{ role.quality|default:"-" }}</span>
+            <span class="role-creation-quality text-white/80" data-quality="{{ role.assets.0.quality|default:role.quality|default:'' }}">{{ role.assets.0.quality|default:role.quality|default:"-" }}</span>
         </span>
         <span class="inline-flex items-center gap-1.5 rounded-full bg-white/[0.06] px-2.5 py-1">
             <span class="text-white/35">高级方式</span>
-            <span class="{% if role.detailedView or role.faceCloseupView %}text-emerald-200{% else %}text-white/60{% endif %}">
-                {% if role.detailedView or role.faceCloseupView %}已启用{% else %}未启用{% endif %}
+            <span class="role-creation-advanced {% if role.assets.0.detailedView or role.assets.0.faceCloseupView or role.detailedView or role.faceCloseupView %}text-emerald-200{% else %}text-white/60{% endif %}">
+                {% if role.assets.0.detailedView or role.assets.0.faceCloseupView or role.detailedView or role.faceCloseupView %}已启用{% else %}未启用{% endif %}
             </span>
         </span>
         <span class="inline-flex items-center gap-1.5 rounded-full bg-white/[0.06] px-2.5 py-1">
             <span class="text-white/35">选用方式</span>
-            <span class="text-white/80">{% if role.detailedView %}精细三视图{% elif role.faceCloseupView %}大头特写+三视图{% else %}-{% endif %}</span>
+            <span class="role-creation-layout text-white/80">{% if role.assets.0.detailedView or role.detailedView %}精细三视图{% elif role.assets.0.faceCloseupView or role.faceCloseupView %}大头特写+三视图{% else %}-{% endif %}</span>
         </span>
     </div>
     <!-- Prompt Info -->
@@ -713,7 +729,7 @@
                         <i data-lucide="layout-grid" class="w-4 h-4 inline mr-1"></i>人物精细三视图（含具体细节）
                     </span>
                 </label>
-                <p class="text-xs text-white/40 mt-2 ml-8">勾选后自动使用16:9比例，禁用风格选择，生成包含三视图、头部角度、细节特写的完整角色设定板</p>
+                <p class="text-xs text-white/40 mt-2 ml-8">勾选后自动使用16:9比例，生成包含三视图、头部角度、细节特写的完整角色设定板</p>
             </div>
 
             <!-- 大头特写+三视图选项 -->
@@ -1082,16 +1098,16 @@ const GENERATING_STATE_KEY = 'manga_generating_state';
 
 // 风格预设映射
 const STYLE_PRESETS = {
-    '3d_anime': 'ultra detailed 3D anime style, Pixar style, Disney style, high quality render, cinematic lighting',
-    'realistic': 'photorealistic, realistic portrait, real person photography, natural lighting, high detail',
-    'anime_jp': 'Japanese anime style, manga style, cel shading, vibrant colors, clean lines',
-    'cartoon_us': 'American cartoon style, bold lines, expressive features, colorful, stylized',
-    'watercolor': 'watercolor painting style, soft colors, artistic, hand-painted look, illustration',
-    'oil_painting': 'oil painting style, classical art, rich textures, artistic brush strokes',
-    'cyberpunk': 'cyberpunk style, neon lights, futuristic, sci-fi, dark atmosphere, glowing effects',
-    'chinese_style': 'Chinese art style, traditional Chinese painting, guofeng, elegant, classical beauty',
-    'pixel_art': 'pixel art style, retro game aesthetic, 8-bit, nostalgic, blocky pixels',
-    'chibi': 'chibi style, cute, deformed, big head small body, kawaii, adorable'
+    '3d_anime': 'stylized 3D anime character sheet, non-photorealistic, clean toon shader, soft cinematic lighting, polished game character render, consistent model turnaround',
+    'realistic': 'photorealistic character reference sheet, real person photography look, natural skin texture, studio lighting, realistic proportions, consistent full-body turnaround',
+    'anime_jp': '2D Japanese anime character sheet, clean manga line art, cel shading, vibrant but controlled colors, flat illustration finish, consistent turnaround',
+    'cartoon_us': '2D American cartoon character sheet, bold clean outlines, simplified expressive shapes, bright controlled colors, flat animation design, consistent turnaround',
+    'watercolor': 'watercolor illustration character sheet, soft hand-painted washes, visible paper texture, delicate edges, light layered pigments, consistent turnaround',
+    'oil_painting': 'classical oil painting inspired character sheet, painterly brushwork, rich layered colors, canvas texture, art portrait finish, consistent turnaround',
+    'cyberpunk': 'cyberpunk character sheet, neon sci-fi costume design, futuristic materials, high contrast rim lighting, dark techwear mood, consistent turnaround',
+    'chinese_style': '2D guofeng manhua character sheet, Chinese xianxia animation design, ancient Chinese costume reference, clean ink line art, elegant restrained colors, flat cel shading, strictly illustrated 2D finish, no 3D render, no real-person photo look, consistent turnaround',
+    'pixel_art': 'pixel art character sheet, retro game sprite aesthetic, crisp low-resolution pixel clusters, limited palette, orthographic turnaround, no painterly blending',
+    'chibi': '2D chibi character sheet, cute super-deformed proportions, big head small body, clean kawaii line art, soft flat colors, consistent turnaround'
 };
 
 // 风格名称映射（中文）
@@ -1131,6 +1147,81 @@ function resolveStyleKey(styleKey, styleKeywords) {
     return styleKey || '';
 }
 
+function isTrueValue(value) {
+    return value === true || value === 'true';
+}
+
+function escapeAttribute(value) {
+    return String(value ?? '').replace(/[&<>"']/g, ch => ({
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#39;'
+    }[ch]));
+}
+
+function getCreationSettingsFromTab(tab, roleCard) {
+    const styleKey = resolveStyleKey(tab?.dataset?.styleKey || '', tab?.dataset?.styleKeywords || '')
+        || resolveStyleKey(roleCard?.dataset?.roleStyleKey || '', roleCard?.dataset?.roleStyleKeywords || '');
+    return {
+        aspectRatio: tab?.dataset?.aspectRatio || roleCard?.dataset?.roleAspectRatio || '',
+        quality: tab?.dataset?.quality || roleCard?.dataset?.roleQuality || '',
+        styleKey: styleKey,
+        styleKeywords: tab?.dataset?.styleKeywords || roleCard?.dataset?.roleStyleKeywords || '',
+        detailedView: isTrueValue(tab?.dataset?.detailedView ?? roleCard?.dataset?.roleDetailedView),
+        faceCloseupView: isTrueValue(tab?.dataset?.faceCloseupView ?? roleCard?.dataset?.roleFaceCloseupView)
+    };
+}
+
+function applyVersionSettingsToTab(tab, settings) {
+    if (!tab || !settings) return;
+    tab.dataset.aspectRatio = settings.aspectRatio || '';
+    tab.dataset.quality = settings.quality || '';
+    tab.dataset.styleKey = settings.styleKey || '';
+    tab.dataset.styleKeywords = settings.styleKeywords || '';
+    tab.dataset.detailedView = isTrueValue(settings.detailedView) ? 'true' : 'false';
+    tab.dataset.faceCloseupView = isTrueValue(settings.faceCloseupView) ? 'true' : 'false';
+}
+
+function applyCreationSettingsFromTab(roleCard, tab) {
+    if (!roleCard) return;
+    const settings = getCreationSettingsFromTab(tab, roleCard);
+    const container = roleCard.querySelector('.role-creation-settings');
+    if (!container) return;
+
+    const styleEl = container.querySelector('.role-creation-style');
+    if (styleEl) {
+        styleEl.dataset.styleKey = settings.styleKey || '';
+        styleEl.dataset.styleKeywords = settings.styleKeywords || '';
+        styleEl.textContent = settings.styleKey ? (STYLE_NAMES[settings.styleKey] || settings.styleKey) : '-';
+    }
+
+    const ratioEl = container.querySelector('.role-creation-aspect-ratio');
+    if (ratioEl) {
+        ratioEl.textContent = settings.aspectRatio || '-';
+    }
+
+    const qualityEl = container.querySelector('.role-creation-quality');
+    if (qualityEl) {
+        qualityEl.dataset.quality = settings.quality || '';
+        qualityEl.textContent = settings.quality ? (QUALITY_NAMES[settings.quality] || settings.quality) : '-';
+    }
+
+    const advancedEl = container.querySelector('.role-creation-advanced');
+    if (advancedEl) {
+        const enabled = settings.detailedView || settings.faceCloseupView;
+        advancedEl.textContent = enabled ? '已启用' : '未启用';
+        advancedEl.classList.toggle('text-emerald-200', enabled);
+        advancedEl.classList.toggle('text-white/60', !enabled);
+    }
+
+    const layoutEl = container.querySelector('.role-creation-layout');
+    if (layoutEl) {
+        layoutEl.textContent = settings.detailedView ? '精细三视图' : (settings.faceCloseupView ? '大头特写+三视图' : '-');
+    }
+}
+
 // 页面加载时初始化风格名称显示
 (function initStyleDisplay() {
     const styleKeywordsDisplay = document.getElementById('styleKeywordsDisplay');
@@ -1146,13 +1237,8 @@ function resolveStyleKey(styleKey, styleKeywords) {
 })();
 
 function initRoleCreationSettingsDisplay() {
-    document.querySelectorAll('.role-creation-style').forEach(item => {
-        const styleKey = resolveStyleKey(item.dataset.styleKey || '', item.dataset.styleKeywords || '');
-        item.textContent = styleKey ? (STYLE_NAMES[styleKey] || styleKey) : '-';
-    });
-    document.querySelectorAll('.role-creation-quality').forEach(item => {
-        const quality = item.dataset.quality || '';
-        item.textContent = quality ? (QUALITY_NAMES[quality] || quality) : '-';
+    document.querySelectorAll('.role-card').forEach(roleCard => {
+        applyCreationSettingsFromTab(roleCard, roleCard.querySelector('.clothing-tab.active'));
     });
 }
 
@@ -1399,6 +1485,7 @@ function selectClothing(tab) {
     // 更新选中状态
     section.querySelectorAll('.clothing-tab').forEach(t => t.classList.remove('active', 'bg-violet-500/20'));
     tab.classList.add('active', 'bg-violet-500/20');
+    applyCreationSettingsFromTab(roleCard, tab);
 
     // 更新图片
     const imageUrl = tab.dataset.imageUrl;
@@ -1687,16 +1774,14 @@ function generateNewClothing(roleId) {
 function applyLockedNewClothingStyle(roleCard) {
     const styleSelect = document.getElementById('newClothingStyle');
     if (!styleSelect) return;
-    const seriesStyle = document.getElementById('styleKeywordsDisplay')?.dataset?.styleKeywords || '';
+    const activeTab = roleCard?.querySelector('.clothing-tab.active');
+    const activeSettings = getCreationSettingsFromTab(activeTab, roleCard);
     const roleStyleKey = roleCard?.dataset?.roleStyleKey
         || resolveStyleKey('', roleCard?.dataset?.roleStyleKeywords || '')
-        || seriesStyle
         || '';
+    const lockedStyle = activeSettings.styleKey || roleStyleKey;
     styleSelect.disabled = false;
-    styleSelect.value = roleStyleKey;
-    if (!styleSelect.value && seriesStyle) {
-        styleSelect.value = seriesStyle;
-    }
+    styleSelect.value = lockedStyle;
     styleSelect.disabled = true;
     styleSelect.classList.add('opacity-60', 'cursor-not-allowed');
     document.getElementById('newClothingStylePreviewBtn')?.setAttribute('disabled', 'disabled');
@@ -1909,6 +1994,7 @@ function submitNewClothing() {
             referenceImageUrl: referenceUrl,
             aspectRatio: aspectRatio,
             quality: quality,
+            styleKey: styleKey,
             styleKeywords: styleKeywords
         })
     })
@@ -1951,6 +2037,14 @@ function submitNewClothing() {
                 newTab.dataset.generating = 'true'; // 标记正在生成
                 newTab.dataset.status = '0'; // 生成中状态
                 newTab.dataset.prompt = prompt || ''; // 缓存提示词
+                applyVersionSettingsToTab(newTab, {
+                    aspectRatio,
+                    quality,
+                    styleKey,
+                    styleKeywords,
+                    detailedView: false,
+                    faceCloseupView: false
+                });
                 newTab.onclick = function() { selectClothing(this); };
                 newTab.innerHTML = `
                     <span class="text-sm font-medium">${clothingName}</span>
@@ -2123,6 +2217,7 @@ function regenerateClothing(roleId, clothingId) {
     const roleCard = document.querySelector(`.role-card[data-role-id="${roleId}"]`);
     const currentTab = roleCard?.querySelector(`.clothing-tab[data-clothing-id="${clothingId}"]`);
     const tabPrompt = currentTab?.dataset?.prompt || '';
+    const currentSettings = getCreationSettingsFromTab(currentTab, roleCard);
     // 如果tab没有提示词，则使用角色的自定义提示词
     const customPrompt = tabPrompt || roleCard?.dataset?.customPrompt || '';
 
@@ -2131,15 +2226,18 @@ function regenerateClothing(roleId, clothingId) {
     document.getElementById('regeneratePrompt').value = customPrompt;
     document.getElementById('regenerateReferenceUrl').value = '';
 
-    // 重置精细三视图复选框
-    document.getElementById('regenerateDetailedView').checked = false;
-    toggleRegenerateDetailedView(document.getElementById('regenerateDetailedView'));
-
-    // 重置大头特写复选框
-    document.getElementById('regenerateFaceCloseupView').checked = false;
-
-    // 隐藏警告提示
-    document.getElementById('regenerateLayoutWarning').classList.add('hidden');
+    const aspectSelect = document.getElementById('regenerateAspectRatio');
+    const qualitySelect = document.getElementById('regenerateQuality');
+    const styleSelect = document.getElementById('regenerateStyle');
+    const detailedCheckbox = document.getElementById('regenerateDetailedView');
+    const faceCheckbox = document.getElementById('regenerateFaceCloseupView');
+    resetRegenerateAdvancedControls();
+    aspectSelect.value = currentSettings.aspectRatio || '';
+    qualitySelect.value = currentSettings.quality || '';
+    styleSelect.value = currentSettings.styleKey || '';
+    detailedCheckbox.checked = currentSettings.detailedView;
+    faceCheckbox.checked = currentSettings.faceCloseupView && !currentSettings.detailedView;
+    updateRegenerateAdvancedControls();
 
     // 填充参考图选择器 - 显示所有角色的服装
     const selector = document.getElementById('regenerateImageSelector');
@@ -2256,13 +2354,12 @@ function submitRegenerate() {
         return;
     }
 
-    // 精细三视图模式或大头特写模式下不需要选择风格
-    if (!detailedView && !faceCloseupView && !styleKey) {
+    if (!styleKey) {
         showToast('请选择图片风格', 'error');
         return;
     }
 
-    const styleKeywords = detailedView ? '' : (STYLE_PRESETS[styleKey] || '');
+    const styleKeywords = STYLE_PRESETS[styleKey] || '';
 
     closeRegenerateModal();
 
@@ -2368,6 +2465,7 @@ function submitRegenerate() {
             isNewClothing: false,  // 重新生成始终为false
             aspectRatio: aspectRatio,
             quality: quality,
+            styleKey: styleKey,
             styleKeywords: styleKeywords,
             detailedView: detailedView,
             faceCloseupView: faceCloseupView
@@ -2377,6 +2475,17 @@ function submitRegenerate() {
     .then(data => {
         // API成功返回后，更新提示词显示
         if (data.success && prompt && prompt.trim()) {
+            if (currentTab) {
+                applyVersionSettingsToTab(currentTab, {
+                    aspectRatio,
+                    quality,
+                    styleKey,
+                    styleKeywords,
+                    detailedView,
+                    faceCloseupView
+                });
+                applyCreationSettingsFromTab(roleCard, currentTab);
+            }
             const promptDisplay = roleCard.querySelector('.prompt-display');
             if (promptDisplay) {
                 promptDisplay.textContent = prompt;
@@ -2547,7 +2656,13 @@ function showVersions(roleId, clothingId) {
                         <div class="relative rounded-lg overflow-hidden bg-white/5 cursor-pointer hover:ring-2 hover:ring-violet-500 group ${asset.isActive ? 'ring-2 ring-emerald-500' : ''}"
                              data-asset-id="${asset.id}"
                              data-asset-version="${asset.version}"
-                             data-asset-url="${asset.filePath.replace(/"/g, '&quot;')}">
+                             data-asset-url="${asset.filePath.replace(/"/g, '&quot;')}"
+                             data-aspect-ratio="${escapeAttribute(asset.aspectRatio || '')}"
+                             data-quality="${escapeAttribute(asset.quality || '')}"
+                             data-style-key="${escapeAttribute(resolveStyleKey(asset.styleKey || '', asset.styleKeywords || ''))}"
+                             data-style-keywords="${escapeAttribute(asset.styleKeywords || '')}"
+                             data-detailed-view="${asset.detailedView ? 'true' : 'false'}"
+                             data-face-closeup-view="${asset.faceCloseupView ? 'true' : 'false'}">
                             <img src="${asset.filePath}" class="w-full aspect-square object-cover" onclick="openModal(this.src)">
                             ${asset.isActive ? '<div class="absolute top-2 right-2 px-2 py-1 text-xs rounded bg-emerald-500 text-white">当前</div>' : ''}
                             <div class="absolute bottom-0 left-0 right-0 p-2 bg-gradient-to-t from-black/80">
@@ -2586,11 +2701,18 @@ function rollbackToVersionFromCard(btn) {
     const assetId = card.dataset.assetId;
     const newVersion = card.dataset.assetVersion;
     const imageUrl = card.dataset.assetUrl;
-    rollbackToVersion(currentRoleId, currentClothingId, assetId, newVersion, imageUrl);
+    rollbackToVersion(currentRoleId, currentClothingId, assetId, newVersion, imageUrl, {
+        aspectRatio: card.dataset.aspectRatio || '',
+        quality: card.dataset.quality || '',
+        styleKey: card.dataset.styleKey || '',
+        styleKeywords: card.dataset.styleKeywords || '',
+        detailedView: card.dataset.detailedView === 'true',
+        faceCloseupView: card.dataset.faceCloseupView === 'true'
+    });
 }
 
 // 回滚到指定版本
-function rollbackToVersion(roleId, clothingId, assetId, newVersion, imageUrl) {
+function rollbackToVersion(roleId, clothingId, assetId, newVersion, imageUrl, versionSettings = null) {
     fetch(`/api/${assetId}/rollback/`, {
         method: 'POST',
         headers: {'X-CSRFToken': getCookie('csrftoken')}
@@ -2614,6 +2736,10 @@ function rollbackToVersion(roleId, clothingId, assetId, newVersion, imageUrl) {
                     // 更新图片URL
                     tab.dataset.imageUrl = imageUrl;
                     tab.dataset.assetId = assetId;
+                    if (versionSettings) {
+                        applyVersionSettingsToTab(tab, versionSettings);
+                    }
+                    applyCreationSettingsFromTab(roleCard, tab);
 
                     // 获取选中版本的提示词并更新
                     fetch(`/api/${assetId}/prompt/`)
@@ -3429,13 +3555,13 @@ function toggleNewRoleDetailedView(checkbox) {
         });
         aspectSelect.style.opacity = '0.6';
 
-        // 禁用风格选择
-        styleSelect.disabled = true;
-        styleSelect.style.opacity = '0.6';
-        styleSelect.style.cursor = 'not-allowed';
-        stylePreviewBtn.disabled = true;
-        stylePreviewBtn.style.opacity = '0.5';
-        stylePreviewBtn.style.cursor = 'not-allowed';
+        // 风格仍按当前版本保留，只固定比例。
+        styleSelect.disabled = false;
+        styleSelect.style.opacity = '1';
+        styleSelect.style.cursor = '';
+        stylePreviewBtn.disabled = false;
+        stylePreviewBtn.style.opacity = '1';
+        stylePreviewBtn.style.cursor = '';
     } else {
         // 隐藏警告提示（如果另一个选项也没选中）
         if (!faceCloseupCheckbox.checked) {
@@ -3447,12 +3573,10 @@ function toggleNewRoleDetailedView(checkbox) {
             opt.disabled = false;
             opt.style.color = '';
         });
-        aspectSelect.value = '';
         aspectSelect.style.opacity = '1';
 
         // 恢复风格选择
         styleSelect.disabled = false;
-        styleSelect.value = '';
         styleSelect.style.opacity = '1';
         styleSelect.style.cursor = '';
         stylePreviewBtn.disabled = false;
@@ -3510,10 +3634,9 @@ function toggleRegenerateDetailedView(checkbox) {
         });
         aspectSelect.style.opacity = '0.6';
 
-        // 禁用风格选择
-        styleSelect.disabled = true;
-        styleSelect.style.opacity = '0.6';
-        styleSelect.style.cursor = 'not-allowed';
+        styleSelect.disabled = false;
+        styleSelect.style.opacity = '1';
+        styleSelect.style.cursor = '';
     } else {
         // 隐藏警告提示（如果另一个选项也没勾选）
         if (!faceCloseupCheckbox.checked) {
@@ -3525,12 +3648,10 @@ function toggleRegenerateDetailedView(checkbox) {
             opt.disabled = false;
             opt.style.color = '';
         });
-        aspectSelect.value = '';
         aspectSelect.style.opacity = '1';
 
         // 恢复风格选择
         styleSelect.disabled = false;
-        styleSelect.value = '';
         styleSelect.style.opacity = '1';
         styleSelect.style.cursor = '';
     }
@@ -3563,6 +3684,43 @@ function toggleRegenerateFaceCloseupView(checkbox) {
         if (!detailedViewCheckbox.checked) {
             warningDiv.classList.add('hidden');
         }
+    }
+}
+
+function resetRegenerateAdvancedControls() {
+    const aspectSelect = document.getElementById('regenerateAspectRatio');
+    const styleSelect = document.getElementById('regenerateStyle');
+    const warningDiv = document.getElementById('regenerateLayoutWarning');
+    aspectSelect.querySelectorAll('option').forEach(opt => {
+        opt.disabled = false;
+        opt.style.color = '';
+    });
+    aspectSelect.style.opacity = '1';
+    styleSelect.disabled = false;
+    styleSelect.style.opacity = '1';
+    styleSelect.style.cursor = '';
+    warningDiv.classList.add('hidden');
+}
+
+function updateRegenerateAdvancedControls() {
+    const detailed = document.getElementById('regenerateDetailedView');
+    const face = document.getElementById('regenerateFaceCloseupView');
+    const aspectSelect = document.getElementById('regenerateAspectRatio');
+    const warningDiv = document.getElementById('regenerateLayoutWarning');
+    resetRegenerateAdvancedControls();
+    if (detailed.checked) {
+        face.checked = false;
+        aspectSelect.value = '16:9';
+        aspectSelect.querySelectorAll('option').forEach(opt => {
+            if (opt.value !== '16:9') {
+                opt.disabled = true;
+                opt.style.color = '#666';
+            }
+        });
+        aspectSelect.style.opacity = '0.6';
+        warningDiv.classList.remove('hidden');
+    } else if (face.checked) {
+        warningDiv.classList.remove('hidden');
     }
 }
 
@@ -3619,8 +3777,7 @@ async function submitAddRole(event) {
         return;
     }
 
-    // 手动上传必须选择风格；精细三视图模式或大头特写模式下不需要选择风格
-    if (((!detailedView && !faceCloseupView) || manualUploadEnabled) && !styleKey) {
+    if (!styleKey) {
         showToast('请选择图片风格', 'error');
         return;
     }
@@ -3647,7 +3804,7 @@ async function submitAddRole(event) {
         return;
     }
 
-    const styleKeywords = detailedView && !manualUploadEnabled ? '' : (STYLE_PRESETS[styleKey] || '');
+    const styleKeywords = STYLE_PRESETS[styleKey] || '';
 
     fetch(`/roles/series/{{ series_id }}/create/`, {
         method: 'POST',
@@ -4206,6 +4363,7 @@ function selectClothingWithoutURL(tab) {
     // 更新选中状态
     section.querySelectorAll('.clothing-tab').forEach(t => t.classList.remove('active', 'bg-violet-500/20'));
     tab.classList.add('active', 'bg-violet-500/20');
+    applyCreationSettingsFromTab(roleCard, tab);
 
     // 更新图片
     const imageUrl = tab.dataset.imageUrl;

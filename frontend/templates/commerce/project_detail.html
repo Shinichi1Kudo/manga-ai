@@ -11,10 +11,14 @@
                 <p class="text-sm font-semibold text-emerald-200">{{ project.contentType }} / {{ project.aspectRatio }}</p>
                 <h1 class="mt-2 text-2xl font-bold">带货视频分镜</h1>
             </div>
-            <form method="post" action="/commerce/projects/{{ project.id }}/generate-video/">
-                {% csrf_token %}
-                <button class="rounded-xl bg-emerald-500 px-4 py-2.5 font-semibold text-white hover:bg-emerald-400">生成视频</button>
-            </form>
+            {% if project.tryOnFirstFrameEnabled and not project.tryOnFirstFrameConfirmed %}
+                <div class="rounded-xl border border-amber-200/15 bg-amber-300/10 px-4 py-2 text-sm text-amber-50/80">首帧确认后再生成视频</div>
+            {% else %}
+                <form method="post" action="/commerce/projects/{{ project.id }}/generate-video/">
+                    {% csrf_token %}
+                    <button class="rounded-xl bg-emerald-500 px-4 py-2.5 font-semibold text-white hover:bg-emerald-400">生成视频</button>
+                </form>
+            {% endif %}
         </div>
 
         <div class="mb-6 grid gap-4 md:grid-cols-2">
@@ -27,6 +31,36 @@
                 <img src="{{ project.productImageUrl }}" alt="商品图" class="aspect-[3/4] w-full rounded-lg object-cover">
             </div>
         </div>
+
+        {% if project.tryOnFirstFrameEnabled %}
+            <div class="mb-6 rounded-xl border border-emerald-200/15 bg-emerald-300/[0.04] p-4">
+                <div class="mb-3 flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                        <p class="text-sm font-semibold text-emerald-100">试穿首帧确认</p>
+                        <p class="mt-1 text-xs text-white/45">先确认首帧图的商品还原和模特姿态，再生成视频</p>
+                        <p class="mt-1 text-xs text-white/35">{{ project.tryOnFirstFrameAspectRatio|default:"9:16" }} / {{ project.tryOnFirstFrameResolution|default:"2K" }}</p>
+                    </div>
+                    {% if project.tryOnFirstFrameConfirmed %}
+                        <span class="rounded-full border border-emerald-200/30 bg-emerald-300/15 px-2.5 py-1 text-xs text-emerald-50">已确认</span>
+                    {% else %}
+                        <span class="rounded-full border border-white/10 bg-white/[0.05] px-2.5 py-1 text-xs text-white/60">{{ project.tryOnFirstFrameStatus|default:"生成中" }}</span>
+                    {% endif %}
+                </div>
+                {% if project.tryOnFirstFrameUrl %}
+                    <img src="{{ project.tryOnFirstFrameUrl }}" alt="试穿首帧确认图" class="max-h-[560px] w-full rounded-lg object-contain">
+                    {% if not project.tryOnFirstFrameConfirmed %}
+                        <form method="post" action="/commerce/projects/{{ project.id }}/confirm-first-frame/" class="mt-3">
+                            {% csrf_token %}
+                            <button class="flex h-10 w-full items-center justify-center rounded-lg bg-emerald-500 px-3 text-sm font-semibold text-white transition hover:bg-emerald-400">确认首帧</button>
+                        </form>
+                    {% endif %}
+                {% elif project.tryOnFirstFrameError %}
+                    <p class="rounded-lg border border-red-300/15 bg-red-300/10 p-3 text-sm text-red-100/80">{{ project.tryOnFirstFrameError }}</p>
+                {% else %}
+                    <p class="rounded-lg border border-dashed border-white/10 bg-black/10 p-3 text-sm text-white/45">首帧确认图生成中，稍后刷新查看。</p>
+                {% endif %}
+            </div>
+        {% endif %}
 
         <div class="space-y-4">
             {% for shot in project.shots %}

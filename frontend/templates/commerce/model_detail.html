@@ -115,13 +115,89 @@
                                         {% csrf_token %}
                                         <input type="hidden" name="content_type" value="try_on">
                                         <input type="hidden" name="aspect_ratio" value="9:16">
+                                        <div class="commerce-try-on-shot-options rounded-xl border border-white/[0.08] bg-white/[0.025] p-3">
+                                            <div class="mb-2 flex items-center justify-between gap-3">
+                                                <span class="text-xs font-semibold text-white/58">展示方式</span>
+                                                <span class="text-xs text-white/35">可多选</span>
+                                            </div>
+                                            <div class="grid grid-cols-2 gap-2">
+                                                <label class="group cursor-pointer">
+                                                    <input type="checkbox" name="try_on_shots" value="全身站立" class="peer sr-only">
+                                                    <span class="flex h-10 items-center justify-center rounded-lg border border-white/10 bg-white/[0.04] px-3 text-sm font-semibold text-white/62 transition group-hover:border-emerald-200/35 group-hover:bg-emerald-300/10 peer-checked:border-emerald-200/55 peer-checked:bg-emerald-300/18 peer-checked:text-white">全身站立</span>
+                                                </label>
+                                                <label class="group cursor-pointer">
+                                                    <input type="checkbox" name="try_on_shots" value="转身展示" class="peer sr-only">
+                                                    <span class="flex h-10 items-center justify-center rounded-lg border border-white/10 bg-white/[0.04] px-3 text-sm font-semibold text-white/62 transition group-hover:border-emerald-200/35 group-hover:bg-emerald-300/10 peer-checked:border-emerald-200/55 peer-checked:bg-emerald-300/18 peer-checked:text-white">转身展示</span>
+                                                </label>
+                                                <label class="group cursor-pointer">
+                                                    <input type="checkbox" name="try_on_shots" value="走动展示" class="peer sr-only">
+                                                    <span class="flex h-10 items-center justify-center rounded-lg border border-white/10 bg-white/[0.04] px-3 text-sm font-semibold text-white/62 transition group-hover:border-emerald-200/35 group-hover:bg-emerald-300/10 peer-checked:border-emerald-200/55 peer-checked:bg-emerald-300/18 peer-checked:text-white">走动展示</span>
+                                                </label>
+                                                <label class="group cursor-pointer">
+                                                    <input type="checkbox" name="try_on_shots" value="细节展示" class="peer sr-only">
+                                                    <span class="flex h-10 items-center justify-center rounded-lg border border-white/10 bg-white/[0.04] px-3 text-sm font-semibold text-white/62 transition group-hover:border-emerald-200/35 group-hover:bg-emerald-300/10 peer-checked:border-emerald-200/55 peer-checked:bg-emerald-300/18 peer-checked:text-white">细节展示</span>
+                                                </label>
+                                            </div>
+                                        </div>
+                                        <div class="commerce-try-on-scene-options rounded-xl border border-white/[0.08] bg-white/[0.025] p-3">
+                                            <div class="mb-2 flex items-center justify-between gap-3">
+                                                <span class="text-xs font-semibold text-white/58">从场景库选择</span>
+                                                {% if series_id %}
+                                                    <a href="/commerce/series/{{ series_id }}/scenes/" class="text-xs font-semibold text-cyan-100/75 hover:text-cyan-100">生成场景图</a>
+                                                {% endif %}
+                                            </div>
+                                            <div class="grid grid-cols-2 gap-2">
+                                                {% for scene in product.availableScenes %}
+                                                    <label class="group cursor-pointer">
+                                                        <input type="checkbox" name="scene_ids" value="{{ scene.id }}" class="peer sr-only">
+                                                        <span class="block overflow-hidden rounded-lg border border-white/10 bg-white/[0.04] transition group-hover:border-cyan-200/35 peer-checked:border-cyan-200/55 peer-checked:bg-cyan-300/18">
+                                                            <img src="{{ scene.imageUrl }}" alt="{{ scene.name }}" class="h-20 w-full object-cover" loading="lazy">
+                                                            <span class="block truncate px-2 py-1.5 text-xs font-semibold text-white/62 peer-checked:text-white">{{ scene.name }}</span>
+                                                        </span>
+                                                    </label>
+                                                {% empty %}
+                                                    <div class="col-span-2 rounded-lg border border-dashed border-white/10 bg-black/10 p-3 text-xs text-white/42">暂无可用场景图，先去场景库生成场景图。</div>
+                                                {% endfor %}
+                                            </div>
+                                        </div>
+                                        <div class="commerce-try-on-first-frame-check rounded-xl border border-emerald-200/10 bg-emerald-300/[0.035] p-3">
+                                            <label class="group flex cursor-pointer items-start gap-3">
+                                                <input type="checkbox" name="try_on_first_frame_check" value="enabled" class="peer sr-only">
+                                                <span class="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded border border-white/15 bg-black/20 text-transparent transition peer-checked:border-emerald-200/70 peer-checked:bg-emerald-400 peer-checked:text-slate-950">
+                                                    <i data-lucide="check" class="h-3.5 w-3.5"></i>
+                                                </span>
+                                                <span class="min-w-0">
+                                                    <span class="block text-sm font-semibold text-white/78 transition peer-checked:text-white">试穿首帧确认</span>
+                                                    <span class="mt-1 block text-xs leading-5 text-white/45">先生成首帧确认图，确认商品还原和模特姿态后，再进入视频生成</span>
+                                                </span>
+                                            </label>
+                                            <div class="mt-3 grid gap-2 sm:grid-cols-2">
+                                                <label class="block">
+                                                    <span class="mb-1 block text-xs font-semibold text-white/48">图片比例</span>
+                                                    <select name="try_on_first_frame_aspect_ratio" class="input-modern w-full text-sm">
+                                                        <option value="9:16">9:16 - 抖音 / 快手 / 视频号全屏竖屏</option>
+                                                        <option value="3:4">3:4 - 真人模特 / 服装试穿竖图</option>
+                                                        <option value="1:1">1:1 - 商品卡片 / 方图投放素材</option>
+                                                        <option value="16:9">16:9 - 横屏展示 / 店铺详情素材</option>
+                                                    </select>
+                                                </label>
+                                                <label class="block">
+                                                    <span class="mb-1 block text-xs font-semibold text-white/48">分辨率</span>
+                                                    <select name="try_on_first_frame_resolution" class="input-modern w-full text-sm">
+                                                        <option value="2K">2K</option>
+                                                        <option value="3K">3K</option>
+                                                        <option value="4K">4K</option>
+                                                    </select>
+                                                </label>
+                                            </div>
+                                        </div>
                                         <label class="block">
-                                            <span class="mb-1 block text-xs font-semibold text-white/55">试穿场景</span>
-                                            <textarea name="try_on_requirements" rows="3" class="input-modern w-full resize-y text-sm" placeholder="例如：通勤街景、室内全身镜、户外自然光"></textarea>
+                                            <span class="mb-1 block text-xs font-semibold text-white/55">补充要求</span>
+                                            <textarea name="try_on_requirements" rows="2" class="input-modern w-full resize-y text-sm" placeholder="例如：柔和补光、保留衣料垂感、不要夸张姿势"></textarea>
                                         </label>
                                         <button class="flex h-10 w-full items-center justify-center gap-2 rounded-lg bg-emerald-500 px-3 text-sm font-semibold text-white transition hover:bg-emerald-400">
                                             <i data-lucide="sparkles" class="h-4 w-4"></i>
-                                            生成试穿
+                                            创建试穿任务
                                         </button>
                                     </form>
                                 </div>
@@ -139,11 +215,166 @@
             <form method="post" action="/commerce/models/{{ model_id }}/products/create/" enctype="multipart/form-data" class="mt-4 space-y-3">
                 {% csrf_token %}
                 <input name="name" required class="input-modern w-full" placeholder="商品名称">
-                <input name="product_type" class="input-modern w-full" placeholder="商品类型：上衣、裙装、外套">
-                <label class="block">
-                    <span class="mb-2 block text-sm text-white/65">商品图片</span>
-                    <input type="file" name="product_image" required accept="image/jpeg,image/png,image/webp" class="input-modern w-full">
+                <input type="hidden" name="product_type" required data-commerce-product-type-input>
+                <div class="commerce-product-type-picker rounded-xl border border-white/10 bg-white/[0.03] p-3">
+                    <div class="mb-3 flex items-center justify-between gap-3">
+                        <span class="text-sm font-medium text-white/70">商品类型 <span class="text-red-300">*</span></span>
+                        <span class="text-xs text-white/40" data-commerce-product-type-selected>请选择</span>
+                    </div>
+                    <div class="max-h-[420px] space-y-4 overflow-y-auto pr-1">
+                        <div>
+                            <p class="mb-2 text-xs font-semibold text-white/50">上装</p>
+                            <div class="grid grid-cols-3 gap-2">
+                                <button type="button" class="commerce-product-type-option rounded-lg border border-white/10 bg-white/[0.035] p-2 text-xs text-white/65 transition hover:border-cyan-200/40 hover:bg-cyan-300/10" data-product-type-option data-product-type="T恤">
+                                    <img src="/static/images/commerce/product-types/t-shirt.webp" alt="T恤" class="commerce-product-type-image mx-auto h-14 w-14 object-contain">
+                                    <span class="mt-1 block">T恤</span>
+                                </button>
+                                <button type="button" class="commerce-product-type-option rounded-lg border border-white/10 bg-white/[0.035] p-2 text-xs text-white/65 transition hover:border-cyan-200/40 hover:bg-cyan-300/10" data-product-type-option data-product-type="衬衫">
+                                    <img src="/static/images/commerce/product-types/shirt.webp" alt="衬衫" class="commerce-product-type-image mx-auto h-14 w-14 object-contain">
+                                    <span class="mt-1 block">衬衫</span>
+                                </button>
+                                <button type="button" class="commerce-product-type-option rounded-lg border border-white/10 bg-white/[0.035] p-2 text-xs text-white/65 transition hover:border-cyan-200/40 hover:bg-cyan-300/10" data-product-type-option data-product-type="毛衣">
+                                    <img src="/static/images/commerce/product-types/sweater.webp" alt="毛衣" class="commerce-product-type-image mx-auto h-14 w-14 object-contain">
+                                    <span class="mt-1 block">毛衣</span>
+                                </button>
+                                <button type="button" class="commerce-product-type-option rounded-lg border border-white/10 bg-white/[0.035] p-2 text-xs text-white/65 transition hover:border-cyan-200/40 hover:bg-cyan-300/10" data-product-type-option data-product-type="雪纺衫">
+                                    <img src="/static/images/commerce/product-types/chiffon-shirt.webp" alt="雪纺衫" class="commerce-product-type-image mx-auto h-14 w-14 object-contain">
+                                    <span class="mt-1 block">雪纺衫</span>
+                                </button>
+                                <button type="button" class="commerce-product-type-option rounded-lg border border-white/10 bg-white/[0.035] p-2 text-xs text-white/65 transition hover:border-cyan-200/40 hover:bg-cyan-300/10" data-product-type-option data-product-type="马甲">
+                                    <img src="/static/images/commerce/product-types/vest.webp" alt="马甲" class="commerce-product-type-image mx-auto h-14 w-14 object-contain">
+                                    <span class="mt-1 block">马甲</span>
+                                </button>
+                                <button type="button" class="commerce-product-type-option rounded-lg border border-white/10 bg-white/[0.035] p-2 text-xs text-white/65 transition hover:border-cyan-200/40 hover:bg-cyan-300/10" data-product-type-option data-product-type="卫衣">
+                                    <img src="/static/images/commerce/product-types/hoodie.webp" alt="卫衣" class="commerce-product-type-image mx-auto h-14 w-14 object-contain">
+                                    <span class="mt-1 block">卫衣</span>
+                                </button>
+                            </div>
+                        </div>
+                        <div>
+                            <p class="mb-2 text-xs font-semibold text-white/50">女裙</p>
+                            <div class="grid grid-cols-3 gap-2">
+                                <button type="button" class="commerce-product-type-option rounded-lg border border-white/10 bg-white/[0.035] p-2 text-xs text-white/65 transition hover:border-cyan-200/40 hover:bg-cyan-300/10" data-product-type-option data-product-type="连衣裙">
+                                    <img src="/static/images/commerce/product-types/dress.webp" alt="连衣裙" class="commerce-product-type-image mx-auto h-14 w-14 object-contain">
+                                    <span class="mt-1 block">连衣裙</span>
+                                </button>
+                                <button type="button" class="commerce-product-type-option rounded-lg border border-white/10 bg-white/[0.035] p-2 text-xs text-white/65 transition hover:border-cyan-200/40 hover:bg-cyan-300/10" data-product-type-option data-product-type="半身裙">
+                                    <img src="/static/images/commerce/product-types/skirt.webp" alt="半身裙" class="commerce-product-type-image mx-auto h-14 w-14 object-contain">
+                                    <span class="mt-1 block">半身裙</span>
+                                </button>
+                                <button type="button" class="commerce-product-type-option rounded-lg border border-white/10 bg-white/[0.035] p-2 text-xs text-white/65 transition hover:border-cyan-200/40 hover:bg-cyan-300/10" data-product-type-option data-product-type="旗袍">
+                                    <img src="/static/images/commerce/product-types/qipao.webp" alt="旗袍" class="commerce-product-type-image mx-auto h-14 w-14 object-contain">
+                                    <span class="mt-1 block">旗袍</span>
+                                </button>
+                            </div>
+                        </div>
+                        <div>
+                            <p class="mb-2 text-xs font-semibold text-white/50">女裤</p>
+                            <div class="grid grid-cols-3 gap-2">
+                                <button type="button" class="commerce-product-type-option rounded-lg border border-white/10 bg-white/[0.035] p-2 text-xs text-white/65 transition hover:border-cyan-200/40 hover:bg-cyan-300/10" data-product-type-option data-product-type="休闲裤">
+                                    <img src="/static/images/commerce/product-types/casual-pants.webp" alt="休闲裤" class="commerce-product-type-image mx-auto h-14 w-14 object-contain">
+                                    <span class="mt-1 block">休闲裤</span>
+                                </button>
+                                <button type="button" class="commerce-product-type-option rounded-lg border border-white/10 bg-white/[0.035] p-2 text-xs text-white/65 transition hover:border-cyan-200/40 hover:bg-cyan-300/10" data-product-type-option data-product-type="牛仔裤">
+                                    <img src="/static/images/commerce/product-types/jeans.webp" alt="牛仔裤" class="commerce-product-type-image mx-auto h-14 w-14 object-contain">
+                                    <span class="mt-1 block">牛仔裤</span>
+                                </button>
+                                <button type="button" class="commerce-product-type-option rounded-lg border border-white/10 bg-white/[0.035] p-2 text-xs text-white/65 transition hover:border-cyan-200/40 hover:bg-cyan-300/10" data-product-type-option data-product-type="打底裤">
+                                    <img src="/static/images/commerce/product-types/leggings.webp" alt="打底裤" class="commerce-product-type-image mx-auto h-14 w-14 object-contain">
+                                    <span class="mt-1 block">打底裤</span>
+                                </button>
+                                <button type="button" class="commerce-product-type-option rounded-lg border border-white/10 bg-white/[0.035] p-2 text-xs text-white/65 transition hover:border-cyan-200/40 hover:bg-cyan-300/10" data-product-type-option data-product-type="棉裤羽绒裤">
+                                    <img src="/static/images/commerce/product-types/padded-pants.webp" alt="棉裤羽绒裤" class="commerce-product-type-image mx-auto h-14 w-14 object-contain">
+                                    <span class="mt-1 block">棉裤羽绒裤</span>
+                                </button>
+                            </div>
+                        </div>
+                        <div>
+                            <p class="mb-2 text-xs font-semibold text-white/50">套装</p>
+                            <div class="grid grid-cols-3 gap-2">
+                                <button type="button" class="commerce-product-type-option rounded-lg border border-white/10 bg-white/[0.035] p-2 text-xs text-white/65 transition hover:border-cyan-200/40 hover:bg-cyan-300/10" data-product-type-option data-product-type="时尚套装">
+                                    <img src="/static/images/commerce/product-types/fashion-suit.webp" alt="时尚套装" class="commerce-product-type-image mx-auto h-14 w-14 object-contain">
+                                    <span class="mt-1 block">时尚套装</span>
+                                </button>
+                                <button type="button" class="commerce-product-type-option rounded-lg border border-white/10 bg-white/[0.035] p-2 text-xs text-white/65 transition hover:border-cyan-200/40 hover:bg-cyan-300/10" data-product-type-option data-product-type="运动套装">
+                                    <img src="/static/images/commerce/product-types/sports-suit.webp" alt="运动套装" class="commerce-product-type-image mx-auto h-14 w-14 object-contain">
+                                    <span class="mt-1 block">运动套装</span>
+                                </button>
+                            </div>
+                        </div>
+                        <div>
+                            <p class="mb-2 text-xs font-semibold text-white/50">外套</p>
+                            <div class="grid grid-cols-3 gap-2">
+                                <button type="button" class="commerce-product-type-option rounded-lg border border-white/10 bg-white/[0.035] p-2 text-xs text-white/65 transition hover:border-cyan-200/40 hover:bg-cyan-300/10" data-product-type-option data-product-type="短外套">
+                                    <img src="/static/images/commerce/product-types/short-coat.webp" alt="短外套" class="commerce-product-type-image mx-auto h-14 w-14 object-contain">
+                                    <span class="mt-1 block">短外套</span>
+                                </button>
+                                <button type="button" class="commerce-product-type-option rounded-lg border border-white/10 bg-white/[0.035] p-2 text-xs text-white/65 transition hover:border-cyan-200/40 hover:bg-cyan-300/10" data-product-type-option data-product-type="西装">
+                                    <img src="/static/images/commerce/product-types/blazer.webp" alt="西装" class="commerce-product-type-image mx-auto h-14 w-14 object-contain">
+                                    <span class="mt-1 block">西装</span>
+                                </button>
+                                <button type="button" class="commerce-product-type-option rounded-lg border border-white/10 bg-white/[0.035] p-2 text-xs text-white/65 transition hover:border-cyan-200/40 hover:bg-cyan-300/10" data-product-type-option data-product-type="风衣">
+                                    <img src="/static/images/commerce/product-types/trench-coat.webp" alt="风衣" class="commerce-product-type-image mx-auto h-14 w-14 object-contain">
+                                    <span class="mt-1 block">风衣</span>
+                                </button>
+                                <button type="button" class="commerce-product-type-option rounded-lg border border-white/10 bg-white/[0.035] p-2 text-xs text-white/65 transition hover:border-cyan-200/40 hover:bg-cyan-300/10" data-product-type-option data-product-type="羽绒服">
+                                    <img src="/static/images/commerce/product-types/down-jacket.webp" alt="羽绒服" class="commerce-product-type-image mx-auto h-14 w-14 object-contain">
+                                    <span class="mt-1 block">羽绒服</span>
+                                </button>
+                                <button type="button" class="commerce-product-type-option rounded-lg border border-white/10 bg-white/[0.035] p-2 text-xs text-white/65 transition hover:border-cyan-200/40 hover:bg-cyan-300/10" data-product-type-option data-product-type="毛呢大衣">
+                                    <img src="/static/images/commerce/product-types/wool-coat.webp" alt="毛呢大衣" class="commerce-product-type-image mx-auto h-14 w-14 object-contain">
+                                    <span class="mt-1 block">毛呢大衣</span>
+                                </button>
+                                <button type="button" class="commerce-product-type-option rounded-lg border border-white/10 bg-white/[0.035] p-2 text-xs text-white/65 transition hover:border-cyan-200/40 hover:bg-cyan-300/10" data-product-type-option data-product-type="皮衣">
+                                    <img src="/static/images/commerce/product-types/leather-jacket.webp" alt="皮衣" class="commerce-product-type-image mx-auto h-14 w-14 object-contain">
+                                    <span class="mt-1 block">皮衣</span>
+                                </button>
+                                <button type="button" class="commerce-product-type-option rounded-lg border border-white/10 bg-white/[0.035] p-2 text-xs text-white/65 transition hover:border-cyan-200/40 hover:bg-cyan-300/10" data-product-type-option data-product-type="皮草">
+                                    <img src="/static/images/commerce/product-types/fur-coat.webp" alt="皮草" class="commerce-product-type-image mx-auto h-14 w-14 object-contain">
+                                    <span class="mt-1 block">皮草</span>
+                                </button>
+                                <button type="button" class="commerce-product-type-option rounded-lg border border-white/10 bg-white/[0.035] p-2 text-xs text-white/65 transition hover:border-cyan-200/40 hover:bg-cyan-300/10" data-product-type-option data-product-type="棉衣棉服">
+                                    <img src="/static/images/commerce/product-types/padded-coat.webp" alt="棉衣棉服" class="commerce-product-type-image mx-auto h-14 w-14 object-contain">
+                                    <span class="mt-1 block">棉衣棉服</span>
+                                </button>
+                            </div>
+                        </div>
+                        <div>
+                            <p class="mb-2 text-xs font-semibold text-white/50">特色女装</p>
+                            <div class="grid grid-cols-3 gap-2">
+                                <button type="button" class="commerce-product-type-option rounded-lg border border-white/10 bg-white/[0.035] p-2 text-xs text-white/65 transition hover:border-cyan-200/40 hover:bg-cyan-300/10" data-product-type-option data-product-type="中老年女装">
+                                    <img src="/static/images/commerce/product-types/middle-aged-women.webp" alt="中老年女装" class="commerce-product-type-image mx-auto h-14 w-14 object-contain">
+                                    <span class="mt-1 block">中老年女装</span>
+                                </button>
+                                <button type="button" class="commerce-product-type-option rounded-lg border border-white/10 bg-white/[0.035] p-2 text-xs text-white/65 transition hover:border-cyan-200/40 hover:bg-cyan-300/10" data-product-type-option data-product-type="大码女装">
+                                    <img src="/static/images/commerce/product-types/plus-size-women.webp" alt="大码女装" class="commerce-product-type-image mx-auto h-14 w-14 object-contain">
+                                    <span class="mt-1 block">大码女装</span>
+                                </button>
+                                <button type="button" class="commerce-product-type-option flex min-h-[5rem] items-center justify-center rounded-lg border border-white/10 bg-white/[0.035] p-2 text-sm font-semibold text-white/65 transition hover:border-cyan-200/40 hover:bg-cyan-300/10" data-product-type-option data-product-type="其他">
+                                    <span>其他</span>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    <p class="mt-2 hidden text-xs text-red-200" data-commerce-product-type-error>请先选择商品类型</p>
+                </div>
+                <label class="commerce-product-upload group block cursor-pointer rounded-xl border border-dashed border-white/15 bg-white/[0.035] p-3 transition hover:border-emerald-200/45 hover:bg-emerald-300/10 focus-within:border-emerald-200/55 focus-within:ring-2 focus-within:ring-emerald-300/20">
+                    <span class="mb-2 block text-sm font-medium text-white/70">商品图片 <span class="text-red-300">*</span></span>
+                    <span class="flex items-center justify-between gap-3">
+                        <span class="flex min-w-0 items-center gap-3">
+                            <span class="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-white/10 bg-black/20 text-emerald-100/80 transition group-hover:border-emerald-200/35 group-hover:text-emerald-100">
+                                <i data-lucide="image-plus" class="h-5 w-5"></i>
+                            </span>
+                            <span class="min-w-0">
+                                <span class="block truncate text-sm font-semibold text-white/80" data-commerce-product-upload-name>未选择图片</span>
+                                <span class="mt-1 block text-xs text-white/45">支持 JPG、PNG、WEBP，最多 5 张，单张最大 10MB</span>
+                            </span>
+                        </span>
+                        <span class="shrink-0 rounded-lg border border-emerald-200/30 bg-gradient-to-r from-emerald-500 to-cyan-500 px-3 py-2 text-sm font-semibold text-white shadow-lg shadow-emerald-950/25 transition group-hover:border-emerald-100/50 group-hover:from-emerald-400 group-hover:to-cyan-400">选择图片</span>
+                    </span>
+                    <input type="file" name="product_image" required multiple accept="image/jpeg,image/png,image/webp" class="commerce-product-upload-input sr-only">
                 </label>
+                <div class="hidden space-y-2 rounded-xl border border-white/10 bg-white/[0.03] p-3" data-commerce-product-image-usages></div>
                 <button class="w-full rounded-xl bg-emerald-500 px-4 py-2.5 font-semibold text-white hover:bg-emerald-400">添加商品</button>
             </form>
         </aside>
@@ -179,6 +410,99 @@ function selectCommerceProductVideoMode(button, mode) {
 }
 
 document.addEventListener('DOMContentLoaded', () => {
+    const productTypeInput = document.querySelector('[data-commerce-product-type-input]');
+    const productTypeSelected = document.querySelector('[data-commerce-product-type-selected]');
+    const productTypeError = document.querySelector('[data-commerce-product-type-error]');
+    const productUploadInput = document.querySelector('.commerce-product-upload-input');
+    const productUploadName = document.querySelector('[data-commerce-product-upload-name]');
+    const productImageUsages = document.querySelector('[data-commerce-product-image-usages]');
+
+    function selectCommerceProductType(button) {
+        if (!productTypeInput) {
+            return;
+        }
+        const productType = button.dataset.productType || '';
+        productTypeInput.value = productType;
+        if (productTypeSelected) {
+            productTypeSelected.textContent = productType || '请选择';
+        }
+        if (productTypeError) {
+            productTypeError.classList.add('hidden');
+        }
+        document.querySelectorAll('[data-product-type-option]').forEach((item) => {
+            const selected = item === button;
+            item.classList.toggle('border-cyan-200/60', selected);
+            item.classList.toggle('bg-cyan-300/15', selected);
+            item.classList.toggle('text-white', selected);
+            item.setAttribute('aria-pressed', selected ? 'true' : 'false');
+        });
+    }
+
+    function updateCommerceProductUploadName() {
+        if (!productUploadInput || !productUploadName) {
+            return;
+        }
+        const files = Array.from(productUploadInput.files || []);
+        if (files.length === 0) {
+            productUploadName.textContent = '未选择图片';
+        } else {
+            productUploadName.textContent = files.length === 1 ? files[0].name : `已选择 ${files.length} 张图片`;
+        }
+        renderCommerceProductImageUsageRows(files);
+    }
+
+    function renderCommerceProductImageUsageRows(files) {
+        if (!productImageUsages) {
+            return;
+        }
+        productImageUsages.innerHTML = '';
+        productImageUsages.classList.toggle('hidden', files.length === 0);
+        files.slice(0, 5).forEach((file, index) => {
+            const row = document.createElement('div');
+            row.className = 'rounded-lg border border-white/10 bg-black/15 p-2';
+            const defaultUsage = index === 0 ? '主图' : '细节图';
+            row.innerHTML = `
+                <div class="flex items-center gap-2">
+                    <div class="min-w-0 flex-1 truncate text-xs font-semibold text-white/65">${file.name}</div>
+                    <select name="product_image_usages" class="h-9 rounded-lg border border-white/10 bg-slate-950/70 px-2 text-xs font-semibold text-white/78 outline-none transition focus:border-emerald-200/55 focus:ring-2 focus:ring-emerald-300/15">
+                        ${['主图', '细节图', '上身参考'].map((usage) => `
+                            <option value="${usage}" ${usage === defaultUsage ? 'selected' : ''}>${usage}</option>
+                        `).join('')}
+                    </select>
+                </div>
+            `;
+            productImageUsages.appendChild(row);
+        });
+    }
+
+    window.selectCommerceProductType = selectCommerceProductType;
+    window.updateCommerceProductUploadName = updateCommerceProductUploadName;
+    window.renderCommerceProductImageUsageRows = renderCommerceProductImageUsageRows;
+    document.querySelectorAll('[data-product-type-option]').forEach((button) => {
+        button.addEventListener('click', () => selectCommerceProductType(button));
+    });
+    if (productUploadInput) {
+        productUploadInput.addEventListener('change', updateCommerceProductUploadName);
+    }
+
+    const productCreateForm = document.querySelector('form[action="/commerce/models/{{ model_id }}/products/create/"]');
+    if (productCreateForm) {
+        productCreateForm.addEventListener('submit', (event) => {
+            if (productTypeInput && !productTypeInput.value) {
+                event.preventDefault();
+                if (productTypeError) {
+                    productTypeError.classList.remove('hidden');
+                }
+                return;
+            }
+            const files = Array.from(productUploadInput?.files || []);
+            if (files.length > 5) {
+                event.preventDefault();
+                productUploadName.textContent = '最多上传 5 张图片';
+            }
+        });
+    }
+
     document.querySelectorAll('[data-commerce-video-mode]').forEach((button) => {
         button.addEventListener('click', () => {
             selectCommerceProductVideoMode(button, button.dataset.commerceVideoMode);

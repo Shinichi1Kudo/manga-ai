@@ -49,4 +49,16 @@ class CommerceControllerTest {
 
         assertThat(result.getData().getUrl()).isEqualTo("https://oss.example.com/commerce/products/product.png");
     }
+
+    @Test
+    void controllerExposesCommerceSceneLibraryEndpoints() throws Exception {
+        Method listScenes = CommerceController.class.getDeclaredMethod("listScenes", Long.class);
+        Method createScenes = CommerceController.class.getDeclaredMethod(
+                "createScenes", Long.class, com.manga.ai.commerce.dto.CommerceSceneBatchCreateRequest.class);
+
+        assertThat(listScenes.getAnnotation(org.springframework.web.bind.annotation.GetMapping.class).value())
+                .containsExactly("/series/{seriesId}/scenes");
+        assertThat(createScenes.getAnnotation(PostMapping.class).value())
+                .containsExactly("/series/{seriesId}/scenes/batch");
+    }
 }

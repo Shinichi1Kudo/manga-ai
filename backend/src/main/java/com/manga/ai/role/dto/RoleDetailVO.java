@@ -72,5 +72,11 @@ public class RoleDetailVO implements Serializable {
         private String thumbnailPath;
         private Integer status;
         private Boolean validationPassed;
+        private String aspectRatio;
+        private String quality;
+        private String styleKey;
+        private String styleKeywords;
+        private Boolean detailedView;
+        private Boolean faceCloseupView;
     }
 }

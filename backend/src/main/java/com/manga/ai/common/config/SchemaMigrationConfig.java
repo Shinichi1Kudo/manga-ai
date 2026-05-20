@@ -101,6 +101,7 @@ public class SchemaMigrationConfig {
             boolean mysql = productName != null && productName.toLowerCase().contains("mysql");
             ensureEpisodeDetailShotColumns(connection, mysql);
             ensureRoleCreationSettingColumns(connection, mysql);
+            ensureAssetMetadataCreationSettingColumns(connection, mysql);
             ensureIndex(connection, "idx_series_user_deleted_created", "series", "user_id, is_deleted, created_at");
             ensureIndex(connection, "idx_role_series_deleted", "role", "series_id, is_deleted");
             ensureIndex(connection, "idx_shot_episode_detail_list", "shot", "episode_id, is_deleted, status, shot_number");
@@ -181,6 +182,24 @@ public class SchemaMigrationConfig {
                 "BOOLEAN DEFAULT FALSE");
     }
 
+    private void ensureAssetMetadataCreationSettingColumns(Connection connection, boolean mysql) throws Exception {
+        if (!hasTable(connection, "asset_metadata")) {
+            return;
+        }
+        ensureColumn(connection, mysql, "asset_metadata", "quality",
+                "VARCHAR(20) DEFAULT NULL COMMENT '生成该资产版本时选择的清晰度'",
+                "VARCHAR(20)");
+        ensureColumn(connection, mysql, "asset_metadata", "style_key",
+                "VARCHAR(50) DEFAULT NULL COMMENT '生成该资产版本时选择的前端风格Key'",
+                "VARCHAR(50)");
+        ensureColumn(connection, mysql, "asset_metadata", "style_keywords",
+                "VARCHAR(500) DEFAULT NULL COMMENT '生成该资产版本时使用的风格关键词'",
+                "VARCHAR(500)");
+        ensureColumn(connection, mysql, "asset_metadata", "face_closeup_view",
+                "TINYINT(1) DEFAULT 0 COMMENT '生成该资产版本时是否启用大头特写三视图'",
+                "BOOLEAN DEFAULT FALSE");
+    }
+
     private void ensureSubjectReplacementTaskTable() {
         try (Connection connection = dataSource.getConnection()) {
             String productName = connection.getMetaData().getDatabaseProductName();
@@ -205,6 +224,7 @@ public class SchemaMigrationConfig {
                 statement.execute(mysql ? mysqlCommerceSeriesSql() : genericCommerceSeriesSql());
                 statement.execute(mysql ? mysqlCommerceModelSql() : genericCommerceModelSql());
                 statement.execute(mysql ? mysqlCommerceProductSql() : genericCommerceProductSql());
+                statement.execute(mysql ? mysqlCommerceSceneSql() : genericCommerceSceneSql());
                 statement.execute(mysql ? mysqlCommerceProjectSql() : genericCommerceProjectSql());
                 statement.execute(mysql ? mysqlCommerceShotSql() : genericCommerceShotSql());
             }
@@ -215,11 +235,16 @@ public class SchemaMigrationConfig {
             ensureIndex(connection, "idx_commerce_product_model_created", "commerce_product", "model_id, created_at");
             ensureIndex(connection, "idx_commerce_product_series_created", "commerce_product", "series_id, created_at");
             ensureIndex(connection, "idx_commerce_product_user_status", "commerce_product", "user_id, status");
+            ensureIndex(connection, "idx_commerce_scene_series_updated", "commerce_scene", "series_id, updated_at");
+            ensureIndex(connection, "idx_commerce_scene_user_status", "commerce_scene", "user_id, status");
             ensureIndex(connection, "idx_commerce_project_product_created", "commerce_project", "product_id, created_at");
             ensureIndex(connection, "idx_commerce_project_user_status", "commerce_project", "user_id, status");
             ensureIndex(connection, "idx_commerce_shot_project_order", "commerce_shot", "project_id, sort_order");
             ensureIndex(connection, "idx_commerce_shot_generation_status", "commerce_shot", "generation_status");
             ensureCommerceModelFailureColumns(connection, mysql);
+            ensureCommerceProductImageColumns(connection, mysql);
+            ensureCommerceProjectFirstFrameColumns(connection, mysql);
+            ensureCommerceProjectSceneColumns(connection, mysql);
         } catch (Exception e) {
             log.error("数据库迁移失败: commerce tables", e);
             throw new IllegalStateException("数据库迁移失败: commerce tables", e);
@@ -270,6 +295,42 @@ public class SchemaMigrationConfig {
         ensureColumn(connection, mysql, "commerce_model", "error_message",
                 "VARCHAR(500) DEFAULT NULL COMMENT '模特图生成失败原因'",
                 "VARCHAR(500)");
+    }
+
+    private void ensureCommerceProductImageColumns(Connection connection, boolean mysql) throws Exception {
+        ensureColumn(connection, mysql, "commerce_product", "images_json",
+                "TEXT COMMENT '商品图片列表及用途JSON'",
+                "CLOB");
+    }
+
+    private void ensureCommerceProjectFirstFrameColumns(Connection connection, boolean mysql) throws Exception {
+        ensureColumn(connection, mysql, "commerce_project", "try_on_first_frame_enabled",
+                "TINYINT(1) DEFAULT 0 COMMENT '是否生成试穿首帧确认图'",
+                "INT DEFAULT 0");
+        ensureColumn(connection, mysql, "commerce_project", "try_on_first_frame_aspect_ratio",
+                "VARCHAR(10) DEFAULT '9:16' COMMENT '试穿首帧图片比例'",
+                "VARCHAR(10) DEFAULT '9:16'");
+        ensureColumn(connection, mysql, "commerce_project", "try_on_first_frame_resolution",
+                "VARCHAR(10) DEFAULT '2K' COMMENT '试穿首帧分辨率'",
+                "VARCHAR(10) DEFAULT '2K'");
+        ensureColumn(connection, mysql, "commerce_project", "try_on_first_frame_url",
+                "VARCHAR(1024) DEFAULT NULL COMMENT '试穿首帧确认图URL'",
+                "VARCHAR(1024)");
+        ensureColumn(connection, mysql, "commerce_project", "try_on_first_frame_status",
+                "VARCHAR(30) DEFAULT NULL COMMENT '试穿首帧生成状态'",
+                "VARCHAR(30)");
+        ensureColumn(connection, mysql, "commerce_project", "try_on_first_frame_error",
+                "TEXT COMMENT '试穿首帧生成错误'",
+                "CLOB");
+        ensureColumn(connection, mysql, "commerce_project", "try_on_first_frame_confirmed",
+                "TINYINT(1) DEFAULT 0 COMMENT '试穿首帧是否已确认'",
+                "INT DEFAULT 0");
+    }
+
+    private void ensureCommerceProjectSceneColumns(Connection connection, boolean mysql) throws Exception {
+        ensureColumn(connection, mysql, "commerce_project", "scene_image_urls_json",
+                "TEXT COMMENT '试穿项目引用的场景图URL列表JSON'",
+                "CLOB");
     }
 
     private void ensureColumn(Connection connection, boolean mysql, String tableName, String columnName,
@@ -426,6 +487,7 @@ public class SchemaMigrationConfig {
                 + "user_id BIGINT NOT NULL,"
                 + "name VARCHAR(120) NOT NULL,"
                 + "image_url VARCHAR(1024) NOT NULL,"
+                + "images_json TEXT,"
                 + "product_type VARCHAR(60),"
                 + "selling_points TEXT,"
                 + "fabric_fit_color_size TEXT,"
@@ -447,6 +509,7 @@ public class SchemaMigrationConfig {
                 + "user_id BIGINT NOT NULL,"
                 + "name VARCHAR(120) NOT NULL,"
                 + "image_url VARCHAR(1024) NOT NULL,"
+                + "images_json CLOB,"
                 + "product_type VARCHAR(60),"
                 + "selling_points CLOB,"
                 + "fabric_fit_color_size CLOB,"
@@ -454,6 +517,46 @@ public class SchemaMigrationConfig {
                 + "price_offer VARCHAR(255),"
                 + "try_on_requirements CLOB,"
                 + "status VARCHAR(30) NOT NULL DEFAULT 'active',"
+                + "created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,"
+                + "updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,"
+                + "is_deleted BOOLEAN NOT NULL DEFAULT FALSE"
+                + ")";
+    }
+
+    private String mysqlCommerceSceneSql() {
+        return "CREATE TABLE IF NOT EXISTS commerce_scene ("
+                + "id BIGINT AUTO_INCREMENT PRIMARY KEY,"
+                + "series_id BIGINT NOT NULL,"
+                + "user_id BIGINT NOT NULL,"
+                + "name VARCHAR(120) NOT NULL,"
+                + "scene_type VARCHAR(60) NOT NULL,"
+                + "library_type VARCHAR(60) NOT NULL,"
+                + "prompt TEXT,"
+                + "image_url VARCHAR(1024),"
+                + "aspect_ratio VARCHAR(10) DEFAULT '16:9',"
+                + "resolution VARCHAR(10) DEFAULT '2K',"
+                + "status VARCHAR(30) NOT NULL DEFAULT 'generating',"
+                + "error_message TEXT,"
+                + "created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,"
+                + "updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,"
+                + "is_deleted TINYINT(1) NOT NULL DEFAULT 0"
+                + ")";
+    }
+
+    private String genericCommerceSceneSql() {
+        return "CREATE TABLE IF NOT EXISTS commerce_scene ("
+                + "id BIGINT AUTO_INCREMENT PRIMARY KEY,"
+                + "series_id BIGINT NOT NULL,"
+                + "user_id BIGINT NOT NULL,"
+                + "name VARCHAR(120) NOT NULL,"
+                + "scene_type VARCHAR(60) NOT NULL,"
+                + "library_type VARCHAR(60) NOT NULL,"
+                + "prompt CLOB,"
+                + "image_url VARCHAR(1024),"
+                + "aspect_ratio VARCHAR(10) DEFAULT '16:9',"
+                + "resolution VARCHAR(10) DEFAULT '2K',"
+                + "status VARCHAR(30) NOT NULL DEFAULT 'generating',"
+                + "error_message CLOB,"
                 + "created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,"
                 + "updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,"
                 + "is_deleted BOOLEAN NOT NULL DEFAULT FALSE"
@@ -471,6 +574,13 @@ public class SchemaMigrationConfig {
                 + "aspect_ratio VARCHAR(10) NOT NULL DEFAULT '9:16',"
                 + "model_image_url VARCHAR(1024) NOT NULL,"
                 + "product_image_url VARCHAR(1024) NOT NULL,"
+                + "scene_image_urls_json TEXT,"
+                + "try_on_first_frame_enabled TINYINT(1) DEFAULT 0,"
+                + "try_on_first_frame_aspect_ratio VARCHAR(10) DEFAULT '9:16',"
+                + "try_on_first_frame_resolution VARCHAR(10) DEFAULT '2K',"
+                + "try_on_first_frame_url VARCHAR(1024) DEFAULT NULL,"
+                + "try_on_first_frame_status VARCHAR(30) DEFAULT NULL,"
+                + "try_on_first_frame_error TEXT,"
                 + "status VARCHAR(30) NOT NULL DEFAULT 'draft',"
                 + "error_message TEXT,"
                 + "created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,"
@@ -489,6 +599,13 @@ public class SchemaMigrationConfig {
                 + "aspect_ratio VARCHAR(10) NOT NULL DEFAULT '9:16',"
                 + "model_image_url VARCHAR(1024) NOT NULL,"
                 + "product_image_url VARCHAR(1024) NOT NULL,"
+                + "scene_image_urls_json CLOB,"
+                + "try_on_first_frame_enabled INT DEFAULT 0,"
+                + "try_on_first_frame_aspect_ratio VARCHAR(10) DEFAULT '9:16',"
+                + "try_on_first_frame_resolution VARCHAR(10) DEFAULT '2K',"
+                + "try_on_first_frame_url VARCHAR(1024),"
+                + "try_on_first_frame_status VARCHAR(30),"
+                + "try_on_first_frame_error CLOB,"
                 + "status VARCHAR(30) NOT NULL DEFAULT 'draft',"
                 + "error_message CLOB,"
                 + "created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,"

@@ -521,18 +521,14 @@ public class SeriesServiceImpl implements SeriesService {
             // 发送当前处理角色
             sendProgress(seriesId, "PROCESSING", completedRoles.get(), totalRoles, 0, "正在生成: " + roleName);
 
-            // 获取系列的默认风格
-            Series series = seriesMapper.selectById(seriesId);
-            String seriesStyle = series != null ? series.getStyleKeywords() : null;
-
-            // 角色风格：优先使用角色指定风格，否则使用系列默认风格
+            // 角色图片风格只使用角色自己的图片风格选择，不再从系列风格兜底。
             String charStyle = charData.getString("styleKeywords");
-            if (charStyle == null || charStyle.isEmpty()) {
-                charStyle = seriesStyle;
+            if (charStyle == null) {
+                charStyle = "";
             }
             String charStyleKey = charData.getString("styleKey");
-            if (charStyleKey == null || charStyleKey.isEmpty()) {
-                charStyleKey = seriesStyle;
+            if (charStyleKey == null) {
+                charStyleKey = "";
             }
 
             // 创建角色记录
@@ -573,6 +569,7 @@ public class SeriesServiceImpl implements SeriesService {
             // 构建请求
             ImageGenerateRequest imageRequest = ImageGenerateRequest.builder()
                     .roleName(role.getRoleName())
+                    .styleKey(charStyleKey)
                     .styleKeywords(charStyle)
                     .aspectRatio(charData.getString("aspectRatio"))
                     .quality(charData.getString("quality"))
@@ -640,6 +637,11 @@ public class SeriesServiceImpl implements SeriesService {
         metadata.setAssetId(asset.getId());
         metadata.setModelVersion("manual-upload");
         metadata.setAspectRatio(charData.getString("aspectRatio"));
+        metadata.setQuality(charData.getString("quality"));
+        metadata.setStyleKey(charData.getString("styleKey"));
+        metadata.setStyleKeywords(charData.getString("styleKeywords"));
+        metadata.setDetailedView(Boolean.TRUE.equals(charData.getBoolean("detailedView")));
+        metadata.setFaceCloseupView(Boolean.TRUE.equals(charData.getBoolean("faceCloseupView")));
         metadata.setUserPrompt(charData.getString("originalPrompt"));
         metadata.setPrompt(charData.getString("customPrompt"));
         metadata.setGenerationTimeMs(0L);
@@ -719,10 +721,15 @@ public class SeriesServiceImpl implements SeriesService {
             metadata.setImageWidth(response.getWidth());
             metadata.setImageHeight(response.getHeight());
             metadata.setAspectRatio(request.getAspectRatio());
+            metadata.setQuality(request.getQuality());
+            metadata.setStyleKey(request.getStyleKey());
+            metadata.setStyleKeywords(request.getStyleKeywords());
+            metadata.setDetailedView(request.getDetailedView());
+            metadata.setFaceCloseupView(request.getFaceCloseupView());
             metadata.setGenerationTimeMs(0L);
             // 保存提示词
             metadata.setUserPrompt(request.getOriginalPrompt());
-            metadata.setPrompt(request.getCustomPrompt());
+            metadata.setPrompt(imageGenerateService.buildFinalCharacterSheetPrompt(request));
             metadata.setCreatedAt(LocalDateTime.now());
             assetMetadataMapper.insert(metadata);
 

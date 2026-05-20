@@ -18,6 +18,7 @@ import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.web.client.RestTemplate;
 
 import java.lang.reflect.Method;
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -45,6 +46,32 @@ class ImageGenerateServiceImplTest {
 
         assertEmptyHandsRules(invokePrompt(service, "buildCharacterSheetPrompt", defaultRequest));
         assertEmptyHandsRules(invokePrompt(service, "buildCharacterSheetPrompt", customRequest));
+    }
+
+    @Test
+    void faceCloseupLayoutDescribesCompositionWithoutSemiRealisticPortraitCues() throws Exception {
+        ImageGenerateServiceImpl service = createService();
+        ImageGenerateRequest request = ImageGenerateRequest.builder()
+                .roleName("楚清辞")
+                .customPrompt("古风男性，月白色长袍")
+                .styleKeywords("2D guofeng manhua character sheet, Chinese xianxia animation design, ancient Chinese costume reference, clean ink line art, elegant restrained colors, flat cel shading, strictly illustrated 2D finish, no 3D render, no real-person photo look, consistent turnaround")
+                .faceCloseupView(true)
+                .build();
+
+        String prompt = invokePrompt(service, "buildCharacterSheetPrompt", request);
+
+        assertThat(prompt)
+                .contains("Style: 2D guofeng manhua character sheet")
+                .contains("no 3D render")
+                .contains("no real-person photo look")
+                .contains("STRICT LAYOUT in ONE image")
+                .contains("LEFT 1/3: enlarged head-and-shoulders character view")
+                .contains("RIGHT 2/3: full body three-view")
+                .doesNotContain("HUGE face close-up portrait")
+                .doesNotContain("detailed facial features")
+                .doesNotContain("makeup")
+                .doesNotContain("photorealistic")
+                .doesNotContain("real person photography");
     }
 
     @Test
@@ -257,6 +284,56 @@ class ImageGenerateServiceImplTest {
                 .doesNotContain("1600x2848")
                 .doesNotContain("2304x4096");
         verify(ossService).uploadImageFromUrl("https://example.com/model.png", "commerce-models");
+    }
+
+    @Test
+    void commerceTryOnFirstFrameUsesLiteModelWithReferenceImageArrayAndDirectResolution() {
+        ImageGenerateServiceImpl service = createService();
+        RestTemplate restTemplate = mock(RestTemplate.class);
+        OssService ossService = (OssService) ReflectionTestUtils.getField(service, "ossService");
+        ReflectionTestUtils.setField(service, "restTemplate", restTemplate);
+        ReflectionTestUtils.setField(service, "commerceModelImageApiKey", "test-ark-key");
+        ReflectionTestUtils.setField(service, "commerceModelImageBaseUrl", "https://ark.cn-beijing.volces.com/api/v3");
+        ReflectionTestUtils.setField(service, "commerceTryOnFirstFrameModel", "doubao-seedream-5-0-lite-260128");
+        when(ossService.uploadImageFromUrl("https://example.com/first-frame.png", "commerce/try-on-first-frames"))
+                .thenReturn("https://oss.example.com/commerce/try-on-first-frames/first-frame.png");
+        when(restTemplate.exchange(
+                eq("https://ark.cn-beijing.volces.com/api/v3/images/generations"),
+                eq(HttpMethod.POST),
+                any(HttpEntity.class),
+                eq(String.class)
+        )).thenReturn(ResponseEntity.ok("""
+                {"data":[{"url":"https://example.com/first-frame.png"}]}
+                """));
+
+        ImageGenerateResponse response = service.generateCommerceTryOnFirstFrame(ImageGenerateRequest.builder()
+                .customPrompt("将图1的模特穿上图2的商品服装")
+                .referenceImageUrls(List.of("https://oss.example.com/model.png", "https://oss.example.com/product.png"))
+                .quality("4K")
+                .build());
+
+        assertThat(response.getStatus()).isEqualTo("success");
+        assertThat(response.getImageUrl()).isEqualTo("https://oss.example.com/commerce/try-on-first-frames/first-frame.png");
+        ArgumentCaptor<HttpEntity> entityCaptor = ArgumentCaptor.forClass(HttpEntity.class);
+        verify(restTemplate).exchange(
+                eq("https://ark.cn-beijing.volces.com/api/v3/images/generations"),
+                eq(HttpMethod.POST),
+                entityCaptor.capture(),
+                eq(String.class)
+        );
+        assertThat(entityCaptor.getValue().getHeaders().getFirst("Authorization")).isEqualTo("Bearer test-ark-key");
+        assertThat(entityCaptor.getValue().getBody().toString())
+                .contains("\"model\":\"doubao-seedream-5-0-lite-260128\"")
+                .contains("\"prompt\":\"将图1的模特穿上图2的商品服装\"")
+                .contains("\"image\":[\"https://oss.example.com/model.png\",\"https://oss.example.com/product.png\"]")
+                .contains("\"size\":\"4K\"")
+                .contains("\"sequential_image_generation\":\"disabled\"")
+                .contains("\"output_format\":\"png\"")
+                .contains("\"response_format\":\"url\"")
+                .contains("\"stream\":false")
+                .contains("\"watermark\":false")
+                .doesNotContain("4096x2304");
+        verify(ossService).uploadImageFromUrl("https://example.com/first-frame.png", "commerce/try-on-first-frames");
     }
 
     @Test

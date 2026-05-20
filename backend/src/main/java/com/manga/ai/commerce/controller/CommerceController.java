@@ -7,6 +7,8 @@ import com.manga.ai.commerce.dto.CommerceProductUploadResult;
 import com.manga.ai.commerce.dto.CommerceProductVO;
 import com.manga.ai.commerce.dto.CommerceProjectCreateRequest;
 import com.manga.ai.commerce.dto.CommerceProjectVO;
+import com.manga.ai.commerce.dto.CommerceSceneBatchCreateRequest;
+import com.manga.ai.commerce.dto.CommerceSceneVO;
 import com.manga.ai.commerce.dto.CommerceSeriesCreateRequest;
 import com.manga.ai.commerce.dto.CommerceSeriesVO;
 import com.manga.ai.commerce.service.dto.CommerceModelProfile;
@@ -111,6 +113,18 @@ public class CommerceController {
         return Result.success(new CommerceProductUploadResult(commerceService.uploadProductImage(file)));
     }
 
+    @GetMapping("/series/{seriesId}/scenes")
+    public Result<List<CommerceSceneVO>> listScenes(@PathVariable Long seriesId) {
+        return Result.success(commerceService.listScenes(seriesId));
+    }
+
+    @PostMapping("/series/{seriesId}/scenes/batch")
+    public Result<List<CommerceSceneVO>> createScenes(
+            @PathVariable Long seriesId,
+            @RequestBody CommerceSceneBatchCreateRequest request) {
+        return Result.success(commerceService.createSceneBatch(seriesId, request));
+    }
+
     @PostMapping("/products/{productId}/projects")
     public Result<CommerceProjectVO> createProject(
             @PathVariable Long productId,
@@ -121,6 +135,11 @@ public class CommerceController {
     @GetMapping("/projects/{projectId}")
     public Result<CommerceProjectVO> getProject(@PathVariable Long projectId) {
         return Result.success(commerceService.getProject(projectId));
+    }
+
+    @PostMapping("/projects/{projectId}/confirm-first-frame")
+    public Result<CommerceProjectVO> confirmTryOnFirstFrame(@PathVariable Long projectId) {
+        return Result.success(commerceService.confirmTryOnFirstFrame(projectId));
     }
 
     @PostMapping("/projects/{projectId}/generate-video")

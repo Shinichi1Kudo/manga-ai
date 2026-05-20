@@ -1,5 +1,6 @@
 package com.manga.ai.commerce.service.impl;
 
+import com.alibaba.fastjson2.JSON;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.manga.ai.commerce.dto.CommerceModelCreateRequest;
@@ -8,17 +9,21 @@ import com.manga.ai.commerce.dto.CommerceProductCreateRequest;
 import com.manga.ai.commerce.dto.CommerceProductVO;
 import com.manga.ai.commerce.dto.CommerceProjectCreateRequest;
 import com.manga.ai.commerce.dto.CommerceProjectVO;
+import com.manga.ai.commerce.dto.CommerceSceneBatchCreateRequest;
+import com.manga.ai.commerce.dto.CommerceSceneVO;
 import com.manga.ai.commerce.dto.CommerceSeriesCreateRequest;
 import com.manga.ai.commerce.dto.CommerceSeriesVO;
 import com.manga.ai.commerce.dto.CommerceShotVO;
 import com.manga.ai.commerce.entity.CommerceModel;
 import com.manga.ai.commerce.entity.CommerceProduct;
 import com.manga.ai.commerce.entity.CommerceProject;
+import com.manga.ai.commerce.entity.CommerceScene;
 import com.manga.ai.commerce.entity.CommerceSeries;
 import com.manga.ai.commerce.entity.CommerceShot;
 import com.manga.ai.commerce.mapper.CommerceModelMapper;
 import com.manga.ai.commerce.mapper.CommerceProductMapper;
 import com.manga.ai.commerce.mapper.CommerceProjectMapper;
+import com.manga.ai.commerce.mapper.CommerceSceneMapper;
 import com.manga.ai.commerce.mapper.CommerceSeriesMapper;
 import com.manga.ai.commerce.mapper.CommerceShotMapper;
 import com.manga.ai.commerce.service.CommerceModelProfileService;
@@ -49,7 +54,10 @@ import java.io.IOException;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Comparator;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.concurrent.Executor;
 
 @Slf4j
@@ -63,6 +71,7 @@ public class CommerceServiceImpl implements CommerceService {
     private static final String DEFAULT_MODEL_ASPECT_RATIO = "16:9";
     private static final List<String> DEFAULT_CONTENT_TYPES = List.of("talking", "try_on");
     private static final List<String> ALLOWED_ASPECT_RATIOS = Arrays.asList("3:4", "9:16", "1:1", "16:9");
+    private static final List<String> ALLOWED_FIRST_FRAME_RESOLUTIONS = Arrays.asList("2K", "3K", "4K");
     private static final List<String> ALLOWED_CONTENT_TYPES = Arrays.asList("talking", "try_on");
     private static final List<String> FEMALE_MODEL_TYPES = List.of("年轻美女", "成熟女性", "中年女性", "老年女性", "高级感女模特", "亲和素人女性");
     private static final List<String> MALE_MODEL_TYPES = List.of("年轻帅哥", "成熟男性", "中年男性", "老年男性", "高级感男模特", "亲和素人男性");
@@ -70,12 +79,16 @@ public class CommerceServiceImpl implements CommerceService {
     private static final List<String> ALLOWED_ETHNICITIES = List.of("中国", "华人", "东亚", "日韩", "亚洲", "东南亚", "南亚", "欧美", "拉美", "中东", "非洲", "混血感");
     private static final List<String> ALLOWED_BODY_PROFILES = List.of("标准匀称", "纤细修长", "高挑模特", "微胖亲和", "丰满曲线", "大码胖模特");
     private static final List<String> ALLOWED_PRODUCT_IMAGE_TYPES = List.of("image/jpeg", "image/png", "image/webp");
+    private static final List<String> ALLOWED_PRODUCT_IMAGE_USAGES = List.of("主图", "细节图", "上身参考");
+    private static final List<String> ALLOWED_SCENE_TYPES = List.of("品牌场景", "直播间背景", "街拍场景", "棚拍场景", "商场试衣间", "室内全身镜");
+    private static final List<String> ALLOWED_SCENE_RESOLUTIONS = List.of("2K", "3K", "4K");
     private static final long MAX_PRODUCT_IMAGE_SIZE = 10L * 1024 * 1024;
 
     private final CommerceSeriesMapper seriesMapper;
     private final CommerceModelMapper modelMapper;
     private final CommerceProductMapper productMapper;
     private final CommerceProjectMapper projectMapper;
+    private final CommerceSceneMapper sceneMapper;
     private final CommerceShotMapper shotMapper;
     private final SeedanceService seedanceService;
     private final UserService userService;
@@ -322,16 +335,15 @@ public class CommerceServiceImpl implements CommerceService {
         if (request == null || isBlank(request.getName())) {
             throw new BusinessException("请输入商品名称");
         }
-        if (isBlank(request.getImageUrl())) {
-            throw new BusinessException("请上传商品图片");
-        }
+        List<CommerceProductCreateRequest.ProductImageItem> productImages = normalizeProductImages(request);
 
         CommerceProduct product = new CommerceProduct();
         product.setModelId(modelId);
         product.setSeriesId(model.getSeriesId());
         product.setUserId(userId);
         product.setName(request.getName().trim());
-        product.setImageUrl(request.getImageUrl().trim());
+        product.setImageUrl(productImages.get(0).getUrl());
+        product.setImagesJson(JSON.toJSONString(productImages));
         product.setProductType(trimToNull(request.getProductType()));
         product.setSellingPoints(null);
         product.setFabricFitColorSize(null);
@@ -377,6 +389,31 @@ public class CommerceServiceImpl implements CommerceService {
     }
 
     @Override
+    public List<CommerceSceneVO> listScenes(Long seriesId) {
+        Long userId = requireUserId();
+        requireSeries(seriesId);
+        LambdaQueryWrapper<CommerceScene> wrapper = new LambdaQueryWrapper<>();
+        wrapper.eq(CommerceScene::getSeriesId, seriesId)
+                .eq(CommerceScene::getUserId, userId)
+                .orderByDesc(CommerceScene::getUpdatedAt);
+        return sceneMapper.selectList(wrapper).stream().map(this::toSceneVO).toList();
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
+    public List<CommerceSceneVO> createSceneBatch(Long seriesId, CommerceSceneBatchCreateRequest request) {
+        Long userId = requireUserId();
+        CommerceSeries series = requireSeries(seriesId);
+        if (!series.getUserId().equals(userId)) {
+            throw new BusinessException("无权访问该电商系列");
+        }
+        List<CommerceScene> scenes = buildSceneBatch(seriesId, userId, request);
+        scenes.forEach(sceneMapper::insert);
+        scenes.forEach(scene -> executeSceneImageGenerationAfterCommit(scene.getId()));
+        return scenes.stream().map(this::toSceneVO).toList();
+    }
+
+    @Override
     @Transactional(rollbackFor = Exception.class)
     public CommerceProjectVO createProject(Long productId, CommerceProjectCreateRequest request) {
         Long userId = requireUserId();
@@ -404,6 +441,13 @@ public class CommerceServiceImpl implements CommerceService {
             throw new BusinessException("不支持的画幅比例");
         }
         CommerceProduct shotProduct = copyProductWithProjectSettings(product, request, contentType);
+        boolean firstFrameEnabled = isTryOnFirstFrameEnabled(request, contentType);
+        String firstFrameAspectRatio = normalizeFirstFrameAspectRatio(request);
+        String firstFrameResolution = normalizeFirstFrameResolution(request);
+        List<String> sceneImageUrls = "try_on".equals(contentType)
+                ? resolveProjectSceneImageUrls(product.getSeriesId(), userId, request)
+                : List.of();
+        shotProduct.setFabricFitColorSize(sceneImageUrls.isEmpty() ? null : JSON.toJSONString(sceneImageUrls));
 
         CommerceProject project = new CommerceProject();
         project.setSeriesId(product.getSeriesId());
@@ -414,6 +458,14 @@ public class CommerceServiceImpl implements CommerceService {
         project.setAspectRatio(aspectRatio);
         project.setModelImageUrl(model.getBaseImageUrl());
         project.setProductImageUrl(product.getImageUrl());
+        project.setSceneImageUrlsJson(sceneImageUrls.isEmpty() ? null : JSON.toJSONString(sceneImageUrls));
+        project.setTryOnFirstFrameEnabled(firstFrameEnabled ? 1 : 0);
+        project.setTryOnFirstFrameAspectRatio(firstFrameAspectRatio);
+        project.setTryOnFirstFrameResolution(firstFrameResolution);
+        project.setTryOnFirstFrameUrl(null);
+        project.setTryOnFirstFrameStatus(firstFrameEnabled ? "generating" : null);
+        project.setTryOnFirstFrameError(null);
+        project.setTryOnFirstFrameConfirmed(0);
         project.setStatus("draft");
         project.setCreatedAt(LocalDateTime.now());
         project.setUpdatedAt(LocalDateTime.now());
@@ -424,6 +476,9 @@ public class CommerceServiceImpl implements CommerceService {
 
         CommerceProjectVO vo = toProjectVO(project);
         vo.setShots(shots.stream().map(this::toShotVO).toList());
+        if (firstFrameEnabled) {
+            executeTryOnFirstFrameGenerationAfterCommit(project.getId(), model, product, shotProduct, firstFrameAspectRatio, firstFrameResolution);
+        }
         return vo;
     }
 
@@ -440,10 +495,37 @@ public class CommerceServiceImpl implements CommerceService {
 
     @Override
     @Transactional(rollbackFor = Exception.class)
+    public CommerceProjectVO confirmTryOnFirstFrame(Long projectId) {
+        CommerceProject project = requireProject(projectId);
+        if (project.getTryOnFirstFrameEnabled() == null || project.getTryOnFirstFrameEnabled() != 1) {
+            throw new BusinessException("当前项目未开启试穿首帧确认");
+        }
+        if (!"completed".equals(project.getTryOnFirstFrameStatus()) || isBlank(project.getTryOnFirstFrameUrl())) {
+            throw new BusinessException("试穿首帧确认图尚未生成完成");
+        }
+
+        UpdateWrapper<CommerceProject> wrapper = new UpdateWrapper<>();
+        wrapper.eq("id", projectId)
+                .set("try_on_first_frame_confirmed", 1)
+                .set("updated_at", LocalDateTime.now());
+        projectMapper.update(null, wrapper);
+
+        project.setTryOnFirstFrameConfirmed(1);
+        project.setUpdatedAt(LocalDateTime.now());
+        return toProjectVO(project);
+    }
+
+    @Override
+    @Transactional(rollbackFor = Exception.class)
     public CommerceProjectVO generateProjectVideo(Long projectId) {
         CommerceProject project = requireProject(projectId);
         if (isBlank(project.getModelImageUrl()) || isBlank(project.getProductImageUrl())) {
             throw new BusinessException("模特图和商品图不能为空");
+        }
+        if (project.getTryOnFirstFrameEnabled() != null
+                && project.getTryOnFirstFrameEnabled() == 1
+                && (project.getTryOnFirstFrameConfirmed() == null || project.getTryOnFirstFrameConfirmed() != 1)) {
+            throw new BusinessException("请先确认试穿首帧，再生成视频");
         }
 
         LambdaQueryWrapper<CommerceShot> wrapper = new LambdaQueryWrapper<>();
@@ -598,10 +680,180 @@ public class CommerceServiceImpl implements CommerceService {
         vo.setTargetAudience(product.getTargetAudience());
         vo.setPriceOffer(product.getPriceOffer());
         vo.setTryOnRequirements(product.getTryOnRequirements());
+        vo.setImages(toProductImageVOs(product));
         vo.setStatus(product.getStatus());
         vo.setCreatedAt(product.getCreatedAt());
         vo.setUpdatedAt(product.getUpdatedAt());
         return vo;
+    }
+
+    private List<CommerceProductCreateRequest.ProductImageItem> normalizeProductImages(CommerceProductCreateRequest request) {
+        List<CommerceProductCreateRequest.ProductImageItem> requestImages = request.getImages();
+        if ((requestImages == null || requestImages.isEmpty()) && !isBlank(request.getImageUrl())) {
+            CommerceProductCreateRequest.ProductImageItem legacyImage = new CommerceProductCreateRequest.ProductImageItem();
+            legacyImage.setUrl(request.getImageUrl().trim());
+            legacyImage.setUsage("主图");
+            requestImages = List.of(legacyImage);
+        }
+        if (requestImages == null || requestImages.isEmpty()) {
+            throw new BusinessException("请上传商品图片");
+        }
+        if (requestImages.size() > 5) {
+            throw new BusinessException("最多上传5张商品图片");
+        }
+
+        List<CommerceProductCreateRequest.ProductImageItem> normalized = new ArrayList<>();
+        for (CommerceProductCreateRequest.ProductImageItem image : requestImages) {
+            if (image == null || isBlank(image.getUrl())) {
+                throw new BusinessException("请上传商品图片");
+            }
+            if (isBlank(image.getUsage())) {
+                throw new BusinessException("请选择商品图片用途");
+            }
+            String usage = image.getUsage().trim();
+            if (!ALLOWED_PRODUCT_IMAGE_USAGES.contains(usage)) {
+                throw new BusinessException("不支持的商品图片用途");
+            }
+            CommerceProductCreateRequest.ProductImageItem item = new CommerceProductCreateRequest.ProductImageItem();
+            item.setUrl(image.getUrl().trim());
+            item.setUsage(usage);
+            normalized.add(item);
+        }
+
+        normalized.sort(Comparator.comparingInt(item -> productImageUsageOrder(item.getUsage())));
+        return normalized;
+    }
+
+    private List<CommerceProductVO.ProductImageVO> toProductImageVOs(CommerceProduct product) {
+        List<CommerceProductCreateRequest.ProductImageItem> images = parseProductImages(product);
+        return images.stream().map(image -> {
+            CommerceProductVO.ProductImageVO vo = new CommerceProductVO.ProductImageVO();
+            vo.setUrl(image.getUrl());
+            vo.setUsage(image.getUsage());
+            return vo;
+        }).toList();
+    }
+
+    private List<CommerceProductCreateRequest.ProductImageItem> parseProductImages(CommerceProduct product) {
+        if (product == null) {
+            return List.of();
+        }
+        if (!isBlank(product.getImagesJson())) {
+            try {
+                List<CommerceProductCreateRequest.ProductImageItem> parsed = JSON.parseArray(
+                        product.getImagesJson(), CommerceProductCreateRequest.ProductImageItem.class);
+                if (parsed != null && !parsed.isEmpty()) {
+                    return normalizeParsedProductImages(parsed, product.getImageUrl());
+                }
+            } catch (Exception e) {
+                log.warn("商品图片列表解析失败: productId={}", product.getId(), e);
+            }
+        }
+        if (isBlank(product.getImageUrl())) {
+            return List.of();
+        }
+        CommerceProductCreateRequest.ProductImageItem fallback = new CommerceProductCreateRequest.ProductImageItem();
+        fallback.setUrl(product.getImageUrl().trim());
+        fallback.setUsage("主图");
+        return List.of(fallback);
+    }
+
+    private List<CommerceProductCreateRequest.ProductImageItem> normalizeParsedProductImages(
+            List<CommerceProductCreateRequest.ProductImageItem> images,
+            String fallbackImageUrl) {
+        List<CommerceProductCreateRequest.ProductImageItem> normalized = images.stream()
+                .filter(image -> image != null && !isBlank(image.getUrl()))
+                .map(image -> {
+                    CommerceProductCreateRequest.ProductImageItem item = new CommerceProductCreateRequest.ProductImageItem();
+                    item.setUrl(image.getUrl().trim());
+                    item.setUsage(ALLOWED_PRODUCT_IMAGE_USAGES.contains(defaultIfBlank(image.getUsage(), "").trim())
+                            ? image.getUsage().trim()
+                            : "细节图");
+                    return item;
+                })
+                .toList();
+        if (normalized.isEmpty() && !isBlank(fallbackImageUrl)) {
+            CommerceProductCreateRequest.ProductImageItem fallback = new CommerceProductCreateRequest.ProductImageItem();
+            fallback.setUrl(fallbackImageUrl.trim());
+            fallback.setUsage("主图");
+            return List.of(fallback);
+        }
+        return normalized.stream()
+                .sorted(Comparator.comparingInt(item -> productImageUsageOrder(item.getUsage())))
+                .toList();
+    }
+
+    private List<String> buildTryOnFirstFrameReferenceUrls(CommerceModel model, CommerceProduct product, List<String> sceneImageUrls) {
+        Set<String> urls = new LinkedHashSet<>();
+        if (!isBlank(model.getBaseImageUrl())) {
+            urls.add(model.getBaseImageUrl().trim());
+        }
+        parseProductImages(product).forEach(image -> {
+            if (!isBlank(image.getUrl())) {
+                urls.add(image.getUrl().trim());
+            }
+        });
+        (sceneImageUrls == null ? List.<String>of() : sceneImageUrls).forEach(url -> {
+            if (!isBlank(url)) {
+                urls.add(url.trim());
+            }
+        });
+        return new ArrayList<>(urls);
+    }
+
+    private List<String> resolveProjectSceneImageUrls(Long seriesId, Long userId, CommerceProjectCreateRequest request) {
+        List<Long> sceneIds = request == null || request.getSceneIds() == null ? List.of() : request.getSceneIds();
+        List<Long> normalizedIds = sceneIds.stream()
+                .filter(id -> id != null && id > 0)
+                .distinct()
+                .toList();
+        if (normalizedIds.isEmpty()) {
+            return List.of();
+        }
+        List<CommerceScene> scenes = sceneMapper.selectBatchIds(normalizedIds);
+        if (scenes.size() != normalizedIds.size()) {
+            throw new BusinessException("请选择有效的场景图");
+        }
+        List<String> urls = new ArrayList<>();
+        for (CommerceScene scene : scenes) {
+            if (!userId.equals(scene.getUserId()) || !seriesId.equals(scene.getSeriesId())) {
+                throw new BusinessException("请选择当前系列的场景图");
+            }
+            if (!"completed".equals(scene.getStatus()) || isBlank(scene.getImageUrl())) {
+                throw new BusinessException("请选择已生成完成的场景图");
+            }
+            urls.add(scene.getImageUrl().trim());
+        }
+        return urls;
+    }
+
+    private List<String> parseSceneImageUrls(String value) {
+        if (isBlank(value)) {
+            return List.of();
+        }
+        try {
+            List<String> urls = JSON.parseArray(value, String.class);
+            if (urls == null) {
+                return List.of();
+            }
+            return urls.stream()
+                    .filter(url -> !isBlank(url))
+                    .map(String::trim)
+                    .toList();
+        } catch (Exception e) {
+            log.warn("电商项目场景图解析失败: {}", value, e);
+            return List.of();
+        }
+    }
+
+    private int productImageUsageOrder(String usage) {
+        if ("主图".equals(usage)) {
+            return 0;
+        }
+        if ("上身参考".equals(usage)) {
+            return 1;
+        }
+        return 2;
     }
 
     private CommerceProjectVO toProjectVO(CommerceProject project) {
@@ -614,10 +866,36 @@ public class CommerceServiceImpl implements CommerceService {
         vo.setAspectRatio(project.getAspectRatio());
         vo.setModelImageUrl(project.getModelImageUrl());
         vo.setProductImageUrl(project.getProductImageUrl());
+        vo.setTryOnFirstFrameEnabled(project.getTryOnFirstFrameEnabled() != null && project.getTryOnFirstFrameEnabled() == 1);
+        vo.setTryOnFirstFrameAspectRatio(project.getTryOnFirstFrameAspectRatio());
+        vo.setTryOnFirstFrameResolution(project.getTryOnFirstFrameResolution());
+        vo.setTryOnFirstFrameUrl(project.getTryOnFirstFrameUrl());
+        vo.setTryOnFirstFrameStatus(project.getTryOnFirstFrameStatus());
+        vo.setTryOnFirstFrameError(project.getTryOnFirstFrameError());
+        vo.setTryOnFirstFrameConfirmed(project.getTryOnFirstFrameConfirmed() != null && project.getTryOnFirstFrameConfirmed() == 1);
+        vo.setSceneImageUrls(parseSceneImageUrls(project.getSceneImageUrlsJson()));
         vo.setStatus(project.getStatus());
         vo.setErrorMessage(project.getErrorMessage());
         vo.setCreatedAt(project.getCreatedAt());
         vo.setUpdatedAt(project.getUpdatedAt());
+        return vo;
+    }
+
+    private CommerceSceneVO toSceneVO(CommerceScene scene) {
+        CommerceSceneVO vo = new CommerceSceneVO();
+        vo.setId(scene.getId());
+        vo.setSeriesId(scene.getSeriesId());
+        vo.setName(scene.getName());
+        vo.setSceneType(scene.getSceneType());
+        vo.setLibraryType(scene.getLibraryType());
+        vo.setPrompt(scene.getPrompt());
+        vo.setImageUrl(scene.getImageUrl());
+        vo.setAspectRatio(scene.getAspectRatio());
+        vo.setResolution(scene.getResolution());
+        vo.setStatus(scene.getStatus());
+        vo.setErrorMessage(scene.getErrorMessage());
+        vo.setCreatedAt(scene.getCreatedAt());
+        vo.setUpdatedAt(scene.getUpdatedAt());
         return vo;
     }
 
@@ -650,7 +928,11 @@ public class CommerceServiceImpl implements CommerceService {
 
         SeedanceRequest.ReferenceContent modelRef = imageReference(project.getModelImageUrl());
         SeedanceRequest.ReferenceContent productRef = imageReference(project.getProductImageUrl());
-        request.setContents(List.of(modelRef, productRef));
+        List<SeedanceRequest.ReferenceContent> contents = new ArrayList<>();
+        contents.add(modelRef);
+        contents.add(productRef);
+        parseSceneImageUrls(project.getSceneImageUrlsJson()).forEach(url -> contents.add(imageReference(url)));
+        request.setContents(contents);
         return request;
     }
 
@@ -662,6 +944,110 @@ public class CommerceServiceImpl implements CommerceService {
         imageUrl.setUrl(url);
         content.setImageUrl(imageUrl);
         return content;
+    }
+
+    private boolean isTryOnFirstFrameEnabled(CommerceProjectCreateRequest request, String contentType) {
+        return request != null && "try_on".equals(contentType) && Boolean.TRUE.equals(request.getTryOnFirstFrameEnabled());
+    }
+
+    private String normalizeFirstFrameAspectRatio(CommerceProjectCreateRequest request) {
+        if (request == null || isBlank(request.getTryOnFirstFrameAspectRatio())) {
+            return DEFAULT_ASPECT_RATIO;
+        }
+        String aspectRatio = request.getTryOnFirstFrameAspectRatio().trim();
+        return ALLOWED_ASPECT_RATIOS.contains(aspectRatio) ? aspectRatio : DEFAULT_ASPECT_RATIO;
+    }
+
+    private String normalizeFirstFrameResolution(CommerceProjectCreateRequest request) {
+        if (request == null || isBlank(request.getTryOnFirstFrameResolution())) {
+            return "2K";
+        }
+        String resolution = request.getTryOnFirstFrameResolution().trim().toUpperCase();
+        return ALLOWED_FIRST_FRAME_RESOLUTIONS.contains(resolution) ? resolution : "2K";
+    }
+
+    private void executeTryOnFirstFrameGenerationAfterCommit(
+            Long projectId,
+            CommerceModel model,
+            CommerceProduct product,
+            CommerceProduct shotProduct,
+            String aspectRatio,
+            String resolution) {
+        Runnable task = () -> generateTryOnFirstFrameAsync(projectId, model, product, shotProduct, aspectRatio, resolution);
+        if (TransactionSynchronizationManager.isActualTransactionActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    imageGenerateExecutor.execute(task);
+                }
+            });
+            return;
+        }
+        imageGenerateExecutor.execute(task);
+    }
+
+    private void generateTryOnFirstFrameAsync(
+            Long projectId,
+            CommerceModel model,
+            CommerceProduct product,
+            CommerceProduct shotProduct,
+            String aspectRatio,
+            String resolution) {
+        try {
+            ImageGenerateResponse imageResponse = imageGenerateService.generateCommerceTryOnFirstFrame(
+                    buildTryOnFirstFrameRequest(model, product, shotProduct, aspectRatio, resolution));
+            applyTryOnFirstFrameResult(projectId, imageResponse);
+        } catch (Exception e) {
+            log.error("电商试穿首帧生成失败: projectId={}", projectId, e);
+            ImageGenerateResponse failedResponse = new ImageGenerateResponse();
+            failedResponse.setStatus("failed");
+            failedResponse.setErrorMessage(e.getMessage());
+            applyTryOnFirstFrameResult(projectId, failedResponse);
+        }
+    }
+
+    private ImageGenerateRequest buildTryOnFirstFrameRequest(
+            CommerceModel model,
+            CommerceProduct product,
+            CommerceProduct shotProduct,
+            String aspectRatio,
+            String resolution) {
+        String requirements = defaultIfBlank(shotProduct.getTryOnRequirements(),
+                "生成用于正式试穿视频前审核的首帧确认图，重点保留商品颜色、服装版型、印花纹理、衣长袖长，并保持模特身体结构自然");
+        String prompt = "将图1的模特穿上图2的商品服装，生成电商试穿首帧确认图。"
+                + "图片比例 " + aspectRatio + "。"
+                + "必须准确还原商品颜色、服装版型、图案纹理、衣长袖长，保持模特身体比例自然且姿态稳定。"
+                + "试穿首帧确认要求：" + requirements + "。"
+                + "不要添加文字、水印、贴纸或额外商品。";
+        return ImageGenerateRequest.builder()
+                .roleName(model.getName())
+                .customPrompt(prompt)
+                .aspectRatio(aspectRatio)
+                .quality(resolution)
+                .referenceImageUrls(buildTryOnFirstFrameReferenceUrls(model, product, parseSceneImageUrls(shotProduct.getFabricFitColorSize())))
+                .seriesId(model.getSeriesId())
+                .build();
+    }
+
+    private void applyTryOnFirstFrameResult(Long projectId, ImageGenerateResponse imageResponse) {
+        String status;
+        String imageUrl = null;
+        String errorMessage = null;
+        if (imageResponse != null && "success".equals(imageResponse.getStatus()) && !isBlank(imageResponse.getImageUrl())) {
+            status = "completed";
+            imageUrl = imageResponse.getImageUrl().trim();
+        } else {
+            status = "failed";
+            errorMessage = imageResponse == null ? "试穿首帧生成失败" : defaultIfBlank(imageResponse.getErrorMessage(), "试穿首帧生成失败");
+        }
+
+        UpdateWrapper<CommerceProject> wrapper = new UpdateWrapper<>();
+        wrapper.eq("id", projectId)
+                .set("try_on_first_frame_url", imageUrl)
+                .set("try_on_first_frame_status", status)
+                .set("try_on_first_frame_error", errorMessage)
+                .set("updated_at", LocalDateTime.now());
+        projectMapper.update(null, wrapper);
     }
 
     private ImageGenerateRequest buildCommerceModelImageRequest(CommerceModel model) {
@@ -680,6 +1066,68 @@ public class CommerceServiceImpl implements CommerceService {
                 .styleKeywords(buildCommerceModelStyleKeywords(gender, bodyProfile))
                 .seriesId(model.getSeriesId())
                 .build();
+    }
+
+    private void executeSceneImageGenerationAfterCommit(Long sceneId) {
+        Runnable task = () -> generateSceneImageAsync(sceneId);
+        if (TransactionSynchronizationManager.isActualTransactionActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    imageGenerateExecutor.execute(task);
+                }
+            });
+            return;
+        }
+        imageGenerateExecutor.execute(task);
+    }
+
+    private void generateSceneImageAsync(Long sceneId) {
+        CommerceScene scene = sceneMapper.selectById(sceneId);
+        if (scene == null) {
+            log.warn("电商场景图异步生成跳过，场景不存在: sceneId={}", sceneId);
+            return;
+        }
+        try {
+            ImageGenerateResponse imageResponse = imageGenerateService.generateCommerceSceneImage(buildSceneImageRequest(scene));
+            applySceneImageResult(sceneId, imageResponse);
+        } catch (Exception e) {
+            log.error("电商场景图异步生成失败: sceneId={}", sceneId, e);
+            ImageGenerateResponse failedResponse = new ImageGenerateResponse();
+            failedResponse.setStatus("failed");
+            failedResponse.setErrorMessage(e.getMessage());
+            applySceneImageResult(sceneId, failedResponse);
+        }
+    }
+
+    private ImageGenerateRequest buildSceneImageRequest(CommerceScene scene) {
+        return ImageGenerateRequest.builder()
+                .roleName(scene.getName())
+                .customPrompt(scene.getPrompt())
+                .aspectRatio(scene.getAspectRatio())
+                .quality(scene.getResolution())
+                .seriesId(scene.getSeriesId())
+                .build();
+    }
+
+    private void applySceneImageResult(Long sceneId, ImageGenerateResponse imageResponse) {
+        String status;
+        String imageUrl = null;
+        String errorMessage = null;
+        if (imageResponse != null && "success".equals(imageResponse.getStatus()) && !isBlank(imageResponse.getImageUrl())) {
+            status = "completed";
+            imageUrl = imageResponse.getImageUrl().trim();
+        } else {
+            status = "failed";
+            errorMessage = imageResponse == null ? "场景图生成失败" : defaultIfBlank(imageResponse.getErrorMessage(), "场景图生成失败");
+        }
+        UpdateWrapper<CommerceScene> wrapper = new UpdateWrapper<>();
+        wrapper.eq("id", sceneId)
+                .set("image_url", imageUrl)
+                .set("status", status)
+                .set("error_message", errorMessage)
+                .set("updated_at", LocalDateTime.now());
+        sceneMapper.update(null, wrapper);
     }
 
     private void executeCommerceModelImageGenerationAfterCommit(Long modelId) {
@@ -827,7 +1275,9 @@ public class CommerceServiceImpl implements CommerceService {
         copy.setUserId(product.getUserId());
         copy.setName(product.getName());
         copy.setImageUrl(product.getImageUrl());
+        copy.setImagesJson(product.getImagesJson());
         copy.setProductType(product.getProductType());
+        copy.setFabricFitColorSize(product.getFabricFitColorSize());
         if (request != null && "talking".equals(contentType)) {
             copy.setSellingPoints(trimToNull(request.getSellingPoints()));
             copy.setTargetAudience(trimToNull(request.getTargetAudience()));
@@ -837,6 +1287,87 @@ public class CommerceServiceImpl implements CommerceService {
             copy.setTryOnRequirements(trimToNull(request.getTryOnRequirements()));
         }
         return copy;
+    }
+
+    private List<CommerceScene> buildSceneBatch(Long seriesId, Long userId, CommerceSceneBatchCreateRequest request) {
+        if (request == null) {
+            throw new BusinessException("请选择要生成的场景");
+        }
+        String aspectRatio = ALLOWED_ASPECT_RATIOS.contains(defaultIfBlank(request.getAspectRatio(), "16:9"))
+                ? defaultIfBlank(request.getAspectRatio(), "16:9")
+                : "16:9";
+        String resolution = defaultIfBlank(request.getResolution(), "2K").toUpperCase();
+        if (!ALLOWED_SCENE_RESOLUTIONS.contains(resolution)) {
+            resolution = "2K";
+        }
+        int countPerScene = request.getCountPerScene() == null ? 1 : Math.max(1, Math.min(request.getCountPerScene(), 4));
+        List<String> sceneNames = new ArrayList<>();
+        for (String sceneType : defaultList(request.getSceneTypes())) {
+            String scene = defaultIfBlank(sceneType, "");
+            if (isBlank(scene)) {
+                continue;
+            }
+            if (!ALLOWED_SCENE_TYPES.contains(scene)) {
+                throw new BusinessException("不支持的场景类型");
+            }
+            sceneNames.add(scene);
+        }
+        defaultList(request.getCustomScenes()).stream()
+                .map(scene -> defaultIfBlank(scene, ""))
+                .filter(scene -> !isBlank(scene))
+                .forEach(scene -> sceneNames.add("自定义:" + scene));
+        if (sceneNames.isEmpty()) {
+            throw new BusinessException("请选择要生成的场景");
+        }
+
+        List<CommerceScene> scenes = new ArrayList<>();
+        for (String sceneName : sceneNames) {
+            for (int i = 0; i < countPerScene; i++) {
+                String actualName = sceneName.startsWith("自定义:") ? sceneName.substring("自定义:".length()) : sceneName;
+                CommerceScene scene = new CommerceScene();
+                scene.setSeriesId(seriesId);
+                scene.setUserId(userId);
+                scene.setName(countPerScene > 1 ? actualName + " " + (i + 1) : actualName);
+                scene.setSceneType(sceneName.startsWith("自定义:") ? "自定义" : actualName);
+                scene.setLibraryType(sceneLibraryType(scene.getSceneType()));
+                scene.setAspectRatio(aspectRatio);
+                scene.setResolution(resolution);
+                scene.setPrompt(buildScenePrompt(scene.getSceneType(), actualName, request.getDescription(), aspectRatio));
+                scene.setStatus("generating");
+                scene.setIsDeleted(0);
+                scene.setCreatedAt(LocalDateTime.now());
+                scene.setUpdatedAt(LocalDateTime.now());
+                scenes.add(scene);
+            }
+        }
+        return scenes;
+    }
+
+    private List<String> defaultList(List<String> value) {
+        return value == null ? List.of() : value;
+    }
+
+    private String sceneLibraryType(String sceneType) {
+        return switch (sceneType) {
+            case "品牌场景" -> "品牌场景库";
+            case "直播间背景" -> "直播间背景库";
+            case "街拍场景" -> "街拍场景库";
+            case "棚拍场景" -> "棚拍场景库";
+            case "商场试衣间" -> "试衣间场景库";
+            case "室内全身镜" -> "镜前场景库";
+            default -> "自定义场景库";
+        };
+    }
+
+    private String buildScenePrompt(String sceneType, String sceneName, String description, String aspectRatio) {
+        String base = "生成电商服装试穿场景图，场景类型：" + sceneType + "，场景名称：" + sceneName + "。"
+                + "图片比例 " + aspectRatio + "。"
+                + "画面必须是可用于真人服装试穿合成的干净背景或真实环境，主体区域留出完整人物站立空间，光线自然，透视稳定。"
+                + "不要出现文字、水印、Logo、人物、人体、服装商品或杂乱遮挡物。";
+        if (!isBlank(description)) {
+            base += "补充要求：" + description.trim() + "。";
+        }
+        return base;
     }
 
     private List<String[]> talkingScript(CommerceProduct product) {

@@ -35,6 +35,8 @@ urlpatterns = [
     path('commerce/api/series/', views.commerce_series_api, name='commerce_series_api'),
     path('commerce/series/create/', views.commerce_series_create, name='commerce_series_create'),
     path('commerce/series/<int:series_id>/', views.commerce_series_detail, name='commerce_series_detail'),
+    path('commerce/series/<int:series_id>/scenes/', views.commerce_scene_workspace, name='commerce_scene_workspace'),
+    path('commerce/series/<int:series_id>/scenes/create/', views.commerce_scene_batch_create, name='commerce_scene_batch_create'),
     path('commerce/series/<int:series_id>/models/prompt/', views.commerce_model_prompt, name='commerce_model_prompt'),
     path('commerce/series/<int:series_id>/models/create/', views.commerce_model_create, name='commerce_model_create'),
     path('commerce/models/<int:model_id>/', views.commerce_model_detail, name='commerce_model_detail'),
@@ -45,6 +47,7 @@ urlpatterns = [
     path('commerce/models/<int:model_id>/products/create/', views.commerce_product_create, name='commerce_product_create'),
     path('commerce/products/<int:product_id>/projects/create/', views.commerce_project_create, name='commerce_project_create'),
     path('commerce/projects/<int:project_id>/', views.commerce_project_detail, name='commerce_project_detail'),
+    path('commerce/projects/<int:project_id>/confirm-first-frame/', views.commerce_project_confirm_first_frame, name='commerce_project_confirm_first_frame'),
     path('commerce/projects/<int:project_id>/generate-video/', views.commerce_project_generate_video, name='commerce_project_generate_video'),
 
     # 回收站页面

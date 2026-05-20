@@ -748,7 +748,7 @@
                                 <i data-lucide="user" class="w-4 h-4" id="avatarPlaceholder"></i>
                                 <img id="avatarImg" src="" alt="头像" class="w-full h-full object-cover hidden">
                             </div>
-                            <span class="text-sm font-medium" id="userNickname">{{ request.session.nickname|default:request.session.email }}</span>
+                            <span class="text-sm font-medium" id="userNickname">{% firstof request.session.nickname request.session.email "" %}</span>
                             <i data-lucide="chevron-down" class="w-4 h-4"></i>
                         </button>
                         <div id="userDropdown" class="absolute right-0 top-full mt-2 w-48 glass-card py-2 hidden">
@@ -760,7 +760,7 @@
                                 <i data-lucide="history" class="w-4 h-4"></i>
                                 <span>积分记录</span>
                             </a>
-                            {% if request.session.nickname == '工藤新一' or request.session.email == '1198693014@qq.com' %}
+                            {% if request.session.nickname == '工藤新一' or request.session.email|default:'' == '1198693014@qq.com' %}
                             <a href="/admin/credits/" class="flex items-center gap-2 px-4 py-2 hover:bg-white/10 transition-colors text-cyan-100">
                                 <i data-lucide="bar-chart-3" class="w-4 h-4"></i>
                                 <span>积分后台</span>

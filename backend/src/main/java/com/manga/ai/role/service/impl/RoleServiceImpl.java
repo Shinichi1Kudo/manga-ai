@@ -147,6 +147,7 @@ public class RoleServiceImpl implements RoleService {
         Long roleId = role.getId();
         String aspectRatio = request.getAspectRatio();
         String quality = request.getQuality();
+        String styleKey = request.getStyleKey();
         String styleKeywords = request.getStyleKeywords();
         String originalPrompt = request.getOriginalPrompt();
         Boolean detailedView = request.getDetailedView();
@@ -160,7 +161,7 @@ public class RoleServiceImpl implements RoleService {
                     imageGenerateExecutor.execute(() -> {
                         log.info("异步生图任务开始: roleId={}", roleId);
                         imageGenerateService.generateCharacterAssets(roleId, 1, generatingAssetId, previousActiveAssetId,
-                                aspectRatio, quality, styleKeywords, originalPrompt, detailedView, faceCloseupView);
+                                aspectRatio, quality, styleKey, styleKeywords, originalPrompt, detailedView, faceCloseupView);
                     });
                     log.info("异步生图任务已提交: roleId={}", roleId);
                 } catch (RejectedExecutionException e) {
@@ -473,9 +474,11 @@ public class RoleServiceImpl implements RoleService {
         final Long finalPrevAssetId = previousActiveAssetId;
         final String finalAspectRatio = request.getAspectRatio();
         final String finalQuality = request.getQuality();
+        final String finalStyleKey = request.getStyleKey();
         final String finalStyleKeywords = request.getStyleKeywords();
         final String finalOriginalPrompt = request.getOriginalPrompt();
         final Boolean finalDetailedView = request.getDetailedView();
+        final Boolean finalFaceCloseupView = request.getFaceCloseupView();
         final Integer finalClothingIdAsync = clothingId;
         final String finalClothingName = clothingName;
         final String finalModifiedPrompt = modifiedPrompt;
@@ -489,12 +492,12 @@ public class RoleServiceImpl implements RoleService {
                     imageGenerateService.generateNewClothingWithReference(
                             finalRoleId, finalClothingIdAsync, finalAssetId, finalPrevAssetId,
                             finalRefUrl, finalModifiedPrompt, finalClothingName,
-                            finalAspectRatio, finalQuality, finalStyleKeywords, finalOriginalPrompt, finalDetailedView);
+                            finalAspectRatio, finalQuality, finalStyleKey, finalStyleKeywords, finalOriginalPrompt, finalDetailedView);
                 } else {
                     log.info("异歩文生图任务开始: roleId={}", finalRoleId);
                     imageGenerateService.generateCharacterAssets(finalRoleId, finalClothingIdAsync,
                             finalAssetId, finalPrevAssetId, finalAspectRatio, finalQuality,
-                            finalStyleKeywords, finalOriginalPrompt, finalDetailedView, null);
+                            finalStyleKey, finalStyleKeywords, finalOriginalPrompt, finalDetailedView, finalFaceCloseupView);
                 }
             });
             log.info("异步重新生图任务已提交: roleId={}", roleId);
@@ -539,11 +542,7 @@ public class RoleServiceImpl implements RoleService {
         BeanUtils.copyProperties(role, vo);
 
         // 获取角色资产
-        LambdaQueryWrapper<RoleAsset> assetWrapper = new LambdaQueryWrapper<>();
-        assetWrapper.eq(RoleAsset::getRoleId, role.getId())
-                .eq(RoleAsset::getIsActive, 1)
-                .orderByDesc(RoleAsset::getVersion);
-        List<RoleAsset> assets = roleAssetMapper.selectList(assetWrapper);
+        List<RoleAsset> assets = assetService.getClothingsByRoleId(role.getId());
 
         List<RoleDetailVO.AssetInfo> assetInfos = assets.stream().map(asset -> {
             RoleDetailVO.AssetInfo info = new RoleDetailVO.AssetInfo();
@@ -559,6 +558,12 @@ public class RoleServiceImpl implements RoleService {
             info.setThumbnailPath(ossService.refreshUrl(asset.getThumbnailPath()));
             info.setStatus(asset.getStatus());
             info.setValidationPassed(asset.getValidationPassed() != null && asset.getValidationPassed() == 1);
+            info.setAspectRatio(asset.getAspectRatio());
+            info.setQuality(asset.getQuality());
+            info.setStyleKey(asset.getStyleKey());
+            info.setStyleKeywords(asset.getStyleKeywords());
+            info.setDetailedView(asset.getDetailedView());
+            info.setFaceCloseupView(asset.getFaceCloseupView());
             return info;
         }).collect(Collectors.toList());
 

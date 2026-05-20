@@ -21,7 +21,9 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * 资产服务实现
@@ -42,6 +44,9 @@ public class AssetServiceImpl implements AssetService {
         if (asset == null) {
             throw new BusinessException("资产不存在");
         }
+        Role role = roleMapper.selectById(asset.getRoleId());
+        AssetMetadata metadata = getMetadataByAssetId(asset.getId());
+        enrichAssetFromMetadata(asset, role, metadata);
         return asset;
     }
 
@@ -158,6 +163,11 @@ public class AssetServiceImpl implements AssetService {
             newMetadata.setImageWidth(sourceMetadata.getImageWidth());
             newMetadata.setImageHeight(sourceMetadata.getImageHeight());
             newMetadata.setAspectRatio(sourceMetadata.getAspectRatio());
+            newMetadata.setQuality(sourceMetadata.getQuality());
+            newMetadata.setStyleKey(sourceMetadata.getStyleKey());
+            newMetadata.setStyleKeywords(sourceMetadata.getStyleKeywords());
+            newMetadata.setDetailedView(sourceMetadata.getDetailedView());
+            newMetadata.setFaceCloseupView(sourceMetadata.getFaceCloseupView());
             newMetadata.setGenerationTimeMs(sourceMetadata.getGenerationTimeMs());
             newMetadata.setCreatedAt(java.time.LocalDateTime.now());
             assetMetadataMapper.insert(newMetadata);
@@ -252,16 +262,9 @@ public class AssetServiceImpl implements AssetService {
         log.info("getClothingsByRoleId: roleId={}, 返回{}个服装", roleId, result.size());
 
         Role role = roleMapper.selectById(roleId);
-        // 填充 detailedView 和展示用 clothingPrompt 字段
+        Map<Long, AssetMetadata> metadataMap = getMetadataMap(result);
         for (RoleAsset asset : result) {
-            LambdaQueryWrapper<AssetMetadata> metadataWrapper = new LambdaQueryWrapper<>();
-            metadataWrapper.eq(AssetMetadata::getAssetId, asset.getId())
-                    .select(AssetMetadata::getDetailedView, AssetMetadata::getUserPrompt);
-            AssetMetadata metadata = assetMetadataMapper.selectOne(metadataWrapper);
-            if (metadata != null) {
-                asset.setDetailedView(metadata.getDetailedView());
-            }
-            applyDisplayPrompt(asset, role, metadata);
+            enrichAssetFromMetadata(asset, role, metadataMap.get(asset.getId()));
         }
 
         return result;
@@ -273,7 +276,13 @@ public class AssetServiceImpl implements AssetService {
         wrapper.eq(RoleAsset::getRoleId, roleId)
                 .orderByDesc(RoleAsset::getClothingId)
                 .orderByDesc(RoleAsset::getVersion);
-        return roleAssetMapper.selectList(wrapper);
+        List<RoleAsset> assets = roleAssetMapper.selectList(wrapper);
+        Role role = roleMapper.selectById(roleId);
+        Map<Long, AssetMetadata> metadataMap = getMetadataMap(assets);
+        for (RoleAsset asset : assets) {
+            enrichAssetFromMetadata(asset, role, metadataMap.get(asset.getId()));
+        }
+        return assets;
     }
 
     @Override
@@ -285,36 +294,110 @@ public class AssetServiceImpl implements AssetService {
         Role role = roleMapper.selectById(roleAsset.getRoleId());
 
         LambdaQueryWrapper<AssetMetadata> wrapper = new LambdaQueryWrapper<>();
-        wrapper.eq(AssetMetadata::getAssetId, assetId)
-                .select(AssetMetadata::getUserPrompt, AssetMetadata::getPrompt);
+        wrapper.eq(AssetMetadata::getAssetId, assetId);
         AssetMetadata metadata = assetMetadataMapper.selectOne(wrapper);
 
         return resolveDisplayPrompt(roleAsset, role, metadata);
     }
 
-    private void applyDisplayPrompt(RoleAsset asset, Role role, AssetMetadata metadata) {
+    private AssetMetadata getMetadataByAssetId(Long assetId) {
+        if (assetId == null) {
+            return null;
+        }
+        LambdaQueryWrapper<AssetMetadata> wrapper = new LambdaQueryWrapper<>();
+        wrapper.eq(AssetMetadata::getAssetId, assetId);
+        return assetMetadataMapper.selectOne(wrapper);
+    }
+
+    private Map<Long, AssetMetadata> getMetadataMap(List<RoleAsset> assets) {
+        Map<Long, AssetMetadata> metadataMap = new HashMap<>();
+        if (assets == null || assets.isEmpty()) {
+            return metadataMap;
+        }
+        List<Long> assetIds = assets.stream()
+                .map(RoleAsset::getId)
+                .filter(id -> id != null)
+                .collect(java.util.stream.Collectors.toList());
+        if (assetIds.isEmpty()) {
+            return metadataMap;
+        }
+
+        LambdaQueryWrapper<AssetMetadata> metadataWrapper = new LambdaQueryWrapper<>();
+        metadataWrapper.in(AssetMetadata::getAssetId, assetIds);
+        List<AssetMetadata> metadataList = assetMetadataMapper.selectList(metadataWrapper);
+        for (AssetMetadata metadata : metadataList) {
+            metadataMap.put(metadata.getAssetId(), metadata);
+        }
+        return metadataMap;
+    }
+
+    private void enrichAssetFromMetadata(RoleAsset asset, Role role, AssetMetadata metadata) {
+        applyCreationSettings(asset, role, metadata);
         String displayPrompt = resolveDisplayPrompt(asset, role, metadata);
         if (displayPrompt != null && !displayPrompt.trim().isEmpty()) {
             asset.setClothingPrompt(displayPrompt);
         }
     }
 
+    private void applyCreationSettings(RoleAsset asset, Role role, AssetMetadata metadata) {
+        if (asset == null) {
+            return;
+        }
+        if (metadata != null) {
+            asset.setAspectRatio(metadata.getAspectRatio() != null ? metadata.getAspectRatio() : asset.getAspectRatio());
+            asset.setQuality(metadata.getQuality() != null ? metadata.getQuality() : asset.getQuality());
+            asset.setStyleKey(metadata.getStyleKey() != null ? metadata.getStyleKey() : asset.getStyleKey());
+            asset.setStyleKeywords(metadata.getStyleKeywords() != null ? metadata.getStyleKeywords() : asset.getStyleKeywords());
+            asset.setDetailedView(metadata.getDetailedView());
+            asset.setFaceCloseupView(metadata.getFaceCloseupView());
+        }
+        if (role != null) {
+            asset.setAspectRatio(firstText(asset.getAspectRatio(), role.getAspectRatio()));
+            asset.setQuality(firstText(asset.getQuality(), role.getQuality()));
+            asset.setStyleKey(firstText(asset.getStyleKey(), role.getStyleKey()));
+            asset.setStyleKeywords(firstText(asset.getStyleKeywords(), role.getStyleKeywords()));
+            if (asset.getDetailedView() == null) {
+                asset.setDetailedView(role.getDetailedView());
+            }
+            if (asset.getFaceCloseupView() == null) {
+                asset.setFaceCloseupView(role.getFaceCloseupView());
+            }
+        }
+    }
+
     private String resolveDisplayPrompt(RoleAsset asset, Role role, AssetMetadata metadata) {
+        String userPrompt = metadata != null ? metadata.getUserPrompt() : null;
+        if (hasText(userPrompt)) {
+            return userPrompt;
+        }
+
+        String clothingPrompt = asset != null ? asset.getClothingPrompt() : null;
+        if (hasText(clothingPrompt)) {
+            return clothingPrompt;
+        }
+
+        String finalPrompt = metadata != null ? metadata.getPrompt() : null;
+        if (hasText(finalPrompt)) {
+            return finalPrompt;
+        }
+
         if (asset != null && asset.getClothingId() != null && asset.getClothingId() == 1) {
             String originalPrompt = role != null ? role.getOriginalPrompt() : null;
-            if (originalPrompt != null && !originalPrompt.trim().isEmpty()) {
+            if (hasText(originalPrompt)) {
                 return originalPrompt;
             }
         }
-        String clothingPrompt = asset != null ? asset.getClothingPrompt() : null;
-        if (clothingPrompt != null && !clothingPrompt.trim().isEmpty()) {
-            return clothingPrompt;
-        }
-        String userPrompt = metadata != null ? metadata.getUserPrompt() : null;
-        if (userPrompt != null && !userPrompt.trim().isEmpty()) {
-            return userPrompt;
-        }
-        return metadata != null ? metadata.getPrompt() : null;
+
+        String customPrompt = role != null ? role.getCustomPrompt() : null;
+        return hasText(customPrompt) ? customPrompt : null;
+    }
+
+    private String firstText(String first, String second) {
+        return hasText(first) ? first : second;
+    }
+
+    private boolean hasText(String value) {
+        return value != null && !value.trim().isEmpty();
     }
 
     @Override
@@ -389,8 +472,7 @@ public class AssetServiceImpl implements AssetService {
         try {
             // 1. 获取该系列所有角色ID
             LambdaQueryWrapper<Role> roleWrapper = new LambdaQueryWrapper<>();
-            roleWrapper.eq(Role::getSeriesId, seriesId)
-                    .select(Role::getId, Role::getOriginalPrompt, Role::getCustomPrompt);
+            roleWrapper.eq(Role::getSeriesId, seriesId);
             List<Role> roles = roleMapper.selectList(roleWrapper);
 
             if (roles.isEmpty()) {
@@ -424,20 +506,7 @@ public class AssetServiceImpl implements AssetService {
             }
 
             // 3. 批量获取所有资产的元数据
-            List<Long> assetIds = allAssets.stream()
-                    .map(RoleAsset::getId)
-                    .collect(java.util.stream.Collectors.toList());
-
-            java.util.Map<Long, AssetMetadata> metadataMap = new java.util.HashMap<>();
-            if (!assetIds.isEmpty()) {
-                LambdaQueryWrapper<AssetMetadata> metadataWrapper = new LambdaQueryWrapper<>();
-                metadataWrapper.in(AssetMetadata::getAssetId, assetIds)
-                        .select(AssetMetadata::getAssetId, AssetMetadata::getDetailedView, AssetMetadata::getUserPrompt);
-                List<AssetMetadata> metadataList = assetMetadataMapper.selectList(metadataWrapper);
-                for (AssetMetadata metadata : metadataList) {
-                    metadataMap.put(metadata.getAssetId(), metadata);
-                }
-            }
+            java.util.Map<Long, AssetMetadata> metadataMap = getMetadataMap(allAssets);
 
             // 4. 按角色分组并处理
             java.util.Map<Long, List<RoleAsset>> result = new java.util.HashMap<>();
@@ -495,11 +564,7 @@ public class AssetServiceImpl implements AssetService {
 
                     // 填充 detailedView 和展示用 clothingPrompt
                     if (selectedAsset != null) {
-                        AssetMetadata metadata = metadataMap.get(selectedAsset.getId());
-                        if (metadata != null) {
-                            selectedAsset.setDetailedView(metadata.getDetailedView());
-                        }
-                        applyDisplayPrompt(selectedAsset, roleMap.get(roleId), metadata);
+                        enrichAssetFromMetadata(selectedAsset, roleMap.get(roleId), metadataMap.get(selectedAsset.getId()));
                         roleClothings.add(selectedAsset);
                     }
                 }

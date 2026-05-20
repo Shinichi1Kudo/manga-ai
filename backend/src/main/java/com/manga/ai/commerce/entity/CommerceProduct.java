@@ -23,6 +23,7 @@ public class CommerceProduct implements Serializable {
     private Long userId;
     private String name;
     private String imageUrl;
+    private String imagesJson;
     private String productType;
     private String sellingPoints;
     private String fabricFitColorSize;

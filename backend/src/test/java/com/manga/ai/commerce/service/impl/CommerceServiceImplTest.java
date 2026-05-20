@@ -9,14 +9,18 @@ import com.manga.ai.commerce.dto.CommerceProductCreateRequest;
 import com.manga.ai.commerce.dto.CommerceProductVO;
 import com.manga.ai.commerce.dto.CommerceProjectCreateRequest;
 import com.manga.ai.commerce.dto.CommerceProjectVO;
+import com.manga.ai.commerce.dto.CommerceSceneBatchCreateRequest;
+import com.manga.ai.commerce.dto.CommerceSceneVO;
 import com.manga.ai.commerce.entity.CommerceModel;
 import com.manga.ai.commerce.entity.CommerceProduct;
 import com.manga.ai.commerce.entity.CommerceProject;
+import com.manga.ai.commerce.entity.CommerceScene;
 import com.manga.ai.commerce.entity.CommerceSeries;
 import com.manga.ai.commerce.entity.CommerceShot;
 import com.manga.ai.commerce.mapper.CommerceModelMapper;
 import com.manga.ai.commerce.mapper.CommerceProductMapper;
 import com.manga.ai.commerce.mapper.CommerceProjectMapper;
+import com.manga.ai.commerce.mapper.CommerceSceneMapper;
 import com.manga.ai.commerce.mapper.CommerceSeriesMapper;
 import com.manga.ai.commerce.mapper.CommerceShotMapper;
 import com.manga.ai.commerce.service.CommerceModelProfileService;
@@ -62,6 +66,7 @@ class CommerceServiceImplTest {
     private final CommerceModelMapper modelMapper = mock(CommerceModelMapper.class);
     private final CommerceProductMapper productMapper = mock(CommerceProductMapper.class);
     private final CommerceProjectMapper projectMapper = mock(CommerceProjectMapper.class);
+    private final CommerceSceneMapper sceneMapper = mock(CommerceSceneMapper.class);
     private final CommerceShotMapper shotMapper = mock(CommerceShotMapper.class);
     private final SeedanceService seedanceService = mock(SeedanceService.class);
     private final UserService userService = mock(UserService.class);
@@ -75,6 +80,7 @@ class CommerceServiceImplTest {
             modelMapper,
             productMapper,
             projectMapper,
+            sceneMapper,
             shotMapper,
             seedanceService,
             userService,
@@ -665,7 +671,16 @@ class CommerceServiceImplTest {
 
         CommerceProductCreateRequest request = new CommerceProductCreateRequest();
         request.setName("冰丝防晒衬衫");
-        request.setImageUrl("https://oss.example.com/product.png");
+        CommerceProductCreateRequest.ProductImageItem mainImage = new CommerceProductCreateRequest.ProductImageItem();
+        mainImage.setUrl("https://oss.example.com/product-main.png");
+        mainImage.setUsage("主图");
+        CommerceProductCreateRequest.ProductImageItem detailImage = new CommerceProductCreateRequest.ProductImageItem();
+        detailImage.setUrl("https://oss.example.com/product-detail.png");
+        detailImage.setUsage("细节图");
+        CommerceProductCreateRequest.ProductImageItem wornImage = new CommerceProductCreateRequest.ProductImageItem();
+        wornImage.setUrl("https://oss.example.com/product-worn.png");
+        wornImage.setUsage("上身参考");
+        request.setImages(List.of(detailImage, wornImage, mainImage));
         request.setProductType("上衣");
         request.setSellingPoints("凉感, 显瘦, 通勤");
         request.setTargetAudience("通勤人群");
@@ -675,7 +690,14 @@ class CommerceServiceImplTest {
         CommerceProductVO result = service.createProduct(200L, request);
 
         assertThat(result.getName()).isEqualTo("冰丝防晒衬衫");
-        assertThat(result.getImageUrl()).isEqualTo("https://oss.example.com/product.png");
+        assertThat(result.getImageUrl()).isEqualTo("https://oss.example.com/product-main.png");
+        assertThat(result.getImages()).extracting(CommerceProductVO.ProductImageVO::getUsage)
+                .containsExactly("主图", "上身参考", "细节图");
+        assertThat(result.getImages()).extracting(CommerceProductVO.ProductImageVO::getUrl)
+                .containsExactly(
+                        "https://oss.example.com/product-main.png",
+                        "https://oss.example.com/product-worn.png",
+                        "https://oss.example.com/product-detail.png");
         assertThat(result.getSeriesId()).isEqualTo(100L);
         assertThat(result.getProductType()).isEqualTo("上衣");
         assertThat(result.getSellingPoints()).isNull();
@@ -684,8 +706,65 @@ class CommerceServiceImplTest {
         assertThat(result.getTryOnRequirements()).isNull();
         ArgumentCaptor<CommerceProduct> productCaptor = ArgumentCaptor.forClass(CommerceProduct.class);
         verify(productMapper).insert(productCaptor.capture());
-        assertThat(productCaptor.getValue().getSellingPoints()).isNull();
-        assertThat(productCaptor.getValue().getTryOnRequirements()).isNull();
+        CommerceProduct inserted = productCaptor.getValue();
+        assertThat(inserted.getImageUrl()).isEqualTo("https://oss.example.com/product-main.png");
+        assertThat(inserted.getImagesJson())
+                .contains("\"usage\":\"主图\"")
+                .contains("\"usage\":\"上身参考\"")
+                .contains("\"usage\":\"细节图\"");
+        assertThat(inserted.getSellingPoints()).isNull();
+        assertThat(inserted.getTryOnRequirements()).isNull();
+    }
+
+    @Test
+    void createProductRejectsMoreThanFiveImages() {
+        UserContextHolder.setUserId(9L);
+        CommerceModel model = new CommerceModel();
+        model.setId(200L);
+        model.setSeriesId(100L);
+        model.setUserId(9L);
+        model.setStatus("locked");
+        when(modelMapper.selectById(200L)).thenReturn(model);
+
+        CommerceProductCreateRequest request = new CommerceProductCreateRequest();
+        request.setName("冰丝防晒衬衫");
+        List<CommerceProductCreateRequest.ProductImageItem> images = new ArrayList<>();
+        for (int i = 0; i < 6; i++) {
+            CommerceProductCreateRequest.ProductImageItem item = new CommerceProductCreateRequest.ProductImageItem();
+            item.setUrl("https://oss.example.com/product-" + i + ".png");
+            item.setUsage("细节图");
+            images.add(item);
+        }
+        request.setImages(images);
+
+        assertThatThrownBy(() -> service.createProduct(200L, request))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("最多上传5张商品图片");
+
+        verify(productMapper, never()).insert(any());
+    }
+
+    @Test
+    void createProductRejectsImageWithoutUsage() {
+        UserContextHolder.setUserId(9L);
+        CommerceModel model = new CommerceModel();
+        model.setId(200L);
+        model.setSeriesId(100L);
+        model.setUserId(9L);
+        model.setStatus("locked");
+        when(modelMapper.selectById(200L)).thenReturn(model);
+
+        CommerceProductCreateRequest request = new CommerceProductCreateRequest();
+        request.setName("冰丝防晒衬衫");
+        CommerceProductCreateRequest.ProductImageItem item = new CommerceProductCreateRequest.ProductImageItem();
+        item.setUrl("https://oss.example.com/product.png");
+        request.setImages(List.of(item));
+
+        assertThatThrownBy(() -> service.createProduct(200L, request))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("请选择商品图片用途");
+
+        verify(productMapper, never()).insert(any());
     }
 
     @Test
@@ -720,6 +799,118 @@ class CommerceServiceImplTest {
                 .isInstanceOf(BusinessException.class)
                 .hasMessageContaining("只支持 JPG、PNG、WEBP 格式的商品图片");
         verify(ossService, never()).uploadImage(any(byte[].class), anyString(), anyString(), anyString());
+    }
+
+    @Test
+    void createSceneBatchCreatesQueuedScenesAndGeneratesImagesAsync() {
+        UserContextHolder.setUserId(9L);
+        CommerceSeries series = new CommerceSeries();
+        series.setId(100L);
+        series.setUserId(9L);
+        series.setName("小雅女装种草号");
+        when(seriesMapper.selectById(100L)).thenReturn(series);
+        List<CommerceScene> insertedScenes = new ArrayList<>();
+        doAnswer(invocation -> {
+            CommerceScene scene = invocation.getArgument(0);
+            scene.setId(700L + insertedScenes.size());
+            insertedScenes.add(scene);
+            return 1;
+        }).when(sceneMapper).insert(any(CommerceScene.class));
+        when(sceneMapper.selectById(anyLong())).thenAnswer(invocation -> {
+            Long id = invocation.getArgument(0);
+            return insertedScenes.stream()
+                    .filter(scene -> id.equals(scene.getId()))
+                    .findFirst()
+                    .orElse(null);
+        });
+        ImageGenerateResponse imageResponse = new ImageGenerateResponse();
+        imageResponse.setStatus("success");
+        imageResponse.setImageUrl("https://oss.example.com/commerce/scenes/street.png");
+        when(imageGenerateService.generateCommerceSceneImage(any())).thenReturn(imageResponse);
+
+        CommerceSceneBatchCreateRequest request = new CommerceSceneBatchCreateRequest();
+        request.setSceneTypes(List.of("直播间背景", "街拍场景"));
+        request.setCustomScenes(List.of("咖啡店落地窗旁"));
+        request.setAspectRatio("16:9");
+        request.setResolution("3K");
+        request.setCountPerScene(1);
+        request.setDescription("浅色女装品牌调性，干净高级");
+
+        List<CommerceSceneVO> result = service.createSceneBatch(100L, request);
+
+        assertThat(result).extracting(CommerceSceneVO::getSceneType)
+                .containsExactly("直播间背景", "街拍场景", "自定义");
+        assertThat(result).extracting(CommerceSceneVO::getName)
+                .containsExactly("直播间背景", "街拍场景", "咖啡店落地窗旁");
+        assertThat(result).extracting(CommerceSceneVO::getStatus)
+                .containsOnly("generating");
+        ArgumentCaptor<CommerceScene> sceneCaptor = ArgumentCaptor.forClass(CommerceScene.class);
+        verify(sceneMapper, times(3)).insert(sceneCaptor.capture());
+        assertThat(sceneCaptor.getAllValues()).extracting(CommerceScene::getLibraryType)
+                .containsExactly("直播间背景库", "街拍场景库", "自定义场景库");
+        assertThat(sceneCaptor.getAllValues()).extracting(CommerceScene::getPrompt)
+                .allSatisfy(prompt -> assertThat(prompt).contains("浅色女装品牌调性"));
+        assertThat(commerceImageTasks).hasSize(3);
+
+        commerceImageTasks.get(0).run();
+
+        ArgumentCaptor<ImageGenerateRequest> imageRequestCaptor = ArgumentCaptor.forClass(ImageGenerateRequest.class);
+        verify(imageGenerateService).generateCommerceSceneImage(imageRequestCaptor.capture());
+        assertThat(imageRequestCaptor.getValue().getAspectRatio()).isEqualTo("16:9");
+        assertThat(imageRequestCaptor.getValue().getQuality()).isEqualTo("3K");
+        assertThat(imageRequestCaptor.getValue().getCustomPrompt())
+                .contains("电商服装试穿场景图")
+                .contains("直播间背景")
+                .contains("浅色女装品牌调性");
+        ArgumentCaptor<UpdateWrapper<CommerceScene>> updateCaptor = ArgumentCaptor.forClass(UpdateWrapper.class);
+        verify(sceneMapper).update(eq(null), updateCaptor.capture());
+        assertThat(updateCaptor.getValue().getSqlSet()).contains("image_url", "status", "error_message");
+        assertThat(updateCaptor.getValue().getParamNameValuePairs().values())
+                .contains("https://oss.example.com/commerce/scenes/street.png", "completed");
+    }
+
+    @Test
+    void listScenesReturnsSeriesScenesByUpdatedTime() {
+        UserContextHolder.setUserId(9L);
+        CommerceSeries series = new CommerceSeries();
+        series.setId(100L);
+        series.setUserId(9L);
+        when(seriesMapper.selectById(100L)).thenReturn(series);
+
+        CommerceScene scene = new CommerceScene();
+        scene.setId(700L);
+        scene.setSeriesId(100L);
+        scene.setUserId(9L);
+        scene.setName("直播间背景");
+        scene.setSceneType("直播间背景");
+        scene.setLibraryType("直播间背景库");
+        scene.setImageUrl("https://oss.example.com/commerce/scenes/live.png");
+        scene.setStatus("completed");
+        when(sceneMapper.selectList(any())).thenReturn(List.of(scene));
+
+        List<CommerceSceneVO> result = service.listScenes(100L);
+
+        assertThat(result).hasSize(1);
+        assertThat(result.get(0).getName()).isEqualTo("直播间背景");
+        assertThat(result.get(0).getLibraryType()).isEqualTo("直播间背景库");
+        assertThat(result.get(0).getImageUrl()).isEqualTo("https://oss.example.com/commerce/scenes/live.png");
+    }
+
+    @Test
+    void createSceneBatchRejectsUnsupportedSceneType() {
+        UserContextHolder.setUserId(9L);
+        CommerceSeries series = new CommerceSeries();
+        series.setId(100L);
+        series.setUserId(9L);
+        when(seriesMapper.selectById(100L)).thenReturn(series);
+
+        CommerceSceneBatchCreateRequest request = new CommerceSceneBatchCreateRequest();
+        request.setSceneTypes(List.of("未知场景"));
+
+        assertThatThrownBy(() -> service.createSceneBatch(100L, request))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("不支持的场景类型");
+        verify(sceneMapper, never()).insert(any());
     }
 
     @Test
@@ -759,6 +950,11 @@ class CommerceServiceImplTest {
         product.setUserId(9L);
         product.setName("冰丝防晒衬衫");
         product.setImageUrl("https://oss.example.com/product.png");
+        product.setImagesJson("["
+                + "{\"url\":\"https://oss.example.com/product-detail.png\",\"usage\":\"细节图\"},"
+                + "{\"url\":\"https://oss.example.com/product-worn.png\",\"usage\":\"上身参考\"},"
+                + "{\"url\":\"https://oss.example.com/product-main.png\",\"usage\":\"主图\"}"
+                + "]");
         product.setSellingPoints("凉感, 显瘦, 通勤");
 
         when(productMapper.selectById(300L)).thenReturn(product);
@@ -859,6 +1055,153 @@ class CommerceServiceImplTest {
     }
 
     @Test
+    void createTryOnProjectStoresFirstFrameSettingsAndQueuesLiteImageGeneration() {
+        UserContextHolder.setUserId(9L);
+        CommerceModel model = new CommerceModel();
+        model.setId(200L);
+        model.setSeriesId(100L);
+        model.setUserId(9L);
+        model.setName("小雅");
+        model.setBaseImageUrl("https://oss.example.com/model.png");
+        model.setStatus("locked");
+
+        CommerceProduct product = new CommerceProduct();
+        product.setId(300L);
+        product.setModelId(200L);
+        product.setSeriesId(100L);
+        product.setUserId(9L);
+        product.setName("冰丝防晒衬衫");
+        product.setImageUrl("https://oss.example.com/product.png");
+        product.setImagesJson("["
+                + "{\"url\":\"https://oss.example.com/product-detail.png\",\"usage\":\"细节图\"},"
+                + "{\"url\":\"https://oss.example.com/product-worn.png\",\"usage\":\"上身参考\"},"
+                + "{\"url\":\"https://oss.example.com/product-main.png\",\"usage\":\"主图\"}"
+                + "]");
+        CommerceScene scene = new CommerceScene();
+        scene.setId(700L);
+        scene.setSeriesId(100L);
+        scene.setUserId(9L);
+        scene.setImageUrl("https://oss.example.com/commerce/scenes/street.png");
+        scene.setStatus("completed");
+
+        when(productMapper.selectById(300L)).thenReturn(product);
+        when(modelMapper.selectById(200L)).thenReturn(model);
+        when(sceneMapper.selectBatchIds(List.of(700L))).thenReturn(List.of(scene));
+        ImageGenerateResponse imageResponse = new ImageGenerateResponse();
+        imageResponse.setStatus("success");
+        imageResponse.setImageUrl("https://oss.example.com/commerce/first-frame.png");
+        when(imageGenerateService.generateCommerceTryOnFirstFrame(any())).thenReturn(imageResponse);
+
+        CommerceProjectCreateRequest request = new CommerceProjectCreateRequest();
+        request.setContentType("try_on");
+        request.setAspectRatio("9:16");
+        request.setTryOnRequirements("展示方式：全身站立；首帧确认：先生成试穿首帧确认图，确认商品还原、穿着效果和模特姿态后再生成视频");
+        request.setTryOnFirstFrameEnabled(true);
+        request.setTryOnFirstFrameAspectRatio("3:4");
+        request.setTryOnFirstFrameResolution("4K");
+        request.setSceneIds(List.of(700L));
+
+        CommerceProjectVO result = service.createProject(300L, request);
+
+        ArgumentCaptor<CommerceProject> projectCaptor = ArgumentCaptor.forClass(CommerceProject.class);
+        verify(projectMapper).insert(projectCaptor.capture());
+        CommerceProject insertedProject = projectCaptor.getValue();
+        assertThat(insertedProject.getTryOnFirstFrameEnabled()).isEqualTo(1);
+        assertThat(insertedProject.getTryOnFirstFrameAspectRatio()).isEqualTo("3:4");
+        assertThat(insertedProject.getTryOnFirstFrameResolution()).isEqualTo("4K");
+        assertThat(insertedProject.getTryOnFirstFrameStatus()).isEqualTo("generating");
+        assertThat(insertedProject.getTryOnFirstFrameConfirmed()).isEqualTo(0);
+        assertThat(insertedProject.getSceneImageUrlsJson()).contains("https://oss.example.com/commerce/scenes/street.png");
+        assertThat(result.getTryOnFirstFrameEnabled()).isTrue();
+        assertThat(result.getTryOnFirstFrameAspectRatio()).isEqualTo("3:4");
+        assertThat(result.getTryOnFirstFrameResolution()).isEqualTo("4K");
+        assertThat(result.getTryOnFirstFrameConfirmed()).isFalse();
+        assertThat(result.getSceneImageUrls()).containsExactly("https://oss.example.com/commerce/scenes/street.png");
+
+        assertThat(commerceImageTasks).hasSize(1);
+        commerceImageTasks.get(0).run();
+
+        ArgumentCaptor<ImageGenerateRequest> imageRequestCaptor = ArgumentCaptor.forClass(ImageGenerateRequest.class);
+        verify(imageGenerateService).generateCommerceTryOnFirstFrame(imageRequestCaptor.capture());
+        ImageGenerateRequest imageRequest = imageRequestCaptor.getValue();
+        assertThat(imageRequest.getAspectRatio()).isEqualTo("3:4");
+        assertThat(imageRequest.getQuality()).isEqualTo("4K");
+        assertThat(imageRequest.getCustomPrompt())
+                .contains("试穿首帧确认")
+                .contains("准确还原商品颜色")
+                .contains("图案纹理")
+                .contains("图片比例 3:4");
+        assertThat(imageRequest.getReferenceImageUrls()).containsExactly(
+                "https://oss.example.com/model.png",
+                "https://oss.example.com/product-main.png",
+                "https://oss.example.com/product-worn.png",
+                "https://oss.example.com/product-detail.png",
+                "https://oss.example.com/commerce/scenes/street.png"
+        );
+        ArgumentCaptor<UpdateWrapper<CommerceProject>> updateCaptor = ArgumentCaptor.forClass(UpdateWrapper.class);
+        verify(projectMapper).update(eq(null), updateCaptor.capture());
+        UpdateWrapper<CommerceProject> updateWrapper = updateCaptor.getValue();
+        assertThat(updateWrapper.getSqlSet()).contains(
+                "try_on_first_frame_url",
+                "try_on_first_frame_status",
+                "try_on_first_frame_error",
+                "updated_at"
+        );
+        assertThat(updateWrapper.getParamNameValuePairs().values()).contains(
+                "https://oss.example.com/commerce/first-frame.png",
+                "completed"
+        );
+    }
+
+    @Test
+    void generateProjectVideoRejectsUnconfirmedFirstFrame() {
+        UserContextHolder.setUserId(9L);
+        CommerceProject project = new CommerceProject();
+        project.setId(400L);
+        project.setUserId(9L);
+        project.setAspectRatio("3:4");
+        project.setContentType("try_on");
+        project.setModelImageUrl("https://oss.example.com/model.png");
+        project.setProductImageUrl("https://oss.example.com/product.png");
+        project.setTryOnFirstFrameEnabled(1);
+        project.setTryOnFirstFrameStatus("completed");
+        project.setTryOnFirstFrameUrl("https://oss.example.com/first-frame.png");
+        project.setTryOnFirstFrameConfirmed(0);
+        when(projectMapper.selectById(400L)).thenReturn(project);
+
+        assertThatThrownBy(() -> service.generateProjectVideo(400L))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("请先确认试穿首帧");
+
+        verify(shotMapper, never()).selectList(any());
+        verify(seedanceService, never()).generateVideo(any());
+    }
+
+    @Test
+    void confirmTryOnFirstFrameMarksCompletedImageAsConfirmed() {
+        UserContextHolder.setUserId(9L);
+        CommerceProject project = new CommerceProject();
+        project.setId(400L);
+        project.setUserId(9L);
+        project.setAspectRatio("3:4");
+        project.setContentType("try_on");
+        project.setTryOnFirstFrameEnabled(1);
+        project.setTryOnFirstFrameStatus("completed");
+        project.setTryOnFirstFrameUrl("https://oss.example.com/first-frame.png");
+        project.setTryOnFirstFrameConfirmed(0);
+        when(projectMapper.selectById(400L)).thenReturn(project);
+
+        CommerceProjectVO result = service.confirmTryOnFirstFrame(400L);
+
+        assertThat(result.getTryOnFirstFrameConfirmed()).isTrue();
+        ArgumentCaptor<UpdateWrapper<CommerceProject>> updateCaptor = ArgumentCaptor.forClass(UpdateWrapper.class);
+        verify(projectMapper).update(eq(null), updateCaptor.capture());
+        UpdateWrapper<CommerceProject> updateWrapper = updateCaptor.getValue();
+        assertThat(updateWrapper.getSqlSet()).contains("try_on_first_frame_confirmed");
+        assertThat(updateWrapper.getParamNameValuePairs().values()).contains(1);
+    }
+
+    @Test
     void createProjectRejectsUnlockedModel() {
         UserContextHolder.setUserId(9L);
         CommerceModel model = new CommerceModel();
@@ -896,6 +1239,7 @@ class CommerceServiceImplTest {
         project.setContentType("try_on");
         project.setModelImageUrl("https://oss.example.com/model.png");
         project.setProductImageUrl("https://oss.example.com/product.png");
+        project.setSceneImageUrlsJson("[\"https://oss.example.com/commerce/scenes/street.png\"]");
         project.setStatus("draft");
         when(projectMapper.selectById(400L)).thenReturn(project);
 
@@ -922,9 +1266,10 @@ class CommerceServiceImplTest {
         verify(seedanceService).generateVideo(requestCaptor.capture());
         SeedanceRequest request = requestCaptor.getValue();
         assertThat(request.getRatio()).isEqualTo("3:4");
-        assertThat(request.getContents()).hasSize(2);
+        assertThat(request.getContents()).hasSize(3);
         assertThat(request.getContents().get(0).getImageUrl().getUrl()).isEqualTo("https://oss.example.com/model.png");
         assertThat(request.getContents().get(1).getImageUrl().getUrl()).isEqualTo("https://oss.example.com/product.png");
+        assertThat(request.getContents().get(2).getImageUrl().getUrl()).isEqualTo("https://oss.example.com/commerce/scenes/street.png");
     }
 
     private void assignModelIdOnInsert(Long id) {

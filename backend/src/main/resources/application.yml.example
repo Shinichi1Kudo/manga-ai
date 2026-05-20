@@ -78,6 +78,8 @@ commerce:
     api-key: ${volcengine.ark.api-key}
     base-url: https://ark.cn-beijing.volces.com/api/v3
     model: doubao-seedream-5-0-260128
+  try-on-first-frame:
+    model: doubao-seedream-5-0-lite-260128
 
 # 文件存储配置
 storage:

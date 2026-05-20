@@ -66,6 +66,11 @@ public class RegenerateRequest implements Serializable {
     private String styleKeywords;
 
     /**
+     * 前端风格Key
+     */
+    private String styleKey;
+
+    /**
      * 用户原始提示词（不包含系统附加的模板）
      */
     private String originalPrompt;
@@ -74,4 +79,9 @@ public class RegenerateRequest implements Serializable {
      * 是否使用精细三视图模式生成
      */
     private Boolean detailedView;
+
+    /**
+     * 是否使用大头特写+三视图布局
+     */
+    private Boolean faceCloseupView;
 }

@@ -1,0 +1,4 @@
+ALTER TABLE asset_metadata ADD COLUMN IF NOT EXISTS quality VARCHAR(20);
+ALTER TABLE asset_metadata ADD COLUMN IF NOT EXISTS style_key VARCHAR(50);
+ALTER TABLE asset_metadata ADD COLUMN IF NOT EXISTS style_keywords VARCHAR(500);
+ALTER TABLE asset_metadata ADD COLUMN IF NOT EXISTS face_closeup_view BOOLEAN DEFAULT FALSE;

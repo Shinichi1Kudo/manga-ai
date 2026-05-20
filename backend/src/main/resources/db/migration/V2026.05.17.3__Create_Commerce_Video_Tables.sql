@@ -41,6 +41,7 @@ CREATE TABLE IF NOT EXISTS commerce_product (
     user_id BIGINT NOT NULL,
     name VARCHAR(120) NOT NULL,
     image_url VARCHAR(1024) NOT NULL,
+    images_json TEXT,
     product_type VARCHAR(60),
     selling_points TEXT,
     fabric_fit_color_size TEXT,
@@ -56,6 +57,26 @@ CREATE TABLE IF NOT EXISTS commerce_product (
     INDEX idx_commerce_product_user_status (user_id, status)
 );
 
+CREATE TABLE IF NOT EXISTS commerce_scene (
+    id BIGINT AUTO_INCREMENT PRIMARY KEY,
+    series_id BIGINT NOT NULL,
+    user_id BIGINT NOT NULL,
+    name VARCHAR(120) NOT NULL,
+    scene_type VARCHAR(60) NOT NULL,
+    library_type VARCHAR(60) NOT NULL,
+    prompt TEXT,
+    image_url VARCHAR(1024),
+    aspect_ratio VARCHAR(10) DEFAULT '16:9',
+    resolution VARCHAR(10) DEFAULT '2K',
+    status VARCHAR(30) NOT NULL DEFAULT 'generating',
+    error_message TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    is_deleted TINYINT(1) NOT NULL DEFAULT 0,
+    INDEX idx_commerce_scene_series_updated (series_id, updated_at),
+    INDEX idx_commerce_scene_user_status (user_id, status)
+);
+
 CREATE TABLE IF NOT EXISTS commerce_project (
     id BIGINT AUTO_INCREMENT PRIMARY KEY,
     series_id BIGINT NOT NULL,
@@ -66,6 +87,14 @@ CREATE TABLE IF NOT EXISTS commerce_project (
     aspect_ratio VARCHAR(10) NOT NULL DEFAULT '3:4',
     model_image_url VARCHAR(1024) NOT NULL,
     product_image_url VARCHAR(1024) NOT NULL,
+    scene_image_urls_json TEXT,
+    try_on_first_frame_enabled TINYINT(1) NOT NULL DEFAULT 0,
+    try_on_first_frame_aspect_ratio VARCHAR(10) DEFAULT '9:16',
+    try_on_first_frame_resolution VARCHAR(10) DEFAULT '2K',
+    try_on_first_frame_url VARCHAR(1024),
+    try_on_first_frame_status VARCHAR(30),
+    try_on_first_frame_error TEXT,
+    try_on_first_frame_confirmed TINYINT(1) NOT NULL DEFAULT 0,
     status VARCHAR(30) NOT NULL DEFAULT 'draft',
     error_message TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,

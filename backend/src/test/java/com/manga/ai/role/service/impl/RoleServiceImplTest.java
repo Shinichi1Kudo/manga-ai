@@ -10,6 +10,7 @@ import com.manga.ai.common.exception.BusinessException;
 import com.manga.ai.common.service.OssService;
 import com.manga.ai.image.service.ImageGenerateService;
 import com.manga.ai.role.dto.RoleCreateRequest;
+import com.manga.ai.role.dto.RegenerateRequest;
 import com.manga.ai.role.entity.Role;
 import com.manga.ai.role.mapper.RoleAttributeMapper;
 import com.manga.ai.role.mapper.RoleMapper;
@@ -20,10 +21,12 @@ import com.manga.ai.user.service.impl.UserServiceImpl.UserContextHolder;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
 import java.time.LocalDateTime;
+import java.util.concurrent.Executor;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -87,7 +90,7 @@ class RoleServiceImplTest {
         assertThat(roleCaptor.getValue().getStatus()).isEqualTo(RoleStatus.PENDING_REVIEW.getCode());
         verify(userService, never()).deductCredits(any(), any(Integer.class), any(), any(), any(), any());
         verify(imageGenerateService, never()).generateCharacterAssets(
-                any(), any(), any(), any(), any(), any(), any(), any(), any(), any());
+                any(), any(), any(), any(), any(), any(), any(), any(), any(), any(), any());
     }
 
     @Test
@@ -249,6 +252,69 @@ class RoleServiceImplTest {
         verifyNoInteractions(seriesMapper);
     }
 
+    @Test
+    void regeneratePassesStyleKeyAndFaceCloseupSettingsToImageGeneration() {
+        RoleMapper roleMapper = mock(RoleMapper.class);
+        RoleAssetMapper roleAssetMapper = mock(RoleAssetMapper.class);
+        SeriesMapper seriesMapper = mock(SeriesMapper.class);
+        ImageGenerateService imageGenerateService = mock(ImageGenerateService.class);
+        UserService userService = mock(UserService.class);
+        AssetService assetService = mock(AssetService.class);
+        TransactionTemplate transactionTemplate = mock(TransactionTemplate.class);
+
+        Role role = new Role();
+        role.setId(256L);
+        role.setRoleName("楚清辞");
+        role.setStatus(RoleStatus.PENDING_REVIEW.getCode());
+        when(roleMapper.selectById(256L)).thenReturn(role);
+        when(imageGenerateService.getNextVersion(256L, 1)).thenReturn(2);
+        when(imageGenerateService.createGeneratingAsset(eq(256L), eq(1), any(), eq("新版提示词")))
+                .thenReturn(new long[]{468L, 467L});
+        when(transactionTemplate.execute(any())).thenAnswer(invocation -> {
+            org.springframework.transaction.support.TransactionCallback<?> callback = invocation.getArgument(0);
+            return callback.doInTransaction(mock(org.springframework.transaction.TransactionStatus.class));
+        });
+
+        RoleServiceImpl service = createService(
+                roleMapper,
+                roleAssetMapper,
+                seriesMapper,
+                imageGenerateService,
+                userService,
+                assetService,
+                transactionTemplate
+        );
+        ReflectionTestUtils.setField(service, "imageGenerateExecutor", (Executor) Runnable::run);
+
+        RegenerateRequest request = new RegenerateRequest();
+        request.setClothingId(1);
+        request.setModifiedPrompt("新版提示词");
+        request.setOriginalPrompt("新版提示词");
+        request.setAspectRatio("16:9");
+        request.setQuality("hd");
+        request.setStyleKey("chinese_style");
+        request.setStyleKeywords("2D guofeng manhua character sheet");
+        request.setDetailedView(false);
+        request.setFaceCloseupView(true);
+
+        UserContextHolder.setUserId(7L);
+        service.regenerateRoleAssets(256L, request);
+
+        verify(imageGenerateService).generateCharacterAssets(
+                eq(256L),
+                eq(1),
+                eq(468L),
+                eq(467L),
+                eq("16:9"),
+                eq("hd"),
+                eq("chinese_style"),
+                eq("2D guofeng manhua character sheet"),
+                eq("新版提示词"),
+                eq(false),
+                eq(true)
+        );
+    }
+
     private RoleServiceImpl createService(RoleMapper roleMapper, SeriesMapper seriesMapper) {
         return createService(roleMapper, mock(RoleAssetMapper.class), seriesMapper);
     }
@@ -262,14 +328,32 @@ class RoleServiceImplTest {
                                           SeriesMapper seriesMapper,
                                           ImageGenerateService imageGenerateService,
                                           UserService userService) {
+        return createService(
+                roleMapper,
+                roleAssetMapper,
+                seriesMapper,
+                imageGenerateService,
+                userService,
+                mock(AssetService.class),
+                mock(TransactionTemplate.class)
+        );
+    }
+
+    private RoleServiceImpl createService(RoleMapper roleMapper,
+                                          RoleAssetMapper roleAssetMapper,
+                                          SeriesMapper seriesMapper,
+                                          ImageGenerateService imageGenerateService,
+                                          UserService userService,
+                                          AssetService assetService,
+                                          TransactionTemplate transactionTemplate) {
         return new RoleServiceImpl(
                 roleMapper,
                 mock(RoleAttributeMapper.class),
                 roleAssetMapper,
                 seriesMapper,
                 imageGenerateService,
-                mock(AssetService.class),
-                mock(TransactionTemplate.class),
+                assetService,
+                transactionTemplate,
                 mock(OssService.class),
                 userService
         );

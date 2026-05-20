@@ -376,16 +376,16 @@ let characterCount = 0;
 
 // 风格预设映射
 const STYLE_PRESETS = {
-    '3d_anime': 'ultra detailed 3D anime style, Pixar style, Disney style, high quality render, cinematic lighting',
-    'realistic': 'photorealistic, realistic portrait, real person photography, natural lighting, high detail',
-    'anime_jp': 'Japanese anime style, manga style, cel shading, vibrant colors, clean lines',
-    'cartoon_us': 'American cartoon style, bold lines, expressive features, colorful, stylized',
-    'watercolor': 'watercolor painting style, soft colors, artistic, hand-painted look, illustration',
-    'oil_painting': 'oil painting style, classical art, rich textures, artistic brush strokes',
-    'cyberpunk': 'cyberpunk style, neon lights, futuristic, sci-fi, dark atmosphere, glowing effects',
-    'chinese_style': 'Chinese art style, traditional Chinese painting, guofeng, elegant, classical beauty',
-    'pixel_art': 'pixel art style, retro game aesthetic, 8-bit, nostalgic, blocky pixels',
-    'chibi': 'chibi style, cute, deformed, big head small body, kawaii, adorable'
+    '3d_anime': 'stylized 3D anime character sheet, non-photorealistic, clean toon shader, soft cinematic lighting, polished game character render, consistent model turnaround',
+    'realistic': 'photorealistic character reference sheet, real person photography look, natural skin texture, studio lighting, realistic proportions, consistent full-body turnaround',
+    'anime_jp': '2D Japanese anime character sheet, clean manga line art, cel shading, vibrant but controlled colors, flat illustration finish, consistent turnaround',
+    'cartoon_us': '2D American cartoon character sheet, bold clean outlines, simplified expressive shapes, bright controlled colors, flat animation design, consistent turnaround',
+    'watercolor': 'watercolor illustration character sheet, soft hand-painted washes, visible paper texture, delicate edges, light layered pigments, consistent turnaround',
+    'oil_painting': 'classical oil painting inspired character sheet, painterly brushwork, rich layered colors, canvas texture, art portrait finish, consistent turnaround',
+    'cyberpunk': 'cyberpunk character sheet, neon sci-fi costume design, futuristic materials, high contrast rim lighting, dark techwear mood, consistent turnaround',
+    'chinese_style': '2D guofeng manhua character sheet, Chinese xianxia animation design, ancient Chinese costume reference, clean ink line art, elegant restrained colors, flat cel shading, strictly illustrated 2D finish, no 3D render, no real-person photo look, consistent turnaround',
+    'pixel_art': 'pixel art character sheet, retro game sprite aesthetic, crisp low-resolution pixel clusters, limited palette, orthographic turnaround, no painterly blending',
+    'chibi': '2D chibi character sheet, cute super-deformed proportions, big head small body, clean kawaii line art, soft flat colors, consistent turnaround'
 };
 
 // 人物精细三视图默认提示词
@@ -847,13 +847,13 @@ function applyDetailedViewMode(card, enabled) {
         });
         aspectSelect.style.opacity = '0.6';
 
-        // 禁用风格选择
-        styleSelect.disabled = true;
-        styleSelect.style.opacity = '0.6';
-        styleSelect.style.cursor = 'not-allowed';
-        stylePreviewBtn.disabled = true;
-        stylePreviewBtn.style.opacity = '0.5';
-        stylePreviewBtn.style.cursor = 'not-allowed';
+        // 保留并要求角色图片风格，避免高级布局丢失风格控制。
+        styleSelect.disabled = false;
+        styleSelect.style.opacity = '1';
+        styleSelect.style.cursor = '';
+        stylePreviewBtn.disabled = false;
+        stylePreviewBtn.style.opacity = '1';
+        stylePreviewBtn.style.cursor = '';
     } else {
         // 恢复所有比例选项
         aspectSelect.querySelectorAll('option').forEach(opt => {
@@ -997,7 +997,7 @@ function collectCharacterData() {
             }
 
             const styleKey = card.querySelector('.character-style').value;
-            const styleKeywords = detailedView && !manualUploadEnabled ? '' : (STYLE_PRESETS[styleKey] || '');
+            const styleKeywords = STYLE_PRESETS[styleKey] || '';
 
             characters.push({
                 roleName: name,
@@ -1132,8 +1132,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 break;
             }
 
-            // 手动上传必须选择风格；精细三视图模式或大头特写模式下不需要选择风格
-            if ((!detailedView && !faceCloseupView || manualUploadEnabled) && !style) {
+            if (!style) {
                 focusInvalidCharacterField(styleInput, '请为角色 "' + name + '" 选择图片风格');
                 hasError = true;
                 break;

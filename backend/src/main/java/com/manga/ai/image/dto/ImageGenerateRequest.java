@@ -6,6 +6,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.io.Serializable;
+import java.util.List;
 
 /**
  * 图像生成请求
@@ -44,6 +45,11 @@ public class ImageGenerateRequest implements Serializable {
     private String styleKeywords;
 
     /**
+     * 前端风格Key
+     */
+    private String styleKey;
+
+    /**
      * 系列ID
      */
     private Long seriesId;
@@ -67,6 +73,11 @@ public class ImageGenerateRequest implements Serializable {
      * 参考图片URL（用于图生图）
      */
     private String referenceImageUrl;
+
+    /**
+     * 多张参考图片URL（用于多图图生图）
+     */
+    private List<String> referenceImageUrls;
 
     /**
      * 新服装描述（用于生成新服装）
