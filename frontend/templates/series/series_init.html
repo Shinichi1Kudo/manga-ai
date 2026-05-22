@@ -3,7 +3,6 @@
 {% block title %}创建新系列 - 海带 AI 内容智能创作平台{% endblock %}
 
 {% block content %}
-{% if auth_token %}<meta name="auth-token" content="{{ auth_token }}">{% endif %}
 <!-- Progress Steps -->
 <div class="step-indicator mb-16">
     <div class="step-item active">
@@ -957,18 +956,16 @@ async function uploadManualRoleImage(card) {
     const formData = new FormData();
     formData.append('file', card.manualRoleUploadBlob, card.manualRoleUploadFileName || 'role.png');
     formData.append('type', 'role');
-    const token = document.querySelector('meta[name="auth-token"]')?.content || '';
-    const response = await fetch('/api/v1/upload', {
+    const response = await fetch('/api/upload/', {
         method: 'POST',
-        headers: token ? { 'Authorization': 'Bearer ' + token } : {},
         body: formData
     });
     const data = await response.json();
-    if (!response.ok || data.code !== 0 || !data.data?.url) {
-        throw new Error(data.message || data.msg || '人物全身图上传失败');
+    if (!response.ok || !data.success || !data.url) {
+        throw new Error(data.message || '人物全身图上传失败');
     }
-    card.manualRoleUploadedUrl = data.data.url;
-    return data.data.url;
+    card.manualRoleUploadedUrl = data.url;
+    return data.url;
 }
 
 function focusInvalidCharacterField(field, message) {

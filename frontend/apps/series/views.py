@@ -134,21 +134,19 @@ def series_init(request):
             'characters_json': characters_json,
         }
 
-        ctx = {'form_data': form_data, 'auth_token': request.session.get('token', '')}
-
         # 验证必填字段
         if not series_name:
             messages.error(request, '请输入系列名称')
-            return render(request, 'series/series_init.html', ctx)
+            return render(request, 'series/series_init.html', {'form_data': form_data})
         if not outline:
             messages.error(request, '请输入剧本大纲')
-            return render(request, 'series/series_init.html', ctx)
+            return render(request, 'series/series_init.html', {'form_data': form_data})
         if not series_style:
             messages.error(request, '请选择系列风格')
-            return render(request, 'series/series_init.html', ctx)
+            return render(request, 'series/series_init.html', {'form_data': form_data})
         if not characters_json:
             messages.error(request, '请至少添加一个角色')
-            return render(request, 'series/series_init.html', ctx)
+            return render(request, 'series/series_init.html', {'form_data': form_data})
 
         client = get_client(request)
         try:
@@ -164,9 +162,9 @@ def series_init(request):
             return redirect('series:list')
         except BackendAPIError as e:
             messages.error(request, f'初始化失败: {e.message}')
-            return render(request, 'series/series_init.html', ctx)
+            return render(request, 'series/series_init.html', {'form_data': form_data})
 
-    return render(request, 'series/series_init.html', {'auth_token': request.session.get('token', '')})
+    return render(request, 'series/series_init.html')
 
 
 def series_progress(request, series_id):
