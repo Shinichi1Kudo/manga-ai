@@ -563,10 +563,6 @@ public class SeedanceServiceImpl implements SeedanceService {
 
     private boolean isToapisModel(String useModel) {
         return isFastVipModel(useModel)
-                || VIP_MODEL.equals(useModel)
-                || VIP_4K_MODEL.equals(useModel)
-                || "doubao-seedance-2-0".equals(useModel)
-                || "seedance-2.0".equals(useModel)
                 || isKlingOmniModel(useModel);
     }
 

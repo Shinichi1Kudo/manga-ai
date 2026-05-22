@@ -8,7 +8,7 @@ logger = logging.getLogger(__name__)
 
 # 百度推送 API 配置
 BAIDU_PUSH_URL = 'http://data.zz.baidu.com/urls'
-BAIDU_SITE = 'https://www.yzmovie.cn'
+BAIDU_SITE = 'http://43.160.253.79'
 BAIDU_TOKEN = 'mfxt6p3ivwbASMYk'
 
 

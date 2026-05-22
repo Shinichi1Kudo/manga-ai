@@ -134,19 +134,21 @@ def series_init(request):
             'characters_json': characters_json,
         }
 
+        ctx = {'form_data': form_data, 'auth_token': request.session.get('token', '')}
+
         # 验证必填字段
         if not series_name:
             messages.error(request, '请输入系列名称')
-            return render(request, 'series/series_init.html', {'form_data': form_data})
+            return render(request, 'series/series_init.html', ctx)
         if not outline:
             messages.error(request, '请输入剧本大纲')
-            return render(request, 'series/series_init.html', {'form_data': form_data})
+            return render(request, 'series/series_init.html', ctx)
         if not series_style:
             messages.error(request, '请选择系列风格')
-            return render(request, 'series/series_init.html', {'form_data': form_data})
+            return render(request, 'series/series_init.html', ctx)
         if not characters_json:
             messages.error(request, '请至少添加一个角色')
-            return render(request, 'series/series_init.html', {'form_data': form_data})
+            return render(request, 'series/series_init.html', ctx)
 
         client = get_client(request)
         try:
@@ -162,9 +164,9 @@ def series_init(request):
             return redirect('series:list')
         except BackendAPIError as e:
             messages.error(request, f'初始化失败: {e.message}')
-            return render(request, 'series/series_init.html', {'form_data': form_data})
+            return render(request, 'series/series_init.html', ctx)
 
-    return render(request, 'series/series_init.html')
+    return render(request, 'series/series_init.html', {'auth_token': request.session.get('token', '')})
 
 
 def series_progress(request, series_id):
@@ -212,6 +214,14 @@ def series_review(request, series_id):
         for role in roles:
             role_id = role.get('id')
             role['assets'] = assets_map.get(str(role_id), [])  # JSON key 是字符串
+
+            # 补充模板需要的默认字段（资产级别的属性，角色本身没有但模板常用作fallback）
+            role.setdefault('aspectRatio', '')
+            role.setdefault('quality', '')
+            role.setdefault('styleKey', '')
+            role.setdefault('styleKeywords', '')
+            role.setdefault('detailedView', False)
+            role.setdefault('faceCloseupView', False)
 
             # 检查是否有任何成功生成的资产（用于决定是否显示"生成新服装"按钮）
             role['has_successful_asset'] = any(
@@ -2299,9 +2309,9 @@ def file_upload(request):
         if file.content_type not in allowed_types:
             return JsonResponse({'success': False, 'message': '只支持 JPG、PNG、GIF、WEBP 格式'}, status=400)
 
-        # 检查文件大小 (最大 5MB)
-        if file.size > 5 * 1024 * 1024:
-            return JsonResponse({'success': False, 'message': '文件大小不能超过5MB'}, status=400)
+        # 检查文件大小 (最大 10MB)
+        if file.size > 10 * 1024 * 1024:
+            return JsonResponse({'success': False, 'message': '文件大小不能超过10MB'}, status=400)
 
         # 调用后端上传接口
         files = {'file': (file.name, file.read(), file.content_type)}

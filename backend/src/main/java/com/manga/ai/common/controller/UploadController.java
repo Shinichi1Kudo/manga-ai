@@ -28,8 +28,8 @@ public class UploadController {
             "image/jpeg", "image/png", "image/gif", "image/webp"
     );
 
-    // 最大文件大小 5MB
-    private static final long MAX_FILE_SIZE = 5 * 1024 * 1024;
+    // 最大文件大小 10MB
+    private static final long MAX_FILE_SIZE = 10 * 1024 * 1024;
 
     /**
      * 上传文件
@@ -57,7 +57,7 @@ public class UploadController {
 
         // 验证文件大小
         if (file.getSize() > MAX_FILE_SIZE) {
-            return Result.error("文件大小不能超过5MB");
+            return Result.error("文件大小不能超过10MB");
         }
 
         try {
