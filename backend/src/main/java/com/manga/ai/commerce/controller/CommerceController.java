@@ -8,6 +8,7 @@ import com.manga.ai.commerce.dto.CommerceProductVO;
 import com.manga.ai.commerce.dto.CommerceProjectCreateRequest;
 import com.manga.ai.commerce.dto.CommerceProjectVO;
 import com.manga.ai.commerce.dto.CommerceSceneBatchCreateRequest;
+import com.manga.ai.commerce.dto.CommerceSceneGenerationStartRequest;
 import com.manga.ai.commerce.dto.CommerceSceneVO;
 import com.manga.ai.commerce.dto.CommerceSeriesCreateRequest;
 import com.manga.ai.commerce.dto.CommerceSeriesVO;
@@ -118,11 +119,18 @@ public class CommerceController {
         return Result.success(commerceService.listScenes(seriesId));
     }
 
-    @PostMapping("/series/{seriesId}/scenes/batch")
-    public Result<List<CommerceSceneVO>> createScenes(
+    @PostMapping("/series/{seriesId}/scenes/batch/prepare")
+    public Result<List<CommerceSceneVO>> prepareScenes(
             @PathVariable Long seriesId,
             @RequestBody CommerceSceneBatchCreateRequest request) {
-        return Result.success(commerceService.createSceneBatch(seriesId, request));
+        return Result.success(commerceService.prepareSceneBatch(seriesId, request));
+    }
+
+    @PostMapping("/series/{seriesId}/scenes/batch/start")
+    public Result<List<CommerceSceneVO>> startScenes(
+            @PathVariable Long seriesId,
+            @RequestBody CommerceSceneGenerationStartRequest request) {
+        return Result.success(commerceService.startSceneBatch(seriesId, request));
     }
 
     @PostMapping("/products/{productId}/projects")
@@ -132,14 +140,21 @@ public class CommerceController {
         return Result.success(commerceService.createProject(productId, request));
     }
 
+    @GetMapping("/products/{productId}/projects")
+    public Result<List<CommerceProjectVO>> listProductProjects(
+            @PathVariable Long productId,
+            @RequestParam(value = "contentType", required = false) String contentType) {
+        return Result.success(commerceService.listProductProjects(productId, contentType));
+    }
+
     @GetMapping("/projects/{projectId}")
     public Result<CommerceProjectVO> getProject(@PathVariable Long projectId) {
         return Result.success(commerceService.getProject(projectId));
     }
 
-    @PostMapping("/projects/{projectId}/confirm-first-frame")
-    public Result<CommerceProjectVO> confirmTryOnFirstFrame(@PathVariable Long projectId) {
-        return Result.success(commerceService.confirmTryOnFirstFrame(projectId));
+    @PostMapping("/projects/{projectId}/generation/start")
+    public Result<CommerceProjectVO> startProjectVideoGeneration(@PathVariable Long projectId) {
+        return Result.success(commerceService.startProjectVideoGeneration(projectId));
     }
 
     @PostMapping("/projects/{projectId}/generate-video")

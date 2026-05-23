@@ -38,7 +38,6 @@ public class SeedanceServiceImpl implements SeedanceService {
 
     private static final String FAST_VIP_MODEL = "doubao-seedance-2-0-fast-260128";
     private static final String VIP_MODEL = "doubao-seedance-2-0-260128";
-    private static final String VIP_4K_MODEL = "seedance-2";
     private static final String KLING_V3_OMNI_MODEL = "kling-v3-omni";
 
     @Value("${volcengine.seedance.api-key}")
@@ -90,7 +89,7 @@ public class SeedanceServiceImpl implements SeedanceService {
         if (useModel == null || useModel.isEmpty()) {
             useModel = "doubao-seedance-2-0-fast-260128"; // 默认使用 Fast 模型
         }
-        useModel = normalizeToapisModel(useModel, request);
+        useModel = normalizeSubmitModel(useModel);
 
         log.info("提交视频生成任务: model={}, duration={}s, referenceImages={}",
                 useModel, request.getDuration(),
@@ -112,7 +111,7 @@ public class SeedanceServiceImpl implements SeedanceService {
 
             log.info("调用Seedance API: {}", url);
             log.info("请求体: {}", requestBody.toJSONString());
-            ResponseEntity<String> response = restTemplate.exchange(url, HttpMethod.POST, entity, String.class);
+            ResponseEntity<String> response = submitExchangeWithRetry(url, entity, toapisModel);
 
             if (response.getStatusCode() == HttpStatus.OK && response.getBody() != null) {
                 SeedanceResponse submitResponse = parseSubmitResponse(response.getBody());
@@ -146,6 +145,34 @@ public class SeedanceServiceImpl implements SeedanceService {
             errorResponse.setErrorMessage(e.getMessage());
             applySubmitRequestMetadata(errorResponse, url, requestBody.toJSONString(), useModel);
             return errorResponse;
+        }
+    }
+
+    private ResponseEntity<String> submitExchangeWithRetry(String url, HttpEntity<String> entity, boolean toapisModel) {
+        int maxAttempts = toapisModel ? 3 : 1;
+        ResourceAccessException lastException = null;
+        for (int attempt = 1; attempt <= maxAttempts; attempt++) {
+            try {
+                return restTemplate.exchange(url, HttpMethod.POST, entity, String.class);
+            } catch (ResourceAccessException e) {
+                lastException = e;
+                if (attempt >= maxAttempts) {
+                    throw e;
+                }
+                log.warn("Seedance API提交网络异常，准备重试: url={}, attempt={}/{}, error={}",
+                        url, attempt, maxAttempts, e.getMessage());
+                sleepBeforeSubmitRetry(attempt);
+            }
+        }
+        throw lastException;
+    }
+
+    private void sleepBeforeSubmitRetry(int attempt) {
+        try {
+            Thread.sleep(Math.min(1000L, 200L * attempt));
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new ResourceAccessException("视频生成任务提交重试被中断");
         }
     }
 
@@ -433,7 +460,7 @@ public class SeedanceServiceImpl implements SeedanceService {
                 if ("image_url".equals(content.getType()) && content.getImageUrl() != null) {
                     JSONObject imageContent = new JSONObject();
                     imageContent.put("type", "image_url");
-                    imageContent.put("role", "reference_image");
+                    imageContent.put("role", content.getRole() != null ? content.getRole() : "reference_image");
 
                     JSONObject imageUrl = new JSONObject();
                     imageUrl.put("url", content.getImageUrl().getUrl());
@@ -450,6 +477,16 @@ public class SeedanceServiceImpl implements SeedanceService {
                     videoContent.put("video_url", videoUrl);
 
                     contentArray.add(videoContent);
+                } else if ("audio_url".equals(content.getType()) && content.getAudioUrl() != null) {
+                    JSONObject audioContent = new JSONObject();
+                    audioContent.put("type", "audio_url");
+                    audioContent.put("role", content.getRole() != null ? content.getRole() : "reference_audio");
+
+                    JSONObject audioUrl = new JSONObject();
+                    audioUrl.put("url", content.getAudioUrl().getUrl());
+                    audioContent.put("audio_url", audioUrl);
+
+                    contentArray.add(audioContent);
                 }
             }
         }
@@ -481,13 +518,10 @@ public class SeedanceServiceImpl implements SeedanceService {
         if (request.getSeed() != null) {
             requestBody.put("seed", request.getSeed());
         }
-
-        JSONObject metadata = new JSONObject();
-        metadata.put("resolution", resolutionFromSize(request.getWidth(), request.getHeight()));
+        requestBody.put("resolution", toapisResolution(request));
         if (request.getGenerateAudio() != null) {
-            metadata.put("generate_audio", request.getGenerateAudio());
+            requestBody.put("generate_audio", request.getGenerateAudio());
         }
-        requestBody.put("metadata", metadata);
 
         JSONArray imageWithRoles = new JSONArray();
         JSONArray videoWithRoles = new JSONArray();
@@ -513,6 +547,13 @@ public class SeedanceServiceImpl implements SeedanceService {
             requestBody.put("video_with_roles", videoWithRoles);
         }
         return requestBody;
+    }
+
+    private String toapisResolution(SeedanceRequest request) {
+        if (request != null && request.getResolution() != null && !request.getResolution().isBlank()) {
+            return request.getResolution();
+        }
+        return resolutionFromSize(request != null ? request.getWidth() : null, request != null ? request.getHeight() : null);
     }
 
     private JSONObject buildKlingOmniRequestBody(SeedanceRequest request) {
@@ -557,25 +598,23 @@ public class SeedanceServiceImpl implements SeedanceService {
         return url.replaceFirst("^http://", "https://");
     }
 
-    private boolean isFastVipModel(String useModel) {
-        return FAST_VIP_MODEL.equals(useModel) || "seedance-2.0-fast".equals(useModel);
-    }
-
     private boolean isToapisModel(String useModel) {
-        return isFastVipModel(useModel)
-                || isKlingOmniModel(useModel);
+        return isKlingOmniModel(useModel);
     }
 
     private boolean isKlingOmniModel(String useModel) {
         return KLING_V3_OMNI_MODEL.equals(useModel);
     }
 
-    private String normalizeToapisModel(String useModel, SeedanceRequest request) {
-        String requestResolution = request != null ? request.getResolution() : null;
-        String sizeResolution = request != null ? resolutionFromSize(request.getWidth(), request.getHeight()) : null;
-        boolean vip4k = "1080p".equals(requestResolution) || "1080p".equals(sizeResolution);
-        if (vip4k && ("seedance-2.0".equals(useModel) || VIP_MODEL.equals(useModel))) {
-            return VIP_4K_MODEL;
+    private String normalizeSubmitModel(String useModel) {
+        if ("seedance-2.0-fast".equals(useModel) || FAST_VIP_MODEL.equals(useModel)) {
+            return FAST_VIP_MODEL;
+        }
+        if ("seedance-2.0".equals(useModel)
+                || "seedance-2".equals(useModel)
+                || "doubao-seedance-2-0".equals(useModel)
+                || VIP_MODEL.equals(useModel)) {
+            return VIP_MODEL;
         }
         return useModel;
     }

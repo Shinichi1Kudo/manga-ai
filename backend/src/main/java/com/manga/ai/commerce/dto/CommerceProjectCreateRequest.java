@@ -16,6 +16,9 @@ public class CommerceProjectCreateRequest implements Serializable {
     private String targetAudience;
     private String priceOffer;
     private String tryOnRequirements;
+    private Integer durationSeconds;
+    private String resolution;
+    private String videoModel;
     private Boolean tryOnFirstFrameEnabled;
     private String tryOnFirstFrameAspectRatio;
     private String tryOnFirstFrameResolution;

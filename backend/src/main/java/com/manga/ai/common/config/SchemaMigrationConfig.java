@@ -245,6 +245,7 @@ public class SchemaMigrationConfig {
             ensureCommerceProductImageColumns(connection, mysql);
             ensureCommerceProjectFirstFrameColumns(connection, mysql);
             ensureCommerceProjectSceneColumns(connection, mysql);
+            ensureCommerceShotVideoSettingColumns(connection, mysql);
         } catch (Exception e) {
             log.error("数据库迁移失败: commerce tables", e);
             throw new IllegalStateException("数据库迁移失败: commerce tables", e);
@@ -331,6 +332,15 @@ public class SchemaMigrationConfig {
         ensureColumn(connection, mysql, "commerce_project", "scene_image_urls_json",
                 "TEXT COMMENT '试穿项目引用的场景图URL列表JSON'",
                 "CLOB");
+    }
+
+    private void ensureCommerceShotVideoSettingColumns(Connection connection, boolean mysql) throws Exception {
+        ensureColumn(connection, mysql, "commerce_shot", "resolution",
+                "VARCHAR(10) DEFAULT '480p' COMMENT '电商试穿视频分辨率'",
+                "VARCHAR(10) DEFAULT '480p'");
+        ensureColumn(connection, mysql, "commerce_shot", "video_model",
+                "VARCHAR(100) DEFAULT 'seedance-2.0' COMMENT '电商试穿视频生成模型'",
+                "VARCHAR(100) DEFAULT 'seedance-2.0'");
     }
 
     private void ensureColumn(Connection connection, boolean mysql, String tableName, String columnName,
@@ -622,6 +632,8 @@ public class SchemaMigrationConfig {
                 + "visual_description TEXT NOT NULL,"
                 + "voiceover_text TEXT,"
                 + "duration_seconds INT NOT NULL DEFAULT 5,"
+                + "resolution VARCHAR(10) DEFAULT '480p',"
+                + "video_model VARCHAR(100) DEFAULT 'seedance-2.0',"
                 + "video_url VARCHAR(1024),"
                 + "generation_status VARCHAR(30) NOT NULL DEFAULT 'draft',"
                 + "error_message TEXT,"
@@ -639,6 +651,8 @@ public class SchemaMigrationConfig {
                 + "visual_description CLOB NOT NULL,"
                 + "voiceover_text CLOB,"
                 + "duration_seconds INT NOT NULL DEFAULT 5,"
+                + "resolution VARCHAR(10) DEFAULT '480p',"
+                + "video_model VARCHAR(100) DEFAULT 'seedance-2.0',"
                 + "video_url VARCHAR(1024),"
                 + "generation_status VARCHAR(30) NOT NULL DEFAULT 'draft',"
                 + "error_message CLOB,"

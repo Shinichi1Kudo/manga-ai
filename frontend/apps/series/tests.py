@@ -7,7 +7,16 @@ from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase
 
 from api.backend_client import BackendAPIError
-from apps.series.views import _enrich_commerce_model
+from apps.series.views import (
+    COMMERCE_ASPECT_RATIO_OPTIONS,
+    COMMERCE_TRY_ON_MAX_SHOTS,
+    COMMERCE_TRY_ON_SHOTS,
+    COMMERCE_TRY_ON_SUPPORTED_RESOLUTIONS_BY_MODEL,
+    COMMERCE_TRY_ON_VIDEO_DURATIONS,
+    COMMERCE_TRY_ON_VIDEO_MODELS,
+    COMMERCE_TRY_ON_VIDEO_RESOLUTIONS,
+    _enrich_commerce_model,
+)
 
 
 class AnonymousPublicEndpointTests(TestCase):
@@ -1225,7 +1234,7 @@ class CommerceFlowTests(TestCase):
 
         self.assertIn('商品列表', template)
         self.assertIn('生成口播', template)
-        self.assertIn('创建试穿任务', template)
+        self.assertIn('创建试穿视频', template)
         self.assertNotIn('生成新服装', template)
         self.assertNotIn('服装 Tab', template)
 
@@ -1256,20 +1265,38 @@ class CommerceFlowTests(TestCase):
                 '短外套', '西装', '风衣', '羽绒服', '毛呢大衣', '皮衣', '皮草', '棉衣棉服',
                 '中老年女装', '大码女装', '其他'):
             self.assertIn(f'data-product-type="{product_type}"', form_block)
+        self.assertIn('data-commerce-product-image-list', form_block)
+        self.assertIn('data-commerce-product-image-row', form_block)
+        self.assertIn('data-add-commerce-product-image', form_block)
+        self.assertIn('data-remove-commerce-product-image', form_block)
+        self.assertIn('name="product_image_usages"', form_block)
         self.assertIn('name="product_image"', form_block)
         self.assertIn('type="file"', form_block)
-        self.assertIn('multiple', form_block)
         self.assertIn('accept="image/jpeg,image/png,image/webp"', form_block)
         self.assertIn('最多 5 张', form_block)
         self.assertIn('commerce-product-upload', form_block)
-        self.assertIn('commerce-product-upload-input', form_block)
-        self.assertIn('data-commerce-product-upload-name', form_block)
+        self.assertIn('data-commerce-product-upload-input', form_block)
+        self.assertIn('data-commerce-product-upload-summary', form_block)
+        self.assertIn('data-commerce-product-upload-total', form_block)
+        self.assertIn('data-commerce-product-usage-option', form_block)
+        self.assertIn('data-commerce-product-image-index', form_block)
+        self.assertIn('商品图 1', form_block)
+        self.assertIn('data-commerce-product-image-count', form_block)
+        self.assertIn('1/5', form_block)
         self.assertIn('选择图片', form_block)
+        self.assertIn('继续添加', form_block)
         self.assertIn('支持 JPG、PNG、WEBP', form_block)
-        self.assertIn('updateCommerceProductUploadName', template)
-        self.assertIn('renderCommerceProductImageUsageRows', template)
-        self.assertIn('<select name="product_image_usages"', template)
+        self.assertIn('addCommerceProductImageRow', template)
+        self.assertIn('updateCommerceProductImageRows', template)
+        self.assertIn("indexLabel.textContent = `商品图 ${index + 1}`;", template)
+        self.assertIn("countLabel.textContent = `${index + 1}/5`;", template)
+        self.assertIn('selectCommerceProductImageUsage', template)
+        self.assertNotIn('renderCommerceProductImageUsageRows', template)
+        self.assertIn('type="hidden" name="product_image_usages"', template)
+        self.assertNotIn('<select name="product_image_usages"', template)
+        self.assertNotIn('bg-slate-950/70', form_block)
         self.assertNotIn('type="radio" name="product_image_usages"', template)
+        self.assertLess(form_block.index('name="product_image_usages"'), form_block.index('name="product_image"'))
         for usage in ('主图', '细节图', '上身参考'):
             self.assertIn(usage, template)
         self.assertNotIn('name="product_image" required accept="image/jpeg,image/png,image/webp" class="input-modern w-full"', form_block)
@@ -1279,19 +1306,87 @@ class CommerceFlowTests(TestCase):
         self.assertNotIn('name="target_audience"', form_block)
         self.assertNotIn('name="price_offer"', form_block)
         self.assertNotIn('name="try_on_requirements"', form_block)
-        product_card_block = template.split('{% for product in products %}', 1)[1].split('{% empty %}', 1)[0]
+        product_card_block = template.split('{% for product in products %}', 1)[1].split('</article>', 1)[0]
         self.assertIn('product.productType', product_card_block)
+        self.assertIn('data-commerce-product-summary', product_card_block)
+        self.assertIn('data-commerce-product-details', product_card_block)
+        self.assertIn('hidden', product_card_block.split('data-commerce-product-details', 1)[0][-120:])
+        self.assertIn('data-commerce-product-toggle', product_card_block)
+        self.assertIn('展开商品', product_card_block)
+        self.assertIn('收起商品', product_card_block)
+        self.assertIn('selectCommerceProductCardExpanded', template)
+        self.assertIn('data-commerce-product-gallery', product_card_block)
+        self.assertIn('data-commerce-product-gallery-main', product_card_block)
+        self.assertIn('data-commerce-product-gallery-thumb', product_card_block)
+        self.assertIn('{{ product.images|length }}/5', product_card_block)
+        self.assertIn('{% for image in product.images %}', product_card_block)
+        self.assertIn('{{ image.usage|default:"商品图" }}', product_card_block)
+        self.assertIn('{{ image.url }}', product_card_block)
         self.assertNotIn('product.sellingPoints', product_card_block)
+
+    def test_commerce_model_detail_renders_all_uploaded_product_images_in_gallery(self):
+        session = self.client.session
+        session['token'] = 'token-1'
+        session.save()
+        backend_client = Mock()
+
+        def backend_get(endpoint):
+            if endpoint == '/v1/commerce/models/66':
+                return {
+                    'id': 66,
+                    'seriesId': 10,
+                    'status': 'locked',
+                }
+            if endpoint == '/v1/commerce/models/66/products':
+                return [{
+                    'id': 77,
+                    'name': '冰丝防晒衬衫',
+                    'imageUrl': 'https://oss.example.com/products/main.png',
+                    'productType': '衬衫',
+                    'images': [
+                        {'url': 'https://oss.example.com/products/main.png', 'usage': '主图'},
+                        {'url': 'https://oss.example.com/products/detail.png', 'usage': '细节图'},
+                    ],
+                }]
+            if endpoint == '/v1/commerce/series/10/scenes':
+                return []
+            raise AssertionError(f'unexpected endpoint: {endpoint}')
+
+        backend_client.get.side_effect = backend_get
+
+        with patch('apps.series.views.get_client', return_value=backend_client):
+            response = self.client.get('/commerce/models/66/')
+
+        self.assertEqual(response.status_code, 200)
+        html = response.content.decode('utf-8')
+        self.assertIn('data-commerce-product-gallery', html)
+        self.assertIn('data-commerce-product-gallery-main', html)
+        self.assertIn('data-commerce-product-gallery-thumb', html)
+        self.assertIn('data-commerce-product-summary', html)
+        self.assertIn('data-commerce-product-details', html)
+        self.assertIn('data-commerce-product-toggle', html)
+        self.assertIn('展开商品', html)
+        self.assertIn('https://oss.example.com/products/main.png', html)
+        self.assertIn('https://oss.example.com/products/detail.png', html)
+        self.assertIn('2/5', html)
+        self.assertIn('主图', html)
+        self.assertIn('细节图', html)
 
     def test_commerce_product_video_forms_collect_content_specific_settings_after_mode_choice(self):
         template_path = Path(settings.BASE_DIR) / 'templates/commerce/model_detail.html'
         template = template_path.read_text(encoding='utf-8')
 
-        product_card_block = template.split('{% for product in products %}', 1)[1].split('{% empty %}', 1)[0]
+        product_card_block = template.split('{% for product in products %}', 1)[1].split('</article>', 1)[0]
         self.assertIn('commerce-product-card', product_card_block)
         self.assertIn('commerce-video-mode-choice', product_card_block)
         self.assertIn('data-commerce-video-mode="talking"', product_card_block)
         self.assertIn('data-commerce-video-mode="try_on"', product_card_block)
+        self.assertIn('data-commerce-try-on-projects', product_card_block)
+        self.assertIn('data-commerce-try-on-project-list', product_card_block)
+        self.assertIn('试穿视频管理', product_card_block)
+        self.assertIn('data-commerce-try-on-project-card', product_card_block)
+        self.assertIn('data-commerce-try-on-project-id="{{ project.id }}"', product_card_block)
+        self.assertIn('data-commerce-try-on-generate-url="/commerce/projects/{{ project.id }}/generation/start/"', product_card_block)
         self.assertIn('data-commerce-video-empty', product_card_block)
         self.assertIn('data-commerce-video-panel="talking"', product_card_block)
         self.assertIn('data-commerce-video-panel="try_on"', product_card_block)
@@ -1304,43 +1399,341 @@ class CommerceFlowTests(TestCase):
         self.assertIn('name="target_audience"', talking_form)
         self.assertIn('name="price_offer"', talking_form)
         try_on_form = template.split('value="try_on"', 1)[1].split('</form>', 1)[0]
-        self.assertIn('name="try_on_requirements"', try_on_form)
+        self.assertNotIn('name="try_on_requirements"', try_on_form)
+        self.assertNotIn('补充要求', try_on_form)
+        self.assertIn('视频比例', try_on_form)
+        self.assertIn('name="aspect_ratio"', try_on_form)
+        self.assertIn('{% for option in try_on_aspect_ratios %}', try_on_form)
+        self.assertIn('{% if option.value == try_on_default_aspect_ratio %}selected{% endif %}', try_on_form)
+        self.assertIn('name="duration_seconds"', try_on_form)
+        self.assertIn('name="resolution"', try_on_form)
+        self.assertIn('name="video_model"', try_on_form)
+        self.assertIn('data-commerce-try-on-video-model', try_on_form)
+        self.assertIn('data-commerce-try-on-resolution', try_on_form)
+        self.assertIn('data-supported-models=', try_on_form)
+        self.assertIn('updateCommerceTryOnResolutionOptions', template)
+        self.assertIn('{% for duration in try_on_video_durations %}', try_on_form)
+        self.assertIn('{% for resolution in try_on_video_resolutions %}', try_on_form)
+        self.assertIn('{% for model in try_on_video_models %}', try_on_form)
         self.assertIn('commerce-try-on-shot-options', try_on_form)
         self.assertIn('name="try_on_shots"', try_on_form)
-        self.assertIn('可多选', try_on_form)
-        for shot in ('全身站立', '转身展示', '走动展示', '细节展示'):
-            self.assertIn(f'value="{shot}"', try_on_form)
-            self.assertIn(shot, try_on_form)
+        self.assertIn('最多选 {{ try_on_max_shots }} 个，每个动作约3-5秒', try_on_form)
+        self.assertIn('{% for shot in try_on_shots %}', try_on_form)
+        self.assertIn('value="{{ shot.value }}"', try_on_form)
+        self.assertIn('{{ shot.duration }}', try_on_form)
+        self.assertIn('maxTryOnShots', template)
+        self.assertIn("展示方式最多选择 ${maxTryOnShots} 个", template)
         self.assertIn('commerce-try-on-scene-options', try_on_form)
         self.assertIn('从场景库选择', try_on_form)
         self.assertIn('name="scene_ids"', try_on_form)
+        self.assertIn('type="radio" name="scene_ids"', try_on_form)
+        self.assertNotIn('type="checkbox" name="scene_ids"', try_on_form)
         self.assertIn('product.availableScenes', try_on_form)
+        self.assertIn('try_on_scene_filter_categories', try_on_form)
+        self.assertIn('data-commerce-try-on-scene-filter', try_on_form)
+        self.assertIn('data-commerce-try-on-scene-card', try_on_form)
+        self.assertIn('data-commerce-try-on-scene-option', try_on_form)
+        self.assertIn('data-commerce-try-on-scene-group', try_on_form)
+        self.assertIn('data-commerce-try-on-scene-page-size="6"', try_on_form)
+        self.assertIn('data-commerce-try-on-scene-page-prev', try_on_form)
+        self.assertIn('data-commerce-try-on-scene-page-next', try_on_form)
+        self.assertIn('data-commerce-try-on-scene-page-status', try_on_form)
+        self.assertIn('updateCommerceTryOnScenePicker', template)
+        self.assertIn('updateCommerceTryOnSceneSelection', template)
+        self.assertIn("sceneCard.dataset.commerceTryOnSceneGroup === activeFilter", template)
+        self.assertIn("sceneCard.dataset.commerceTryOnSceneIndex = String(sceneIndex);", template)
+        self.assertIn("sceneIndex >= start && sceneIndex < end", template)
+        self.assertIn("option.classList.toggle('border-emerald-200/80', selected);", template)
+        self.assertIn("option.querySelector('[data-commerce-try-on-scene-selected]')", template)
+        self.assertIn('data-commerce-try-on-scene-preview="{{ scene.imageUrl }}"', try_on_form)
+        self.assertIn('data-commerce-try-on-scene-preview-button', try_on_form)
+        self.assertIn('查看大图', try_on_form)
+        self.assertIn('h-24 w-full object-contain', try_on_form)
+        self.assertNotIn('block h-auto w-full object-contain', try_on_form)
+        self.assertNotIn('h-20 w-full object-cover', try_on_form)
         self.assertIn('生成场景图', try_on_form)
         self.assertNotIn('name="try_on_scenes"', try_on_form)
         self.assertNotIn('name="try_on_custom_scenes"', try_on_form)
-        self.assertIn('commerce-try-on-first-frame-check', try_on_form)
-        self.assertIn('name="try_on_first_frame_check"', try_on_form)
-        self.assertIn('value="enabled"', try_on_form)
-        self.assertIn('试穿首帧确认', try_on_form)
-        self.assertIn('name="try_on_first_frame_aspect_ratio"', try_on_form)
-        self.assertIn('name="try_on_first_frame_resolution"', try_on_form)
-        self.assertIn('先生成首帧确认图', try_on_form)
-        self.assertIn('确认商品还原和模特姿态后，再进入视频生成', try_on_form)
-        expected_ratio_labels = (
-            '9:16 - 抖音 / 快手 / 视频号全屏竖屏',
-            '3:4 - 真人模特 / 服装试穿竖图',
-            '1:1 - 商品卡片 / 方图投放素材',
-            '16:9 - 横屏展示 / 店铺详情素材',
-        )
-        for aspect_ratio in ('9:16', '3:4', '1:1', '16:9'):
-            self.assertIn(f'value="{aspect_ratio}"', try_on_form)
-        for label in expected_ratio_labels:
-            self.assertIn(label, try_on_form)
-        for resolution in ('2K', '3K', '4K'):
-            self.assertIn(f'value="{resolution}"', try_on_form)
+        self.assertNotIn('commerce-try-on-first-frame-check', try_on_form)
+        self.assertNotIn('data-commerce-first-frame-panel', try_on_form)
+        self.assertNotIn('data-commerce-first-frame-button', try_on_form)
+        self.assertNotIn('data-commerce-first-frame-prepare-url', try_on_form)
+        self.assertNotIn('data-commerce-first-frame-result', try_on_form)
+        self.assertNotIn('data-commerce-first-frame-project', try_on_form)
+        self.assertNotIn('name="try_on_first_frame_check" value="enabled"', try_on_form)
+        self.assertNotIn('type="checkbox" name="try_on_first_frame_check"', try_on_form)
+        self.assertNotIn('试穿首帧确认', try_on_form)
+        self.assertNotIn('生成首帧确认图', try_on_form)
+        self.assertIn('创建试穿视频', try_on_form)
+        self.assertNotIn('name="try_on_first_frame_aspect_ratio"', try_on_form)
+        self.assertNotIn('name="try_on_first_frame_resolution"', try_on_form)
+        self.assertNotIn('先选 1 张场景图，再生成首帧确认图', try_on_form)
+        self.assertNotIn('确认商品还原和模特姿态后，再进入视频生成', try_on_form)
+        self.assertNotIn('mt-0.5 flex h-8 w-8 shrink-0', try_on_form)
+        self.assertNotIn('commerceFirstFrameFetch', template)
+        self.assertNotIn('generateCommerceFirstFrame', template)
+        self.assertNotIn('pollCommerceFirstFrameProject', template)
+        self.assertNotIn('hydrateCommerceFirstFramePanel', template)
+        self.assertNotIn('applyCommerceFirstFrameProject', template)
+        self.assertNotIn("document.querySelectorAll('[data-commerce-first-frame-panel]').forEach", template)
+        self.assertIn("event.target.matches('input[name=\"scene_ids\"]')", template)
+        self.assertNotIn("`/commerce/projects/${project.id}/first-frame/start/`", template)
+        self.assertNotIn('type="hidden" name="aspect_ratio" value="9:16"', try_on_form)
+        self.assertNotIn('name="try_on_first_frame_aspect_ratio"', try_on_form)
+        self.assertNotIn('name="try_on_first_frame_resolution"', try_on_form)
         self.assertNotIn('确认颜色对不对、版型对不对、图案有没有丢、衣长袖长是否合理、模特身体有没有变形', try_on_form)
         self.assertNotIn('name="selling_points"', try_on_form)
         self.assertNotIn('name="price_offer"', try_on_form)
+        self.assertIn('submitCommerceTryOnProjectForm', template)
+        self.assertIn('renderCommerceTryOnProject', template)
+        self.assertIn('pollCommerceTryOnProject', template)
+        self.assertIn('startCommerceTryOnProjectGeneration', template)
+        self.assertIn('commerceFetchJson(form.action', template)
+        self.assertIn('/generation/start/', template)
+        self.assertIn('data-commerce-try-on-project-video', template)
+        self.assertIn('data-commerce-try-on-project-retry', template)
+
+    def test_commerce_model_detail_try_on_scene_picker_uses_fixed_tabs_and_other_group(self):
+        session = self.client.session
+        session['token'] = 'token-1'
+        session.save()
+        backend_client = Mock()
+
+        def backend_get(endpoint):
+            if endpoint == '/v1/commerce/models/66':
+                return {
+                    'id': 66,
+                    'seriesId': 10,
+                    'status': 'locked',
+                }
+            if endpoint == '/v1/commerce/models/66/products':
+                return [{
+                    'id': 77,
+                    'name': '冰丝防晒衬衫',
+                    'imageUrl': 'https://oss.example.com/products/shirt.png',
+                    'productType': '衬衫',
+                    'tryOnProjects': [],
+                }]
+            if endpoint == '/v1/commerce/series/10/scenes':
+                return [
+                    {
+                        'id': 701,
+                        'name': '直播间背景 1',
+                        'sceneType': '直播间背景',
+                        'imageUrl': 'https://oss.example.com/scenes/live-1.png',
+                        'status': 'completed',
+                        'aspectRatio': '9:16',
+                    },
+                    {
+                        'id': 702,
+                        'name': '教师 1',
+                        'sceneType': '自定义',
+                        'imageUrl': 'https://oss.example.com/scenes/teacher-1.png',
+                        'status': 'completed',
+                        'aspectRatio': '3:4',
+                    },
+                ]
+            raise AssertionError(f'unexpected endpoint: {endpoint}')
+
+        backend_client.get.side_effect = backend_get
+
+        with patch('apps.series.views.get_client', return_value=backend_client):
+            response = self.client.get('/commerce/models/66/')
+
+        self.assertEqual(response.status_code, 200)
+        html = response.content.decode('utf-8')
+        for category in ('全部', '品牌场景', '直播间背景', '街拍场景', '棚拍场景', '商场试衣间', '室内全身镜', '其他场景'):
+            self.assertIn(f'data-commerce-try-on-scene-filter="{category}"', html)
+        self.assertNotIn('data-commerce-try-on-scene-filter="教师 1"', html)
+        self.assertIn('data-commerce-try-on-scene-category="直播间背景"', html)
+        self.assertIn('data-commerce-try-on-scene-category="教师 1"', html)
+        self.assertIn('data-commerce-try-on-scene-group="其他场景"', html)
+        self.assertIn('type="radio" name="scene_ids" value="701"', html)
+        self.assertIn('type="radio" name="scene_ids" value="702"', html)
+        self.assertIn('data-commerce-try-on-scene-option', html)
+        self.assertIn('data-commerce-try-on-scene-selected', html)
+        self.assertIn('已选择', html)
+        self.assertIn('data-commerce-try-on-scene-page-size="6"', html)
+        self.assertIn('data-commerce-try-on-scene-page-prev', html)
+        self.assertIn('data-commerce-try-on-scene-page-next', html)
+        self.assertIn('data-commerce-try-on-scene-page-status', html)
+        self.assertIn('data-commerce-try-on-scene-preview="https://oss.example.com/scenes/live-1.png"', html)
+        self.assertIn('data-commerce-try-on-scene-preview="https://oss.example.com/scenes/teacher-1.png"', html)
+        self.assertIn('data-commerce-try-on-scene-preview-button', html)
+        self.assertIn('查看大图', html)
+        self.assertIn('h-24 w-full object-contain', html)
+        self.assertNotIn('block h-auto w-full object-contain', html)
+        self.assertNotIn('h-20 w-full object-cover', html)
+        for shot in COMMERCE_TRY_ON_SHOTS:
+            self.assertIn(f'value="{shot["value"]}"', html)
+            self.assertIn(shot['value'], html)
+            self.assertIn(shot['duration'], html)
+        for duration in COMMERCE_TRY_ON_VIDEO_DURATIONS:
+            self.assertIn(f'value="{duration}"', html)
+            self.assertIn(f'{duration}秒', html)
+        for option in COMMERCE_ASPECT_RATIO_OPTIONS:
+            self.assertIn(f'value="{option["value"]}"', html)
+            self.assertIn(option['label'], html)
+        for resolution in COMMERCE_TRY_ON_VIDEO_RESOLUTIONS:
+            self.assertIn(f'value="{resolution["value"]}"', html)
+            self.assertIn(resolution['label'], html)
+        self.assertIn('data-supported-models="seedance-2.0,kling-v3-omni"', html)
+        self.assertIn('data-supported-models="seedance-2.0,seedance-2.0-fast,kling-v3-omni"', html)
+        self.assertIn('value="480p" selected data-supported-models="seedance-2.0,seedance-2.0-fast"', html)
+        self.assertEqual(
+            COMMERCE_TRY_ON_SUPPORTED_RESOLUTIONS_BY_MODEL['seedance-2.0-fast'],
+            ('480p', '720p'),
+        )
+        self.assertEqual(
+            COMMERCE_TRY_ON_SUPPORTED_RESOLUTIONS_BY_MODEL['kling-v3-omni'],
+            ('720p', '1080p'),
+        )
+        for model in COMMERCE_TRY_ON_VIDEO_MODELS:
+            self.assertIn(f'value="{model["value"]}"', html)
+            self.assertIn(model['label'], html)
+        self.assertIn('value="seedance-2.0" selected', html)
+        self.assertIn('value="9:16" selected', html)
+        self.assertIn('value="480p" selected', html)
+        self.assertIn('value="8" selected', html)
+        self.assertIn('data-commerce-try-on-project-list', html)
+        self.assertIn('暂无试穿视频', html)
+
+    def test_commerce_model_detail_ignores_legacy_latest_first_frame_project(self):
+        session = self.client.session
+        session['token'] = 'token-1'
+        session.save()
+        backend_client = Mock()
+
+        def backend_get(endpoint):
+            if endpoint == '/v1/commerce/models/66':
+                return {
+                    'id': 66,
+                    'seriesId': 10,
+                    'status': 'locked',
+                }
+            if endpoint == '/v1/commerce/models/66/products':
+                return [{
+                    'id': 77,
+                    'name': '冰丝防晒衬衫',
+                    'imageUrl': 'https://oss.example.com/products/shirt.png',
+                    'productType': '衬衫',
+                    'latestTryOnFirstFrameProject': {
+                        'id': 92,
+                        'tryOnFirstFrameStatus': 'generating',
+                    },
+                }]
+            if endpoint == '/v1/commerce/series/10/scenes':
+                return []
+            raise AssertionError(f'unexpected endpoint: {endpoint}')
+
+        backend_client.get.side_effect = backend_get
+
+        with patch('apps.series.views.get_client', return_value=backend_client):
+            response = self.client.get('/commerce/models/66/')
+
+        self.assertEqual(response.status_code, 200)
+        html = response.content.decode('utf-8')
+        self.assertNotIn('data-commerce-first-frame-project', html)
+        self.assertNotIn('&quot;tryOnFirstFrameStatus&quot;: &quot;generating&quot;', html)
+        self.assertNotIn('hydrateCommerceFirstFramePanel', html)
+
+    def test_commerce_model_detail_renders_product_try_on_project_management(self):
+        session = self.client.session
+        session['token'] = 'token-1'
+        session.save()
+        backend_client = Mock()
+
+        def backend_get(endpoint):
+            if endpoint == '/v1/commerce/models/66':
+                return {
+                    'id': 66,
+                    'seriesId': 10,
+                    'status': 'locked',
+                }
+            if endpoint == '/v1/commerce/models/66/products':
+                return [{
+                    'id': 77,
+                    'name': '冰丝防晒衬衫',
+                    'imageUrl': 'https://oss.example.com/products/shirt.png',
+                    'productType': '衬衫',
+                    'tryOnProjects': [
+                        {
+                            'id': 92,
+                            'contentType': 'try_on',
+                            'aspectRatio': '9:16',
+                            'status': 'generating',
+                            'sceneImageUrls': ['https://oss.example.com/scenes/live-1.png'],
+                            'shots': [{
+                                'id': 501,
+                                'title': '正面展示',
+                                'generationStatus': 'generating',
+                                'durationSeconds': 8,
+                                'resolution': '480p',
+                                'videoModel': 'seedance-2.0',
+                            }],
+                        },
+                        {
+                            'id': 91,
+                            'contentType': 'try_on',
+                            'aspectRatio': '3:4',
+                            'status': 'completed',
+                            'shots': [{
+                                'id': 500,
+                                'title': '正面展示',
+                                'generationStatus': 'completed',
+                                'videoUrl': 'https://oss.example.com/videos/try-on.mp4',
+                            }],
+                        },
+                    ],
+                }]
+            if endpoint == '/v1/commerce/products/77/projects?contentType=try_on':
+                return [
+                    {
+                        'id': 92,
+                        'contentType': 'try_on',
+                        'aspectRatio': '9:16',
+                        'status': 'generating',
+                        'sceneImageUrls': ['https://oss.example.com/scenes/live-1.png'],
+                        'shots': [{
+                            'id': 501,
+                            'title': '正面展示',
+                            'generationStatus': 'generating',
+                            'durationSeconds': 8,
+                            'resolution': '480p',
+                            'videoModel': 'seedance-2.0',
+                        }],
+                    },
+                    {
+                        'id': 91,
+                        'contentType': 'try_on',
+                        'aspectRatio': '3:4',
+                        'status': 'completed',
+                        'shots': [{
+                            'id': 500,
+                            'title': '正面展示',
+                            'generationStatus': 'completed',
+                            'videoUrl': 'https://oss.example.com/videos/try-on.mp4',
+                        }],
+                    },
+                ]
+            if endpoint == '/v1/commerce/series/10/scenes':
+                return []
+            raise AssertionError(f'unexpected endpoint: {endpoint}')
+
+        backend_client.get.side_effect = backend_get
+
+        with patch('apps.series.views.get_client', return_value=backend_client):
+            response = self.client.get('/commerce/models/66/')
+
+        self.assertEqual(response.status_code, 200)
+        html = response.content.decode('utf-8')
+        self.assertIn('试穿视频管理', html)
+        self.assertIn('data-commerce-try-on-project-id="92"', html)
+        self.assertIn('data-commerce-try-on-project-status="generating"', html)
+        self.assertIn('生成中', html)
+        self.assertIn('data-commerce-try-on-project-id="91"', html)
+        self.assertIn('https://oss.example.com/videos/try-on.mp4', html)
+        self.assertIn('重新生成', html)
 
     def test_commerce_product_create_uploads_images_before_creating_product(self):
         session = self.client.session
@@ -1424,17 +1817,17 @@ class CommerceFlowTests(TestCase):
             try_on_response = self.client.post('/commerce/products/77/projects/create/', {
                 'content_type': 'try_on',
                 'aspect_ratio': '9:16',
-                'try_on_shots': ['全身站立', '走动展示', '细节展示'],
+                'try_on_shots': ['全身站立', '侧身展示', '背面展示', '抬手展示', '面料特写'],
                 'scene_ids': ['701', '702'],
-                'try_on_first_frame_check': 'enabled',
-                'try_on_first_frame_aspect_ratio': '3:4',
-                'try_on_first_frame_resolution': '4K',
-                'try_on_requirements': '柔和补光',
+                'duration_seconds': '12',
+                'resolution': '1080p',
+                'video_model': 'seedance-2.0',
                 'selling_points': '试穿不该提交卖点',
             })
 
         self.assertEqual(talking_response['Location'], '/commerce/projects/88/')
-        self.assertEqual(try_on_response['Location'], '/commerce/projects/89/')
+        self.assertEqual(try_on_response.status_code, 200)
+        self.assertEqual(try_on_response.json()['data']['id'], 89)
         self.assertEqual(backend_client.post.call_args_list[0].args[1], {
             'contentType': 'talking',
             'aspectRatio': '9:16',
@@ -1445,14 +1838,48 @@ class CommerceFlowTests(TestCase):
         self.assertEqual(backend_client.post.call_args_list[1].args[1], {
             'contentType': 'try_on',
             'aspectRatio': '9:16',
-            'tryOnRequirements': '展示方式：全身站立、走动展示、细节展示；首帧确认：先生成试穿首帧确认图，确认商品还原、穿着效果和模特姿态后再生成视频；补充要求：柔和补光',
-            'sceneIds': [701, 702],
-            'tryOnFirstFrameEnabled': True,
-            'tryOnFirstFrameAspectRatio': '3:4',
-            'tryOnFirstFrameResolution': '4K',
+            'tryOnRequirements': '展示方式：全身站立、侧身展示、背面展示、抬手展示',
+            'sceneIds': [701],
+            'durationSeconds': 12,
+            'resolution': '1080p',
+            'videoModel': 'seedance-2.0',
         })
+        self.assertEqual(COMMERCE_TRY_ON_MAX_SHOTS, 4)
 
-    def test_commerce_project_create_forwards_try_on_first_frame_check_without_scene_text(self):
+    def test_commerce_project_create_falls_back_when_model_resolution_is_unsupported(self):
+        session = self.client.session
+        session['token'] = 'token-1'
+        session.save()
+        backend_client = Mock()
+        backend_client.post.side_effect = [
+            {'id': 90},
+            {'id': 91},
+        ]
+
+        with patch('apps.series.views.get_client', return_value=backend_client):
+            seedance_fast_response = self.client.post('/commerce/products/77/projects/create/', {
+                'content_type': 'try_on',
+                'aspect_ratio': '9:16',
+                'resolution': '1080p',
+                'video_model': 'seedance-2.0-fast',
+            })
+            kling_response = self.client.post('/commerce/products/77/projects/create/', {
+                'content_type': 'try_on',
+                'aspect_ratio': '9:16',
+                'resolution': '480p',
+                'video_model': 'kling-v3-omni',
+            })
+
+        self.assertEqual(seedance_fast_response.status_code, 200)
+        self.assertEqual(seedance_fast_response.json()['data']['id'], 90)
+        self.assertEqual(kling_response.status_code, 200)
+        self.assertEqual(kling_response.json()['data']['id'], 91)
+        self.assertEqual(backend_client.post.call_args_list[0].args[1]['videoModel'], 'seedance-2.0-fast')
+        self.assertEqual(backend_client.post.call_args_list[0].args[1]['resolution'], '480p')
+        self.assertEqual(backend_client.post.call_args_list[1].args[1]['videoModel'], 'kling-v3-omni')
+        self.assertEqual(backend_client.post.call_args_list[1].args[1]['resolution'], '720p')
+
+    def test_commerce_project_create_ignores_retired_first_frame_fields(self):
         session = self.client.session
         session['token'] = 'token-1'
         session.save()
@@ -1466,19 +1893,42 @@ class CommerceFlowTests(TestCase):
                 'try_on_first_frame_check': 'enabled',
                 'try_on_first_frame_aspect_ratio': '2:1',
                 'try_on_first_frame_resolution': '8K',
+                'duration_seconds': '99',
+                'resolution': '8k',
+                'video_model': 'unknown-model',
+                'scene_ids': ['701'],
             })
 
-        self.assertEqual(response['Location'], '/commerce/projects/91/')
-        self.assertEqual(backend_client.post.call_args.args[1], {
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['data']['id'], 91)
+        self.assertEqual(backend_client.post.call_args_list[0].args[1], {
             'contentType': 'try_on',
             'aspectRatio': '9:16',
-            'tryOnRequirements': '首帧确认：先生成试穿首帧确认图，确认商品还原、穿着效果和模特姿态后再生成视频',
-            'tryOnFirstFrameEnabled': True,
-            'tryOnFirstFrameAspectRatio': '9:16',
-            'tryOnFirstFrameResolution': '2K',
+            'sceneIds': [701],
+            'durationSeconds': 8,
+            'resolution': '480p',
+            'videoModel': 'seedance-2.0',
         })
 
-    def test_commerce_project_create_preserves_plain_try_on_requirements_without_shot_buttons(self):
+    def test_commerce_project_status_proxies_backend(self):
+        session = self.client.session
+        session['token'] = 'token-1'
+        session.save()
+        backend_client = Mock()
+        backend_client.get.return_value = {
+            'id': 92,
+            'status': 'draft',
+        }
+
+        with patch('apps.series.views.get_client', return_value=backend_client):
+            status_response = self.client.get('/commerce/projects/92/status/')
+
+        self.assertEqual(status_response.status_code, 200)
+        self.assertEqual(status_response.json()['data']['status'], 'draft')
+        backend_client.post.assert_not_called()
+        self.assertEqual(backend_client.get.call_args.args[0], '/v1/commerce/projects/92')
+
+    def test_commerce_project_create_ignores_retired_freeform_try_on_requirements(self):
         session = self.client.session
         session['token'] = 'token-1'
         session.save()
@@ -1490,45 +1940,40 @@ class CommerceFlowTests(TestCase):
                 'content_type': 'try_on',
                 'aspect_ratio': '9:16',
                 'try_on_requirements': '通勤街景、室内全身镜、户外自然光',
+                'scene_ids': ['701'],
+                'duration_seconds': '6',
+                'resolution': '480p',
+                'video_model': 'kling-v3-omni',
             })
 
-        self.assertEqual(response['Location'], '/commerce/projects/90/')
-        self.assertEqual(backend_client.post.call_args.args[1], {
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['data']['id'], 90)
+        self.assertEqual(backend_client.post.call_args_list[0].args[1], {
             'contentType': 'try_on',
             'aspectRatio': '9:16',
-            'tryOnRequirements': '通勤街景、室内全身镜、户外自然光',
+            'sceneIds': [701],
+            'durationSeconds': 6,
+            'resolution': '720p',
+            'videoModel': 'kling-v3-omni',
         })
 
-    def test_commerce_project_detail_template_renders_try_on_first_frame_preview(self):
+    def test_commerce_project_detail_template_does_not_render_try_on_first_frame_preview(self):
         template_path = Path(settings.BASE_DIR) / 'templates/commerce/project_detail.html'
         template = template_path.read_text(encoding='utf-8')
 
-        self.assertIn('project.tryOnFirstFrameEnabled', template)
-        self.assertIn('试穿首帧确认', template)
-        self.assertIn('project.tryOnFirstFrameAspectRatio', template)
-        self.assertIn('project.tryOnFirstFrameResolution', template)
-        self.assertIn('project.tryOnFirstFrameStatus', template)
-        self.assertIn('project.tryOnFirstFrameUrl', template)
-        self.assertIn('试穿首帧确认图', template)
-        self.assertIn('project.tryOnFirstFrameError', template)
-        self.assertIn('project.tryOnFirstFrameConfirmed', template)
-        self.assertIn('/commerce/projects/{{ project.id }}/confirm-first-frame/', template)
-        self.assertIn('确认首帧', template)
-        self.assertIn('首帧确认后再生成视频', template)
+        self.assertNotIn('project.tryOnFirstFrameEnabled', template)
+        self.assertNotIn('试穿首帧确认', template)
+        self.assertNotIn('project.tryOnFirstFrameAspectRatio', template)
+        self.assertNotIn('project.tryOnFirstFrameResolution', template)
+        self.assertNotIn('project.tryOnFirstFrameStatus', template)
+        self.assertNotIn('project.tryOnFirstFrameUrl', template)
+        self.assertNotIn('试穿首帧确认图', template)
+        self.assertNotIn('project.tryOnFirstFrameError', template)
+        self.assertNotIn('project.tryOnFirstFrameConfirmed', template)
+        self.assertNotIn('/commerce/projects/{{ project.id }}/confirm-first-frame/', template)
+        self.assertNotIn('确认首帧', template)
+        self.assertNotIn('首帧确认后再生成视频', template)
         self.assertNotIn('确认颜色对不对、版型对不对、图案有没有丢、衣长袖长是否合理、模特身体有没有变形', template)
-
-    def test_commerce_project_confirm_first_frame_posts_backend_and_redirects(self):
-        session = self.client.session
-        session['token'] = 'token-1'
-        session.save()
-        backend_client = Mock()
-
-        with patch('apps.series.views.get_client', return_value=backend_client):
-            response = self.client.post('/commerce/projects/88/confirm-first-frame/')
-
-        self.assertEqual(response.status_code, 302)
-        self.assertEqual(response['Location'], '/commerce/projects/88/')
-        backend_client.post.assert_called_once_with('/v1/commerce/projects/88/confirm-first-frame')
 
     def test_commerce_series_list_template_links_back_to_home(self):
         template_path = Path(settings.BASE_DIR) / 'templates/commerce/series_list.html'
@@ -1547,6 +1992,12 @@ class CommerceFlowTests(TestCase):
         self.assertIn('commerce-model-list', template)
         self.assertIn('commerce-model-row', template)
         self.assertIn('commerce-model-preview', template)
+        self.assertIn('commerce-scene-library-entry', template)
+        self.assertIn('/commerce/series/{{ commerce_series.id }}/scenes/', template)
+        self.assertIn('场景库', template)
+        self.assertIn('生成和维护试穿场景图', template)
+        self.assertLess(template.index('commerce-scene-library-entry'), template.index('<h2 class="text-lg font-semibold">创建模特</h2>'))
+        self.assertNotIn('mb-5 flex items-start justify-between gap-4', template.split('<h2 class="mb-4 text-lg font-semibold">模特列表</h2>', 1)[0])
         self.assertIn('object-contain', template)
         self.assertIn('模特名称', template)
         self.assertIn('性别', template)
@@ -1567,15 +2018,15 @@ class CommerceFlowTests(TestCase):
         self.assertIn('commerce-model-summary', template)
         self.assertIn('commerce-model-prompt-preview', template)
         self.assertNotIn('commerce-model-prompt-preview line-clamp-2', template)
-        self.assertIn('去绑定商品（等待上线）', template)
+        self.assertIn('去绑定商品', template)
+        self.assertNotIn('去绑定商品（等待上线）', template)
         action_block = template.split('<div class="mt-3 grid gap-2 sm:grid-cols-2">', 1)[1]
         locked_block = action_block.split("{% if model.status == 'locked' %}", 1)[1].split("{% elif model.status == 'pending_review' %}", 1)[0]
-        self.assertIn('commerce-model-bind-disabled', locked_block)
-        self.assertIn('去绑定商品（等待上线）', locked_block)
-        self.assertIn('disabled', locked_block)
-        self.assertIn('aria-disabled="true"', locked_block)
-        self.assertNotIn('commerce-model-bind-link', locked_block)
-        self.assertNotIn('href="/commerce/models/{{ model.id }}/"', locked_block)
+        self.assertIn('commerce-model-bind-link', locked_block)
+        self.assertIn('href="/commerce/models/{{ model.id }}/"', locked_block)
+        self.assertNotIn('commerce-model-bind-disabled', locked_block)
+        self.assertNotIn('disabled', locked_block)
+        self.assertNotIn('aria-disabled="true"', locked_block)
         self.assertIn('锁定', template)
         self.assertIn('解锁', template)
         self.assertIn('重新生成（6积分）', template)
@@ -1596,10 +2047,8 @@ class CommerceFlowTests(TestCase):
         self.assertIn('shadow-[inset_0_1px_0_rgba(255,255,255,0.08)]', template)
         self.assertIn('border-t border-white/[0.08]', template)
         self.assertIn('text-white/[0.42]', template)
-        self.assertIn('cursor-not-allowed', locked_block)
-        self.assertIn('bg-white/[0.06]', locked_block)
-        self.assertNotIn('bg-cyan-500', locked_block)
-        self.assertNotIn('hover:bg-cyan-400', locked_block)
+        self.assertIn('bg-cyan-500', locked_block)
+        self.assertIn('hover:bg-cyan-400', locked_block)
         self.assertNotIn('rounded-2xl', template)
         self.assertNotIn('border-l-4 border-l-emerald-300/70', template)
         self.assertNotIn('shadow-[0_16px_42px_rgba(0,0,0,0.22)]', template)
@@ -1747,17 +2196,30 @@ class CommerceFlowTests(TestCase):
             if endpoint == '/v1/commerce/series/10':
                 return {'id': 10, 'name': '小雅女装种草号'}
             if endpoint == '/v1/commerce/series/10/scenes':
-                return [{
-                    'id': 701,
-                    'name': '直播间背景',
-                    'sceneType': '直播间背景',
-                    'libraryType': '直播间背景库',
-                    'imageUrl': 'https://oss.example.com/commerce/scenes/live.png',
-                    'status': 'completed',
-                    'resolution': '2K',
-                    'aspectRatio': '16:9',
-                    'createdAt': '2026-05-21T01:23:45',
-                }]
+                return [
+                    {
+                        'id': 701,
+                        'name': '直播间背景',
+                        'sceneType': '直播间背景',
+                        'libraryType': '直播间背景库',
+                        'imageUrl': 'https://oss.example.com/commerce/scenes/live.png',
+                        'status': 'completed',
+                        'resolution': '2K',
+                        'aspectRatio': '9:16',
+                        'createdAt': '2026-05-21T01:23:45',
+                    },
+                    {
+                        'id': 702,
+                        'name': '咖啡店落地窗旁',
+                        'sceneType': '自定义',
+                        'libraryType': '自定义场景库',
+                        'imageUrl': 'https://oss.example.com/commerce/scenes/cafe.png',
+                        'status': 'completed',
+                        'resolution': '2K',
+                        'aspectRatio': '9:16',
+                        'createdAt': '2026-05-21T01:24:45',
+                    },
+                ]
             raise AssertionError(f'unexpected endpoint: {endpoint}')
 
         backend_client.get.side_effect = backend_get
@@ -1768,24 +2230,68 @@ class CommerceFlowTests(TestCase):
         self.assertEqual(response.status_code, 200)
         html = response.content.decode('utf-8')
         self.assertIn('场景图工作区', html)
-        for library in ('品牌场景库', '直播间背景库', '街拍场景库', '棚拍场景库'):
-            self.assertIn(library, html)
+        for category in ('全部', '品牌场景', '直播间背景', '街拍场景', '棚拍场景', '商场试衣间', '室内全身镜', '其他场景'):
+            self.assertIn(category, html)
+        self.assertIn('data-commerce-scene-filter="全部"', html)
+        self.assertIn('data-commerce-scene-filter="品牌场景"', html)
+        self.assertIn('data-commerce-scene-filter="其他场景"', html)
+        self.assertNotIn('data-commerce-scene-filter="咖啡店落地窗旁"', html)
+        self.assertIn('data-commerce-scene-category="直播间背景"', html)
+        self.assertIn('data-commerce-scene-category="咖啡店落地窗旁"', html)
+        self.assertIn('data-commerce-scene-group="其他场景"', html)
+        self.assertIn('filterCommerceSceneCards', html)
+        self.assertIn("sceneCard.dataset.commerceSceneGroup === activeCommerceSceneFilter", html)
+        self.assertIn("sceneCard.classList.toggle('hidden', !visible);", html)
+        self.assertIn('data-commerce-scene-empty-filter', html)
         self.assertIn('批量生成场景图', html)
         self.assertIn('name="scene_types"', html)
+        self.assertIn('name="brand_scene_name"', html)
+        self.assertIn('品牌名称 / 标识', html)
+        self.assertIn('例如：LUMIA Studio', html)
+        self.assertIn('data-commerce-brand-scene-field', html)
+        self.assertIn('hidden', html.split('data-commerce-brand-scene-field', 1)[0].split('<label', 1)[-1])
+        self.assertIn('data-commerce-scene-type-input', html)
+        self.assertIn('toggleCommerceBrandSceneField', html)
+        self.assertIn("input.value === '品牌场景' && input.checked", html)
+        self.assertIn('brandInput.value = \'\';', html)
         self.assertIn('name="custom_scenes"', html)
         self.assertIn('data-add-commerce-custom-scene', html)
+        self.assertIn('data-remove-commerce-custom-scene', html)
+        self.assertIn("row.remove();", html)
+        self.assertIn('data-commerce-scene-list', html)
+        self.assertIn('data-commerce-scene-poll-url="/commerce/series/10/scenes/"', html)
+        self.assertIn('data-commerce-scene-status="completed"', html)
+        self.assertIn('pollCommerceSceneList', html)
         self.assertIn('https://oss.example.com/commerce/scenes/live.png', html)
+        self.assertIn('data-commerce-scene-preview="https://oss.example.com/commerce/scenes/live.png"', html)
+        self.assertIn('data-commerce-scene-frame', html)
+        self.assertIn('class="block h-auto w-full object-contain', html)
+        self.assertIn("closest('[data-commerce-scene-preview]')", html)
+        self.assertIn("openModal(url);", html)
+        self.assertNotIn('aspect-video', html)
+        for ratio_label in (
+                '9:16 - 抖音 / 快手 / 视频号全屏竖屏',
+                '3:4 - 真人模特 / 服装试穿竖图',
+                '1:1 - 商品卡片 / 方图投放素材',
+                '16:9 - 横屏展示 / 店铺详情素材'):
+            self.assertIn(ratio_label, html)
+        self.assertNotIn('<textarea name="description"', html)
+        self.assertNotIn('补充描述', html)
 
-    def test_commerce_scene_batch_create_forwards_selected_and_custom_scenes(self):
+    def test_commerce_scene_batch_create_prepares_then_starts_selected_and_custom_scenes(self):
         session = self.client.session
         session['token'] = 'token-1'
         session.save()
         backend_client = Mock()
-        backend_client.post.return_value = []
+        backend_client.post.side_effect = [
+            [{'id': 701}, {'id': 702}, {'id': 703}],
+            [],
+        ]
 
         with patch('apps.series.views.get_client', return_value=backend_client):
             response = self.client.post('/commerce/series/10/scenes/create/', {
-                'scene_types': ['直播间背景', '街拍场景'],
+                'scene_types': ['品牌场景', '直播间背景', '街拍场景'],
+                'brand_scene_name': 'LUMIA Studio',
                 'custom_scenes': ['咖啡店落地窗旁', '地铁站扶梯旁', ''],
                 'aspect_ratio': '16:9',
                 'resolution': '3K',
@@ -1795,13 +2301,45 @@ class CommerceFlowTests(TestCase):
 
         self.assertEqual(response.status_code, 302)
         self.assertEqual(response['Location'], '/commerce/series/10/scenes/')
-        backend_client.post.assert_called_once_with('/v1/commerce/series/10/scenes/batch', {
-            'sceneTypes': ['直播间背景', '街拍场景'],
+        self.assertEqual(backend_client.post.call_args_list[0].args[0], '/v1/commerce/series/10/scenes/batch/prepare')
+        self.assertEqual(backend_client.post.call_args_list[0].args[1], {
+            'sceneTypes': ['品牌场景', '直播间背景', '街拍场景'],
+            'brandSceneName': 'LUMIA Studio',
             'customScenes': ['咖啡店落地窗旁', '地铁站扶梯旁'],
             'aspectRatio': '16:9',
             'resolution': '3K',
             'countPerScene': 2,
-            'description': '浅色女装品牌调性',
+        })
+        backend_client.post.assert_any_call('/v1/commerce/series/10/scenes/batch/start', {
+            'sceneIds': [701, 702, 703],
+        })
+
+    def test_commerce_scene_batch_create_ignores_brand_name_without_brand_scene(self):
+        session = self.client.session
+        session['token'] = 'token-1'
+        session.save()
+        backend_client = Mock()
+        backend_client.post.side_effect = [
+            [{'id': 801}],
+            [],
+        ]
+
+        with patch('apps.series.views.get_client', return_value=backend_client):
+            response = self.client.post('/commerce/series/10/scenes/create/', {
+                'scene_types': ['直播间背景'],
+                'brand_scene_name': 'LUMIA Studio',
+                'aspect_ratio': '16:9',
+                'resolution': '2K',
+                'count_per_scene': '1',
+            })
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(backend_client.post.call_args_list[0].args[1], {
+            'sceneTypes': ['直播间背景'],
+            'customScenes': [],
+            'aspectRatio': '16:9',
+            'resolution': '2K',
+            'countPerScene': 1,
         })
 
     def test_commerce_series_detail_shows_queued_placeholder_from_backend_models_without_created_query(self):

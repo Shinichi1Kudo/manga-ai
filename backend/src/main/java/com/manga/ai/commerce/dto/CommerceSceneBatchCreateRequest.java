@@ -12,6 +12,7 @@ public class CommerceSceneBatchCreateRequest implements Serializable {
 
     private List<String> sceneTypes = new ArrayList<>();
     private List<String> customScenes = new ArrayList<>();
+    private String brandSceneName;
     private String aspectRatio;
     private String resolution;
     private Integer countPerScene;

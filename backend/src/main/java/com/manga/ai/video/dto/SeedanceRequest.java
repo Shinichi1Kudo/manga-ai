@@ -89,7 +89,7 @@ public class SeedanceRequest implements Serializable {
         private static final long serialVersionUID = 1L;
 
         /**
-         * 类型: "text" 或 "image_url"
+         * 类型: "text"、"image_url"、"video_url" 或 "audio_url"
          */
         private String type;
 
@@ -112,6 +112,11 @@ public class SeedanceRequest implements Serializable {
          * 视频URL (type="video_url"时)
          */
         private VideoUrl videoUrl;
+
+        /**
+         * 音频URL (type="audio_url"时)
+         */
+        private AudioUrl audioUrl;
     }
 
     /**
@@ -129,6 +134,16 @@ public class SeedanceRequest implements Serializable {
      */
     @Data
     public static class VideoUrl implements Serializable {
+        private static final long serialVersionUID = 1L;
+
+        private String url;
+    }
+
+    /**
+     * 音频URL
+     */
+    @Data
+    public static class AudioUrl implements Serializable {
         private static final long serialVersionUID = 1L;
 
         private String url;

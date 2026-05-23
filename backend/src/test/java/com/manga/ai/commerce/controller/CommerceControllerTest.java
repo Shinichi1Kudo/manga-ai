@@ -1,8 +1,10 @@
 package com.manga.ai.commerce.controller;
 
 import com.manga.ai.commerce.service.CommerceService;
+import com.manga.ai.commerce.dto.CommerceProjectVO;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -53,12 +55,49 @@ class CommerceControllerTest {
     @Test
     void controllerExposesCommerceSceneLibraryEndpoints() throws Exception {
         Method listScenes = CommerceController.class.getDeclaredMethod("listScenes", Long.class);
-        Method createScenes = CommerceController.class.getDeclaredMethod(
-                "createScenes", Long.class, com.manga.ai.commerce.dto.CommerceSceneBatchCreateRequest.class);
+        Method prepareScenes = CommerceController.class.getDeclaredMethod(
+                "prepareScenes", Long.class, com.manga.ai.commerce.dto.CommerceSceneBatchCreateRequest.class);
+        Method startScenes = CommerceController.class.getDeclaredMethod(
+                "startScenes", Long.class, com.manga.ai.commerce.dto.CommerceSceneGenerationStartRequest.class);
 
         assertThat(listScenes.getAnnotation(org.springframework.web.bind.annotation.GetMapping.class).value())
                 .containsExactly("/series/{seriesId}/scenes");
-        assertThat(createScenes.getAnnotation(PostMapping.class).value())
-                .containsExactly("/series/{seriesId}/scenes/batch");
+        assertThat(prepareScenes.getAnnotation(PostMapping.class).value())
+                .containsExactly("/series/{seriesId}/scenes/batch/prepare");
+        assertThat(startScenes.getAnnotation(PostMapping.class).value())
+                .containsExactly("/series/{seriesId}/scenes/batch/start");
+    }
+
+    @Test
+    void controllerDoesNotExposeTryOnFirstFrameEndpoints() {
+        assertThat(CommerceController.class.getDeclaredMethods())
+                .extracting(Method::getName)
+                .doesNotContain(
+                        "prepareTryOnFirstFrame",
+                        "startTryOnFirstFrame",
+                        "confirmTryOnFirstFrame");
+    }
+
+    @Test
+    void controllerExposesProjectGenerationStartEndpoint() throws Exception {
+        Method getProject = CommerceController.class.getDeclaredMethod("getProject", Long.class);
+        Method startProjectVideoGeneration = CommerceController.class.getDeclaredMethod("startProjectVideoGeneration", Long.class);
+
+        assertThat(getProject.getAnnotation(GetMapping.class).value()).containsExactly("/projects/{projectId}");
+        assertThat(startProjectVideoGeneration.getAnnotation(PostMapping.class).value())
+                .containsExactly("/projects/{projectId}/generation/start");
+    }
+
+    @Test
+    void projectGenerationStartReturnsServiceResult() {
+        CommerceProjectVO project = new CommerceProjectVO();
+        project.setId(90L);
+        project.setStatus("generating");
+        when(commerceService.startProjectVideoGeneration(90L)).thenReturn(project);
+
+        var result = controller.startProjectVideoGeneration(90L);
+
+        assertThat(result.getData().getId()).isEqualTo(90L);
+        assertThat(result.getData().getStatus()).isEqualTo("generating");
     }
 }

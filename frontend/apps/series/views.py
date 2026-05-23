@@ -8,15 +8,60 @@ from datetime import datetime
 from urllib.parse import urlencode
 import json
 import requests
+from django.core.serializers.json import DjangoJSONEncoder
 
 from api.backend_client import BackendClient, BackendAPIError
 
 
 COMMERCE_ASPECT_RATIOS = ('9:16', '3:4', '1:1', '16:9')
-COMMERCE_FIRST_FRAME_RESOLUTIONS = ('2K', '3K', '4K')
+COMMERCE_ASPECT_RATIO_OPTIONS = (
+    {'value': '9:16', 'label': '9:16 - 抖音 / 快手 / 视频号全屏竖屏'},
+    {'value': '3:4', 'label': '3:4 - 真人模特 / 服装试穿竖图'},
+    {'value': '1:1', 'label': '1:1 - 商品卡片 / 方图投放素材'},
+    {'value': '16:9', 'label': '16:9 - 横屏展示 / 店铺详情素材'},
+)
 DEFAULT_COMMERCE_ASPECT_RATIO = '9:16'
 DEFAULT_COMMERCE_MODEL_ASPECT_RATIO = '16:9'
-COMMERCE_TRY_ON_SHOTS = ('全身站立', '转身展示', '走动展示', '细节展示')
+COMMERCE_TRY_ON_SHOTS = (
+    {'value': '全身站立', 'duration': '约4秒'},
+    {'value': '转身展示', 'duration': '约5秒'},
+    {'value': '走动展示', 'duration': '约5秒'},
+    {'value': '细节展示', 'duration': '约4秒'},
+    {'value': '侧身展示', 'duration': '约3秒'},
+    {'value': '背面展示', 'duration': '约3秒'},
+    {'value': '半身近景', 'duration': '约3秒'},
+    {'value': '坐姿展示', 'duration': '约4秒'},
+    {'value': '抬手展示', 'duration': '约3秒'},
+    {'value': '下摆展示', 'duration': '约3秒'},
+    {'value': '面料特写', 'duration': '约3秒'},
+    {'value': '搭配展示', 'duration': '约4秒'},
+)
+COMMERCE_TRY_ON_SHOT_VALUES = tuple(shot['value'] for shot in COMMERCE_TRY_ON_SHOTS)
+COMMERCE_TRY_ON_MAX_SHOTS = 4
+COMMERCE_TRY_ON_VIDEO_DURATIONS = tuple(range(4, 16))
+COMMERCE_TRY_ON_DEFAULT_DURATION = 8
+COMMERCE_TRY_ON_VIDEO_RESOLUTIONS = (
+    {'value': '480p', 'label': '高清', 'supported_models': ('seedance-2.0', 'seedance-2.0-fast')},
+    {'value': '720p', 'label': '超清', 'supported_models': ('seedance-2.0', 'seedance-2.0-fast', 'kling-v3-omni')},
+    {'value': '1080p', 'label': '4K', 'supported_models': ('seedance-2.0', 'kling-v3-omni')},
+)
+COMMERCE_TRY_ON_VIDEO_RESOLUTION_VALUES = tuple(option['value'] for option in COMMERCE_TRY_ON_VIDEO_RESOLUTIONS)
+COMMERCE_TRY_ON_DEFAULT_RESOLUTION = '480p'
+COMMERCE_TRY_ON_VIDEO_MODELS = (
+    {'value': 'seedance-2.0', 'label': 'Seedance 2.0 VIP'},
+    {'value': 'seedance-2.0-fast', 'label': 'Seedance 2.0 Fast VIP'},
+    {'value': 'kling-v3-omni', 'label': 'Kling v3 Omni'},
+)
+COMMERCE_TRY_ON_VIDEO_MODEL_VALUES = tuple(option['value'] for option in COMMERCE_TRY_ON_VIDEO_MODELS)
+COMMERCE_TRY_ON_DEFAULT_VIDEO_MODEL = 'seedance-2.0'
+COMMERCE_TRY_ON_SUPPORTED_RESOLUTIONS_BY_MODEL = {
+    model['value']: tuple(
+        resolution['value']
+        for resolution in COMMERCE_TRY_ON_VIDEO_RESOLUTIONS
+        if model['value'] in resolution['supported_models']
+    )
+    for model in COMMERCE_TRY_ON_VIDEO_MODELS
+}
 COMMERCE_TRY_ON_SCENES = ('室内全身镜', '纯色棚拍', '通勤街景', '户外自然光', '商场试衣间', '直播间背景')
 COMMERCE_MODEL_TYPES_BY_GENDER = {
     '女': ('年轻美女', '成熟女性', '中年女性', '老年女性', '高级感女模特', '亲和素人女性'),
@@ -27,7 +72,13 @@ COMMERCE_MODEL_ETHNICITIES = ('中国', '华人', '东亚', '日韩', '亚洲', 
 COMMERCE_MODEL_BODY_PROFILES = ('标准匀称', '纤细修长', '高挑模特', '微胖亲和', '丰满曲线', '大码胖模特')
 DEFAULT_COMMERCE_MODEL_BODY_PROFILE = '标准匀称'
 COMMERCE_SCENE_TYPES = ('品牌场景', '直播间背景', '街拍场景', '棚拍场景', '商场试衣间', '室内全身镜')
+COMMERCE_CUSTOM_SCENE_FILTER = '其他场景'
 COMMERCE_SCENE_RESOLUTIONS = ('2K', '3K', '4K')
+
+
+def _commerce_scene_filter_categories(scenes):
+    """构建场景图工作区筛选分类：全部、系统场景、其他场景。"""
+    return ['全部', *COMMERCE_SCENE_TYPES, COMMERCE_CUSTOM_SCENE_FILTER]
 
 
 def get_client(request):
@@ -382,9 +433,10 @@ def commerce_scene_workspace(request, series_id):
     return render(request, 'commerce/scene_workspace.html', {
         'commerce_series': series,
         'scenes': scenes or [],
+        'scene_filter_categories': _commerce_scene_filter_categories(scenes),
         'scene_types': COMMERCE_SCENE_TYPES,
         'scene_resolutions': COMMERCE_SCENE_RESOLUTIONS,
-        'aspect_ratios': ('16:9', '9:16', '3:4', '1:1'),
+        'aspect_ratios': COMMERCE_ASPECT_RATIO_OPTIONS,
     })
 
 
@@ -411,17 +463,28 @@ def commerce_scene_batch_create(request, series_id):
     except ValueError:
         count_per_scene = 1
     count_per_scene = max(1, min(count_per_scene, 4))
+    brand_scene_name = request.POST.get('brand_scene_name', '').strip()
     payload = {
         'sceneTypes': scene_types,
         'customScenes': custom_scenes,
         'aspectRatio': aspect_ratio,
         'resolution': resolution,
         'countPerScene': count_per_scene,
-        'description': request.POST.get('description', '').strip(),
     }
+    if '品牌场景' in scene_types and brand_scene_name:
+        payload['brandSceneName'] = brand_scene_name
     client = get_client(request)
     try:
-        client.post(f'/v1/commerce/series/{series_id}/scenes/batch', payload)
+        prepared_scenes = client.post(f'/v1/commerce/series/{series_id}/scenes/batch/prepare', payload)
+        scene_ids = [
+            int(scene.get('id'))
+            for scene in (prepared_scenes or [])
+            if scene.get('id')
+        ]
+        if scene_ids:
+            client.post(f'/v1/commerce/series/{series_id}/scenes/batch/start', {
+                'sceneIds': scene_ids,
+            })
         messages.success(request, '场景图已提交生成')
     except BackendAPIError as e:
         messages.error(request, f'生成场景图失败: {e.message}')
@@ -577,6 +640,8 @@ def commerce_model_detail(request, model_id):
                 return redirect('series:commerce_series_detail', series_id=series_id)
         products = client.get(f'/v1/commerce/models/{model_id}/products')
         scenes = client.get(f'/v1/commerce/series/{model.get("seriesId")}/scenes') if model.get('seriesId') else []
+        for product in products or []:
+            product['tryOnProjects'] = product.get('tryOnProjects') or []
     except BackendAPIError as e:
         messages.error(request, f'获取模特商品失败: {e.message}')
         products = []
@@ -590,6 +655,17 @@ def commerce_model_detail(request, model_id):
         'series_id': model.get('seriesId'),
         'products': products,
         'available_scenes': completed_scenes,
+        'try_on_scene_filter_categories': _commerce_scene_filter_categories(completed_scenes),
+        'try_on_aspect_ratios': COMMERCE_ASPECT_RATIO_OPTIONS,
+        'try_on_default_aspect_ratio': DEFAULT_COMMERCE_ASPECT_RATIO,
+        'try_on_shots': COMMERCE_TRY_ON_SHOTS,
+        'try_on_max_shots': COMMERCE_TRY_ON_MAX_SHOTS,
+        'try_on_video_durations': COMMERCE_TRY_ON_VIDEO_DURATIONS,
+        'try_on_default_duration': COMMERCE_TRY_ON_DEFAULT_DURATION,
+        'try_on_video_resolutions': COMMERCE_TRY_ON_VIDEO_RESOLUTIONS,
+        'try_on_default_resolution': COMMERCE_TRY_ON_DEFAULT_RESOLUTION,
+        'try_on_video_models': COMMERCE_TRY_ON_VIDEO_MODELS,
+        'try_on_default_video_model': COMMERCE_TRY_ON_DEFAULT_VIDEO_MODEL,
     })
 
 
@@ -648,21 +724,32 @@ def commerce_product_create(request, model_id):
     """创建电商商品"""
     client = get_client(request)
     try:
-        product_images = request.FILES.getlist('product_image')
-        if not product_images:
+        grouped_product_images = [
+            (product_image, usage)
+            for field_name, usage in (
+                ('product_main_images', '主图'),
+                ('product_detail_images', '细节图'),
+                ('product_worn_images', '上身参考'),
+            )
+            for product_image in request.FILES.getlist(field_name)
+        ]
+        legacy_product_images = request.FILES.getlist('product_image')
+        if legacy_product_images and not grouped_product_images:
+            legacy_usages = request.POST.getlist('product_image_usages')
+            grouped_product_images = list(zip(legacy_product_images, legacy_usages))
+        if not grouped_product_images:
             messages.error(request, '请上传商品图片')
             return redirect('series:commerce_model_detail', model_id=model_id)
-        if len(product_images) > 5:
+        if len(grouped_product_images) > 5:
             messages.error(request, '最多上传5张商品图片')
             return redirect('series:commerce_model_detail', model_id=model_id)
-        usages = request.POST.getlist('product_image_usages')
-        if len(usages) != len(product_images):
+        if legacy_product_images and len(grouped_product_images) != len(legacy_product_images):
             messages.error(request, '请为每张商品图片选择用途')
             return redirect('series:commerce_model_detail', model_id=model_id)
         allowed_types = {'image/jpeg', 'image/png', 'image/webp'}
         allowed_usages = {'主图', '细节图', '上身参考'}
         uploaded_images = []
-        for product_image, usage in zip(product_images, usages):
+        for product_image, usage in grouped_product_images:
             usage = (usage or '').strip()
             if usage not in allowed_usages:
                 messages.error(request, '请为每张商品图片选择用途')
@@ -720,18 +807,28 @@ def commerce_project_create(request, product_id):
             if price_offer:
                 payload['priceOffer'] = price_offer
         elif content_type == 'try_on':
-            try_on_requirements = request.POST.get('try_on_requirements', '').strip()
-            first_frame_enabled = request.POST.get('try_on_first_frame_check') == 'enabled'
-            first_frame_aspect_ratio = request.POST.get('try_on_first_frame_aspect_ratio', DEFAULT_COMMERCE_ASPECT_RATIO).strip()
-            if first_frame_aspect_ratio not in COMMERCE_ASPECT_RATIOS:
-                first_frame_aspect_ratio = DEFAULT_COMMERCE_ASPECT_RATIO
-            first_frame_resolution = request.POST.get('try_on_first_frame_resolution', '2K').strip().upper()
-            if first_frame_resolution not in COMMERCE_FIRST_FRAME_RESOLUTIONS:
-                first_frame_resolution = '2K'
             selected_shots = [
                 shot for shot in request.POST.getlist('try_on_shots')
-                if shot in COMMERCE_TRY_ON_SHOTS
-            ]
+                if shot in COMMERCE_TRY_ON_SHOT_VALUES
+            ][:COMMERCE_TRY_ON_MAX_SHOTS]
+            try:
+                duration_seconds = int(request.POST.get('duration_seconds', COMMERCE_TRY_ON_DEFAULT_DURATION))
+            except (TypeError, ValueError):
+                duration_seconds = COMMERCE_TRY_ON_DEFAULT_DURATION
+            if duration_seconds not in COMMERCE_TRY_ON_VIDEO_DURATIONS:
+                duration_seconds = COMMERCE_TRY_ON_DEFAULT_DURATION
+            resolution = request.POST.get('resolution', COMMERCE_TRY_ON_DEFAULT_RESOLUTION).strip()
+            if resolution not in COMMERCE_TRY_ON_VIDEO_RESOLUTION_VALUES:
+                resolution = COMMERCE_TRY_ON_DEFAULT_RESOLUTION
+            video_model = request.POST.get('video_model', COMMERCE_TRY_ON_DEFAULT_VIDEO_MODEL).strip()
+            if video_model not in COMMERCE_TRY_ON_VIDEO_MODEL_VALUES:
+                video_model = COMMERCE_TRY_ON_DEFAULT_VIDEO_MODEL
+            supported_resolutions = COMMERCE_TRY_ON_SUPPORTED_RESOLUTIONS_BY_MODEL.get(
+                video_model,
+                COMMERCE_TRY_ON_SUPPORTED_RESOLUTIONS_BY_MODEL[COMMERCE_TRY_ON_DEFAULT_VIDEO_MODEL],
+            )
+            if resolution not in supported_resolutions:
+                resolution = supported_resolutions[0]
             scene_ids = []
             for raw_scene_id in request.POST.getlist('scene_ids'):
                 try:
@@ -743,22 +840,20 @@ def commerce_project_create(request, product_id):
             try_on_parts = []
             if selected_shots:
                 try_on_parts.append(f'展示方式：{"、".join(selected_shots)}')
-            if first_frame_enabled:
-                try_on_parts.append('首帧确认：先生成试穿首帧确认图，确认商品还原、穿着效果和模特姿态后再生成视频')
-            if try_on_requirements:
-                has_structured_try_on_context = bool(selected_shots or first_frame_enabled or scene_ids)
-                try_on_parts.append(f'补充要求：{try_on_requirements}' if has_structured_try_on_context else try_on_requirements)
             if try_on_parts:
                 payload['tryOnRequirements'] = '；'.join(try_on_parts)
             if scene_ids:
-                payload['sceneIds'] = scene_ids
-            if first_frame_enabled:
-                payload['tryOnFirstFrameEnabled'] = True
-                payload['tryOnFirstFrameAspectRatio'] = first_frame_aspect_ratio
-                payload['tryOnFirstFrameResolution'] = first_frame_resolution
+                payload['sceneIds'] = scene_ids[:1]
+            payload['durationSeconds'] = duration_seconds
+            payload['resolution'] = resolution
+            payload['videoModel'] = video_model
         result = client.post(f'/v1/commerce/products/{product_id}/projects', payload)
+        if content_type == 'try_on':
+            return JsonResponse({'code': 200, 'data': result})
         return redirect('series:commerce_project_detail', project_id=result.get('id'))
     except BackendAPIError as e:
+        if content_type == 'try_on':
+            return JsonResponse({'code': 400, 'message': e.message}, status=400)
         messages.error(request, f'生成内容失败: {e.message}')
         return redirect(request.META.get('HTTP_REFERER', 'series:commerce_series_list'))
 
@@ -776,6 +871,30 @@ def commerce_project_detail(request, project_id):
 
 
 @csrf_exempt
+@require_http_methods(["GET"])
+def commerce_project_status(request, project_id):
+    """给前端轮询项目生成状态使用。"""
+    client = get_client(request)
+    try:
+        result = client.get(f'/v1/commerce/projects/{project_id}')
+        return JsonResponse({'code': 200, 'data': result})
+    except BackendAPIError as e:
+        return JsonResponse({'code': 400, 'message': e.message}, status=400)
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def commerce_project_generation_start(request, project_id):
+    """启动电商试穿视频后台生成。"""
+    client = get_client(request)
+    try:
+        result = client.post(f'/v1/commerce/projects/{project_id}/generation/start')
+        return JsonResponse({'code': 200, 'data': result})
+    except BackendAPIError as e:
+        return JsonResponse({'code': 400, 'message': e.message}, status=400)
+
+
+@csrf_exempt
 @require_http_methods(["POST"])
 def commerce_project_generate_video(request, project_id):
     """生成电商带货项目视频"""
@@ -785,19 +904,6 @@ def commerce_project_generate_video(request, project_id):
         messages.success(request, '电商带货视频已生成')
     except BackendAPIError as e:
         messages.error(request, f'生成视频失败: {e.message}')
-    return redirect('series:commerce_project_detail', project_id=project_id)
-
-
-@csrf_exempt
-@require_http_methods(["POST"])
-def commerce_project_confirm_first_frame(request, project_id):
-    """确认试穿首帧后进入视频生成步骤"""
-    client = get_client(request)
-    try:
-        client.post(f'/v1/commerce/projects/{project_id}/confirm-first-frame')
-        messages.success(request, '首帧已确认，可以生成试穿视频')
-    except BackendAPIError as e:
-        messages.error(request, f'确认首帧失败: {e.message}')
     return redirect('series:commerce_project_detail', project_id=project_id)
 
 

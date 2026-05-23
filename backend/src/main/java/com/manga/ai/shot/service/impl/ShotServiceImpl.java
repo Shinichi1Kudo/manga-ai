@@ -233,14 +233,10 @@ public class ShotServiceImpl implements ShotService {
         switch (videoModel) {
             case "seedance-2.0":
             case "doubao-seedance-2-0-260128":
-                if ("1080p".equals(resolution)) {
-                    return "seedance-2";
-                }
                 return "doubao-seedance-2-0-260128"; // VIP 模型
             case "seedance-2":
-                return "seedance-2";
             case "doubao-seedance-2-0":
-                return "doubao-seedance-2-0";
+                return "doubao-seedance-2-0-260128";
             case "kling-v3-omni":
                 return "kling-v3-omni"; // Kling v3 Omni 模型
             case "seedance-2.0-fast":

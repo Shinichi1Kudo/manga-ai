@@ -11,12 +11,17 @@ import com.manga.ai.series.mapper.SeriesMapper;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpMethod;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.web.client.HttpClientErrorException;
+import org.springframework.web.client.ResourceAccessException;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.web.client.RestTemplate;
 
+import javax.net.ssl.SSLHandshakeException;
 import java.lang.reflect.Method;
 import java.util.List;
 
@@ -24,6 +29,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -334,6 +340,162 @@ class ImageGenerateServiceImplTest {
                 .contains("\"watermark\":false")
                 .doesNotContain("4096x2304");
         verify(ossService).uploadImageFromUrl("https://example.com/first-frame.png", "commerce/try-on-first-frames");
+    }
+
+    @Test
+    void commerceTryOnFirstFrameMapsSensitiveInputImageErrorToReadableMessage() {
+        ImageGenerateServiceImpl service = createService();
+        RestTemplate restTemplate = mock(RestTemplate.class);
+        ReflectionTestUtils.setField(service, "restTemplate", restTemplate);
+        ReflectionTestUtils.setField(service, "commerceModelImageApiKey", "test-ark-key");
+        ReflectionTestUtils.setField(service, "commerceModelImageBaseUrl", "https://ark.cn-beijing.volces.com/api/v3");
+        ReflectionTestUtils.setField(service, "commerceTryOnFirstFrameModel", "doubao-seedream-5-0-lite-260128");
+        when(restTemplate.exchange(
+                eq("https://ark.cn-beijing.volces.com/api/v3/images/generations"),
+                eq(HttpMethod.POST),
+                any(HttpEntity.class),
+                eq(String.class)
+        )).thenThrow(HttpClientErrorException.BadRequest.create(
+                HttpStatus.BAD_REQUEST,
+                "BAD_REQUEST",
+                HttpHeaders.EMPTY,
+                """
+                        {"error":{"code":"InputImageSensitiveContentDetected","message":"The request failed because the input image may contain sensitive information."}}
+                        """.getBytes(),
+                null));
+
+        ImageGenerateResponse response = service.generateCommerceTryOnFirstFrame(ImageGenerateRequest.builder()
+                .customPrompt("生成试穿首帧确认图")
+                .referenceImageUrls(List.of("https://oss.example.com/model.png", "https://oss.example.com/product.png"))
+                .quality("2K")
+                .build());
+
+        assertThat(response.getStatus()).isEqualTo("failed");
+        assertThat(response.getErrorMessage()).isEqualTo("参考图可能包含敏感内容，请更换模特图、商品图或场景图后重新生成首帧确认图");
+    }
+
+    @Test
+    void commerceTryOnFirstFrameRetriesRemoteHandshakeTerminationOnce() {
+        ImageGenerateServiceImpl service = createService();
+        RestTemplate restTemplate = mock(RestTemplate.class);
+        OssService ossService = (OssService) ReflectionTestUtils.getField(service, "ossService");
+        ReflectionTestUtils.setField(service, "restTemplate", restTemplate);
+        ReflectionTestUtils.setField(service, "commerceModelImageApiKey", "test-ark-key");
+        ReflectionTestUtils.setField(service, "commerceModelImageBaseUrl", "https://ark.cn-beijing.volces.com/api/v3");
+        ReflectionTestUtils.setField(service, "commerceTryOnFirstFrameModel", "doubao-seedream-5-0-lite-260128");
+        when(ossService.uploadImageFromUrl("https://example.com/first-frame.png", "commerce/try-on-first-frames"))
+                .thenReturn("https://oss.example.com/commerce/try-on-first-frames/first-frame.png");
+        when(restTemplate.exchange(
+                eq("https://ark.cn-beijing.volces.com/api/v3/images/generations"),
+                eq(HttpMethod.POST),
+                any(HttpEntity.class),
+                eq(String.class)
+        ))
+                .thenThrow(new ResourceAccessException(
+                        "I/O error on POST request for \"https://ark.cn-beijing.volces.com/api/v3/images/generations\": Remote host terminated the handshake",
+                        new SSLHandshakeException("Remote host terminated the handshake")))
+                .thenReturn(ResponseEntity.ok("""
+                        {"data":[{"url":"https://example.com/first-frame.png"}]}
+                        """));
+
+        ImageGenerateResponse response = service.generateCommerceTryOnFirstFrame(ImageGenerateRequest.builder()
+                .customPrompt("生成试穿首帧确认图")
+                .referenceImageUrls(List.of("https://oss.example.com/model.png", "https://oss.example.com/product.png"))
+                .quality("2K")
+                .build());
+
+        assertThat(response.getStatus()).isEqualTo("success");
+        assertThat(response.getImageUrl()).isEqualTo("https://oss.example.com/commerce/try-on-first-frames/first-frame.png");
+        verify(restTemplate, times(2)).exchange(
+                eq("https://ark.cn-beijing.volces.com/api/v3/images/generations"),
+                eq(HttpMethod.POST),
+                any(HttpEntity.class),
+                eq(String.class)
+        );
+    }
+
+    @Test
+    void commerceTryOnFirstFrameMapsRepeatedRemoteHandshakeTerminationToReadableMessage() {
+        ImageGenerateServiceImpl service = createService();
+        RestTemplate restTemplate = mock(RestTemplate.class);
+        ReflectionTestUtils.setField(service, "restTemplate", restTemplate);
+        ReflectionTestUtils.setField(service, "commerceModelImageApiKey", "test-ark-key");
+        ReflectionTestUtils.setField(service, "commerceModelImageBaseUrl", "https://ark.cn-beijing.volces.com/api/v3");
+        ReflectionTestUtils.setField(service, "commerceTryOnFirstFrameModel", "doubao-seedream-5-0-lite-260128");
+        when(restTemplate.exchange(
+                eq("https://ark.cn-beijing.volces.com/api/v3/images/generations"),
+                eq(HttpMethod.POST),
+                any(HttpEntity.class),
+                eq(String.class)
+        )).thenThrow(new ResourceAccessException(
+                "I/O error on POST request for \"https://ark.cn-beijing.volces.com/api/v3/images/generations\": Remote host terminated the handshake",
+                new SSLHandshakeException("Remote host terminated the handshake")));
+
+        ImageGenerateResponse response = service.generateCommerceTryOnFirstFrame(ImageGenerateRequest.builder()
+                .customPrompt("生成试穿首帧确认图")
+                .referenceImageUrls(List.of("https://oss.example.com/model.png", "https://oss.example.com/product.png"))
+                .quality("2K")
+                .build());
+
+        assertThat(response.getStatus()).isEqualTo("failed");
+        assertThat(response.getErrorMessage()).isEqualTo("火山引擎连接失败，网络或服务端临时断开，请稍后重新生成首帧确认图");
+        verify(restTemplate, times(2)).exchange(
+                eq("https://ark.cn-beijing.volces.com/api/v3/images/generations"),
+                eq(HttpMethod.POST),
+                any(HttpEntity.class),
+                eq(String.class)
+        );
+    }
+
+    @Test
+    void commerceSceneImageUsesSelectedAspectRatioSizeInsteadOfOnlyResolution() {
+        ImageGenerateServiceImpl service = createService();
+        RestTemplate restTemplate = mock(RestTemplate.class);
+        OssService ossService = (OssService) ReflectionTestUtils.getField(service, "ossService");
+        ReflectionTestUtils.setField(service, "restTemplate", restTemplate);
+        ReflectionTestUtils.setField(service, "commerceModelImageApiKey", "test-ark-key");
+        ReflectionTestUtils.setField(service, "commerceModelImageBaseUrl", "https://ark.cn-beijing.volces.com/api/v3");
+        ReflectionTestUtils.setField(service, "commerceTryOnFirstFrameModel", "doubao-seedream-5-0-lite-260128");
+        when(ossService.uploadImageFromUrl("https://example.com/scene.png", "commerce/scenes"))
+                .thenReturn("https://oss.example.com/commerce/scenes/scene.png");
+        when(restTemplate.exchange(
+                eq("https://ark.cn-beijing.volces.com/api/v3/images/generations"),
+                eq(HttpMethod.POST),
+                any(HttpEntity.class),
+                eq(String.class)
+        )).thenReturn(ResponseEntity.ok("""
+                {"data":[{"url":"https://example.com/scene.png"}]}
+                """));
+
+        ImageGenerateResponse response = service.generateCommerceSceneImage(ImageGenerateRequest.builder()
+                .roleName("品牌场景")
+                .customPrompt("生成一张电商服装试穿场景背景图，图片比例：9:16。")
+                .aspectRatio("9:16")
+                .quality("3K")
+                .build());
+
+        assertThat(response.getStatus()).isEqualTo("success");
+        assertThat(response.getImageUrl()).isEqualTo("https://oss.example.com/commerce/scenes/scene.png");
+        ArgumentCaptor<HttpEntity> entityCaptor = ArgumentCaptor.forClass(HttpEntity.class);
+        verify(restTemplate).exchange(
+                eq("https://ark.cn-beijing.volces.com/api/v3/images/generations"),
+                eq(HttpMethod.POST),
+                entityCaptor.capture(),
+                eq(String.class)
+        );
+        assertThat(entityCaptor.getValue().getHeaders().getFirst("Authorization")).isEqualTo("Bearer test-ark-key");
+        assertThat(entityCaptor.getValue().getBody().toString())
+                .contains("\"model\":\"doubao-seedream-5-0-lite-260128\"")
+                .contains("\"prompt\":\"生成一张电商服装试穿场景背景图，图片比例：9:16。\"")
+                .contains("\"size\":\"2304x4096\"")
+                .contains("\"sequential_image_generation\":\"disabled\"")
+                .contains("\"output_format\":\"png\"")
+                .contains("\"response_format\":\"url\"")
+                .contains("\"stream\":false")
+                .contains("\"watermark\":false")
+                .doesNotContain("\"size\":\"3K\"")
+                .doesNotContain("\"image\"");
+        verify(ossService).uploadImageFromUrl("https://example.com/scene.png", "commerce/scenes");
     }
 
     @Test

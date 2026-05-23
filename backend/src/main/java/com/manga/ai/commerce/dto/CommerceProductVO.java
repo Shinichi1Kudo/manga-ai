@@ -23,6 +23,8 @@ public class CommerceProductVO implements Serializable {
     private String priceOffer;
     private String tryOnRequirements;
     private List<ProductImageVO> images = new ArrayList<>();
+    private CommerceProjectVO latestTryOnFirstFrameProject;
+    private List<CommerceProjectVO> tryOnProjects = new ArrayList<>();
     private String status;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;

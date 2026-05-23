@@ -31,8 +31,10 @@ import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionTemplate;
+import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestTemplate;
 
+import javax.net.ssl.SSLHandshakeException;
 import java.time.LocalDateTime;
 
 /**
@@ -47,6 +49,8 @@ public class ImageGenerateServiceImpl implements ImageGenerateService {
                     + "arms naturally down or A-pose/T-pose. NO objects in hands, "
                     + "NO holding anything, no computer, no laptop, no documents, no papers, "
                     + "no folders, no books, no phone, no bag, no weapon, no prop held by the character. ";
+    private static final String COMMERCE_TRY_ON_FIRST_FRAME_NETWORK_ERROR =
+            "火山引擎连接失败，网络或服务端临时断开，请稍后重新生成首帧确认图";
 
     @Value("${volcengine.ark.api-key}")
     private String apiKey;
@@ -214,7 +218,7 @@ public class ImageGenerateServiceImpl implements ImageGenerateService {
             JSONObject requestBody = new JSONObject();
             requestBody.put("model", hasText(commerceTryOnFirstFrameModel) ? commerceTryOnFirstFrameModel.trim() : liteModel);
             requestBody.put("prompt", request.getCustomPrompt());
-            requestBody.put("size", toCommerceTryOnFirstFrameSize(request.getQuality()));
+            requestBody.put("size", toCommerceSceneImageSize(request.getAspectRatio(), request.getQuality()));
             requestBody.put("sequential_image_generation", "disabled");
             requestBody.put("output_format", "png");
             requestBody.put("response_format", "url");
@@ -287,7 +291,7 @@ public class ImageGenerateServiceImpl implements ImageGenerateService {
             String url = trimTrailingSlash(hasText(commerceModelImageBaseUrl) ? commerceModelImageBaseUrl : baseUrl) + "/images/generations";
 
             log.info("调用火山Ark生成电商试穿首帧: {}", url);
-            ResponseEntity<String> response = restTemplate.exchange(url, HttpMethod.POST, entity, String.class);
+            ResponseEntity<String> response = exchangeCommerceTryOnFirstFrameWithRetry(url, entity);
 
             if (response.getStatusCode() == HttpStatus.OK && response.getBody() != null) {
                 return parseAndPersistGeneratedImage(response.getBody(), "commerce/try-on-first-frames", "试穿首帧图片保存失败，请稍后重试");
@@ -300,7 +304,13 @@ public class ImageGenerateServiceImpl implements ImageGenerateService {
             log.error("火山API试穿首帧调用失败: statusCode={}, responseBody={}", e.getStatusCode(), e.getResponseBodyAsString());
             ImageGenerateResponse errorResponse = new ImageGenerateResponse();
             errorResponse.setStatus("failed");
-            errorResponse.setErrorMessage(e.getStatusCode() + ": " + e.getResponseBodyAsString());
+            errorResponse.setErrorMessage(toReadableCommerceTryOnFirstFrameError(e));
+            return errorResponse;
+        } catch (ResourceAccessException e) {
+            log.error("火山API试穿首帧网络连接失败", e);
+            ImageGenerateResponse errorResponse = new ImageGenerateResponse();
+            errorResponse.setStatus("failed");
+            errorResponse.setErrorMessage(toReadableCommerceTryOnFirstFrameNetworkError(e));
             return errorResponse;
         } catch (Exception e) {
             log.error("电商试穿首帧生成异常", e);
@@ -309,6 +319,65 @@ public class ImageGenerateServiceImpl implements ImageGenerateService {
             errorResponse.setErrorMessage(e.getMessage());
             return errorResponse;
         }
+    }
+
+    private ResponseEntity<String> exchangeCommerceTryOnFirstFrameWithRetry(String url, HttpEntity<String> entity) {
+        ResourceAccessException lastException = null;
+        for (int attempt = 1; attempt <= 2; attempt++) {
+            try {
+                return restTemplate.exchange(url, HttpMethod.POST, entity, String.class);
+            } catch (ResourceAccessException e) {
+                lastException = e;
+                if (attempt >= 2 || !isRetryableCommerceTryOnFirstFrameNetworkError(e)) {
+                    throw e;
+                }
+                log.warn("火山Ark试穿首帧连接被断开，准备重试: attempt={}, message={}", attempt, e.getMessage());
+            }
+        }
+        throw lastException;
+    }
+
+    private String toReadableCommerceTryOnFirstFrameError(org.springframework.web.client.HttpClientErrorException e) {
+        String responseBody = e.getResponseBodyAsString();
+        String code = "";
+        try {
+            JSONObject body = JSON.parseObject(responseBody);
+            JSONObject error = body == null ? null : body.getJSONObject("error");
+            code = error == null ? "" : defaultIfBlank(error.getString("code"), "");
+        } catch (Exception ignored) {
+            code = "";
+        }
+        if ("InputImageSensitiveContentDetected".equals(code) || responseBody.contains("InputImageSensitiveContentDetected")) {
+            return "参考图可能包含敏感内容，请更换模特图、商品图或场景图后重新生成首帧确认图";
+        }
+        return e.getStatusCode() + ": " + responseBody;
+    }
+
+    private String toReadableCommerceTryOnFirstFrameNetworkError(ResourceAccessException e) {
+        if (isRetryableCommerceTryOnFirstFrameNetworkError(e)) {
+            return COMMERCE_TRY_ON_FIRST_FRAME_NETWORK_ERROR;
+        }
+        return defaultIfBlank(e.getMessage(), "试穿首帧生成连接失败，请稍后重试");
+    }
+
+    private boolean isRetryableCommerceTryOnFirstFrameNetworkError(Throwable throwable) {
+        Throwable current = throwable;
+        while (current != null) {
+            if (current instanceof SSLHandshakeException) {
+                return true;
+            }
+            String message = current.getMessage();
+            if (message != null) {
+                String lowerMessage = message.toLowerCase();
+                if (lowerMessage.contains("remote host terminated the handshake")
+                        || lowerMessage.contains("ssl peer shut down incorrectly")
+                        || lowerMessage.contains("connection reset")) {
+                    return true;
+                }
+            }
+            current = current.getCause();
+        }
+        return false;
     }
 
     @Override
@@ -393,10 +462,20 @@ public class ImageGenerateServiceImpl implements ImageGenerateService {
      * @param quality 清晰度 (hd/uhd)
      */
     private String convertAspectRatioToSize(String aspectRatio, String quality) {
-        // 支持 3k, 3K, uhd 表示超清
-        boolean isUHD = "3k".equalsIgnoreCase(quality) || "uhd".equalsIgnoreCase(quality);
-
-        if (isUHD) {
+        if ("4k".equalsIgnoreCase(quality)) {
+            switch (aspectRatio) {
+                case "1:1": return "4096x4096";
+                case "3:4": return "3520x4704";
+                case "4:3": return "4704x3520";
+                case "16:9": return "5504x3040";
+                case "9:16": return "3040x5504";
+                case "2:3": return "3328x4992";
+                case "3:2": return "4992x3328";
+                case "21:9": return "6240x2656";
+                default: return "4096x4096";
+            }
+        }
+        if ("3k".equalsIgnoreCase(quality) || "uhd".equalsIgnoreCase(quality)) {
             // 超清 (3K)
             switch (aspectRatio) {
                 case "1:1": return "3072x3072";
@@ -733,6 +812,10 @@ public class ImageGenerateServiceImpl implements ImageGenerateService {
             return "3K";
         }
         return "2K";
+    }
+
+    private String toCommerceSceneImageSize(String aspectRatio, String resolution) {
+        return convertAspectRatioToSize(hasText(aspectRatio) ? aspectRatio.trim() : "16:9", resolution);
     }
 
     private String resolveCommerceModelImageApiKey() {

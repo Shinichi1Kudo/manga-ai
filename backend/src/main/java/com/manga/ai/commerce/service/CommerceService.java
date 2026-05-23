@@ -7,6 +7,7 @@ import com.manga.ai.commerce.dto.CommerceProductVO;
 import com.manga.ai.commerce.dto.CommerceProjectCreateRequest;
 import com.manga.ai.commerce.dto.CommerceProjectVO;
 import com.manga.ai.commerce.dto.CommerceSceneBatchCreateRequest;
+import com.manga.ai.commerce.dto.CommerceSceneGenerationStartRequest;
 import com.manga.ai.commerce.dto.CommerceSceneVO;
 import com.manga.ai.commerce.dto.CommerceSeriesCreateRequest;
 import com.manga.ai.commerce.dto.CommerceSeriesVO;
@@ -46,13 +47,17 @@ public interface CommerceService {
 
     List<CommerceSceneVO> listScenes(Long seriesId);
 
-    List<CommerceSceneVO> createSceneBatch(Long seriesId, CommerceSceneBatchCreateRequest request);
+    List<CommerceSceneVO> prepareSceneBatch(Long seriesId, CommerceSceneBatchCreateRequest request);
+
+    List<CommerceSceneVO> startSceneBatch(Long seriesId, CommerceSceneGenerationStartRequest request);
 
     CommerceProjectVO createProject(Long productId, CommerceProjectCreateRequest request);
 
+    List<CommerceProjectVO> listProductProjects(Long productId, String contentType);
+
     CommerceProjectVO getProject(Long projectId);
 
-    CommerceProjectVO confirmTryOnFirstFrame(Long projectId);
+    CommerceProjectVO startProjectVideoGeneration(Long projectId);
 
     CommerceProjectVO generateProjectVideo(Long projectId);
 }

@@ -10,6 +10,17 @@
         box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08), 0 18px 48px rgba(0, 0, 0, 0.18);
     }
 
+    .commerce-product-card.is-expanded {
+        border-color: rgba(110, 231, 183, 0.26);
+        background: linear-gradient(135deg, rgba(16, 185, 129, 0.12), rgba(255, 255, 255, 0.04));
+    }
+
+    .commerce-product-card.is-expanded [data-commerce-product-toggle] {
+        border-color: rgba(110, 231, 183, 0.36);
+        background: rgba(16, 185, 129, 0.12);
+        color: rgba(255, 255, 255, 0.92);
+    }
+
     .commerce-video-mode-choice {
         border: 1px solid rgba(255, 255, 255, 0.10);
         background: rgba(255, 255, 255, 0.045);
@@ -52,26 +63,66 @@
                 </form>
             </div>
 
-            <div class="space-y-4">
+            <div class="space-y-2.5">
                 {% for product in products %}
-                    <article class="commerce-product-card rounded-2xl p-3 sm:p-4" data-commerce-product-card>
-                        <div class="flex flex-col gap-4 sm:flex-row">
-                            <div class="flex h-40 w-full flex-none items-center justify-center overflow-hidden rounded-xl border border-white/[0.08] bg-black/25 sm:h-44 sm:w-32">
-                                <img src="{{ product.imageUrl }}" alt="{{ product.name }}" class="h-full w-full object-contain" loading="lazy">
+                    <article class="commerce-product-card rounded-xl p-2 transition" data-commerce-product-card>
+                        <div class="flex cursor-pointer items-center gap-3 rounded-lg outline-none transition focus-visible:ring-2 focus-visible:ring-emerald-200/45" data-commerce-product-summary tabindex="0">
+                            <div class="relative flex h-14 w-14 flex-none items-center justify-center overflow-hidden rounded-lg border border-white/[0.08] bg-black/25">
+                                <img src="{% if product.images %}{{ product.images.0.url }}{% else %}{{ product.imageUrl }}{% endif %}" alt="{{ product.name }}" class="h-full w-full object-contain" loading="lazy">
                             </div>
                             <div class="min-w-0 flex-1">
-                                <div class="flex flex-wrap items-start justify-between gap-3">
-                                    <div class="min-w-0">
-                                        <h2 class="truncate text-lg font-semibold text-white/95">{{ product.name }}</h2>
-                                        <div class="mt-2 flex flex-wrap gap-2 text-xs">
-                                            <span class="rounded-full border border-white/10 bg-white/[0.045] px-2.5 py-1 text-white/62">{{ product.productType|default:"未设置商品类型" }}</span>
-                                            <span class="rounded-full border border-cyan-200/15 bg-cyan-300/10 px-2.5 py-1 text-cyan-100/75">视频 9:16</span>
-                                        </div>
-                                    </div>
-                                    <span class="rounded-full border border-emerald-200/15 bg-emerald-300/10 px-2.5 py-1 text-xs font-semibold text-emerald-100/80">已绑定</span>
+                                <div class="flex min-w-0 items-center gap-2">
+                                    <h2 class="truncate text-base font-semibold text-white/95">{{ product.name }}</h2>
+                                    <span class="hidden rounded-full border border-emerald-200/15 bg-emerald-300/10 px-2 py-0.5 text-[11px] font-semibold text-emerald-100/80 sm:inline-flex">已绑定</span>
                                 </div>
+                                <div class="mt-1 flex flex-wrap gap-1.5 text-xs">
+                                    <span class="rounded-full border border-white/10 bg-white/[0.045] px-2 py-0.5 text-white/62">{{ product.productType|default:"未设置商品类型" }}</span>
+                                    <span class="rounded-full border border-white/10 bg-white/[0.045] px-2 py-0.5 text-white/62">{% if product.images %}{{ product.images|length }}/5{% else %}1/5{% endif %} 张图</span>
+                                    <span class="rounded-full border border-cyan-200/15 bg-cyan-300/10 px-2 py-0.5 text-cyan-100/75">视频比例可选</span>
+                                </div>
+                            </div>
+                            <button type="button" class="flex h-8 flex-none items-center gap-1.5 rounded-lg border border-white/10 bg-white/[0.04] px-2.5 text-xs font-semibold text-white/62 transition hover:border-emerald-200/35 hover:bg-emerald-300/10 hover:text-white" data-commerce-product-toggle aria-expanded="false">
+                                <span data-commerce-product-toggle-open>展开商品</span>
+                                <span class="hidden" data-commerce-product-toggle-close>收起商品</span>
+                                <i data-lucide="chevron-down" class="h-3.5 w-3.5 transition" data-commerce-product-toggle-icon></i>
+                            </button>
+                        </div>
+                        <div class="mt-4 hidden border-t border-white/[0.06] pt-4" data-commerce-product-details hidden>
+                            <div class="flex flex-col gap-4 sm:flex-row">
+                                <div class="w-full flex-none sm:w-40" data-commerce-product-gallery>
+                                    <div class="relative flex h-44 w-full items-center justify-center overflow-hidden rounded-xl border border-white/[0.08] bg-black/25">
+                                        <img src="{% if product.images %}{{ product.images.0.url }}{% else %}{{ product.imageUrl }}{% endif %}" alt="{{ product.name }}" class="h-full w-full object-contain" loading="lazy" data-commerce-product-gallery-main>
+                                        <span class="absolute right-2 top-2 rounded-full border border-white/10 bg-black/55 px-2 py-1 text-[11px] font-semibold text-white/78">
+                                            {% if product.images %}{{ product.images|length }}/5{% else %}1/5{% endif %}
+                                        </span>
+                                    </div>
+                                    <div class="mt-2 flex gap-1.5 overflow-x-auto pb-1">
+                                        {% for image in product.images %}
+                                            <button type="button" class="group relative flex h-14 w-14 flex-none items-center justify-center overflow-hidden rounded-md border bg-white/[0.035] transition hover:border-emerald-200/45 {% if forloop.first %}border-emerald-200/60 ring-1 ring-emerald-200/25{% else %}border-white/10{% endif %}" data-commerce-product-gallery-thumb data-image-url="{{ image.url }}" data-image-alt="{{ product.name }} - {{ image.usage|default:'商品图' }}" aria-label="查看{{ image.usage|default:'商品图' }}">
+                                                <img src="{{ image.url }}" alt="{{ product.name }} - {{ image.usage|default:'商品图' }}" class="h-full w-full object-contain" loading="lazy">
+                                                <span class="absolute bottom-0 left-0 right-0 truncate bg-black/65 px-1 py-0.5 text-[10px] font-semibold text-white/78">{{ image.usage|default:"商品图" }}</span>
+                                            </button>
+                                        {% empty %}
+                                            <button type="button" class="group relative flex h-14 w-14 flex-none items-center justify-center overflow-hidden rounded-md border border-emerald-200/60 bg-white/[0.035] ring-1 ring-emerald-200/25" data-commerce-product-gallery-thumb data-image-url="{{ product.imageUrl }}" data-image-alt="{{ product.name }} - 主图" aria-label="查看主图">
+                                                <img src="{{ product.imageUrl }}" alt="{{ product.name }} - 主图" class="h-full w-full object-contain" loading="lazy">
+                                                <span class="absolute bottom-0 left-0 right-0 truncate bg-black/65 px-1 py-0.5 text-[10px] font-semibold text-white/78">主图</span>
+                                            </button>
+                                        {% endfor %}
+                                    </div>
+                                </div>
+                                <div class="min-w-0 flex-1">
+                                    <div class="flex flex-wrap items-center justify-between gap-3">
+                                        <div class="min-w-0">
+                                            <h3 class="truncate text-lg font-semibold text-white/95">{{ product.name }}</h3>
+                                            <div class="mt-2 flex flex-wrap gap-2 text-xs">
+                                                <span class="rounded-full border border-white/10 bg-white/[0.045] px-2.5 py-1 text-white/62">{{ product.productType|default:"未设置商品类型" }}</span>
+                                                <span class="rounded-full border border-cyan-200/15 bg-cyan-300/10 px-2.5 py-1 text-cyan-100/75">视频比例可选</span>
+                                            </div>
+                                        </div>
+                                        <span class="rounded-full border border-emerald-200/15 bg-emerald-300/10 px-2.5 py-1 text-xs font-semibold text-emerald-100/80">已绑定</span>
+                                    </div>
 
-                                <div class="mt-4 rounded-xl border border-white/[0.08] bg-black/10 p-3">
+                                    <div class="mt-4 rounded-xl border border-white/[0.08] bg-black/10 p-3">
                                     <div class="commerce-video-mode-selector grid gap-2 sm:grid-cols-2">
                                         <button type="button" class="commerce-video-mode-choice flex h-11 items-center justify-center gap-2 rounded-lg px-3 text-sm font-semibold" data-commerce-video-mode="talking" aria-pressed="false">
                                             <i data-lucide="message-circle" class="h-4 w-4"></i>
@@ -114,92 +165,173 @@
                                     <form method="post" action="/commerce/products/{{ product.id }}/projects/create/" class="commerce-video-panel mt-3 hidden space-y-3 rounded-lg border border-emerald-200/10 p-3" data-commerce-video-panel="try_on" hidden>
                                         {% csrf_token %}
                                         <input type="hidden" name="content_type" value="try_on">
-                                        <input type="hidden" name="aspect_ratio" value="9:16">
                                         <div class="commerce-try-on-shot-options rounded-xl border border-white/[0.08] bg-white/[0.025] p-3">
                                             <div class="mb-2 flex items-center justify-between gap-3">
                                                 <span class="text-xs font-semibold text-white/58">展示方式</span>
-                                                <span class="text-xs text-white/35">可多选</span>
+                                                <span class="text-xs text-white/35">最多选 {{ try_on_max_shots }} 个，每个动作约3-5秒</span>
                                             </div>
-                                            <div class="grid grid-cols-2 gap-2">
-                                                <label class="group cursor-pointer">
-                                                    <input type="checkbox" name="try_on_shots" value="全身站立" class="peer sr-only">
-                                                    <span class="flex h-10 items-center justify-center rounded-lg border border-white/10 bg-white/[0.04] px-3 text-sm font-semibold text-white/62 transition group-hover:border-emerald-200/35 group-hover:bg-emerald-300/10 peer-checked:border-emerald-200/55 peer-checked:bg-emerald-300/18 peer-checked:text-white">全身站立</span>
-                                                </label>
-                                                <label class="group cursor-pointer">
-                                                    <input type="checkbox" name="try_on_shots" value="转身展示" class="peer sr-only">
-                                                    <span class="flex h-10 items-center justify-center rounded-lg border border-white/10 bg-white/[0.04] px-3 text-sm font-semibold text-white/62 transition group-hover:border-emerald-200/35 group-hover:bg-emerald-300/10 peer-checked:border-emerald-200/55 peer-checked:bg-emerald-300/18 peer-checked:text-white">转身展示</span>
-                                                </label>
-                                                <label class="group cursor-pointer">
-                                                    <input type="checkbox" name="try_on_shots" value="走动展示" class="peer sr-only">
-                                                    <span class="flex h-10 items-center justify-center rounded-lg border border-white/10 bg-white/[0.04] px-3 text-sm font-semibold text-white/62 transition group-hover:border-emerald-200/35 group-hover:bg-emerald-300/10 peer-checked:border-emerald-200/55 peer-checked:bg-emerald-300/18 peer-checked:text-white">走动展示</span>
-                                                </label>
-                                                <label class="group cursor-pointer">
-                                                    <input type="checkbox" name="try_on_shots" value="细节展示" class="peer sr-only">
-                                                    <span class="flex h-10 items-center justify-center rounded-lg border border-white/10 bg-white/[0.04] px-3 text-sm font-semibold text-white/62 transition group-hover:border-emerald-200/35 group-hover:bg-emerald-300/10 peer-checked:border-emerald-200/55 peer-checked:bg-emerald-300/18 peer-checked:text-white">细节展示</span>
-                                                </label>
+                                            <div class="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                                                {% for shot in try_on_shots %}
+                                                    <label class="group cursor-pointer">
+                                                        <input type="checkbox" name="try_on_shots" value="{{ shot.value }}" class="peer sr-only">
+                                                        <span class="flex min-h-12 flex-col items-center justify-center rounded-lg border border-white/10 bg-white/[0.04] px-2 py-1.5 text-center transition group-hover:border-emerald-200/35 group-hover:bg-emerald-300/10 peer-checked:border-emerald-200/55 peer-checked:bg-emerald-300/18">
+                                                            <span class="text-sm font-semibold text-white/62 peer-checked:text-white">{{ shot.value }}</span>
+                                                            <span class="mt-0.5 text-[11px] font-medium text-white/35">{{ shot.duration }}</span>
+                                                        </span>
+                                                    </label>
+                                                {% endfor %}
                                             </div>
                                         </div>
-                                        <div class="commerce-try-on-scene-options rounded-xl border border-white/[0.08] bg-white/[0.025] p-3">
+                                        <div class="commerce-try-on-scene-options rounded-xl border border-white/[0.08] bg-white/[0.025] p-3" data-commerce-try-on-scene-picker data-commerce-try-on-scene-page-size="6">
                                             <div class="mb-2 flex items-center justify-between gap-3">
                                                 <span class="text-xs font-semibold text-white/58">从场景库选择</span>
                                                 {% if series_id %}
                                                     <a href="/commerce/series/{{ series_id }}/scenes/" class="text-xs font-semibold text-cyan-100/75 hover:text-cyan-100">生成场景图</a>
                                                 {% endif %}
                                             </div>
-                                            <div class="grid grid-cols-2 gap-2">
+                                            <div class="mb-3 flex flex-wrap gap-2" data-commerce-try-on-scene-filters>
+                                                {% for category in try_on_scene_filter_categories %}
+                                                    <button type="button" class="rounded-lg border px-2.5 py-1.5 text-xs font-semibold transition {% if forloop.first %}border-cyan-200/55 bg-cyan-300/18 text-white{% else %}border-white/10 bg-white/[0.035] text-white/65 hover:border-white/20 hover:bg-white/[0.07]{% endif %}" data-commerce-try-on-scene-filter="{{ category }}">
+                                                        {{ category }}
+                                                    </button>
+                                                {% endfor %}
+                                            </div>
+                                            <div class="grid grid-cols-2 gap-2 md:grid-cols-3" data-commerce-try-on-scene-list>
                                                 {% for scene in product.availableScenes %}
-                                                    <label class="group cursor-pointer">
-                                                        <input type="checkbox" name="scene_ids" value="{{ scene.id }}" class="peer sr-only">
-                                                        <span class="block overflow-hidden rounded-lg border border-white/10 bg-white/[0.04] transition group-hover:border-cyan-200/35 peer-checked:border-cyan-200/55 peer-checked:bg-cyan-300/18">
-                                                            <img src="{{ scene.imageUrl }}" alt="{{ scene.name }}" class="h-20 w-full object-cover" loading="lazy">
-                                                            <span class="block truncate px-2 py-1.5 text-xs font-semibold text-white/62 peer-checked:text-white">{{ scene.name }}</span>
-                                                        </span>
-                                                    </label>
+                                                    <div class="group relative" data-commerce-try-on-scene-card data-commerce-try-on-scene-category="{% if scene.sceneType == '自定义' %}{{ scene.name }}{% else %}{{ scene.sceneType }}{% endif %}" data-commerce-try-on-scene-group="{% if scene.sceneType == '自定义' %}其他场景{% else %}{{ scene.sceneType }}{% endif %}">
+                                                        <label class="block cursor-pointer">
+                                                            <input type="radio" name="scene_ids" value="{{ scene.id }}" class="peer sr-only">
+                                                            <span class="relative block overflow-hidden rounded-lg border border-white/10 bg-white/[0.04] transition group-hover:border-cyan-200/35 peer-focus-visible:ring-2 peer-focus-visible:ring-emerald-200/55" data-commerce-try-on-scene-option>
+                                                                <span class="flex h-24 w-full items-center justify-center overflow-hidden border-b border-white/[0.06] bg-black/20">
+                                                                    <img src="{{ scene.imageUrl }}" alt="{{ scene.name }}" class="h-24 w-full object-contain" loading="lazy">
+                                                                </span>
+                                                                <span class="pointer-events-none absolute left-2 top-2 hidden items-center gap-1 rounded-full border border-emerald-100/50 bg-emerald-400 px-2 py-1 text-[11px] font-bold text-slate-950 shadow-lg shadow-emerald-950/20" data-commerce-try-on-scene-selected>
+                                                                    <i data-lucide="check" class="h-3 w-3"></i>
+                                                                    已选择
+                                                                </span>
+                                                                <span class="block truncate px-2 py-1.5 text-xs font-semibold text-white/62 peer-checked:text-white">{{ scene.name }}</span>
+                                                            </span>
+                                                        </label>
+                                                        <button type="button" class="absolute right-2 top-2 flex h-7 w-7 items-center justify-center rounded-full border border-white/15 bg-black/55 text-white/78 opacity-80 shadow-lg shadow-black/20 backdrop-blur transition hover:border-cyan-100/50 hover:bg-cyan-300/18 hover:text-white group-hover:opacity-100" data-commerce-try-on-scene-preview="{{ scene.imageUrl }}" data-commerce-try-on-scene-preview-button aria-label="查看{{ scene.name }}大图" title="查看大图">
+                                                            <i data-lucide="maximize-2" class="h-3.5 w-3.5"></i>
+                                                            <span class="sr-only">查看大图</span>
+                                                        </button>
+                                                    </div>
                                                 {% empty %}
                                                     <div class="col-span-2 rounded-lg border border-dashed border-white/10 bg-black/10 p-3 text-xs text-white/42">暂无可用场景图，先去场景库生成场景图。</div>
                                                 {% endfor %}
                                             </div>
-                                        </div>
-                                        <div class="commerce-try-on-first-frame-check rounded-xl border border-emerald-200/10 bg-emerald-300/[0.035] p-3">
-                                            <label class="group flex cursor-pointer items-start gap-3">
-                                                <input type="checkbox" name="try_on_first_frame_check" value="enabled" class="peer sr-only">
-                                                <span class="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded border border-white/15 bg-black/20 text-transparent transition peer-checked:border-emerald-200/70 peer-checked:bg-emerald-400 peer-checked:text-slate-950">
-                                                    <i data-lucide="check" class="h-3.5 w-3.5"></i>
-                                                </span>
-                                                <span class="min-w-0">
-                                                    <span class="block text-sm font-semibold text-white/78 transition peer-checked:text-white">试穿首帧确认</span>
-                                                    <span class="mt-1 block text-xs leading-5 text-white/45">先生成首帧确认图，确认商品还原和模特姿态后，再进入视频生成</span>
-                                                </span>
-                                            </label>
-                                            <div class="mt-3 grid gap-2 sm:grid-cols-2">
-                                                <label class="block">
-                                                    <span class="mb-1 block text-xs font-semibold text-white/48">图片比例</span>
-                                                    <select name="try_on_first_frame_aspect_ratio" class="input-modern w-full text-sm">
-                                                        <option value="9:16">9:16 - 抖音 / 快手 / 视频号全屏竖屏</option>
-                                                        <option value="3:4">3:4 - 真人模特 / 服装试穿竖图</option>
-                                                        <option value="1:1">1:1 - 商品卡片 / 方图投放素材</option>
-                                                        <option value="16:9">16:9 - 横屏展示 / 店铺详情素材</option>
-                                                    </select>
-                                                </label>
-                                                <label class="block">
-                                                    <span class="mb-1 block text-xs font-semibold text-white/48">分辨率</span>
-                                                    <select name="try_on_first_frame_resolution" class="input-modern w-full text-sm">
-                                                        <option value="2K">2K</option>
-                                                        <option value="3K">3K</option>
-                                                        <option value="4K">4K</option>
-                                                    </select>
-                                                </label>
+                                            <div class="mt-3 hidden items-center justify-between gap-2 border-t border-white/[0.06] pt-3" data-commerce-try-on-scene-pagination>
+                                                <button type="button" class="flex h-8 items-center gap-1 rounded-lg border border-white/10 bg-white/[0.035] px-2.5 text-xs font-semibold text-white/60 transition hover:border-cyan-200/30 hover:text-white disabled:cursor-not-allowed disabled:opacity-35" data-commerce-try-on-scene-page-prev>
+                                                    <i data-lucide="chevron-left" class="h-3.5 w-3.5"></i>
+                                                    上一页
+                                                </button>
+                                                <span class="text-xs font-semibold text-white/45" data-commerce-try-on-scene-page-status>1/1</span>
+                                                <button type="button" class="flex h-8 items-center gap-1 rounded-lg border border-white/10 bg-white/[0.035] px-2.5 text-xs font-semibold text-white/60 transition hover:border-cyan-200/30 hover:text-white disabled:cursor-not-allowed disabled:opacity-35" data-commerce-try-on-scene-page-next>
+                                                    下一页
+                                                    <i data-lucide="chevron-right" class="h-3.5 w-3.5"></i>
+                                                </button>
                                             </div>
+                                            <div class="mt-3 hidden rounded-lg border border-dashed border-white/10 bg-black/10 p-3 text-xs text-white/42" data-commerce-try-on-scene-empty>当前分类没有场景图。</div>
                                         </div>
-                                        <label class="block">
-                                            <span class="mb-1 block text-xs font-semibold text-white/55">补充要求</span>
-                                            <textarea name="try_on_requirements" rows="2" class="input-modern w-full resize-y text-sm" placeholder="例如：柔和补光、保留衣料垂感、不要夸张姿势"></textarea>
-                                        </label>
-                                        <button class="flex h-10 w-full items-center justify-center gap-2 rounded-lg bg-emerald-500 px-3 text-sm font-semibold text-white transition hover:bg-emerald-400">
-                                            <i data-lucide="sparkles" class="h-4 w-4"></i>
-                                            创建试穿任务
+                                        <div class="grid gap-2 rounded-xl border border-white/[0.08] bg-white/[0.025] p-3 sm:grid-cols-4">
+                                            <label class="block">
+                                                <span class="mb-1 block text-xs font-semibold text-white/55">视频比例</span>
+                                                <select name="aspect_ratio" class="input-modern w-full text-sm">
+                                                    {% for option in try_on_aspect_ratios %}
+                                                        <option value="{{ option.value }}" {% if option.value == try_on_default_aspect_ratio %}selected{% endif %}>{{ option.label }}</option>
+                                                    {% endfor %}
+                                                </select>
+                                            </label>
+                                            <label class="block">
+                                                <span class="mb-1 block text-xs font-semibold text-white/55">模型</span>
+                                                <select name="video_model" class="input-modern w-full text-sm" data-commerce-try-on-video-model>
+                                                    {% for model in try_on_video_models %}
+                                                        <option value="{{ model.value }}" {% if model.value == try_on_default_video_model %}selected{% endif %}>{{ model.label }}</option>
+                                                    {% endfor %}
+                                                </select>
+                                            </label>
+                                            <label class="block">
+                                                <span class="mb-1 block text-xs font-semibold text-white/55">清晰度</span>
+                                                <select name="resolution" class="input-modern w-full text-sm" data-commerce-try-on-resolution>
+                                                    {% for resolution in try_on_video_resolutions %}
+                                                        <option value="{{ resolution.value }}" {% if resolution.value == try_on_default_resolution %}selected{% endif %} data-supported-models="{{ resolution.supported_models|join:',' }}">{{ resolution.label }}</option>
+                                                    {% endfor %}
+                                                </select>
+                                            </label>
+                                            <label class="block">
+                                                <span class="mb-1 block text-xs font-semibold text-white/55">秒数</span>
+                                                <select name="duration_seconds" class="input-modern w-full text-sm">
+                                                    {% for duration in try_on_video_durations %}
+                                                        <option value="{{ duration }}" {% if duration == try_on_default_duration %}selected{% endif %}>{{ duration }}秒</option>
+                                                    {% endfor %}
+                                                </select>
+                                            </label>
+                                        </div>
+                                        <button class="flex h-10 w-full items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/[0.06] px-3 text-sm font-semibold text-white/72 transition hover:border-white/20 hover:bg-white/[0.09] hover:text-white" data-commerce-try-on-submit>
+                                            <i data-lucide="video" class="h-4 w-4"></i>
+                                            创建试穿视频
                                         </button>
                                     </form>
+                                    <div class="mt-3 rounded-xl border border-white/[0.08] bg-white/[0.025] p-3" data-commerce-try-on-projects>
+                                        <div class="mb-2 flex items-center justify-between gap-3">
+                                            <div>
+                                                <p class="text-sm font-semibold text-white/82">试穿视频管理</p>
+                                                <p class="mt-0.5 text-xs text-white/38">生成中会自动刷新，完成后可直接播放</p>
+                                            </div>
+                                            <span class="rounded-full border border-white/10 bg-white/[0.04] px-2 py-1 text-xs font-semibold text-white/45">
+                                                {{ product.tryOnProjects|length|default:0 }} 条
+                                            </span>
+                                        </div>
+                                        <div class="space-y-2" data-commerce-try-on-project-list>
+                                            {% for project in product.tryOnProjects %}
+                                                <div class="rounded-lg border border-white/10 bg-black/18 p-2" data-commerce-try-on-project-card data-commerce-try-on-project-id="{{ project.id }}" data-commerce-try-on-project-status="{{ project.status|default:'generating' }}" data-commerce-try-on-status-url="/commerce/projects/{{ project.id }}/status/" data-commerce-try-on-generate-url="/commerce/projects/{{ project.id }}/generation/start/">
+                                                    <div class="flex items-start gap-2">
+                                                        <div class="flex h-16 w-24 flex-none items-center justify-center overflow-hidden rounded-md border border-white/[0.08] bg-black/30" data-commerce-try-on-project-preview>
+                                                            {% with first_shot=project.shots.0 %}
+                                                                {% if first_shot.videoUrl %}
+                                                                    <video src="{{ first_shot.videoUrl }}" class="h-full w-full object-contain" controls playsinline data-commerce-try-on-project-video></video>
+                                                                {% else %}
+                                                                    <div class="flex h-full w-full flex-col items-center justify-center gap-1 text-white/40">
+                                                                        <i data-lucide="loader-2" class="h-4 w-4 animate-spin"></i>
+                                                                        <span class="text-[11px]">生成中</span>
+                                                                    </div>
+                                                                {% endif %}
+                                                            {% endwith %}
+                                                        </div>
+                                                        <div class="min-w-0 flex-1">
+                                                            <div class="flex flex-wrap items-center gap-1.5">
+                                                                <span class="rounded-full border border-white/10 bg-white/[0.04] px-2 py-0.5 text-[11px] font-semibold text-white/62" data-commerce-try-on-project-status-label>
+                                                                    {% if project.status == 'completed' %}已完成{% elif project.status == 'failed' %}失败{% else %}生成中{% endif %}
+                                                                </span>
+                                                                <span class="rounded-full border border-white/10 bg-white/[0.04] px-2 py-0.5 text-[11px] font-semibold text-white/45">{{ project.aspectRatio|default:"9:16" }}</span>
+                                                                {% with first_shot=project.shots.0 %}
+                                                                    {% if first_shot.resolution %}
+                                                                        <span class="rounded-full border border-white/10 bg-white/[0.04] px-2 py-0.5 text-[11px] font-semibold text-white/45">{{ first_shot.resolution }}</span>
+                                                                    {% endif %}
+                                                                {% endwith %}
+                                                            </div>
+                                                            <p class="mt-1 truncate text-xs text-white/45" data-commerce-try-on-project-summary>
+                                                                {% for shot in project.shots %}{{ shot.title }}{% if not forloop.last %} / {% endif %}{% empty %}试穿视频任务{% endfor %}
+                                                            </p>
+                                                            {% if project.errorMessage %}
+                                                                <p class="mt-1 text-xs text-rose-200" data-commerce-try-on-project-error>{{ project.errorMessage }}</p>
+                                                            {% else %}
+                                                                <p class="mt-1 hidden text-xs text-rose-200" data-commerce-try-on-project-error></p>
+                                                            {% endif %}
+                                                        </div>
+                                                        <button type="button" class="flex h-8 flex-none items-center gap-1 rounded-lg border border-white/10 bg-white/[0.04] px-2 text-xs font-semibold text-white/55 transition hover:border-emerald-200/35 hover:bg-emerald-300/10 hover:text-white" data-commerce-try-on-project-retry>
+                                                            <i data-lucide="refresh-cw" class="h-3.5 w-3.5"></i>
+                                                            重新生成
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            {% empty %}
+                                                <div class="rounded-lg border border-dashed border-white/10 bg-black/10 px-3 py-4 text-center text-xs text-white/38" data-commerce-try-on-project-empty>暂无试穿视频</div>
+                                            {% endfor %}
+                                        </div>
+                                    </div>
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -358,23 +490,43 @@
                     </div>
                     <p class="mt-2 hidden text-xs text-red-200" data-commerce-product-type-error>请先选择商品类型</p>
                 </div>
-                <label class="commerce-product-upload group block cursor-pointer rounded-xl border border-dashed border-white/15 bg-white/[0.035] p-3 transition hover:border-emerald-200/45 hover:bg-emerald-300/10 focus-within:border-emerald-200/55 focus-within:ring-2 focus-within:ring-emerald-300/20">
-                    <span class="mb-2 block text-sm font-medium text-white/70">商品图片 <span class="text-red-300">*</span></span>
-                    <span class="flex items-center justify-between gap-3">
-                        <span class="flex min-w-0 items-center gap-3">
-                            <span class="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-white/10 bg-black/20 text-emerald-100/80 transition group-hover:border-emerald-200/35 group-hover:text-emerald-100">
-                                <i data-lucide="image-plus" class="h-5 w-5"></i>
-                            </span>
-                            <span class="min-w-0">
-                                <span class="block truncate text-sm font-semibold text-white/80" data-commerce-product-upload-name>未选择图片</span>
-                                <span class="mt-1 block text-xs text-white/45">支持 JPG、PNG、WEBP，最多 5 张，单张最大 10MB</span>
-                            </span>
-                        </span>
-                        <span class="shrink-0 rounded-lg border border-emerald-200/30 bg-gradient-to-r from-emerald-500 to-cyan-500 px-3 py-2 text-sm font-semibold text-white shadow-lg shadow-emerald-950/25 transition group-hover:border-emerald-100/50 group-hover:from-emerald-400 group-hover:to-cyan-400">选择图片</span>
-                    </span>
-                    <input type="file" name="product_image" required multiple accept="image/jpeg,image/png,image/webp" class="commerce-product-upload-input sr-only">
-                </label>
-                <div class="hidden space-y-2 rounded-xl border border-white/10 bg-white/[0.03] p-3" data-commerce-product-image-usages></div>
+                <div class="commerce-product-upload rounded-xl border border-white/10 bg-white/[0.03] p-3">
+                    <div class="mb-3 flex items-center justify-between gap-3">
+                        <span class="text-sm font-medium text-white/70">商品图片 <span class="text-red-300">*</span></span>
+                        <span class="rounded-full border border-white/10 bg-black/20 px-2.5 py-1 text-xs font-semibold text-white/55" data-commerce-product-upload-total>已选 0/5</span>
+                    </div>
+                    <div class="space-y-2" data-commerce-product-image-list>
+                        <div class="rounded-lg border border-white/10 bg-black/15 p-2" data-commerce-product-image-row>
+                            <input type="hidden" name="product_image_usages" value="主图">
+                            <div class="space-y-2">
+                                <div class="flex items-center justify-between gap-2">
+                                    <span class="rounded-full border border-white/10 bg-white/[0.04] px-2 py-1 text-xs font-semibold text-white/62" data-commerce-product-image-index>商品图 1</span>
+                                    <span class="text-xs font-semibold text-white/38" data-commerce-product-image-count>1/5</span>
+                                    <span class="text-xs text-white/35">先选用途，再上传</span>
+                                </div>
+                                <div class="grid grid-cols-3 gap-1 rounded-lg border border-white/10 bg-white/[0.035] p-1">
+                                    <button type="button" class="h-8 rounded-md bg-emerald-400/18 text-xs font-semibold text-emerald-50 ring-1 ring-emerald-200/30 transition" data-commerce-product-usage-option data-usage="主图" aria-pressed="true">主图</button>
+                                    <button type="button" class="h-8 rounded-md text-xs font-semibold text-white/48 transition hover:bg-white/[0.06] hover:text-white/75" data-commerce-product-usage-option data-usage="细节图" aria-pressed="false">细节图</button>
+                                    <button type="button" class="h-8 rounded-md text-xs font-semibold text-white/48 transition hover:bg-white/[0.06] hover:text-white/75" data-commerce-product-usage-option data-usage="上身参考" aria-pressed="false">上身参考</button>
+                                </div>
+                                <label class="group flex min-w-0 flex-1 cursor-pointer items-center justify-between gap-2 rounded-lg border border-dashed border-white/12 bg-white/[0.035] px-3 py-2 transition hover:border-emerald-200/40 hover:bg-emerald-300/10">
+                                    <span class="min-w-0 truncate text-xs font-semibold text-white/55" data-commerce-product-upload-summary>先选择用途，再上传图片</span>
+                                    <span class="shrink-0 rounded-md border border-emerald-200/25 bg-emerald-500/16 px-2 py-1 text-xs font-semibold text-emerald-50">选择图片</span>
+                                    <input type="file" name="product_image" required accept="image/jpeg,image/png,image/webp" class="sr-only" data-commerce-product-upload-input>
+                                </label>
+                                <button type="button" class="flex h-9 w-full items-center justify-center gap-1 rounded-lg border border-white/10 bg-white/[0.035] text-xs font-semibold text-white/38 transition hover:border-rose-200/35 hover:bg-rose-400/10 hover:text-rose-100" title="删除" aria-label="删除商品图片" data-remove-commerce-product-image>
+                                    <i data-lucide="x" class="h-4 w-4"></i>
+                                    删除这张
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                    <button type="button" class="mt-2 flex h-9 w-full items-center justify-center gap-2 rounded-lg border border-emerald-200/25 bg-emerald-400/10 text-xs font-semibold text-emerald-50 transition hover:bg-emerald-400/16 disabled:cursor-not-allowed disabled:border-white/10 disabled:bg-white/[0.03] disabled:text-white/30" data-add-commerce-product-image>
+                        <i data-lucide="plus" class="h-4 w-4"></i>
+                        继续添加
+                    </button>
+                    <p class="mt-2 text-xs text-white/42">每张图先选用途再上传，支持 JPG、PNG、WEBP，最多 5 张，单张最大 10MB</p>
+                </div>
                 <button class="w-full rounded-xl bg-emerald-500 px-4 py-2.5 font-semibold text-white hover:bg-emerald-400">添加商品</button>
             </form>
         </aside>
@@ -409,13 +561,55 @@ function selectCommerceProductVideoMode(button, mode) {
     });
 }
 
+function selectCommerceProductGalleryImage(button) {
+    const gallery = button.closest('[data-commerce-product-gallery]');
+    if (!gallery) {
+        return;
+    }
+    const mainImage = gallery.querySelector('[data-commerce-product-gallery-main]');
+    const imageUrl = button.dataset.imageUrl || '';
+    if (mainImage && imageUrl) {
+        mainImage.src = imageUrl;
+        mainImage.alt = button.dataset.imageAlt || mainImage.alt;
+    }
+    gallery.querySelectorAll('[data-commerce-product-gallery-thumb]').forEach((thumb) => {
+        const selected = thumb === button;
+        thumb.classList.toggle('border-emerald-200/60', selected);
+        thumb.classList.toggle('ring-1', selected);
+        thumb.classList.toggle('ring-emerald-200/25', selected);
+        thumb.classList.toggle('border-white/10', !selected);
+    });
+}
+
+function selectCommerceProductCardExpanded(target, forceExpanded) {
+    const card = target.closest?.('[data-commerce-product-card]') || target;
+    if (!card) {
+        return;
+    }
+    const details = card.querySelector('[data-commerce-product-details]');
+    const toggle = card.querySelector('[data-commerce-product-toggle]');
+    if (!details) {
+        return;
+    }
+    const expanded = typeof forceExpanded === 'boolean' ? forceExpanded : details.hidden;
+    details.hidden = !expanded;
+    details.classList.toggle('hidden', !expanded);
+    card.classList.toggle('is-expanded', expanded);
+    if (toggle) {
+        toggle.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+    }
+    card.querySelector('[data-commerce-product-toggle-open]')?.classList.toggle('hidden', expanded);
+    card.querySelector('[data-commerce-product-toggle-close]')?.classList.toggle('hidden', !expanded);
+    card.querySelector('[data-commerce-product-toggle-icon]')?.classList.toggle('rotate-180', expanded);
+}
+
 document.addEventListener('DOMContentLoaded', () => {
     const productTypeInput = document.querySelector('[data-commerce-product-type-input]');
     const productTypeSelected = document.querySelector('[data-commerce-product-type-selected]');
     const productTypeError = document.querySelector('[data-commerce-product-type-error]');
-    const productUploadInput = document.querySelector('.commerce-product-upload-input');
-    const productUploadName = document.querySelector('[data-commerce-product-upload-name]');
-    const productImageUsages = document.querySelector('[data-commerce-product-image-usages]');
+    const productImageList = document.querySelector('[data-commerce-product-image-list]');
+    const addProductImageButton = document.querySelector('[data-add-commerce-product-image]');
+    const productUploadTotal = document.querySelector('[data-commerce-product-upload-total]');
 
     function selectCommerceProductType(button) {
         if (!productTypeInput) {
@@ -438,52 +632,333 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    function updateCommerceProductUploadName() {
-        if (!productUploadInput || !productUploadName) {
-            return;
-        }
-        const files = Array.from(productUploadInput.files || []);
-        if (files.length === 0) {
-            productUploadName.textContent = '未选择图片';
-        } else {
-            productUploadName.textContent = files.length === 1 ? files[0].name : `已选择 ${files.length} 张图片`;
-        }
-        renderCommerceProductImageUsageRows(files);
+    function commerceProductSelectedFiles() {
+        return Array.from(document.querySelectorAll('[data-commerce-product-upload-input]'))
+            .flatMap((input) => Array.from(input.files || []));
     }
 
-    function renderCommerceProductImageUsageRows(files) {
-        if (!productImageUsages) {
+    function commerceProductImageRows() {
+        return Array.from(document.querySelectorAll('[data-commerce-product-image-row]'));
+    }
+
+    function createCommerceProductImageRow() {
+        const row = document.createElement('div');
+        row.className = 'rounded-lg border border-white/10 bg-black/15 p-2';
+        row.dataset.commerceProductImageRow = '';
+        row.innerHTML = `
+            <input type="hidden" name="product_image_usages" value="主图">
+            <div class="space-y-2">
+                <div class="flex items-center justify-between gap-2">
+                    <span class="rounded-full border border-white/10 bg-white/[0.04] px-2 py-1 text-xs font-semibold text-white/62" data-commerce-product-image-index>商品图 1</span>
+                    <span class="text-xs font-semibold text-white/38" data-commerce-product-image-count>1/5</span>
+                    <span class="text-xs text-white/35">先选用途，再上传</span>
+                </div>
+                <div class="grid grid-cols-3 gap-1 rounded-lg border border-white/10 bg-white/[0.035] p-1">
+                    <button type="button" class="h-8 rounded-md bg-emerald-400/18 text-xs font-semibold text-emerald-50 ring-1 ring-emerald-200/30 transition" data-commerce-product-usage-option data-usage="主图" aria-pressed="true">主图</button>
+                    <button type="button" class="h-8 rounded-md text-xs font-semibold text-white/48 transition hover:bg-white/[0.06] hover:text-white/75" data-commerce-product-usage-option data-usage="细节图" aria-pressed="false">细节图</button>
+                    <button type="button" class="h-8 rounded-md text-xs font-semibold text-white/48 transition hover:bg-white/[0.06] hover:text-white/75" data-commerce-product-usage-option data-usage="上身参考" aria-pressed="false">上身参考</button>
+                </div>
+                <label class="group flex min-w-0 flex-1 cursor-pointer items-center justify-between gap-2 rounded-lg border border-dashed border-white/12 bg-white/[0.035] px-3 py-2 transition hover:border-emerald-200/40 hover:bg-emerald-300/10">
+                    <span class="min-w-0 truncate text-xs font-semibold text-white/55" data-commerce-product-upload-summary>先选择用途，再上传图片</span>
+                    <span class="shrink-0 rounded-md border border-emerald-200/25 bg-emerald-500/16 px-2 py-1 text-xs font-semibold text-emerald-50">选择图片</span>
+                    <input type="file" name="product_image" required accept="image/jpeg,image/png,image/webp" class="sr-only" data-commerce-product-upload-input>
+                </label>
+                <button type="button" class="flex h-9 w-full items-center justify-center gap-1 rounded-lg border border-white/10 bg-white/[0.035] text-xs font-semibold text-white/38 transition hover:border-rose-200/35 hover:bg-rose-400/10 hover:text-rose-100" title="删除" aria-label="删除商品图片" data-remove-commerce-product-image>
+                    <i data-lucide="x" class="h-4 w-4"></i>
+                    删除这张
+                </button>
+            </div>
+        `;
+        return row;
+    }
+
+    function updateCommerceProductImageRows() {
+        const rows = commerceProductImageRows();
+        if (!rows.length) {
             return;
         }
-        productImageUsages.innerHTML = '';
-        productImageUsages.classList.toggle('hidden', files.length === 0);
-        files.slice(0, 5).forEach((file, index) => {
-            const row = document.createElement('div');
-            row.className = 'rounded-lg border border-white/10 bg-black/15 p-2';
-            const defaultUsage = index === 0 ? '主图' : '细节图';
-            row.innerHTML = `
-                <div class="flex items-center gap-2">
-                    <div class="min-w-0 flex-1 truncate text-xs font-semibold text-white/65">${file.name}</div>
-                    <select name="product_image_usages" class="h-9 rounded-lg border border-white/10 bg-slate-950/70 px-2 text-xs font-semibold text-white/78 outline-none transition focus:border-emerald-200/55 focus:ring-2 focus:ring-emerald-300/15">
-                        ${['主图', '细节图', '上身参考'].map((usage) => `
-                            <option value="${usage}" ${usage === defaultUsage ? 'selected' : ''}>${usage}</option>
-                        `).join('')}
-                    </select>
-                </div>
-            `;
-            productImageUsages.appendChild(row);
+        rows.forEach((row, index) => {
+            const input = row.querySelector('[data-commerce-product-upload-input]');
+            const summary = row.querySelector('[data-commerce-product-upload-summary]');
+            const indexLabel = row.querySelector('[data-commerce-product-image-index]');
+            const countLabel = row.querySelector('[data-commerce-product-image-count]');
+            const file = input?.files?.[0];
+            row.classList.toggle('ring-1', !!file);
+            row.classList.toggle('ring-white/15', !!file);
+            if (indexLabel) {
+                indexLabel.textContent = `商品图 ${index + 1}`;
+            }
+            if (countLabel) {
+                countLabel.textContent = `${index + 1}/5`;
+            }
+            if (summary) {
+                summary.textContent = file ? file.name : '先选择用途，再上传图片';
+            }
+        });
+        const total = rows.length;
+        const selectedTotal = commerceProductSelectedFiles().length;
+        if (productUploadTotal) {
+            productUploadTotal.textContent = selectedTotal > 5 ? `已选 ${selectedTotal}/5，超出上限` : `已选 ${selectedTotal}/5`;
+            productUploadTotal.classList.toggle('border-red-200/35', selectedTotal > 5);
+            productUploadTotal.classList.toggle('text-red-100', selectedTotal > 5);
+        }
+        if (addProductImageButton) {
+            addProductImageButton.disabled = total >= 5;
+        }
+        rows.forEach((row) => {
+            const removeButton = row.querySelector('[data-remove-commerce-product-image]');
+            if (removeButton) {
+                removeButton.disabled = rows.length <= 1;
+                removeButton.classList.toggle('opacity-35', rows.length <= 1);
+                removeButton.classList.toggle('cursor-not-allowed', rows.length <= 1);
+            }
         });
     }
 
+    function selectCommerceProductImageUsage(button) {
+        const row = button.closest('[data-commerce-product-image-row]');
+        if (!row) {
+            return;
+        }
+        const usage = button.dataset.usage || '主图';
+        const input = row.querySelector('input[name="product_image_usages"]');
+        if (input) {
+            input.value = usage;
+        }
+        row.querySelectorAll('[data-commerce-product-usage-option]').forEach((option) => {
+            const selected = option === button;
+            option.classList.toggle('bg-emerald-400/18', selected);
+            option.classList.toggle('text-emerald-50', selected);
+            option.classList.toggle('ring-1', selected);
+            option.classList.toggle('ring-emerald-200/30', selected);
+            option.classList.toggle('text-white/48', !selected);
+            option.setAttribute('aria-pressed', selected ? 'true' : 'false');
+        });
+    }
+
+    function addCommerceProductImageRow() {
+        if (!productImageList || commerceProductImageRows().length >= 5) {
+            return;
+        }
+        const row = createCommerceProductImageRow();
+        productImageList.appendChild(row);
+        const usageButton = row.querySelector('[data-commerce-product-usage-option]');
+        usageButton?.focus();
+        if (typeof safeCreateIcons === 'function') {
+            safeCreateIcons();
+        }
+        updateCommerceProductImageRows();
+    }
+
     window.selectCommerceProductType = selectCommerceProductType;
-    window.updateCommerceProductUploadName = updateCommerceProductUploadName;
-    window.renderCommerceProductImageUsageRows = renderCommerceProductImageUsageRows;
+    window.selectCommerceProductImageUsage = selectCommerceProductImageUsage;
+    window.addCommerceProductImageRow = addCommerceProductImageRow;
+    window.updateCommerceProductImageRows = updateCommerceProductImageRows;
+    function showCommerceToast(message, type = 'info') {
+        if (typeof showToast === 'function') {
+            showToast(message, type);
+            return;
+        }
+        console.log(message);
+    }
+
+    function commerceFetchJson(url, options = {}) {
+        const headers = {
+            'X-Requested-With': 'XMLHttpRequest',
+            'Accept': 'application/json',
+            ...(options.headers || {}),
+        };
+        return fetch(url, {...options, headers})
+            .then((response) => response.json().catch(() => ({})).then((data) => {
+                if (!response.ok || (data.code && data.code !== 200)) {
+                    throw new Error(data.message || '请求失败');
+                }
+                return data.data || data;
+            }));
+    }
+
+    function commerceTryOnStatusText(status) {
+        if (status === 'completed') {
+            return '已完成';
+        }
+        if (status === 'failed') {
+            return '失败';
+        }
+        return '生成中';
+    }
+
+    function commerceTryOnProjectVideoUrl(project) {
+        const shots = project?.shots || [];
+        const shot = shots.find((item) => item.videoUrl) || shots[0] || {};
+        return shot.videoUrl || '';
+    }
+
+    function commerceTryOnProjectSummary(project) {
+        const shots = project?.shots || [];
+        const titles = shots.map((shot) => shot.title).filter(Boolean);
+        if (titles.length) {
+            return titles.join(' / ');
+        }
+        return '试穿视频任务';
+    }
+
+    function renderCommerceTryOnProject(project, list) {
+        if (!project || !project.id || !list) {
+            return null;
+        }
+        list.querySelector('[data-commerce-try-on-project-empty]')?.remove();
+        let card = list.querySelector(`[data-commerce-try-on-project-id="${project.id}"]`);
+        const status = project.status || 'generating';
+        const videoUrl = commerceTryOnProjectVideoUrl(project);
+        const firstShot = (project.shots || [])[0] || {};
+        const previewHtml = videoUrl
+            ? `<video src="${videoUrl}" class="h-full w-full object-contain" controls playsinline data-commerce-try-on-project-video></video>`
+            : `<div class="flex h-full w-full flex-col items-center justify-center gap-1 text-white/40">
+                    <i data-lucide="loader-2" class="h-4 w-4 animate-spin"></i>
+                    <span class="text-[11px]">${commerceTryOnStatusText(status)}</span>
+                </div>`;
+        if (!card) {
+            card = document.createElement('div');
+            card.className = 'rounded-lg border border-white/10 bg-black/18 p-2';
+            card.dataset.commerceTryOnProjectCard = '';
+            card.dataset.commerceTryOnProjectId = String(project.id);
+            card.dataset.commerceTryOnStatusUrl = `/commerce/projects/${project.id}/status/`;
+            card.dataset.commerceTryOnGenerateUrl = `/commerce/projects/${project.id}/generation/start/`;
+            card.innerHTML = `
+                <div class="flex items-start gap-2">
+                    <div class="flex h-16 w-24 flex-none items-center justify-center overflow-hidden rounded-md border border-white/[0.08] bg-black/30" data-commerce-try-on-project-preview></div>
+                    <div class="min-w-0 flex-1">
+                        <div class="flex flex-wrap items-center gap-1.5">
+                            <span class="rounded-full border border-white/10 bg-white/[0.04] px-2 py-0.5 text-[11px] font-semibold text-white/62" data-commerce-try-on-project-status-label></span>
+                            <span class="rounded-full border border-white/10 bg-white/[0.04] px-2 py-0.5 text-[11px] font-semibold text-white/45" data-commerce-try-on-project-ratio></span>
+                            <span class="rounded-full border border-white/10 bg-white/[0.04] px-2 py-0.5 text-[11px] font-semibold text-white/45" data-commerce-try-on-project-resolution></span>
+                        </div>
+                        <p class="mt-1 truncate text-xs text-white/45" data-commerce-try-on-project-summary></p>
+                        <p class="mt-1 hidden text-xs text-rose-200" data-commerce-try-on-project-error></p>
+                    </div>
+                    <button type="button" class="flex h-8 flex-none items-center gap-1 rounded-lg border border-white/10 bg-white/[0.04] px-2 text-xs font-semibold text-white/55 transition hover:border-emerald-200/35 hover:bg-emerald-300/10 hover:text-white" data-commerce-try-on-project-retry>
+                        <i data-lucide="refresh-cw" class="h-3.5 w-3.5"></i>
+                        重新生成
+                    </button>
+                </div>`;
+            list.prepend(card);
+        }
+        card.dataset.commerceTryOnProjectStatus = status;
+        card.querySelector('[data-commerce-try-on-project-preview]').innerHTML = previewHtml;
+        card.querySelector('[data-commerce-try-on-project-status-label]').textContent = commerceTryOnStatusText(status);
+        card.querySelector('[data-commerce-try-on-project-ratio]').textContent = project.aspectRatio || '9:16';
+        card.querySelector('[data-commerce-try-on-project-resolution]').textContent = firstShot.resolution || '';
+        card.querySelector('[data-commerce-try-on-project-summary]').textContent = commerceTryOnProjectSummary(project);
+        const error = card.querySelector('[data-commerce-try-on-project-error]');
+        if (error) {
+            error.textContent = project.errorMessage || '';
+            error.classList.toggle('hidden', !project.errorMessage);
+        }
+        if (typeof safeCreateIcons === 'function') {
+            safeCreateIcons();
+        }
+        return card;
+    }
+
+    function pollCommerceTryOnProject(card) {
+        const statusUrl = card?.dataset.commerceTryOnStatusUrl;
+        if (!statusUrl) {
+            return;
+        }
+        const list = card.closest('[data-commerce-try-on-project-list]');
+        const poll = () => {
+            commerceFetchJson(statusUrl)
+                .then((project) => {
+                    const updatedCard = renderCommerceTryOnProject(project, list) || card;
+                    if (project.status === 'generating' || project.status === 'draft') {
+                        setTimeout(() => pollCommerceTryOnProject(updatedCard), 3000);
+                    }
+                })
+                .catch((error) => {
+                    const errorEl = card.querySelector('[data-commerce-try-on-project-error]');
+                    if (errorEl) {
+                        errorEl.textContent = error.message;
+                        errorEl.classList.remove('hidden');
+                    }
+                });
+        };
+        setTimeout(poll, 3000);
+    }
+
+    function startCommerceTryOnProjectGeneration(card) {
+        const generateUrl = card?.dataset.commerceTryOnGenerateUrl;
+        if (!generateUrl) {
+            return;
+        }
+        commerceFetchJson(generateUrl, {method: 'POST'})
+            .then((project) => {
+                const list = card.closest('[data-commerce-try-on-project-list]');
+                const updatedCard = renderCommerceTryOnProject(project, list) || card;
+                pollCommerceTryOnProject(updatedCard);
+            })
+            .catch((error) => {
+                showCommerceToast(error.message, 'error');
+                const errorEl = card.querySelector('[data-commerce-try-on-project-error]');
+                if (errorEl) {
+                    errorEl.textContent = error.message;
+                    errorEl.classList.remove('hidden');
+                }
+            });
+    }
+
+    function submitCommerceTryOnProjectForm(form) {
+        const button = form.querySelector('[data-commerce-try-on-submit]');
+        const list = form.closest('[data-commerce-product-details]')?.querySelector('[data-commerce-try-on-project-list]');
+        if (!list) {
+            form.submit();
+            return;
+        }
+        button.disabled = true;
+        button.classList.add('opacity-60', 'cursor-wait');
+        commerceFetchJson(form.action, {
+            method: 'POST',
+            body: new FormData(form),
+        })
+            .then((project) => {
+                const card = renderCommerceTryOnProject(project, list);
+                if (card) {
+                    startCommerceTryOnProjectGeneration(card);
+                }
+            })
+            .catch((error) => showCommerceToast(error.message, 'error'))
+            .finally(() => {
+                button.disabled = false;
+                button.classList.remove('opacity-60', 'cursor-wait');
+            });
+    }
+
+    window.renderCommerceTryOnProject = renderCommerceTryOnProject;
+    window.pollCommerceTryOnProject = pollCommerceTryOnProject;
+    window.startCommerceTryOnProjectGeneration = startCommerceTryOnProjectGeneration;
+    window.submitCommerceTryOnProjectForm = submitCommerceTryOnProjectForm;
     document.querySelectorAll('[data-product-type-option]').forEach((button) => {
         button.addEventListener('click', () => selectCommerceProductType(button));
     });
-    if (productUploadInput) {
-        productUploadInput.addEventListener('change', updateCommerceProductUploadName);
-    }
+    addProductImageButton?.addEventListener('click', addCommerceProductImageRow);
+    productImageList?.addEventListener('change', (event) => {
+        if (event.target.matches('[data-commerce-product-upload-input]')) {
+            updateCommerceProductImageRows();
+        }
+    });
+    productImageList?.addEventListener('click', (event) => {
+        const usageButton = event.target.closest('[data-commerce-product-usage-option]');
+        if (usageButton) {
+            selectCommerceProductImageUsage(usageButton);
+            return;
+        }
+        const removeButton = event.target.closest('[data-remove-commerce-product-image]');
+        if (!removeButton || commerceProductImageRows().length <= 1) {
+            return;
+        }
+        removeButton.closest('[data-commerce-product-image-row]')?.remove();
+        updateCommerceProductImageRows();
+    });
+    updateCommerceProductImageRows();
 
     const productCreateForm = document.querySelector('form[action="/commerce/models/{{ model_id }}/products/create/"]');
     if (productCreateForm) {
@@ -495,17 +970,246 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
                 return;
             }
-            const files = Array.from(productUploadInput?.files || []);
-            if (files.length > 5) {
+            const files = commerceProductSelectedFiles();
+            if (files.length > 5 || commerceProductImageRows().length > 5) {
                 event.preventDefault();
-                productUploadName.textContent = '最多上传 5 张图片';
+                if (productUploadTotal) {
+                    productUploadTotal.textContent = `已选 ${files.length}/5，超出上限`;
+                    productUploadTotal.classList.add('border-red-200/35', 'text-red-100');
+                }
             }
         });
     }
 
+    document.querySelectorAll('[data-commerce-video-panel="try_on"]').forEach((form) => {
+        form.addEventListener('submit', (event) => {
+            event.preventDefault();
+            submitCommerceTryOnProjectForm(form);
+        });
+    });
+
+    document.querySelectorAll('[data-commerce-try-on-project-card]').forEach((card) => {
+        if (card.dataset.commerceTryOnProjectStatus === 'generating' || card.dataset.commerceTryOnProjectStatus === 'draft') {
+            pollCommerceTryOnProject(card);
+        }
+    });
+
+    document.addEventListener('click', (event) => {
+        const retryButton = event.target.closest('[data-commerce-try-on-project-retry]');
+        if (!retryButton) {
+            return;
+        }
+        const card = retryButton.closest('[data-commerce-try-on-project-card]');
+        if (card) {
+            startCommerceTryOnProjectGeneration(card);
+        }
+    });
+
     document.querySelectorAll('[data-commerce-video-mode]').forEach((button) => {
         button.addEventListener('click', () => {
             selectCommerceProductVideoMode(button, button.dataset.commerceVideoMode);
+        });
+    });
+    document.querySelectorAll('[data-commerce-product-toggle]').forEach((button) => {
+        button.addEventListener('click', (event) => {
+            event.stopPropagation();
+            selectCommerceProductCardExpanded(button);
+        });
+    });
+    document.querySelectorAll('[data-commerce-product-summary]').forEach((summary) => {
+        summary.addEventListener('click', (event) => {
+            if (event.target.closest('[data-commerce-product-toggle]')) {
+                return;
+            }
+            selectCommerceProductCardExpanded(summary);
+        });
+        summary.addEventListener('keydown', (event) => {
+            if (!['Enter', ' '].includes(event.key) || event.target.closest('[data-commerce-product-toggle]')) {
+                return;
+            }
+            event.preventDefault();
+            selectCommerceProductCardExpanded(summary);
+        });
+    });
+    window.selectCommerceProductCardExpanded = selectCommerceProductCardExpanded;
+    document.querySelectorAll('[data-commerce-product-gallery-thumb]').forEach((button) => {
+        button.addEventListener('click', () => selectCommerceProductGalleryImage(button));
+    });
+    window.selectCommerceProductGalleryImage = selectCommerceProductGalleryImage;
+
+    function setCommerceTryOnSceneFilterButtonState(picker, activeFilter) {
+        picker.querySelectorAll('[data-commerce-try-on-scene-filter]').forEach((button) => {
+            const active = button.dataset.commerceTryOnSceneFilter === activeFilter;
+            button.classList.toggle('border-cyan-200/55', active);
+            button.classList.toggle('bg-cyan-300/18', active);
+            button.classList.toggle('text-white', active);
+            button.classList.toggle('border-white/10', !active);
+            button.classList.toggle('bg-white/[0.035]', !active);
+            button.classList.toggle('text-white/65', !active);
+        });
+    }
+
+    function updateCommerceTryOnSceneSelection(picker) {
+        picker.querySelectorAll('[data-commerce-try-on-scene-card]').forEach((sceneCard) => {
+            const input = sceneCard.querySelector('input[name="scene_ids"]');
+            const option = sceneCard.querySelector('[data-commerce-try-on-scene-option]');
+            const badge = option ? option.querySelector('[data-commerce-try-on-scene-selected]') : null;
+            const selected = !!input?.checked;
+            if (!option) {
+                return;
+            }
+            option.classList.toggle('border-emerald-200/80', selected);
+            option.classList.toggle('bg-emerald-400/14', selected);
+            option.classList.toggle('shadow-[0_0_0_2px_rgba(110,231,183,0.18)]', selected);
+            option.classList.toggle('ring-2', selected);
+            option.classList.toggle('ring-emerald-200/45', selected);
+            option.classList.toggle('border-white/10', !selected);
+            option.classList.toggle('bg-white/[0.04]', !selected);
+            if (badge) {
+                badge.classList.toggle('hidden', !selected);
+                badge.classList.toggle('inline-flex', selected);
+            }
+        });
+    }
+
+    function updateCommerceTryOnScenePicker(picker) {
+        const activeFilter = picker.dataset.commerceTryOnSceneActiveFilter || '全部';
+        const pageSize = Number(picker.dataset.commerceTryOnScenePageSize || '6');
+        const sceneCards = Array.from(picker.querySelectorAll('[data-commerce-try-on-scene-card]'));
+        const visibleScenes = sceneCards.filter((sceneCard) => (
+            activeFilter === '全部'
+            || sceneCard.dataset.commerceTryOnSceneCategory === activeFilter
+            || sceneCard.dataset.commerceTryOnSceneGroup === activeFilter
+        ));
+        const totalPages = Math.max(1, Math.ceil(visibleScenes.length / pageSize));
+        let currentPage = Number(picker.dataset.commerceTryOnScenePage || '1');
+        currentPage = Math.min(Math.max(currentPage, 1), totalPages);
+        picker.dataset.commerceTryOnScenePage = String(currentPage);
+        const start = (currentPage - 1) * pageSize;
+        const end = start + pageSize;
+
+        sceneCards.forEach((sceneCard) => {
+            sceneCard.dataset.commerceTryOnSceneIndex = '';
+            sceneCard.classList.add('hidden');
+        });
+        visibleScenes.forEach((sceneCard) => {
+            const sceneIndex = visibleScenes.indexOf(sceneCard);
+            sceneCard.dataset.commerceTryOnSceneIndex = String(sceneIndex);
+            sceneCard.classList.toggle('hidden', !(sceneIndex >= start && sceneIndex < end));
+        });
+
+        const pagination = picker.querySelector('[data-commerce-try-on-scene-pagination]');
+        if (pagination) {
+            pagination.classList.toggle('hidden', visibleScenes.length <= pageSize);
+            pagination.classList.toggle('flex', visibleScenes.length > pageSize);
+        }
+        const status = picker.querySelector('[data-commerce-try-on-scene-page-status]');
+        if (status) {
+            status.textContent = `${currentPage}/${totalPages}`;
+        }
+        const prevButton = picker.querySelector('[data-commerce-try-on-scene-page-prev]');
+        if (prevButton) {
+            prevButton.disabled = currentPage <= 1;
+        }
+        const nextButton = picker.querySelector('[data-commerce-try-on-scene-page-next]');
+        if (nextButton) {
+            nextButton.disabled = currentPage >= totalPages;
+        }
+        const empty = picker.querySelector('[data-commerce-try-on-scene-empty]');
+        if (empty) {
+            empty.classList.toggle('hidden', visibleScenes.length > 0 || sceneCards.length === 0);
+        }
+        setCommerceTryOnSceneFilterButtonState(picker, activeFilter);
+        updateCommerceTryOnSceneSelection(picker);
+    }
+
+    document.querySelectorAll('[data-commerce-try-on-scene-picker]').forEach((picker) => {
+        picker.dataset.commerceTryOnSceneActiveFilter = picker.dataset.commerceTryOnSceneActiveFilter || '全部';
+        picker.dataset.commerceTryOnScenePage = picker.dataset.commerceTryOnScenePage || '1';
+        picker.addEventListener('click', (event) => {
+            const filterButton = event.target.closest('[data-commerce-try-on-scene-filter]');
+            if (filterButton && picker.contains(filterButton)) {
+                picker.dataset.commerceTryOnSceneActiveFilter = filterButton.dataset.commerceTryOnSceneFilter || '全部';
+                picker.dataset.commerceTryOnScenePage = '1';
+                updateCommerceTryOnScenePicker(picker);
+                return;
+            }
+            const prevButton = event.target.closest('[data-commerce-try-on-scene-page-prev]');
+            if (prevButton && picker.contains(prevButton)) {
+                picker.dataset.commerceTryOnScenePage = String(Math.max(Number(picker.dataset.commerceTryOnScenePage || '1') - 1, 1));
+                updateCommerceTryOnScenePicker(picker);
+                return;
+            }
+            const nextButton = event.target.closest('[data-commerce-try-on-scene-page-next]');
+            if (nextButton && picker.contains(nextButton)) {
+                picker.dataset.commerceTryOnScenePage = String(Number(picker.dataset.commerceTryOnScenePage || '1') + 1);
+                updateCommerceTryOnScenePicker(picker);
+                return;
+            }
+            const previewButton = event.target.closest('[data-commerce-try-on-scene-preview]');
+            if (previewButton && picker.contains(previewButton)) {
+                event.preventDefault();
+                event.stopPropagation();
+                const url = previewButton.dataset.commerceTryOnScenePreview;
+                if (url && typeof openModal === 'function') {
+                    openModal(url);
+                }
+            }
+        });
+        picker.addEventListener('change', (event) => {
+            if (event.target.matches('input[name="scene_ids"]')) {
+                updateCommerceTryOnSceneSelection(picker);
+            }
+        });
+        updateCommerceTryOnScenePicker(picker);
+    });
+    window.updateCommerceTryOnScenePicker = updateCommerceTryOnScenePicker;
+    window.updateCommerceTryOnSceneSelection = updateCommerceTryOnSceneSelection;
+
+    function updateCommerceTryOnResolutionOptions(form) {
+        const modelSelect = form.querySelector('[data-commerce-try-on-video-model]');
+        const resolutionSelect = form.querySelector('[data-commerce-try-on-resolution]');
+        if (!modelSelect || !resolutionSelect) {
+            return;
+        }
+        const model = modelSelect.value;
+        let firstSupportedValue = '';
+        Array.from(resolutionSelect.options).forEach((option) => {
+            const supportedModels = (option.dataset.supportedModels || '').split(',').filter(Boolean);
+            const supported = supportedModels.includes(model);
+            option.hidden = !supported;
+            option.disabled = !supported;
+            if (supported && !firstSupportedValue) {
+                firstSupportedValue = option.value;
+            }
+        });
+        const selectedOption = resolutionSelect.options[resolutionSelect.selectedIndex];
+        if (selectedOption?.disabled && firstSupportedValue) {
+            resolutionSelect.value = firstSupportedValue;
+        }
+    }
+
+    document.querySelectorAll('[data-commerce-video-panel="try_on"]').forEach((form) => {
+        updateCommerceTryOnResolutionOptions(form);
+        form.querySelector('[data-commerce-try-on-video-model]')?.addEventListener('change', () => {
+            updateCommerceTryOnResolutionOptions(form);
+        });
+    });
+    window.updateCommerceTryOnResolutionOptions = updateCommerceTryOnResolutionOptions;
+
+    const maxTryOnShots = Number('{{ try_on_max_shots|default:4 }}');
+    document.querySelectorAll('.commerce-try-on-shot-options').forEach((shotPanel) => {
+        shotPanel.addEventListener('change', (event) => {
+            if (!event.target.matches('input[name="try_on_shots"]')) {
+                return;
+            }
+            const checked = shotPanel.querySelectorAll('input[name="try_on_shots"]:checked');
+            if (checked.length > maxTryOnShots) {
+                event.target.checked = false;
+                if (typeof showToast === 'function') {
+                    showToast(`展示方式最多选择 ${maxTryOnShots} 个`, 'warning');
+                }
+            }
         });
     });
 

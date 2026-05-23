@@ -32,6 +32,15 @@ public class CommerceProduct implements Serializable {
     private String tryOnRequirements;
     private String status;
 
+    @TableField(exist = false)
+    private Integer projectDurationSeconds;
+
+    @TableField(exist = false)
+    private String projectResolution;
+
+    @TableField(exist = false)
+    private String projectVideoModel;
+
     @TableField(fill = FieldFill.INSERT)
     private LocalDateTime createdAt;
 

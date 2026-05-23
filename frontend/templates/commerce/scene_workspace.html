@@ -15,25 +15,36 @@
                 <span class="rounded-full border border-white/10 bg-white/[0.045] px-3 py-1 text-xs text-white/55">场景库</span>
             </div>
 
-            <div class="mb-5 grid gap-2 sm:grid-cols-4">
-                <div class="rounded-lg border border-white/10 bg-white/[0.035] px-3 py-2 text-sm font-semibold text-white/70">品牌场景库</div>
-                <div class="rounded-lg border border-white/10 bg-white/[0.035] px-3 py-2 text-sm font-semibold text-white/70">直播间背景库</div>
-                <div class="rounded-lg border border-white/10 bg-white/[0.035] px-3 py-2 text-sm font-semibold text-white/70">街拍场景库</div>
-                <div class="rounded-lg border border-white/10 bg-white/[0.035] px-3 py-2 text-sm font-semibold text-white/70">棚拍场景库</div>
+            <div class="mb-5 flex flex-wrap gap-2" data-commerce-scene-filters>
+                {% for category in scene_filter_categories %}
+                    <button type="button" class="rounded-lg border px-3 py-2 text-sm font-semibold transition {% if forloop.first %}border-cyan-200/55 bg-cyan-300/18 text-white{% else %}border-white/10 bg-white/[0.035] text-white/70 hover:border-white/20 hover:bg-white/[0.07]{% endif %}" data-commerce-scene-filter="{{ category }}">
+                        {{ category }}
+                    </button>
+                {% endfor %}
             </div>
 
-            <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3" data-commerce-scene-list data-commerce-scene-poll-url="/commerce/series/{{ commerce_series.id }}/scenes/">
                 {% for scene in scenes %}
-                    <article class="rounded-lg border border-white/10 bg-white/[0.035] p-3">
-                        <div class="flex aspect-video items-center justify-center overflow-hidden rounded-md border border-white/[0.08] bg-black/25">
-                            {% if scene.imageUrl %}
-                                <img src="{{ scene.imageUrl }}" alt="{{ scene.name }}" class="h-full w-full object-cover" loading="lazy">
-                            {% elif scene.status == 'failed' %}
+                    <article class="rounded-lg border border-white/10 bg-white/[0.035] p-3" data-commerce-scene-status="{{ scene.status|default:'generating' }}" data-commerce-scene-category="{% if scene.sceneType == '自定义' %}{{ scene.name }}{% else %}{{ scene.sceneType }}{% endif %}" data-commerce-scene-group="{% if scene.sceneType == '自定义' %}其他场景{% else %}{{ scene.sceneType }}{% endif %}">
+                        {% if scene.imageUrl %}
+                            <button type="button" class="group relative block w-full overflow-hidden rounded-md border border-white/[0.08] bg-black/25 transition hover:border-cyan-200/35 focus:outline-none focus:ring-2 focus:ring-cyan-300/45" data-commerce-scene-frame data-commerce-scene-preview="{{ scene.imageUrl }}" aria-label="查看{{ scene.name }}大图">
+                                <img src="{{ scene.imageUrl }}" alt="{{ scene.name }}" class="block h-auto w-full object-contain transition group-hover:brightness-110" loading="lazy">
+                                <span class="absolute right-2 top-2 flex h-8 w-8 items-center justify-center rounded-full border border-white/15 bg-black/50 text-white/75 opacity-0 backdrop-blur transition group-hover:opacity-100" title="查看大图">
+                                    <i data-lucide="maximize-2" class="h-4 w-4"></i>
+                                </span>
+                            </button>
+                        {% else %}
+                            <div class="flex items-center justify-center overflow-hidden rounded-md border border-white/[0.08] bg-black/25" data-commerce-scene-frame style="aspect-ratio: {% if scene.aspectRatio == '9:16' %}9 / 16{% elif scene.aspectRatio == '3:4' %}3 / 4{% elif scene.aspectRatio == '1:1' %}1 / 1{% else %}16 / 9{% endif %};">
+                            {% if scene.status == 'failed' %}
                                 <span class="text-sm font-semibold text-red-200">生成失败</span>
                             {% else %}
-                                <span class="text-sm text-white/45">生成中</span>
+                                <span class="flex flex-col items-center gap-2 text-sm text-white/45">
+                                    <span class="h-7 w-7 animate-spin rounded-full border-2 border-white/15 border-t-cyan-200"></span>
+                                    <span>生成中</span>
+                                </span>
                             {% endif %}
-                        </div>
+                            </div>
+                        {% endif %}
                         <div class="mt-3 flex items-start justify-between gap-3">
                             <div class="min-w-0">
                                 <h2 class="truncate text-sm font-semibold text-white/90">{{ scene.name }}</h2>
@@ -45,6 +56,7 @@
                 {% empty %}
                     <div class="rounded-xl border border-dashed border-white/15 p-6 text-white/45 sm:col-span-2 lg:col-span-3">还没有场景图，先在右侧批量生成。</div>
                 {% endfor %}
+                <div class="hidden rounded-xl border border-dashed border-white/15 p-6 text-white/45 sm:col-span-2 lg:col-span-3" data-commerce-scene-empty-filter>当前分类还没有场景图。</div>
             </div>
         </section>
 
@@ -60,19 +72,29 @@
                     <div class="grid grid-cols-2 gap-2">
                         {% for scene_type in scene_types %}
                             <label class="group cursor-pointer">
-                                <input type="checkbox" name="scene_types" value="{{ scene_type }}" class="peer sr-only">
+                                <input type="checkbox" name="scene_types" value="{{ scene_type }}" class="peer sr-only" data-commerce-scene-type-input>
                                 <span class="flex h-10 items-center justify-center rounded-lg border border-white/10 bg-white/[0.04] px-2 text-sm font-semibold text-white/62 transition peer-checked:border-cyan-200/55 peer-checked:bg-cyan-300/18 peer-checked:text-white">{{ scene_type }}</span>
                             </label>
                         {% endfor %}
                     </div>
                 </div>
+                <label class="hidden rounded-xl border border-white/10 bg-white/[0.03] p-3" data-commerce-brand-scene-field>
+                    <span class="mb-2 block text-sm font-medium text-white/70">品牌名称 / 标识</span>
+                    <input name="brand_scene_name" class="input-modern w-full text-sm" placeholder="例如：LUMIA Studio">
+                    <span class="mt-2 block text-xs text-white/35">选择品牌场景时，会用于门头、Logo墙或广告牌</span>
+                </label>
                 <div class="rounded-xl border border-white/10 bg-white/[0.03] p-3">
                     <div class="mb-2 flex items-center justify-between gap-3">
                         <span class="text-sm font-medium text-white/70">其他场景</span>
                         <button type="button" class="rounded-lg border border-cyan-200/20 bg-cyan-300/10 px-2 py-1 text-xs font-semibold text-cyan-100/80" data-add-commerce-custom-scene>添加</button>
                     </div>
                     <div class="space-y-2" data-commerce-custom-scenes>
-                        <input name="custom_scenes" class="input-modern w-full text-sm" placeholder="例如：咖啡店落地窗旁">
+                        <div class="flex items-center gap-2" data-commerce-custom-scene-row>
+                            <input name="custom_scenes" class="input-modern w-full text-sm" placeholder="例如：咖啡店落地窗旁">
+                            <button type="button" class="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg border border-white/10 bg-white/[0.04] text-white/45 transition hover:border-rose-200/35 hover:bg-rose-400/10 hover:text-rose-100" title="删除" aria-label="删除其他场景" data-remove-commerce-custom-scene>
+                                <i data-lucide="x" class="h-4 w-4"></i>
+                            </button>
+                        </div>
                     </div>
                 </div>
                 <div class="grid gap-2 sm:grid-cols-3">
@@ -80,7 +102,7 @@
                         <span class="mb-1 block text-xs font-semibold text-white/55">比例</span>
                         <select name="aspect_ratio" class="input-modern w-full text-sm">
                             {% for ratio in aspect_ratios %}
-                                <option value="{{ ratio }}">{{ ratio }}</option>
+                                <option value="{{ ratio.value }}">{{ ratio.label }}</option>
                             {% endfor %}
                         </select>
                     </label>
@@ -97,10 +119,6 @@
                         <input name="count_per_scene" type="number" min="1" max="4" value="1" class="input-modern w-full text-sm">
                     </label>
                 </div>
-                <label class="block">
-                    <span class="mb-1 block text-xs font-semibold text-white/55">补充描述</span>
-                    <textarea name="description" rows="3" class="input-modern w-full resize-y text-sm" placeholder="例如：浅色女装品牌调性，干净高级"></textarea>
-                </label>
                 <button class="flex h-10 w-full items-center justify-center gap-2 rounded-lg bg-cyan-500 px-3 text-sm font-semibold text-white transition hover:bg-cyan-400">
                     <i data-lucide="sparkles" class="h-4 w-4"></i>
                     批量生成场景图
@@ -114,18 +132,163 @@
 {% block extra_js %}
 <script>
 document.addEventListener('DOMContentLoaded', () => {
+    const sceneTypeInputs = document.querySelectorAll('[data-commerce-scene-type-input]');
+    const brandSceneField = document.querySelector('[data-commerce-brand-scene-field]');
+    const brandInput = brandSceneField ? brandSceneField.querySelector('input[name="brand_scene_name"]') : null;
+
+    function toggleCommerceBrandSceneField() {
+        if (!brandSceneField) {
+            return;
+        }
+        const hasBrandScene = Array.from(sceneTypeInputs).some(input => input.value === '品牌场景' && input.checked);
+        brandSceneField.classList.toggle('hidden', !hasBrandScene);
+        brandSceneField.classList.toggle('block', hasBrandScene);
+        if (!hasBrandScene && brandInput) {
+            brandInput.value = '';
+        }
+    }
+
+    sceneTypeInputs.forEach(input => {
+        input.addEventListener('change', toggleCommerceBrandSceneField);
+    });
+    toggleCommerceBrandSceneField();
+
     const addButton = document.querySelector('[data-add-commerce-custom-scene]');
     const list = document.querySelector('[data-commerce-custom-scenes]');
     if (addButton && list) {
+        function createCustomSceneRow(placeholder) {
+            const row = document.createElement('div');
+            row.className = 'flex items-center gap-2';
+            row.dataset.commerceCustomSceneRow = '';
+            row.innerHTML = `
+                <input name="custom_scenes" class="input-modern w-full text-sm" placeholder="${placeholder}">
+                <button type="button" class="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg border border-white/10 bg-white/[0.04] text-white/45 transition hover:border-rose-200/35 hover:bg-rose-400/10 hover:text-rose-100" title="删除" aria-label="删除其他场景" data-remove-commerce-custom-scene>
+                    <i data-lucide="x" class="h-4 w-4"></i>
+                </button>
+            `;
+            return row;
+        }
+
         addButton.addEventListener('click', () => {
-            const input = document.createElement('input');
-            input.name = 'custom_scenes';
-            input.className = 'input-modern w-full text-sm';
-            input.placeholder = '例如：地铁站扶梯旁';
-            list.appendChild(input);
+            const row = createCustomSceneRow('例如：地铁站扶梯旁');
+            list.appendChild(row);
+            if (typeof safeCreateIcons === 'function') {
+                safeCreateIcons();
+            }
+            const input = row.querySelector('input');
             input.focus();
         });
+        list.addEventListener('click', event => {
+            const removeButton = event.target.closest('[data-remove-commerce-custom-scene]');
+            if (!removeButton) {
+                return;
+            }
+            const row = removeButton.closest('[data-commerce-custom-scene-row]');
+            if (row) {
+                row.remove();
+            }
+        });
     }
+    const sceneList = document.querySelector('[data-commerce-scene-list]');
+    const sceneFilterContainer = document.querySelector('[data-commerce-scene-filters]');
+    let commerceScenePollTimer = null;
+    let activeCommerceSceneFilter = '全部';
+
+    function setCommerceSceneFilterButtonState() {
+        document.querySelectorAll('[data-commerce-scene-filter]').forEach(button => {
+            const active = button.dataset.commerceSceneFilter === activeCommerceSceneFilter;
+            button.classList.toggle('border-cyan-200/55', active);
+            button.classList.toggle('bg-cyan-300/18', active);
+            button.classList.toggle('text-white', active);
+            button.classList.toggle('border-white/10', !active);
+            button.classList.toggle('bg-white/[0.035]', !active);
+            button.classList.toggle('text-white/70', !active);
+        });
+    }
+
+    function filterCommerceSceneCards() {
+        const sceneCards = document.querySelectorAll('[data-commerce-scene-category]');
+        const emptyFilter = document.querySelector('[data-commerce-scene-empty-filter]');
+        let visibleCount = 0;
+        sceneCards.forEach(sceneCard => {
+            const visible = activeCommerceSceneFilter === '全部'
+                || sceneCard.dataset.commerceSceneCategory === activeCommerceSceneFilter
+                || sceneCard.dataset.commerceSceneGroup === activeCommerceSceneFilter;
+            sceneCard.classList.toggle('hidden', !visible);
+            if (visible) {
+                visibleCount += 1;
+            }
+        });
+        if (emptyFilter) {
+            emptyFilter.classList.toggle('hidden', visibleCount > 0 || sceneCards.length === 0);
+        }
+        setCommerceSceneFilterButtonState();
+    }
+
+    if (sceneFilterContainer) {
+        sceneFilterContainer.addEventListener('click', event => {
+            const filterButton = event.target.closest('[data-commerce-scene-filter]');
+            if (!filterButton) {
+                return;
+            }
+            activeCommerceSceneFilter = filterButton.dataset.commerceSceneFilter || '全部';
+            filterCommerceSceneCards();
+        });
+    }
+
+    document.addEventListener('click', event => {
+        const previewButton = event.target.closest('[data-commerce-scene-preview]');
+        if (!previewButton) {
+            return;
+        }
+        const url = previewButton.dataset.commerceScenePreview;
+        if (url && typeof openModal === 'function') {
+            openModal(url);
+        }
+    });
+
+    function hasGeneratingCommerceScenes() {
+        return !!document.querySelector('[data-commerce-scene-status="generating"], [data-commerce-scene-status="queued"]');
+    }
+
+    async function pollCommerceSceneList() {
+        if (!sceneList) {
+            return;
+        }
+        try {
+            const response = await fetch(sceneList.dataset.commerceScenePollUrl || window.location.pathname, {
+                headers: {'X-Requested-With': 'XMLHttpRequest'},
+                cache: 'no-store',
+            });
+            if (!response.ok) {
+                return;
+            }
+            const html = await response.text();
+            const parser = new DOMParser();
+            const doc = parser.parseFromString(html, 'text/html');
+            const freshList = doc.querySelector('[data-commerce-scene-list]');
+            if (!freshList) {
+                return;
+            }
+            sceneList.innerHTML = freshList.innerHTML;
+            if (typeof safeCreateIcons === 'function') {
+                safeCreateIcons();
+            }
+            filterCommerceSceneCards();
+            if (!hasGeneratingCommerceScenes() && commerceScenePollTimer) {
+                window.clearInterval(commerceScenePollTimer);
+                commerceScenePollTimer = null;
+            }
+        } catch (error) {
+            // 下一轮轮询会继续刷新生成状态。
+        }
+    }
+
+    window.pollCommerceSceneList = pollCommerceSceneList;
+    if (hasGeneratingCommerceScenes()) {
+        commerceScenePollTimer = window.setInterval(pollCommerceSceneList, 5000);
+    }
+    filterCommerceSceneCards();
     if (typeof safeCreateIcons === 'function') {
         safeCreateIcons();
     }

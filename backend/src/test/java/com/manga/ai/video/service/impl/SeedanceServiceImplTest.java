@@ -27,13 +27,14 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class SeedanceServiceImplTest {
 
     @Test
-    void submitFastVipUsesToapisVideoGenerationEndpointAndPayload() {
+    void submitFastVipUsesVolcengineContentGenerationEndpointAndPayload() {
         RestTemplate restTemplate = mock(RestTemplate.class);
         SeedanceServiceImpl service = newService(restTemplate);
         SeedanceRequest request = new SeedanceRequest();
@@ -58,28 +59,107 @@ class SeedanceServiceImplTest {
         SeedanceResponse response = service.submitVideoGeneration(request);
 
         assertThat(response.getTaskId()).isEqualTo("task-fast");
+        assertThat(response.getSubmitModel()).isEqualTo("doubao-seedance-2-0-fast-260128");
         verify(restTemplate).exchange(
-                eq("https://toapis.com/v1/videos/generations"),
+                eq("https://ark.example.com/api/v3/contents/generations/tasks"),
                 eq(HttpMethod.POST),
                 org.mockito.ArgumentMatchers.<HttpEntity<String>>argThat(entity -> {
                     String body = entity.getBody();
                     String authorization = entity.getHeaders().getFirst("Authorization");
-                    return "Bearer test-toapis-key".equals(authorization)
-                            && body != null
-                            && body.contains("\"model\":\"doubao-seedance-2-0-fast-260128\"")
-                            && body.contains("\"prompt\":\"古风少女转身\"")
-                            && body.contains("\"aspect_ratio\":\"9:16\"")
-                            && body.contains("\"metadata\"")
-                            && body.contains("\"generate_audio\":true")
-                            && body.contains("\"image_with_roles\"")
-                            && body.contains("\"role\":\"reference_image\"");
+                    if (!"Bearer test-volc-key".equals(authorization) || body == null) {
+                        return false;
+                    }
+                    JSONObject json = JSON.parseObject(body);
+                    return "doubao-seedance-2-0-fast-260128".equals(json.getString("model"))
+                            && "9:16".equals(json.getString("ratio"))
+                            && Integer.valueOf(8).equals(json.getInteger("duration"))
+                            && Boolean.TRUE.equals(json.getBoolean("generate_audio"))
+                            && Boolean.FALSE.equals(json.getBoolean("watermark"))
+                            && Long.valueOf(123L).equals(json.getLong("seed"))
+                            && json.getJSONArray("content") != null
+                            && json.getJSONArray("content").size() == 2
+                            && "text".equals(json.getJSONArray("content").getJSONObject(0).getString("type"))
+                            && "古风少女转身".equals(json.getJSONArray("content").getJSONObject(0).getString("text"))
+                            && "image_url".equals(json.getJSONArray("content").getJSONObject(1).getString("type"))
+                            && "reference_image".equals(json.getJSONArray("content").getJSONObject(1).getString("role"))
+                            && "https://example.com/ref.png".equals(json.getJSONArray("content").getJSONObject(1).getJSONObject("image_url").getString("url"))
+                            && !json.containsKey("aspect_ratio")
+                            && !json.containsKey("image_with_roles")
+                            && !json.containsKey("metadata");
                 }),
                 eq(String.class)
         );
     }
 
     @Test
-    void submitVipUsesToapisVideoGenerationEndpointAndPayload() {
+    void submitVolcengineRequestPreservesReferenceRolesForImageVideoAndAudio() {
+        RestTemplate restTemplate = mock(RestTemplate.class);
+        SeedanceServiceImpl service = newService(restTemplate);
+        SeedanceRequest request = new SeedanceRequest();
+        request.setModel("doubao-seedance-2-0-260128");
+        request.setPrompt("全程使用视频1构图和音频1背景音乐");
+        request.setDuration(11);
+        request.setRatio("16:9");
+        request.setGenerateAudio(true);
+        request.setWatermark(true);
+
+        SeedanceRequest.ReferenceContent firstFrame = new SeedanceRequest.ReferenceContent();
+        firstFrame.setType("image_url");
+        firstFrame.setRole("first_frame");
+        SeedanceRequest.ImageUrl firstFrameUrl = new SeedanceRequest.ImageUrl();
+        firstFrameUrl.setUrl("https://example.com/first.png");
+        firstFrame.setImageUrl(firstFrameUrl);
+
+        SeedanceRequest.ReferenceContent refVideo = new SeedanceRequest.ReferenceContent();
+        refVideo.setType("video_url");
+        refVideo.setRole("reference_video");
+        SeedanceRequest.VideoUrl videoUrl = new SeedanceRequest.VideoUrl();
+        videoUrl.setUrl("https://example.com/ref.mp4");
+        refVideo.setVideoUrl(videoUrl);
+
+        SeedanceRequest.ReferenceContent refAudio = new SeedanceRequest.ReferenceContent();
+        refAudio.setType("audio_url");
+        refAudio.setRole("reference_audio");
+        SeedanceRequest.AudioUrl audioUrl = new SeedanceRequest.AudioUrl();
+        audioUrl.setUrl("https://example.com/ref.mp3");
+        refAudio.setAudioUrl(audioUrl);
+
+        request.setContents(List.of(firstFrame, refVideo, refAudio));
+
+        when(restTemplate.exchange(anyString(), eq(HttpMethod.POST), any(HttpEntity.class), eq(String.class)))
+                .thenReturn(ResponseEntity.ok("{\"id\":\"task-content\",\"status\":\"queued\"}"));
+
+        service.submitVideoGeneration(request);
+
+        verify(restTemplate).exchange(
+                eq("https://ark.example.com/api/v3/contents/generations/tasks"),
+                eq(HttpMethod.POST),
+                org.mockito.ArgumentMatchers.<HttpEntity<String>>argThat(entity -> {
+                    String body = entity.getBody();
+                    if (body == null) {
+                        return false;
+                    }
+                    JSONObject json = JSON.parseObject(body);
+                    return Boolean.TRUE.equals(json.getBoolean("watermark"))
+                            && Boolean.TRUE.equals(json.getBoolean("generate_audio"))
+                            && json.getJSONArray("content").size() == 4
+                            && "text".equals(json.getJSONArray("content").getJSONObject(0).getString("type"))
+                            && "image_url".equals(json.getJSONArray("content").getJSONObject(1).getString("type"))
+                            && "first_frame".equals(json.getJSONArray("content").getJSONObject(1).getString("role"))
+                            && "https://example.com/first.png".equals(json.getJSONArray("content").getJSONObject(1).getJSONObject("image_url").getString("url"))
+                            && "video_url".equals(json.getJSONArray("content").getJSONObject(2).getString("type"))
+                            && "reference_video".equals(json.getJSONArray("content").getJSONObject(2).getString("role"))
+                            && "https://example.com/ref.mp4".equals(json.getJSONArray("content").getJSONObject(2).getJSONObject("video_url").getString("url"))
+                            && "audio_url".equals(json.getJSONArray("content").getJSONObject(3).getString("type"))
+                            && "reference_audio".equals(json.getJSONArray("content").getJSONObject(3).getString("role"))
+                            && "https://example.com/ref.mp3".equals(json.getJSONArray("content").getJSONObject(3).getJSONObject("audio_url").getString("url"));
+                }),
+                eq(String.class)
+        );
+    }
+
+    @Test
+    void submitVipUsesVolcengineContentGenerationEndpointAndPayload() {
         RestTemplate restTemplate = mock(RestTemplate.class);
         SeedanceServiceImpl service = newService(restTemplate);
         SeedanceRequest request = new SeedanceRequest();
@@ -94,25 +174,31 @@ class SeedanceServiceImplTest {
         SeedanceResponse response = service.submitVideoGeneration(request);
 
         assertThat(response.getTaskId()).isEqualTo("task-vip");
+        assertThat(response.getSubmitModel()).isEqualTo("doubao-seedance-2-0-260128");
         verify(restTemplate).exchange(
-                eq("https://toapis.com/v1/videos/generations"),
+                eq("https://ark.example.com/api/v3/contents/generations/tasks"),
                 eq(HttpMethod.POST),
                 org.mockito.ArgumentMatchers.<HttpEntity<String>>argThat(entity -> {
                     String body = entity.getBody();
                     String authorization = entity.getHeaders().getFirst("Authorization");
-                    return "Bearer test-toapis-key".equals(authorization)
-                            && body != null
-                            && body.contains("\"model\":\"doubao-seedance-2-0-260128\"")
-                            && body.contains("\"prompt\":\"古风少女转身\"")
-                            && body.contains("\"aspect_ratio\":\"16:9\"")
-                            && body.contains("\"metadata\"");
+                    if (!"Bearer test-volc-key".equals(authorization) || body == null) {
+                        return false;
+                    }
+                    JSONObject json = JSON.parseObject(body);
+                    return "doubao-seedance-2-0-260128".equals(json.getString("model"))
+                            && "16:9".equals(json.getString("ratio"))
+                            && Integer.valueOf(5).equals(json.getInteger("duration"))
+                            && "古风少女转身".equals(json.getJSONArray("content").getJSONObject(0).getString("text"))
+                            && !json.containsKey("aspect_ratio")
+                            && !json.containsKey("resolution")
+                            && !json.containsKey("metadata");
                 }),
                 eq(String.class)
         );
     }
 
     @Test
-    void submitSeedance2Vip4kUsesOnlyMetadataResolution() {
+    void submitSeedance2AliasUsesVolcengineVipModel() {
         RestTemplate restTemplate = mock(RestTemplate.class);
         SeedanceServiceImpl service = newService(restTemplate);
         SeedanceRequest request = new SeedanceRequest();
@@ -130,28 +216,30 @@ class SeedanceServiceImplTest {
         SeedanceResponse response = service.submitVideoGeneration(request);
 
         assertThat(response.getTaskId()).isEqualTo("task-seedance2-4k");
+        assertThat(response.getSubmitModel()).isEqualTo("doubao-seedance-2-0-260128");
         verify(restTemplate).exchange(
-                eq("https://toapis.com/v1/videos/generations"),
+                eq("https://ark.example.com/api/v3/contents/generations/tasks"),
                 eq(HttpMethod.POST),
                 org.mockito.ArgumentMatchers.<HttpEntity<String>>argThat(entity -> {
                     String body = entity.getBody();
                     String authorization = entity.getHeaders().getFirst("Authorization");
-                    if (!"Bearer test-toapis-key".equals(authorization) || body == null) {
+                    if (!"Bearer test-volc-key".equals(authorization) || body == null) {
                         return false;
                     }
                     JSONObject json = JSON.parseObject(body);
-                    JSONObject metadata = json.getJSONObject("metadata");
-                    return "seedance-2".equals(json.getString("model"))
+                    return "doubao-seedance-2-0-260128".equals(json.getString("model"))
+                            && "16:9".equals(json.getString("ratio"))
+                            && "古风少女转身 4K".equals(json.getJSONArray("content").getJSONObject(0).getString("text"))
                             && !json.containsKey("resolution")
-                            && metadata != null
-                            && "1080p".equals(metadata.getString("resolution"));
+                            && !json.containsKey("metadata")
+                            && !json.containsKey("image_with_roles");
                 }),
                 eq(String.class)
         );
     }
 
     @Test
-    void submitLegacyVipModelWith1080pNormalizesToSeedance2Model() {
+    void submitLegacyVipModelWith1080pNormalizesToVolcengineVipModel() {
         RestTemplate restTemplate = mock(RestTemplate.class);
         SeedanceServiceImpl service = newService(restTemplate);
         SeedanceRequest request = new SeedanceRequest();
@@ -169,9 +257,9 @@ class SeedanceServiceImplTest {
         SeedanceResponse response = service.submitVideoGeneration(request);
 
         assertThat(response.getTaskId()).isEqualTo("task-legacy-vip-4k");
-        assertThat(response.getSubmitModel()).isEqualTo("seedance-2");
+        assertThat(response.getSubmitModel()).isEqualTo("doubao-seedance-2-0-260128");
         verify(restTemplate).exchange(
-                eq("https://toapis.com/v1/videos/generations"),
+                eq("https://ark.example.com/api/v3/contents/generations/tasks"),
                 eq(HttpMethod.POST),
                 org.mockito.ArgumentMatchers.<HttpEntity<String>>argThat(entity -> {
                     String body = entity.getBody();
@@ -179,17 +267,17 @@ class SeedanceServiceImplTest {
                         return false;
                     }
                     JSONObject json = JSON.parseObject(body);
-                    JSONObject metadata = json.getJSONObject("metadata");
-                    return "seedance-2".equals(json.getString("model"))
-                            && metadata != null
-                            && "1080p".equals(metadata.getString("resolution"));
+                    return "doubao-seedance-2-0-260128".equals(json.getString("model"))
+                            && "16:9".equals(json.getString("ratio"))
+                            && !json.containsKey("resolution")
+                            && !json.containsKey("metadata");
                 }),
                 eq(String.class)
         );
     }
 
     @Test
-    void submitSubjectReplacementVipModelUsesToapisReferenceVideoAndImages() {
+    void submitSubjectReplacementVipModelUsesVolcengineReferenceVideoAndImages() {
         RestTemplate restTemplate = mock(RestTemplate.class);
         SeedanceServiceImpl service = newService(restTemplate);
         SeedanceRequest request = new SeedanceRequest();
@@ -222,40 +310,53 @@ class SeedanceServiceImplTest {
         SeedanceResponse response = service.submitVideoGeneration(request);
 
         assertThat(response.getTaskId()).isEqualTo("subject-task");
-        assertThat(response.getSubmitRequestUrl()).isEqualTo("https://toapis.com/v1/videos/generations");
+        assertThat(response.getSubmitRequestUrl()).isEqualTo("https://ark.example.com/api/v3/contents/generations/tasks");
+        assertThat(response.getSubmitModel()).isEqualTo("doubao-seedance-2-0-260128");
         assertThat(response.getSubmitRequestBody())
                 .contains("\"model\":\"doubao-seedance-2-0-260128\"")
-                .contains("\"image_with_roles\"")
-                .contains("\"video_with_roles\"")
+                .contains("\"content\"")
+                .contains("\"type\":\"video_url\"")
                 .contains("\"role\":\"reference_video\"")
                 .contains("\"url\":\"https://example.com/input.mp4\"")
-                .doesNotContain("contents/generations/tasks");
+                .doesNotContain("image_with_roles")
+                .doesNotContain("video_with_roles");
         verify(restTemplate).exchange(
-                eq("https://toapis.com/v1/videos/generations"),
+                eq("https://ark.example.com/api/v3/contents/generations/tasks"),
                 eq(HttpMethod.POST),
                 org.mockito.ArgumentMatchers.<HttpEntity<String>>argThat(entity -> {
                     String body = entity.getBody();
                     String authorization = entity.getHeaders().getFirst("Authorization");
-                    return "Bearer test-toapis-key".equals(authorization)
-                            && body != null
-                            && body.contains("\"model\":\"doubao-seedance-2-0-260128\"")
-                            && body.contains("\"resolution\":\"720p\"")
-                            && body.contains("\"image_with_roles\":[{\"role\":\"reference_image\",\"url\":\"https://example.com/ref.png\"}]")
-                            && body.contains("\"video_with_roles\":[{\"role\":\"reference_video\",\"url\":\"https://example.com/input.mp4\"}]");
+                    if (!"Bearer test-volc-key".equals(authorization) || body == null) {
+                        return false;
+                    }
+                    JSONObject json = JSON.parseObject(body);
+                    return "doubao-seedance-2-0-260128".equals(json.getString("model"))
+                            && Boolean.TRUE.equals(json.getBoolean("generate_audio"))
+                            && "9:16".equals(json.getString("ratio"))
+                            && json.getJSONArray("content") != null
+                            && json.getJSONArray("content").size() == 3
+                            && "image_url".equals(json.getJSONArray("content").getJSONObject(1).getString("type"))
+                            && "https://example.com/ref.png".equals(json.getJSONArray("content").getJSONObject(1).getJSONObject("image_url").getString("url"))
+                            && "video_url".equals(json.getJSONArray("content").getJSONObject(2).getString("type"))
+                            && "reference_video".equals(json.getJSONArray("content").getJSONObject(2).getString("role"))
+                            && "https://example.com/input.mp4".equals(json.getJSONArray("content").getJSONObject(2).getJSONObject("video_url").getString("url"))
+                            && !json.containsKey("metadata")
+                            && !json.containsKey("image_with_roles")
+                            && !json.containsKey("video_with_roles");
                 }),
                 eq(String.class)
         );
     }
 
     @Test
-    void queryFastTaskKeepsUsingToapisEvenAfterVipSubmit() {
+    void queryKlingTaskKeepsUsingToapisEvenAfterVipSubmit() {
         RestTemplate restTemplate = mock(RestTemplate.class);
         SeedanceServiceImpl service = newService(restTemplate);
-        SeedanceRequest fastRequest = new SeedanceRequest();
-        fastRequest.setModel("doubao-seedance-2-0-fast-260128");
-        fastRequest.setPrompt("Fast 任务");
-        fastRequest.setDuration(5);
-        fastRequest.setRatio("16:9");
+        SeedanceRequest klingRequest = new SeedanceRequest();
+        klingRequest.setModel("kling-v3-omni");
+        klingRequest.setPrompt("Kling 任务");
+        klingRequest.setDuration(5);
+        klingRequest.setRatio("16:9");
         SeedanceRequest vipRequest = new SeedanceRequest();
         vipRequest.setModel("doubao-seedance-2-0-260128");
         vipRequest.setPrompt("VIP 任务");
@@ -263,18 +364,18 @@ class SeedanceServiceImplTest {
         vipRequest.setRatio("16:9");
 
         when(restTemplate.exchange(anyString(), eq(HttpMethod.POST), any(HttpEntity.class), eq(String.class)))
-                .thenReturn(ResponseEntity.ok("{\"id\":\"fast-task\",\"status\":\"queued\"}"))
+                .thenReturn(ResponseEntity.ok("{\"id\":\"kling-task\",\"status\":\"queued\"}"))
                 .thenReturn(ResponseEntity.ok("{\"id\":\"vip-task\",\"status\":\"pending\"}"));
         when(restTemplate.exchange(anyString(), eq(HttpMethod.GET), any(HttpEntity.class), eq(String.class)))
-                .thenReturn(ResponseEntity.ok("{\"id\":\"fast-task\",\"status\":\"succeeded\",\"video_url\":\"https://example.com/fast.mp4\"}"));
+                .thenReturn(ResponseEntity.ok("{\"id\":\"kling-task\",\"status\":\"succeeded\",\"video_url\":\"https://example.com/kling.mp4\"}"));
 
-        service.submitVideoGeneration(fastRequest);
+        service.submitVideoGeneration(klingRequest);
         service.submitVideoGeneration(vipRequest);
-        SeedanceResponse response = service.queryTaskStatus("fast-task");
+        SeedanceResponse response = service.queryTaskStatus("kling-task");
 
-        assertThat(response.getVideoUrl()).isEqualTo("https://example.com/fast.mp4");
+        assertThat(response.getVideoUrl()).isEqualTo("https://example.com/kling.mp4");
         verify(restTemplate).exchange(
-                eq("https://toapis.com/v1/videos/generations/fast-task"),
+                eq("https://toapis.com/v1/videos/generations/kling-task"),
                 eq(HttpMethod.GET),
                 org.mockito.ArgumentMatchers.<HttpEntity<String>>argThat(entity ->
                         "Bearer test-toapis-key".equals(entity.getHeaders().getFirst("Authorization"))
@@ -284,22 +385,22 @@ class SeedanceServiceImplTest {
     }
 
     @Test
-    void queryFastTaskReadsCompletedVideoUrlFromToapisMetadata() {
+    void queryKlingTaskReadsCompletedVideoUrlFromToapisMetadata() {
         RestTemplate restTemplate = mock(RestTemplate.class);
         SeedanceServiceImpl service = newService(restTemplate);
-        SeedanceRequest fastRequest = new SeedanceRequest();
-        fastRequest.setModel("doubao-seedance-2-0-fast-260128");
-        fastRequest.setPrompt("Fast 任务");
-        fastRequest.setDuration(6);
-        fastRequest.setRatio("16:9");
+        SeedanceRequest request = new SeedanceRequest();
+        request.setModel("kling-v3-omni");
+        request.setPrompt("Kling 任务");
+        request.setDuration(6);
+        request.setRatio("16:9");
 
         when(restTemplate.exchange(anyString(), eq(HttpMethod.POST), any(HttpEntity.class), eq(String.class)))
-                .thenReturn(ResponseEntity.ok("{\"id\":\"fast-task\",\"status\":\"\"}"));
+                .thenReturn(ResponseEntity.ok("{\"id\":\"kling-task\",\"status\":\"\"}"));
         when(restTemplate.exchange(anyString(), eq(HttpMethod.GET), any(HttpEntity.class), eq(String.class)))
-                .thenReturn(ResponseEntity.ok("{\"id\":\"fast-task\",\"status\":\"completed\",\"metadata\":{\"url\":\"https://files.toapis.com/result.mp4\"}}"));
+                .thenReturn(ResponseEntity.ok("{\"id\":\"kling-task\",\"status\":\"completed\",\"metadata\":{\"url\":\"https://files.toapis.com/result.mp4\"}}"));
 
-        service.submitVideoGeneration(fastRequest);
-        SeedanceResponse response = service.queryTaskStatus("fast-task");
+        service.submitVideoGeneration(request);
+        SeedanceResponse response = service.queryTaskStatus("kling-task");
 
         assertThat(response.getStatus()).isEqualTo("completed");
         assertThat(response.getVideoUrl()).isEqualTo("https://files.toapis.com/result.mp4");
@@ -320,13 +421,40 @@ class SeedanceServiceImplTest {
         when(restTemplate.exchange(anyString(), eq(HttpMethod.POST), any(HttpEntity.class), eq(String.class)))
                 .thenReturn(ResponseEntity.ok("{\"id\":\"fast-timeout-task\",\"status\":\"queued\"}"));
         when(restTemplate.exchange(anyString(), eq(HttpMethod.GET), any(HttpEntity.class), eq(String.class)))
-                .thenThrow(new ResourceAccessException("I/O error on GET request for \"https://toapis.com/v1/videos/generations/fast-timeout-task\": Connect timed out"))
-                .thenReturn(ResponseEntity.ok("{\"id\":\"fast-timeout-task\",\"status\":\"completed\",\"metadata\":{\"url\":\"https://files.toapis.com/result.mp4\"}}"));
+                .thenThrow(new ResourceAccessException("I/O error on GET request for \"https://ark.example.com/api/v3/contents/generations/tasks/fast-timeout-task\": Connect timed out"))
+                .thenReturn(ResponseEntity.ok("{\"id\":\"fast-timeout-task\",\"status\":\"completed\",\"content\":{\"video_url\":\"https://files.volc.example.com/result.mp4\"}}"));
 
         SeedanceResponse response = service.generateVideo(request);
 
         assertThat(response.getStatus()).isEqualTo("completed");
-        assertThat(response.getVideoUrl()).isEqualTo("https://files.toapis.com/result.mp4");
+        assertThat(response.getVideoUrl()).isEqualTo("https://files.volc.example.com/result.mp4");
+    }
+
+    @Test
+    void submitKlingVideoGenerationRetriesPostWhenConnectionResetThenSucceeds() {
+        RestTemplate restTemplate = mock(RestTemplate.class);
+        SeedanceServiceImpl service = newService(restTemplate);
+        SeedanceRequest request = new SeedanceRequest();
+        request.setModel("kling-v3-omni");
+        request.setPrompt("试穿视频任务");
+        request.setDuration(8);
+        request.setRatio("9:16");
+
+        when(restTemplate.exchange(anyString(), eq(HttpMethod.POST), any(HttpEntity.class), eq(String.class)))
+                .thenThrow(new ResourceAccessException("I/O error on POST request for \"https://toapis.com/v1/videos/generations\": Connection reset"))
+                .thenReturn(ResponseEntity.ok("{\"id\":\"retry-task\",\"status\":\"queued\"}"));
+
+        SeedanceResponse response = service.submitVideoGeneration(request);
+
+        assertThat(response.getTaskId()).isEqualTo("retry-task");
+        assertThat(response.getStatus()).isEqualTo("queued");
+        assertThat(response.getSubmitModel()).isEqualTo("kling-v3-omni");
+        verify(restTemplate, times(2)).exchange(
+                eq("https://toapis.com/v1/videos/generations"),
+                eq(HttpMethod.POST),
+                any(HttpEntity.class),
+                eq(String.class)
+        );
     }
 
     @Test
@@ -639,7 +767,7 @@ class SeedanceServiceImplTest {
     }
 
     @Test
-    void submitToapisHttpFailureKeepsSubmitRequestMetadataForDiagnostics() {
+    void submitVolcengineHttpFailureKeepsSubmitRequestMetadataForDiagnostics() {
         RestTemplate restTemplate = mock(RestTemplate.class);
         SeedanceServiceImpl service = newService(restTemplate);
         SeedanceRequest request = new SeedanceRequest();
@@ -662,11 +790,12 @@ class SeedanceServiceImplTest {
         SeedanceResponse response = service.submitVideoGeneration(request);
 
         assertThat(response.getStatus()).isEqualTo("failed");
-        assertThat(response.getSubmitRequestUrl()).isEqualTo("https://toapis.com/v1/videos/generations");
+        assertThat(response.getSubmitRequestUrl()).isEqualTo("https://ark.example.com/api/v3/contents/generations/tasks");
         assertThat(response.getSubmitModel()).isEqualTo("doubao-seedance-2-0-260128");
         assertThat(response.getSubmitRequestBody())
                 .contains("\"model\":\"doubao-seedance-2-0-260128\"")
-                .contains("\"prompt\":\"主体替换任务\"");
+                .contains("\"content\"")
+                .contains("\"text\":\"主体替换任务\"");
     }
 
     @Test

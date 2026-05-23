@@ -46,8 +46,9 @@ urlpatterns = [
     path('commerce/models/<int:model_id>/regenerate/', views.commerce_model_regenerate, name='commerce_model_regenerate'),
     path('commerce/models/<int:model_id>/products/create/', views.commerce_product_create, name='commerce_product_create'),
     path('commerce/products/<int:product_id>/projects/create/', views.commerce_project_create, name='commerce_project_create'),
+    path('commerce/projects/<int:project_id>/status/', views.commerce_project_status, name='commerce_project_status'),
+    path('commerce/projects/<int:project_id>/generation/start/', views.commerce_project_generation_start, name='commerce_project_generation_start'),
     path('commerce/projects/<int:project_id>/', views.commerce_project_detail, name='commerce_project_detail'),
-    path('commerce/projects/<int:project_id>/confirm-first-frame/', views.commerce_project_confirm_first_frame, name='commerce_project_confirm_first_frame'),
     path('commerce/projects/<int:project_id>/generate-video/', views.commerce_project_generate_video, name='commerce_project_generate_video'),
 
     # 回收站页面

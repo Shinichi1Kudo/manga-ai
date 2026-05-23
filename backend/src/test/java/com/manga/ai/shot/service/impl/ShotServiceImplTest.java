@@ -501,7 +501,7 @@ class ShotServiceImplTest {
     }
 
     @Test
-    void seedanceVip4kShotUsesSeedance2ModelAnd1080pResolution() {
+    void seedanceVip4kShotUsesVolcengineVipModelAnd1080pResolution() {
         ShotMapper shotMapper = mock(ShotMapper.class);
         Shot shot = new Shot();
         shot.setId(639L);
@@ -527,7 +527,7 @@ class ShotServiceImplTest {
         ArgumentCaptor<SeedanceRequest> requestCaptor = ArgumentCaptor.forClass(SeedanceRequest.class);
         verify(seedanceService).generateVideo(requestCaptor.capture());
         SeedanceRequest request = requestCaptor.getValue();
-        assertThat(request.getModel()).isEqualTo("seedance-2");
+        assertThat(request.getModel()).isEqualTo("doubao-seedance-2-0-260128");
         assertThat(request.getResolution()).isEqualTo("1080p");
         assertThat(request.getWidth()).isEqualTo(1920);
         assertThat(request.getHeight()).isEqualTo(1080);

@@ -23,6 +23,8 @@ public class CommerceShot implements Serializable {
     private String visualDescription;
     private String voiceoverText;
     private Integer durationSeconds;
+    private String resolution;
+    private String videoModel;
     private String videoUrl;
     private String generationStatus;
     private String errorMessage;
