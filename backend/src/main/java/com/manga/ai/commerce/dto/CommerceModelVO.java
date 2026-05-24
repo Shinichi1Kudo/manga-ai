@@ -11,6 +11,8 @@ public class CommerceModelVO implements Serializable {
 
     private Long id;
     private Long seriesId;
+    private String seriesName;
+    private Boolean inTargetSeries;
     private String name;
     private String sourceType;
     private String genderAge;

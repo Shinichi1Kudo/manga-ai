@@ -25,6 +25,7 @@ import com.manga.ai.commerce.mapper.CommerceSceneMapper;
 import com.manga.ai.commerce.mapper.CommerceSeriesMapper;
 import com.manga.ai.commerce.mapper.CommerceShotMapper;
 import com.manga.ai.commerce.service.CommerceModelProfileService;
+import com.manga.ai.commerce.service.CommerceProductImagePrivacyService;
 import com.manga.ai.commerce.service.dto.CommerceModelProfile;
 import com.manga.ai.common.constants.CreditConstants;
 import com.manga.ai.common.enums.CreditUsageType;
@@ -72,6 +73,7 @@ class CommerceServiceImplTest {
     private final SeedanceService seedanceService = mock(SeedanceService.class);
     private final UserService userService = mock(UserService.class);
     private final CommerceModelProfileService modelProfileService = mock(CommerceModelProfileService.class);
+    private final CommerceProductImagePrivacyService productImagePrivacyService = mock(CommerceProductImagePrivacyService.class);
     private final ImageGenerateService imageGenerateService = mock(ImageGenerateService.class);
     private final OssService ossService = mock(OssService.class);
     private final List<Runnable> commerceImageTasks = new ArrayList<>();
@@ -88,6 +90,7 @@ class CommerceServiceImplTest {
             seedanceService,
             userService,
             modelProfileService,
+            productImagePrivacyService,
             imageGenerateService,
             ossService,
             commerceImageExecutor,
@@ -99,6 +102,10 @@ class CommerceServiceImplTest {
         UserContextHolder.clear();
         commerceImageTasks.clear();
         commerceVideoTasks.clear();
+    }
+
+    private void keepProductReferencesUnchanged() {
+        when(productImagePrivacyService.sanitizeProductReferences(any())).thenAnswer(invocation -> invocation.getArgument(0));
     }
 
     @Test
@@ -607,6 +614,122 @@ class CommerceServiceImplTest {
     }
 
     @Test
+    void listModelLibraryReturnsLockedModelsWithSourceSeriesAndTargetFlag() {
+        UserContextHolder.setUserId(9L);
+        CommerceSeries targetSeries = new CommerceSeries();
+        targetSeries.setId(100L);
+        targetSeries.setUserId(9L);
+        targetSeries.setName("夏季女装");
+        CommerceSeries sourceSeries = new CommerceSeries();
+        sourceSeries.setId(200L);
+        sourceSeries.setUserId(9L);
+        sourceSeries.setName("春季女装");
+        when(seriesMapper.selectById(100L)).thenReturn(targetSeries);
+        when(seriesMapper.selectById(200L)).thenReturn(sourceSeries);
+
+        CommerceModel libraryModel = new CommerceModel();
+        libraryModel.setId(66L);
+        libraryModel.setSeriesId(200L);
+        libraryModel.setUserId(9L);
+        libraryModel.setName("小雅");
+        libraryModel.setGenderAge("女 / 年轻美女 / 中国");
+        libraryModel.setBodyProfile("高挑模特");
+        libraryModel.setBaseImageUrl("https://oss.example.com/model.png");
+        libraryModel.setStatus("locked");
+
+        CommerceModel currentModel = new CommerceModel();
+        currentModel.setId(67L);
+        currentModel.setSeriesId(100L);
+        currentModel.setUserId(9L);
+        currentModel.setName("小夏");
+        currentModel.setGenderAge("女 / 亲和素人女性 / 中国");
+        currentModel.setBodyProfile("标准匀称");
+        currentModel.setBaseImageUrl("https://oss.example.com/current-model.png");
+        currentModel.setStatus("locked");
+        when(modelMapper.selectList(any())).thenReturn(List.of(libraryModel, currentModel));
+
+        List<CommerceModelVO> result = service.listModelLibrary(100L);
+
+        assertThat(result).extracting(CommerceModelVO::getId).containsExactly(66L, 67L);
+        assertThat(result.get(0).getSeriesName()).isEqualTo("春季女装");
+        assertThat(result.get(0).getInTargetSeries()).isFalse();
+        assertThat(result.get(1).getSeriesName()).isEqualTo("夏季女装");
+        assertThat(result.get(1).getInTargetSeries()).isTrue();
+    }
+
+    @Test
+    void reuseModelCopiesLockedSourceIntoTargetSeriesWithoutImageGenerationOrCredits() {
+        UserContextHolder.setUserId(9L);
+        CommerceSeries targetSeries = new CommerceSeries();
+        targetSeries.setId(100L);
+        targetSeries.setUserId(9L);
+        targetSeries.setName("夏季女装");
+        when(seriesMapper.selectById(100L)).thenReturn(targetSeries);
+
+        CommerceModel source = new CommerceModel();
+        source.setId(66L);
+        source.setSeriesId(200L);
+        source.setUserId(9L);
+        source.setName("小雅");
+        source.setSourceType("ai");
+        source.setGenderAge("女 / 年轻美女 / 中国");
+        source.setBodyProfile("高挑模特");
+        source.setStyleTags("真人写实, 电商带货");
+        source.setSpeakingPersona("温柔亲和");
+        source.setAppearancePrompt("年轻中国女性，气质自信，适合女装种草。");
+        source.setBaseImageUrl("https://oss.example.com/model.png");
+        source.setModelAspectRatio("16:9");
+        source.setStatus("locked");
+        when(modelMapper.selectById(66L)).thenReturn(source);
+
+        CommerceModelVO result = service.reuseModelIntoSeries(100L, 66L);
+
+        ArgumentCaptor<CommerceModel> modelCaptor = ArgumentCaptor.forClass(CommerceModel.class);
+        verify(modelMapper).insert(modelCaptor.capture());
+        CommerceModel saved = modelCaptor.getValue();
+        assertThat(saved.getSeriesId()).isEqualTo(100L);
+        assertThat(saved.getUserId()).isEqualTo(9L);
+        assertThat(saved.getName()).isEqualTo("小雅");
+        assertThat(saved.getSourceType()).isEqualTo("library");
+        assertThat(saved.getGenderAge()).isEqualTo("女 / 年轻美女 / 中国");
+        assertThat(saved.getBodyProfile()).isEqualTo("高挑模特");
+        assertThat(saved.getAppearancePrompt()).isEqualTo("年轻中国女性，气质自信，适合女装种草。");
+        assertThat(saved.getBaseImageUrl()).isEqualTo("https://oss.example.com/model.png");
+        assertThat(saved.getModelAspectRatio()).isEqualTo("16:9");
+        assertThat(saved.getStatus()).isEqualTo("locked");
+        assertThat(result.getStatus()).isEqualTo("locked");
+        assertThat(result.getSourceType()).isEqualTo("library");
+        assertThat(commerceImageTasks).isEmpty();
+        verify(imageGenerateService, never()).generateCommerceModelImage(any());
+        verify(userService, never()).deductCredits(anyLong(), anyInt(), anyString(), anyString(), anyLong(), anyString());
+    }
+
+    @Test
+    void reuseModelRejectsUnlockedSource() {
+        UserContextHolder.setUserId(9L);
+        CommerceSeries targetSeries = new CommerceSeries();
+        targetSeries.setId(100L);
+        targetSeries.setUserId(9L);
+        when(seriesMapper.selectById(100L)).thenReturn(targetSeries);
+        CommerceModel source = new CommerceModel();
+        source.setId(66L);
+        source.setSeriesId(200L);
+        source.setUserId(9L);
+        source.setName("小雅");
+        source.setStatus("pending_review");
+        source.setBaseImageUrl("https://oss.example.com/model.png");
+        when(modelMapper.selectById(66L)).thenReturn(source);
+
+        assertThatThrownBy(() -> service.reuseModelIntoSeries(100L, 66L))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("只能沿用已锁定的模特");
+
+        verify(modelMapper, never()).insert(any());
+        verify(userService, never()).deductCredits(anyLong(), anyInt(), anyString(), anyString(), anyLong(), anyString());
+        verify(imageGenerateService, never()).generateCommerceModelImage(any());
+    }
+
+    @Test
     void confirmModelRejectsGeneratingModel() {
         UserContextHolder.setUserId(9L);
         CommerceModel model = new CommerceModel();
@@ -773,6 +896,70 @@ class CommerceServiceImplTest {
     }
 
     @Test
+    void updateProductImagesReplacesImageGroupAndUsesNewMainImage() {
+        UserContextHolder.setUserId(9L);
+        CommerceProduct product = new CommerceProduct();
+        product.setId(300L);
+        product.setModelId(200L);
+        product.setSeriesId(100L);
+        product.setUserId(9L);
+        product.setName("冰丝防晒衬衫");
+        product.setImageUrl("https://oss.example.com/old-main.png");
+        product.setImagesJson("[{\"url\":\"https://oss.example.com/old-main.png\",\"usage\":\"主图\"}]");
+        when(productMapper.selectById(300L)).thenReturn(product);
+
+        CommerceProductCreateRequest request = new CommerceProductCreateRequest();
+        CommerceProductCreateRequest.ProductImageItem detailImage = new CommerceProductCreateRequest.ProductImageItem();
+        detailImage.setUrl("https://oss.example.com/new-detail.png");
+        detailImage.setUsage("细节图");
+        CommerceProductCreateRequest.ProductImageItem mainImage = new CommerceProductCreateRequest.ProductImageItem();
+        mainImage.setUrl("https://oss.example.com/new-main.png");
+        mainImage.setUsage("主图");
+        CommerceProductCreateRequest.ProductImageItem wornImage = new CommerceProductCreateRequest.ProductImageItem();
+        wornImage.setUrl("https://oss.example.com/new-worn.png");
+        wornImage.setUsage("上身参考");
+        request.setImages(List.of(detailImage, mainImage, wornImage));
+
+        CommerceProductVO result = service.updateProductImages(300L, request);
+
+        assertThat(result.getImageUrl()).isEqualTo("https://oss.example.com/new-main.png");
+        assertThat(result.getImages()).extracting(CommerceProductVO.ProductImageVO::getUsage)
+                .containsExactly("主图", "上身参考", "细节图");
+        assertThat(result.getImages()).extracting(CommerceProductVO.ProductImageVO::getUrl)
+                .containsExactly(
+                        "https://oss.example.com/new-main.png",
+                        "https://oss.example.com/new-worn.png",
+                        "https://oss.example.com/new-detail.png");
+        ArgumentCaptor<CommerceProduct> productCaptor = ArgumentCaptor.forClass(CommerceProduct.class);
+        verify(productMapper).updateById(productCaptor.capture());
+        CommerceProduct updated = productCaptor.getValue();
+        assertThat(updated.getImageUrl()).isEqualTo("https://oss.example.com/new-main.png");
+        assertThat(updated.getImagesJson())
+                .contains("\"url\":\"https://oss.example.com/new-main.png\"")
+                .contains("\"usage\":\"主图\"")
+                .doesNotContain("old-main.png");
+        verify(projectMapper, never()).updateById(any());
+    }
+
+    @Test
+    void updateProductImagesRejectsEmptyImageGroup() {
+        UserContextHolder.setUserId(9L);
+        CommerceProduct product = new CommerceProduct();
+        product.setId(300L);
+        product.setUserId(9L);
+        product.setImageUrl("https://oss.example.com/old-main.png");
+        when(productMapper.selectById(300L)).thenReturn(product);
+
+        CommerceProductCreateRequest request = new CommerceProductCreateRequest();
+
+        assertThatThrownBy(() -> service.updateProductImages(300L, request))
+                .isInstanceOf(BusinessException.class)
+                .hasMessageContaining("请上传商品图片");
+
+        verify(productMapper, never()).updateById(any());
+    }
+
+    @Test
     void uploadProductImageStoresFileInCommerceProductsOssFolder() {
         UserContextHolder.setUserId(9L);
         MockMultipartFile file = new MockMultipartFile(
@@ -822,34 +1009,54 @@ class CommerceServiceImplTest {
             return 1;
         }).when(sceneMapper).insert(any(CommerceScene.class));
         CommerceSceneBatchCreateRequest request = new CommerceSceneBatchCreateRequest();
-        request.setSceneTypes(List.of("品牌场景", "直播间背景", "街拍场景"));
+        request.setSceneTypes(List.of("品牌场景", "直播间背景", "街拍场景", "田间自然", "海边旅拍", "海边氛围", "艺术馆", "城市夜景"));
         request.setBrandSceneName("LUMIA Studio");
         request.setCustomScenes(List.of("咖啡店落地窗旁"));
         request.setAspectRatio("16:9");
         request.setResolution("3K");
         request.setCountPerScene(1);
+        request.setTimeMood("night");
+        request.setCrowdMode("ambient");
         request.setDescription("浅色女装品牌调性，干净高级");
 
         List<CommerceSceneVO> result = service.prepareSceneBatch(100L, request);
 
         assertThat(result).extracting(CommerceSceneVO::getSceneType)
-                .containsExactly("品牌场景", "直播间背景", "街拍场景", "自定义");
+                .containsExactly("品牌场景", "直播间背景", "街拍场景", "田间自然", "海边旅拍", "海边氛围", "艺术馆", "城市夜景", "自定义");
         assertThat(result).extracting(CommerceSceneVO::getName)
-                .containsExactly("品牌场景", "直播间背景", "街拍场景", "咖啡店落地窗旁");
+                .containsExactly("品牌场景", "直播间背景", "街拍场景", "田间自然", "海边旅拍", "海边氛围", "艺术馆", "城市夜景", "咖啡店落地窗旁");
         assertThat(result).extracting(CommerceSceneVO::getStatus)
                 .containsOnly("generating");
         ArgumentCaptor<CommerceScene> sceneCaptor = ArgumentCaptor.forClass(CommerceScene.class);
-        verify(sceneMapper, times(4)).insert(sceneCaptor.capture());
+        verify(sceneMapper, times(9)).insert(sceneCaptor.capture());
         assertThat(sceneCaptor.getAllValues()).extracting(CommerceScene::getLibraryType)
-                .containsExactly("品牌场景库", "直播间背景库", "街拍场景库", "自定义场景库");
+                .containsExactly(
+                        "品牌场景库", "直播间背景库", "街拍场景库",
+                        "自然氛围场景库", "旅拍场景库", "海边氛围场景库", "生活方式场景库", "街拍场景库",
+                        "自定义场景库");
         assertThat(sceneCaptor.getAllValues()).extracting(CommerceScene::getPrompt)
                 .allSatisfy(prompt -> assertThat(prompt)
                         .contains("电商服装试穿场景背景图")
                         .contains("用于后续虚拟试穿合成")
                         .contains("完整真人模特站立空间")
-                        .contains("不要出现人物、人体、模特、手脚、服装商品")
+                        .contains("电影感")
+                        .contains("情绪化光影")
+                        .contains("景深效果")
+                        .contains("照片级真实感")
+                        .contains("电影级摄影")
+                        .contains("低角度")
+                        .contains("选择性浅景深")
+                        .contains("前景强虚化")
+                        .contains("胶片模拟质感")
+                        .contains("非对称构图")
+                        .contains("严格主体要求")
+                        .contains("允许远景或画面边缘出现少量模糊低存在感的氛围人群")
+                        .contains("夜晚氛围")
+                        .contains("必须有少量")
+                        .contains("虚化氛围")
+                        .contains("不要出现人物、人体、模特、手脚")
                         .contains("浅色女装品牌调性"));
-        assertThat(sceneCaptor.getAllValues().subList(1, 4)).extracting(CommerceScene::getPrompt)
+        assertThat(sceneCaptor.getAllValues().subList(1, 9)).extracting(CommerceScene::getPrompt)
                 .allSatisfy(prompt -> assertThat(prompt).contains("无文字、无水印、无Logo"));
         assertThat(sceneCaptor.getAllValues().get(0).getPrompt())
                 .contains("LUMIA Studio")
@@ -861,14 +1068,281 @@ class CommerceServiceImplTest {
                 .contains("不要翻译、不要改写、不要改变大小写")
                 .doesNotContain("不要出现品牌字样")
                 .doesNotContain("无文字、无水印、无Logo");
-        assertThat(sceneCaptor.getAllValues().get(3).getPrompt())
+        CommerceScene brandScene = sceneCaptor.getAllValues().get(0);
+        CommerceScene liveScene = sceneCaptor.getAllValues().get(1);
+        CommerceScene streetScene = sceneCaptor.getAllValues().get(2);
+        CommerceScene fieldScene = sceneCaptor.getAllValues().get(3);
+        CommerceScene seasideScene = sceneCaptor.getAllValues().get(4);
+        CommerceScene seasideMoodScene = sceneCaptor.getAllValues().get(5);
+        CommerceScene galleryScene = sceneCaptor.getAllValues().get(6);
+        CommerceScene cityNightScene = sceneCaptor.getAllValues().get(7);
+        CommerceScene customScene = sceneCaptor.getAllValues().get(8);
+        assertThat(liveScene.getPrompt())
+                .contains("室内夜晚氛围")
+                .contains("低照度室内环境")
+                .contains("室内灯带")
+                .contains("背景氛围光")
+                .contains("必须有少量顾客/工作人员轮廓")
+                .doesNotContain("蓝天")
+                .doesNotContain("白昼")
+                .doesNotContain("湿润的沥青路面")
+                .doesNotContain("交通信号灯");
+        assertThat(brandScene.getPrompt())
+                .contains("室内夜晚氛围")
+                .contains("必须有少量顾客/工作人员轮廓")
+                .doesNotContain("湿润的沥青路面")
+                .doesNotContain("交通信号灯");
+        assertThat(streetScene.getPrompt())
+                .contains("电影感城市夜景")
+                .contains("湿润的沥青路面")
+                .contains("城市灯光反射")
+                .contains("虚化交通信号灯")
+                .contains("低照度环境")
+                .contains("远处背景必须有少量路人");
+        assertThat(fieldScene.getPrompt())
+                .contains("田间自然场景")
+                .contains("开阔麦田")
+                .contains("草叶和谷穗")
+                .contains("生活方式大片氛围")
+                .contains("自然旅拍夜晚氛围")
+                .contains("远处背景必须有少量路人")
+                .doesNotContain("交通信号灯")
+                .doesNotContain("沥青路面");
+        assertThat(seasideScene.getPrompt())
+                .contains("高级海边旅拍场景")
+                .contains("海平线")
+                .contains("海风流动感")
+                .contains("度假大片感")
+                .contains("自然旅拍夜晚氛围")
+                .doesNotContain("交通信号灯")
+                .doesNotContain("沥青路面");
+        assertThat(seasideMoodScene.getPrompt())
+                .contains("海边氛围")
+                .contains("浪漫电影手法")
+                .contains("海岸线")
+                .contains("自由与松弛感")
+                .contains("前景强虚化");
+        assertThat(galleryScene.getPrompt())
+                .contains("艺术馆")
+                .contains("极简高级")
+                .contains("低照度室内环境")
+                .contains("必须有少量顾客/工作人员轮廓");
+        assertThat(cityNightScene.getPrompt())
+                .contains("都市夜景时装大片场景")
+                .contains("霓虹")
+                .contains("人物预留补光")
+                .contains("远处背景必须有少量路人");
+        assertThat(customScene.getPrompt())
                 .contains("用户填写的词仅作为场景主题")
                 .contains("生成空场景背景")
                 .contains("后续可以自然放入真人模特和服装商品")
+                .contains("室内夜晚氛围")
+                .contains("室内灯带")
+                .contains("必须有少量顾客/工作人员轮廓")
+                .doesNotContain("湿润的沥青路面")
+                .doesNotContain("交通信号灯")
                 .contains("不要根据用户词生成正在试穿的人、衣服、商品展示架或广告牌")
                 .contains("主体落位区");
         assertThat(commerceImageTasks).isEmpty();
         verify(imageGenerateService, never()).generateCommerceSceneImage(any());
+    }
+
+    @Test
+    void prepareSceneBatchKeepsUrbanScenePromptConsistentWithSelectedTimeMood() {
+        UserContextHolder.setUserId(9L);
+        CommerceSeries series = new CommerceSeries();
+        series.setId(100L);
+        series.setUserId(9L);
+        series.setName("小雅女装种草号");
+        when(seriesMapper.selectById(100L)).thenReturn(series);
+        List<CommerceScene> insertedScenes = new ArrayList<>();
+        doAnswer(invocation -> {
+            CommerceScene scene = invocation.getArgument(0);
+            scene.setId(900L + insertedScenes.size());
+            insertedScenes.add(scene);
+            return 1;
+        }).when(sceneMapper).insert(any(CommerceScene.class));
+        CommerceSceneBatchCreateRequest request = new CommerceSceneBatchCreateRequest();
+        request.setSceneTypes(List.of("街拍场景", "城市夜景"));
+        request.setAspectRatio("9:16");
+        request.setResolution("2K");
+        request.setCountPerScene(1);
+        request.setTimeMood("day");
+        request.setCrowdMode("empty");
+
+        service.prepareSceneBatch(100L, request);
+
+        assertThat(insertedScenes).hasSize(2);
+        CommerceScene streetScene = insertedScenes.get(0);
+        CommerceScene cityScene = insertedScenes.get(1);
+        assertThat(streetScene.getPrompt())
+                .contains("日光街拍")
+                .contains("明亮自然光")
+                .contains("通勤街景")
+                .doesNotContain("电影感城市夜景")
+                .doesNotContain("湿润的沥青路面")
+                .doesNotContain("城市灯光反射")
+                .doesNotContain("虚化交通信号灯")
+                .doesNotContain("低照度环境");
+        assertThat(cityScene.getPrompt())
+                .contains("白天都市大片")
+                .contains("玻璃幕墙")
+                .contains("干净城市广场")
+                .contains("明亮自然光")
+                .doesNotContain("都市夜景时装大片场景")
+                .doesNotContain("霓虹")
+                .doesNotContain("交通信号灯")
+                .doesNotContain("低照度环境");
+    }
+
+    @Test
+    void prepareSceneBatchBuildsCleanSempornaBeachPrompts() {
+        UserContextHolder.setUserId(9L);
+        CommerceSeries series = new CommerceSeries();
+        series.setId(100L);
+        series.setUserId(9L);
+        series.setName("小雅女装种草号");
+        when(seriesMapper.selectById(100L)).thenReturn(series);
+        List<CommerceScene> insertedScenes = new ArrayList<>();
+        doAnswer(invocation -> {
+            CommerceScene scene = invocation.getArgument(0);
+            scene.setId(960L + insertedScenes.size());
+            insertedScenes.add(scene);
+            return 1;
+        }).when(sceneMapper).insert(any(CommerceScene.class));
+        CommerceSceneBatchCreateRequest request = new CommerceSceneBatchCreateRequest();
+        request.setSceneTypes(List.of("海边旅拍", "海边氛围"));
+        request.setAspectRatio("9:16");
+        request.setResolution("2K");
+        request.setCountPerScene(1);
+        request.setTimeMood("day");
+        request.setCrowdMode("empty");
+
+        service.prepareSceneBatch(100L, request);
+
+        assertThat(insertedScenes).hasSize(2);
+        CommerceScene seasideTravelScene = insertedScenes.get(0);
+        CommerceScene seasideMoodScene = insertedScenes.get(1);
+        assertThat(insertedScenes).extracting(CommerceScene::getPrompt)
+                .allSatisfy(prompt -> assertThat(prompt)
+                        .contains("仙本那")
+                        .contains("果冻海")
+                        .contains("奶粉沙滩")
+                        .contains("蓝绿色透明浅海")
+                        .contains("干净开阔")
+                        .contains("海平线必须保持水平")
+                        .contains("海水只能位于海岸线的一侧")
+                        .contains("沙滩必须连续")
+                        .contains("不要生成白沙舌、沙洲孤岛、环形浅滩、双重水线")
+                        .contains("不要出现杂草、芦苇、乱草、海草前景")
+                        .contains("后续模特和服装可以自然落位")
+                        .doesNotContain("旷野沙丘")
+                        .doesNotContain("潮湿沙滩")
+                        .doesNotContain("强虚化海草")
+                        .doesNotContain("可用草叶、芦苇")
+                        .doesNotContain("月光"));
+        assertThat(seasideTravelScene.getPrompt())
+                .contains("度假旅拍动线")
+                .contains("干净可行走的弧形海岸线")
+                .contains("远处水上屋")
+                .contains("主体落位区像真实海岛旅拍站位")
+                .doesNotContain("纯净海岛氛围空镜");
+        assertThat(seasideMoodScene.getPrompt())
+                .contains("纯净海岛氛围空镜")
+                .contains("极简海天分层")
+                .contains("大片感空镜")
+                .contains("主体落位区像高级海边广告片留白")
+                .doesNotContain("远处水上屋");
+    }
+
+    @Test
+    void prepareSceneBatchKeepsBeachPromptsConsistentWithNightAndAmbientCrowd() {
+        UserContextHolder.setUserId(9L);
+        CommerceSeries series = new CommerceSeries();
+        series.setId(100L);
+        series.setUserId(9L);
+        series.setName("小雅女装种草号");
+        when(seriesMapper.selectById(100L)).thenReturn(series);
+        List<CommerceScene> insertedScenes = new ArrayList<>();
+        doAnswer(invocation -> {
+            CommerceScene scene = invocation.getArgument(0);
+            scene.setId(970L + insertedScenes.size());
+            insertedScenes.add(scene);
+            return 1;
+        }).when(sceneMapper).insert(any(CommerceScene.class));
+        CommerceSceneBatchCreateRequest request = new CommerceSceneBatchCreateRequest();
+        request.setSceneTypes(List.of("海边旅拍", "海边氛围"));
+        request.setAspectRatio("9:16");
+        request.setResolution("2K");
+        request.setCountPerScene(1);
+        request.setTimeMood("night");
+        request.setCrowdMode("ambient");
+
+        service.prepareSceneBatch(100L, request);
+
+        assertThat(insertedScenes).hasSize(2);
+        assertThat(insertedScenes).extracting(CommerceScene::getPrompt)
+                .allSatisfy(prompt -> assertThat(prompt)
+                        .contains("夜晚")
+                        .contains("海岛蓝调")
+                        .contains("月光")
+                        .contains("少量")
+                        .contains("虚化氛围")
+                        .contains("低存在感")
+                        .contains("允许远景或画面边缘出现少量模糊低存在感")
+                        .doesNotContain("高透日光")
+                        .doesNotContain("高透天空")
+                        .doesNotContain("轻薄白云")
+                        .doesNotContain("明亮治愈")
+                        .doesNotContain("纯净海岛氛围空镜")
+                        .doesNotContain("空无一人的室外环境")
+                        .doesNotContain("人群氛围：无人")
+                        .doesNotContain("不要生成真人、远行者、女性、模特或人物剪影"));
+    }
+
+    @Test
+    void prepareSceneBatchKeepsAllSceneDetailsFreeFromConflictingTimeMoodTerms() {
+        UserContextHolder.setUserId(9L);
+        CommerceSeries series = new CommerceSeries();
+        series.setId(100L);
+        series.setUserId(9L);
+        series.setName("小雅女装种草号");
+        when(seriesMapper.selectById(100L)).thenReturn(series);
+        List<CommerceScene> insertedScenes = new ArrayList<>();
+        doAnswer(invocation -> {
+            CommerceScene scene = invocation.getArgument(0);
+            scene.setId(950L + insertedScenes.size());
+            insertedScenes.add(scene);
+            return 1;
+        }).when(sceneMapper).insert(any(CommerceScene.class));
+        CommerceSceneBatchCreateRequest request = new CommerceSceneBatchCreateRequest();
+        request.setSceneTypes(List.of(
+                "品牌场景", "直播间背景", "街拍场景", "棚拍场景", "商场试衣间", "室内全身镜",
+                "田间自然", "海边旅拍", "海边氛围", "山野公路", "湖畔草地", "花房庭院", "咖啡店外",
+                "复古街区", "城市夜景", "天台露台", "艺术馆", "酒店民宿", "地铁通勤",
+                "校园林荫", "公园绿荫"));
+        request.setAspectRatio("9:16");
+        request.setResolution("2K");
+        request.setCountPerScene(1);
+        request.setTimeMood("day");
+        request.setCrowdMode("empty");
+
+        service.prepareSceneBatch(100L, request);
+
+        assertThat(insertedScenes).hasSize(21);
+        assertThat(insertedScenes).extracting(CommerceScene::getPrompt)
+                .allSatisfy(prompt -> assertThat(prompt)
+                        .doesNotContain("低照度")
+                        .doesNotContain("暮色")
+                        .doesNotContain("月光")
+                        .doesNotContain("霓虹")
+                        .doesNotContain("夜景街拍")
+                        .doesNotContain("夜景或自然日光")
+                        .doesNotContain("床边灯")
+                        .doesNotContain("远处建筑灯光")
+                        .doesNotContain("电影感城市夜景")
+                        .doesNotContain("都市夜景时装大片场景")
+                        .doesNotContain("虚化交通信号灯"));
     }
 
     @Test
@@ -1098,27 +1572,60 @@ class CommerceServiceImplTest {
         CommerceProjectCreateRequest request = new CommerceProjectCreateRequest();
         request.setContentType("try_on");
         request.setAspectRatio("9:16");
-        request.setTryOnRequirements("展示方式：转身展示、走动展示、面料特写");
+        request.setTryOnRequirements("展示方式：转身展示、拿包通勤、搭配展示、戴帽展示；表演风格：自信大片；动作表情：快走急停回看、回头挑眉、自信微笑");
         request.setSceneIds(List.of(700L));
 
         CommerceProjectVO result = service.createProject(300L, request);
 
-        assertThat(result.getShots()).hasSize(3);
+        assertThat(result.getTryOnRequirements())
+                .isEqualTo("展示方式：转身展示、拿包通勤、搭配展示、戴帽展示；表演风格：自信大片；动作表情：快走急停回看、回头挑眉、自信微笑");
+        assertThat(result.getShots()).hasSize(4);
         assertThat(result.getShots())
                 .extracting(shot -> shot.getTitle())
-                .containsExactly("转身展示", "走动展示", "面料特写");
+                .containsExactly("转身展示", "拿包通勤", "搭配展示", "戴帽展示");
         assertThat(result.getShots())
                 .extracting(shot -> shot.getTitle())
                 .doesNotContain("正面展示", "侧面展示", "细节特写", "场景收尾");
         assertThat(result.getShots().get(0).getVisualDescription())
                 .contains("转身展示")
-                .contains("动作镜头需要和前后展示方式自然衔接");
+                .contains("动作镜头需要和前后展示方式自然衔接")
+                .contains("重心转移")
+                .contains("镜头推进")
+                .contains("侧逆光")
+                .contains("动作幅度要比普通试穿更明确")
+                .contains("眼神从镜外导视点回到镜头")
+                .contains("镜头轻微环绕")
+                .contains("表演风格：自信大片")
+                .contains("动作表情强化：快走急停回看、回头挑眉、自信微笑")
+                .contains("快走斜向靠近镜头")
+                .contains("稳稳急停")
+                .contains("回头挑眉")
+                .contains("自信微笑");
+        ArgumentCaptor<CommerceProject> projectCaptor = ArgumentCaptor.forClass(CommerceProject.class);
+        verify(projectMapper).insert(projectCaptor.capture());
+        assertThat(projectCaptor.getValue().getTryOnRequirements())
+                .isEqualTo("展示方式：转身展示、拿包通勤、搭配展示、戴帽展示；表演风格：自信大片；动作表情：快走急停回看、回头挑眉、自信微笑");
+        assertThat(result.getShots().get(1).getVisualDescription())
+                .contains("包从镜头外自然递入")
+                .contains("不能在手中凭空出现")
+                .contains("通勤大片")
+                .contains("极具张力的台步");
+        assertThat(result.getShots().get(2).getVisualDescription())
+                .contains("搭配单品必须从镜头外自然拿取或由镜头外助手递入")
+                .contains("不能突然出现在人物手中或身上")
+                .contains("时尚杂志封面质感")
+                .contains("大面积留白");
+        assertThat(result.getShots().get(3).getVisualDescription())
+                .contains("商品本身有帽子、兜帽或连帽结构")
+                .contains("不能凭空新增帽子或兜帽")
+                .contains("发丝边缘光")
+                .contains("慢动作");
 
         ArgumentCaptor<CommerceShot> shotCaptor = ArgumentCaptor.forClass(CommerceShot.class);
-        verify(shotMapper, times(3)).insert(shotCaptor.capture());
+        verify(shotMapper, times(4)).insert(shotCaptor.capture());
         assertThat(shotCaptor.getAllValues())
                 .extracting(CommerceShot::getTitle)
-                .containsExactly("转身展示", "走动展示", "面料特写");
+                .containsExactly("转身展示", "拿包通勤", "搭配展示", "戴帽展示");
     }
 
     @Test
@@ -1384,6 +1891,7 @@ class CommerceServiceImplTest {
 
     @Test
     void generateProjectVideoSubmitsModelProductImageGroupAndOnlyOneSceneReferenceImage() {
+        keepProductReferencesUnchanged();
         UserContextHolder.setUserId(9L);
         CommerceProject project = new CommerceProject();
         project.setId(400L);
@@ -1458,19 +1966,83 @@ class CommerceServiceImplTest {
                 .contains("图4是商品细节图，用于补充面料纹理、图案、纽扣、领口、袖口、腰线、下摆、拼接、装饰和局部工艺。")
                 .contains("图5是商品细节图，用于补充面料纹理、图案、纽扣、领口、袖口、腰线、下摆、拼接、装饰和局部工艺。")
                 .contains("图6是用户选中的试穿场景图，用于确定空间环境、光线、背景风格和画面氛围。")
+                .contains("图6是唯一场景背景基准")
+                .contains("不得替换成其他地点、其他天气、其他时间段或棚拍背景")
+                .contains("人物必须真实站在图6的地面、透视、光线和环境层次中")
+                .contains("如果图6是海边，就必须保留海岸、沙滩或海面等海边空间特征")
+                .contains("通用电影感词只用于强化图6已有的光影和氛围")
                 .contains("本次共提供4张商品参考图，必须按上述图号和用途综合利用。")
                 .doesNotContain("接下来的 1 到 5 张参考图")
                 .doesNotContain("最后 1 张参考图")
                 .doesNotContain("最多会提供 5 张商品图片")
+                .contains("导演式画面目标")
+                .contains("不是普通平铺的商品展示")
+                .contains("参考场景图的空间气质")
+                .contains("拒绝廉价摆拍")
+                .contains("禁止站桩式动作")
+                .contains("王家卫式都市情绪大片")
+                .contains("欧美 Vogue 杂志高冷秀场风")
+                .contains("法式电影慵懒浪漫风")
+                .contains("根据场景图自动选择动作气质")
+                .contains("场景是城市夜景或街拍")
+                .contains("场景是棚拍或极简空间")
+                .contains("场景是咖啡店、花房、酒店民宿")
+                .contains("场景是海边、田间、山野、公园")
+                .contains("场景参考优先级高于通用风格词")
+                .contains("不得因为通用风格词把海边改成城市夜景、棚拍、室内或其他不在场景图里的空间")
+                .contains("镜头从脚部向上扫描")
+                .contains("重心转移")
+                .contains("发丝飞舞")
+                .contains("裙摆摆动")
+                .contains("眼神接触")
+                .contains("轮廓光")
+                .contains("霓虹反光")
+                .contains("闪光灯直打")
+                .contains("电影级布光")
+                .contains("胶片颗粒")
+                .contains("浅景深")
+                .contains("光影弥散")
+                .contains("材质反光")
+                .contains("情绪叙事")
+                .contains("自然抓拍感")
+                .contains("每个动作都必须有明确的景别")
+                .contains("特写、中景、低角度仰拍、镜头推进")
+                .contains("每个动作都必须有身体物理参数")
+                .contains("不要只是站着、转身、走两步")
+                .contains("不要把背景虚化成无法识别的糊片")
                 .contains("全身站立：完整展示头到脚的穿着效果")
-                .contains("侧身展示：展示肩线、腰线、胸腰臀围贴合度")
-                .contains("背面展示：展示后背、后腰、后摆")
-                .contains("抬手展示：轻微抬手或整理袖口")
-                .contains("面料特写：靠近展示面料纹理")
+                .contains("整理衣摆：人物自然整理衣摆、腰头或下摆")
+                .contains("抬手展示：抬手幅度要清楚")
+                .contains("拿包通勤：通勤包或极简手袋必须有明确入画来源")
+                .contains("包从镜头外递入")
+                .contains("不能从人物手中凭空出现")
+                .contains("搭配展示：搭配单品必须从镜头外自然拿取或由镜头外助手递入")
+                .contains("不能突然出现在人物手中或身上")
+                .contains("戴帽展示：仅当商品本身有帽子、兜帽或连帽结构")
+                .contains("如果商品没有帽子结构，不能凭空新增帽子或兜帽")
                 .contains("动作镜头必须连贯")
                 .contains("从上一个动作自然过渡到下一个动作")
                 .contains("不要出现硬切跳变、瞬间换姿势或镜头断层")
+                .contains("动作幅度比普通试穿更明显")
+                .contains("表演气质要自信、大方、个性张扬")
+                .contains("可以出现轻跑、快走、旋身、甩发、开朗笑容、爽朗大笑")
+                .contains("不要扭扭捏捏、害羞拘谨、小心翼翼")
+                .contains("可以从快走自然过渡到轻跑两三步")
+                .contains("笑容要自然明亮，可以有自信微笑、开朗笑起来或爽朗大笑")
+                .contains("眼神互动节奏")
+                .contains("不要从头到尾盯着远方")
+                .contains("推近、拉远、低角度仰拍、侧跟拍、轻微环绕")
+                .contains("每个动作至少一次景别变化或视角变化")
+                .contains("镜头不能像固定监控机位")
+                .contains("眼神必须自然有焦点")
+                .contains("轻微眨眼")
+                .contains("微表情")
+                .contains("合适的纯音乐BGM")
+                .contains("不要口播")
+                .contains("不要人声讲解")
                 .doesNotContain("商品图作为角落参考卡片");
+        assertThat(request.getPrompt()).doesNotContain("口播：");
+        assertThat(request.getGenerateAudio()).isTrue();
         verify(userService).deductCredits(
                 eq(9L),
                 eq(CreditConstants.calculateCredits("1080p", 12, "seedance-2.0")),
@@ -1482,7 +2054,78 @@ class CommerceServiceImplTest {
     }
 
     @Test
+    void generateProjectVideoMarksPartialCompletedWhenSomeShotsReturnVideos() {
+        keepProductReferencesUnchanged();
+        UserContextHolder.setUserId(9L);
+        CommerceProject project = new CommerceProject();
+        project.setId(400L);
+        project.setUserId(9L);
+        project.setProductId(300L);
+        project.setAspectRatio("9:16");
+        project.setContentType("try_on");
+        project.setModelImageUrl("https://oss.example.com/model.png");
+        project.setProductImageUrl("https://oss.example.com/product.png");
+        project.setSceneImageUrlsJson("[\"https://oss.example.com/commerce/scenes/street.png\"]");
+        project.setStatus("generating");
+        when(projectMapper.selectById(400L)).thenReturn(project);
+
+        CommerceProduct product = new CommerceProduct();
+        product.setId(300L);
+        product.setUserId(9L);
+        product.setImageUrl("https://oss.example.com/product.png");
+        when(productMapper.selectById(300L)).thenReturn(product);
+
+        CommerceShot completedShot = new CommerceShot();
+        completedShot.setId(500L);
+        completedShot.setProjectId(400L);
+        completedShot.setSortOrder(1);
+        completedShot.setTitle("转身展示");
+        completedShot.setVisualDescription("模特穿上商品转身展示");
+        completedShot.setDurationSeconds(8);
+        completedShot.setResolution("480p");
+        completedShot.setVideoModel("seedance-2.0");
+        completedShot.setGenerationStatus("draft");
+
+        CommerceShot failedShot = new CommerceShot();
+        failedShot.setId(501L);
+        failedShot.setProjectId(400L);
+        failedShot.setSortOrder(2);
+        failedShot.setTitle("走动展示");
+        failedShot.setVisualDescription("模特穿上商品走动展示");
+        failedShot.setDurationSeconds(8);
+        failedShot.setResolution("480p");
+        failedShot.setVideoModel("seedance-2.0");
+        failedShot.setGenerationStatus("draft");
+        when(shotMapper.selectList(any())).thenReturn(List.of(completedShot, failedShot));
+
+        SeedanceResponse completedResponse = new SeedanceResponse();
+        completedResponse.setStatus("completed");
+        completedResponse.setVideoUrl("https://oss.example.com/turn.mp4");
+        SeedanceResponse failedResponse = new SeedanceResponse();
+        failedResponse.setStatus("failed");
+        failedResponse.setErrorMessage("输入或生成内容可能涉及版权限制，请更换素材或调整描述后重试。");
+        when(seedanceService.generateVideo(any(SeedanceRequest.class)))
+                .thenReturn(completedResponse)
+                .thenReturn(failedResponse);
+
+        CommerceProjectVO result = service.generateProjectVideo(400L);
+
+        assertThat(result.getStatus()).isEqualTo("partial_completed");
+        assertThat(result.getErrorMessage()).contains("走动展示").contains("版权限制");
+        assertThat(result.getShots()).extracting(shot -> shot.getGenerationStatus())
+                .containsExactly("completed", "failed");
+        assertThat(result.getShots()).extracting(shot -> shot.getVideoUrl())
+                .containsExactly("https://oss.example.com/turn.mp4", null);
+
+        ArgumentCaptor<CommerceProject> projectCaptor = ArgumentCaptor.forClass(CommerceProject.class);
+        verify(projectMapper).updateById(projectCaptor.capture());
+        assertThat(projectCaptor.getValue().getStatus()).isEqualTo("partial_completed");
+        assertThat(projectCaptor.getValue().getErrorMessage()).contains("走动展示").contains("版权限制");
+    }
+
+    @Test
     void generateTryOnProjectVideoUsesVolcengineVipModel() {
+        keepProductReferencesUnchanged();
         UserContextHolder.setUserId(9L);
         CommerceProject project = new CommerceProject();
         project.setId(400L);
@@ -1526,6 +2169,86 @@ class CommerceServiceImplTest {
         SeedanceRequest request = requestCaptor.getValue();
         assertThat(request.getResolution()).isEqualTo("480p");
         assertThat(request.getModel()).isEqualTo("doubao-seedance-2-0-260128");
+    }
+
+    @Test
+    void generateTryOnProjectVideoSubmitsSanitizedProductReferences() {
+        UserContextHolder.setUserId(9L);
+        CommerceProject project = new CommerceProject();
+        project.setId(400L);
+        project.setUserId(9L);
+        project.setProductId(300L);
+        project.setAspectRatio("9:16");
+        project.setContentType("try_on");
+        project.setModelImageUrl("https://oss.example.com/model.png");
+        project.setProductImageUrl("https://oss.example.com/original-main.png");
+        project.setSceneImageUrlsJson("[\"https://oss.example.com/commerce/scenes/street.png\"]");
+        project.setStatus("draft");
+        when(projectMapper.selectById(400L)).thenReturn(project);
+
+        CommerceProduct product = new CommerceProduct();
+        product.setId(300L);
+        product.setUserId(9L);
+        product.setImageUrl("https://oss.example.com/original-main.png");
+        product.setImagesJson("["
+                + "{\"url\":\"https://oss.example.com/original-main.png\",\"usage\":\"主图\"},"
+                + "{\"url\":\"https://oss.example.com/original-worn.png\",\"usage\":\"上身参考\"}"
+                + "]");
+        when(productMapper.selectById(300L)).thenReturn(product);
+
+        CommerceProductCreateRequest.ProductImageItem safeMain = new CommerceProductCreateRequest.ProductImageItem();
+        safeMain.setUsage("主图");
+        safeMain.setUrl("https://oss.example.com/safe-main.png");
+        CommerceProductCreateRequest.ProductImageItem safeWorn = new CommerceProductCreateRequest.ProductImageItem();
+        safeWorn.setUsage("上身参考");
+        safeWorn.setUrl("https://oss.example.com/safe-worn.png");
+        when(productImagePrivacyService.sanitizeProductReferences(any())).thenReturn(List.of(safeMain, safeWorn));
+
+        CommerceShot shot = new CommerceShot();
+        shot.setId(500L);
+        shot.setProjectId(400L);
+        shot.setSortOrder(1);
+        shot.setTitle("全身站立");
+        shot.setVisualDescription("模特穿上商品全身站立展示");
+        shot.setDurationSeconds(8);
+        shot.setResolution("480p");
+        shot.setVideoModel("seedance-2.0");
+        shot.setGenerationStatus("draft");
+        when(shotMapper.selectList(any())).thenReturn(List.of(shot));
+
+        SeedanceResponse response = new SeedanceResponse();
+        response.setStatus("completed");
+        response.setVideoUrl("https://oss.example.com/video.mp4");
+        when(seedanceService.generateVideo(any(SeedanceRequest.class))).thenReturn(response);
+
+        service.generateProjectVideo(400L);
+
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<List<CommerceProductCreateRequest.ProductImageItem>> referencesCaptor =
+                ArgumentCaptor.forClass(List.class);
+        verify(productImagePrivacyService).sanitizeProductReferences(referencesCaptor.capture());
+        assertThat(referencesCaptor.getValue())
+                .extracting(CommerceProductCreateRequest.ProductImageItem::getUrl)
+                .containsExactly("https://oss.example.com/original-main.png", "https://oss.example.com/original-worn.png");
+
+        ArgumentCaptor<SeedanceRequest> requestCaptor = ArgumentCaptor.forClass(SeedanceRequest.class);
+        verify(seedanceService).generateVideo(requestCaptor.capture());
+        SeedanceRequest request = requestCaptor.getValue();
+        assertThat(request.getContents()).hasSize(4);
+        assertThat(request.getContents())
+                .extracting(content -> content.getImageUrl().getUrl())
+                .containsExactly(
+                        "https://oss.example.com/model.png",
+                        "https://oss.example.com/safe-main.png",
+                        "https://oss.example.com/safe-worn.png",
+                        "https://oss.example.com/commerce/scenes/street.png"
+                );
+        assertThat(request.getContents())
+                .extracting(content -> content.getImageUrl().getUrl())
+                .doesNotContain("https://oss.example.com/original-main.png", "https://oss.example.com/original-worn.png");
+        assertThat(request.getPrompt())
+                .contains("图2是商品主图")
+                .contains("图3是商品上身参考");
     }
 
     @Test
@@ -1591,6 +2314,51 @@ class CommerceServiceImplTest {
         assertThat(result).extracting(CommerceProjectVO::getContentType).containsOnly("try_on");
         assertThat(result.get(0).getShots()).extracting(shot -> shot.getGenerationStatus()).containsExactly("generating");
         assertThat(result.get(1).getShots()).extracting(shot -> shot.getVideoUrl()).containsExactly("https://oss.example.com/video.mp4");
+    }
+
+    @Test
+    void listProductProjectsNormalizesFailedProjectWithCompletedShotAsPartialCompleted() {
+        UserContextHolder.setUserId(9L);
+        CommerceProduct product = new CommerceProduct();
+        product.setId(300L);
+        product.setUserId(9L);
+        when(productMapper.selectById(300L)).thenReturn(product);
+
+        CommerceProject project = new CommerceProject();
+        project.setId(400L);
+        project.setUserId(9L);
+        project.setProductId(300L);
+        project.setContentType("try_on");
+        project.setStatus("failed");
+        project.setErrorMessage("输入或生成内容可能涉及版权限制，请更换素材或调整描述后重试。");
+        when(projectMapper.selectList(any())).thenReturn(List.of(project));
+
+        CommerceShot completedShot = new CommerceShot();
+        completedShot.setId(500L);
+        completedShot.setProjectId(400L);
+        completedShot.setSortOrder(1);
+        completedShot.setTitle("转身展示");
+        completedShot.setVideoUrl("https://oss.example.com/turn.mp4");
+        completedShot.setGenerationStatus("completed");
+
+        CommerceShot failedShot = new CommerceShot();
+        failedShot.setId(501L);
+        failedShot.setProjectId(400L);
+        failedShot.setSortOrder(2);
+        failedShot.setTitle("走动展示");
+        failedShot.setGenerationStatus("failed");
+        failedShot.setErrorMessage("输入或生成内容可能涉及版权限制，请更换素材或调整描述后重试。");
+        when(shotMapper.selectList(any())).thenReturn(List.of(completedShot, failedShot));
+
+        List<CommerceProjectVO> result = service.listProductProjects(300L, "try_on");
+
+        assertThat(result).hasSize(1);
+        assertThat(result.get(0).getStatus()).isEqualTo("partial_completed");
+        assertThat(result.get(0).getErrorMessage()).contains("走动展示").contains("版权限制");
+
+        ArgumentCaptor<CommerceProject> projectCaptor = ArgumentCaptor.forClass(CommerceProject.class);
+        verify(projectMapper).updateById(projectCaptor.capture());
+        assertThat(projectCaptor.getValue().getStatus()).isEqualTo("partial_completed");
     }
 
     @Test
@@ -1682,7 +2450,7 @@ class CommerceServiceImplTest {
         legacyFront.setProjectId(400L);
         legacyFront.setSortOrder(1);
         legacyFront.setTitle("正面展示");
-        legacyFront.setVisualDescription("展示要求：展示方式：转身展示、走动展示、面料特写。");
+        legacyFront.setVisualDescription("展示要求：展示方式：转身展示、走动展示、拿包通勤。");
         legacyFront.setDurationSeconds(8);
         legacyFront.setResolution("480p");
         legacyFront.setVideoModel("seedance-2.0");
@@ -1693,7 +2461,7 @@ class CommerceServiceImplTest {
         legacyWalk.setProjectId(400L);
         legacyWalk.setSortOrder(2);
         legacyWalk.setTitle("走动展示");
-        legacyWalk.setVisualDescription("展示要求：展示方式：转身展示、走动展示、面料特写。");
+        legacyWalk.setVisualDescription("展示要求：展示方式：转身展示、走动展示、拿包通勤。");
         legacyWalk.setDurationSeconds(8);
         legacyWalk.setResolution("480p");
         legacyWalk.setVideoModel("seedance-2.0");
@@ -1704,7 +2472,7 @@ class CommerceServiceImplTest {
         legacySide.setProjectId(400L);
         legacySide.setSortOrder(3);
         legacySide.setTitle("侧面展示");
-        legacySide.setVisualDescription("展示要求：展示方式：转身展示、走动展示、面料特写。");
+        legacySide.setVisualDescription("展示要求：展示方式：转身展示、走动展示、拿包通勤。");
         legacySide.setDurationSeconds(8);
         legacySide.setResolution("480p");
         legacySide.setVideoModel("seedance-2.0");
@@ -1715,7 +2483,7 @@ class CommerceServiceImplTest {
         legacyDetail.setProjectId(400L);
         legacyDetail.setSortOrder(4);
         legacyDetail.setTitle("细节特写");
-        legacyDetail.setVisualDescription("展示要求：展示方式：转身展示、走动展示、面料特写。");
+        legacyDetail.setVisualDescription("展示要求：展示方式：转身展示、走动展示、拿包通勤。");
         legacyDetail.setDurationSeconds(8);
         legacyDetail.setResolution("480p");
         legacyDetail.setVideoModel("seedance-2.0");
@@ -1726,7 +2494,7 @@ class CommerceServiceImplTest {
         legacyEnding.setProjectId(400L);
         legacyEnding.setSortOrder(5);
         legacyEnding.setTitle("场景收尾");
-        legacyEnding.setVisualDescription("展示要求：展示方式：转身展示、走动展示、面料特写。");
+        legacyEnding.setVisualDescription("展示要求：展示方式：转身展示、走动展示、拿包通勤。");
         legacyEnding.setDurationSeconds(8);
         legacyEnding.setResolution("480p");
         legacyEnding.setVideoModel("seedance-2.0");
@@ -1744,13 +2512,13 @@ class CommerceServiceImplTest {
 
         assertThat(queued.getShots())
                 .extracting(shot -> shot.getTitle())
-                .containsExactly("转身展示", "走动展示", "面料特写");
+                .containsExactly("转身展示", "走动展示", "拿包通勤");
         verify(shotMapper, times(5)).deleteById(anyLong());
         ArgumentCaptor<CommerceShot> shotCaptor = ArgumentCaptor.forClass(CommerceShot.class);
         verify(shotMapper, times(3)).insert(shotCaptor.capture());
         assertThat(shotCaptor.getAllValues())
                 .extracting(CommerceShot::getTitle)
-                .containsExactly("转身展示", "走动展示", "面料特写");
+                .containsExactly("转身展示", "走动展示", "拿包通勤");
         assertThat(commerceVideoTasks).hasSize(1);
         verify(seedanceService, never()).generateVideo(any());
     }

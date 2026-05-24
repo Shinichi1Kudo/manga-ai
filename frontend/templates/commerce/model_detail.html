@@ -41,6 +41,20 @@
         box-shadow: 0 0 0 1px rgba(103, 232, 249, 0.12), 0 12px 30px rgba(8, 145, 178, 0.16);
     }
 
+    .commerce-video-mode-choice:disabled {
+        cursor: not-allowed;
+        border-color: rgba(255, 255, 255, 0.07);
+        background: rgba(255, 255, 255, 0.025);
+        color: rgba(255, 255, 255, 0.30);
+        box-shadow: none;
+    }
+
+    .commerce-video-mode-choice:disabled:hover {
+        border-color: rgba(255, 255, 255, 0.07);
+        background: rgba(255, 255, 255, 0.025);
+        color: rgba(255, 255, 255, 0.30);
+    }
+
     .commerce-video-panel {
         background: linear-gradient(135deg, rgba(15, 23, 42, 0.70), rgba(2, 6, 23, 0.38));
     }
@@ -49,23 +63,41 @@
 
 {% block content %}
 <div class="mx-auto max-w-6xl py-8">
-    <a href="/commerce/" class="text-sm text-white/50 hover:text-white">← 返回电商系列</a>
+    <a href="/commerce/series/{{ series_id }}/" class="text-sm text-white/50 hover:text-white">← 返回模特列表</a>
     <div class="mt-5 grid gap-5 lg:grid-cols-[minmax(0,1fr)_360px]">
         <section class="glass-card p-6">
-            <div class="mb-5 flex items-center justify-between gap-4">
+            <div class="mb-5">
                 <div>
                     <p class="text-sm font-semibold text-emerald-200">模特基础形象</p>
                     <h1 class="mt-2 text-2xl font-bold">商品列表</h1>
                 </div>
-                <form method="post" action="/commerce/models/{{ model_id }}/confirm/">
-                    {% csrf_token %}
-                    <button class="rounded-xl border border-emerald-300/30 bg-emerald-300/10 px-4 py-2 text-sm font-semibold text-emerald-100">锁定模特</button>
-                </form>
             </div>
 
-            <div class="space-y-2.5">
+            <div class="mb-4 rounded-xl border border-white/[0.08] bg-black/10 p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)] sm:p-4" data-commerce-product-filters>
+                <div class="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+                    <div class="min-w-0">
+                        <p class="text-sm font-semibold text-white/86">商品筛选</p>
+                        <p class="mt-1 text-xs text-white/46" data-commerce-product-filter-summary>当前筛选：全部商品 · 0 件</p>
+                    </div>
+                    <button type="button" class="hidden h-8 items-center justify-center rounded-lg border border-white/10 bg-white/[0.045] px-3 text-xs font-semibold text-white/58 transition hover:border-cyan-100/35 hover:bg-cyan-300/10 hover:text-white" data-commerce-product-filter-reset>
+                        清空筛选
+                    </button>
+                </div>
+                <div class="-mx-1 mt-3 overflow-x-auto px-1 sm:mx-0 sm:overflow-visible sm:px-0">
+                    <div class="flex min-w-max gap-1 rounded-xl border border-white/[0.08] bg-white/[0.035] p-1 sm:min-w-0 sm:flex-wrap" data-commerce-product-filter-tabs data-commerce-product-category-filters></div>
+                </div>
+                <div class="mt-3 hidden rounded-xl border border-cyan-100/10 bg-cyan-300/[0.045] p-3" data-commerce-product-filter-panel>
+                    <div class="mb-2 flex items-center justify-between gap-3">
+                        <span class="text-xs font-semibold text-cyan-50/72">当前分类细分</span>
+                        <span class="text-[11px] font-semibold text-white/38" data-commerce-product-filter-panel-title></span>
+                    </div>
+                    <div class="flex flex-wrap gap-1.5" data-commerce-product-subcategory-filters></div>
+                </div>
+            </div>
+
+            <div class="space-y-2.5" data-commerce-product-list>
                 {% for product in products %}
-                    <article class="commerce-product-card rounded-xl p-2 transition" data-commerce-product-card>
+                    <article class="commerce-product-card rounded-xl p-2 transition" data-commerce-product-card data-commerce-product-type="{{ product.productType|default:'其他' }}" data-commerce-product-category="">
                         <div class="flex cursor-pointer items-center gap-3 rounded-lg outline-none transition focus-visible:ring-2 focus-visible:ring-emerald-200/45" data-commerce-product-summary tabindex="0">
                             <div class="relative flex h-14 w-14 flex-none items-center justify-center overflow-hidden rounded-lg border border-white/[0.08] bg-black/25">
                                 <img src="{% if product.images %}{{ product.images.0.url }}{% else %}{{ product.imageUrl }}{% endif %}" alt="{{ product.name }}" class="h-full w-full object-contain" loading="lazy">
@@ -77,7 +109,7 @@
                                 </div>
                                 <div class="mt-1 flex flex-wrap gap-1.5 text-xs">
                                     <span class="rounded-full border border-white/10 bg-white/[0.045] px-2 py-0.5 text-white/62">{{ product.productType|default:"未设置商品类型" }}</span>
-                                    <span class="rounded-full border border-white/10 bg-white/[0.045] px-2 py-0.5 text-white/62">{% if product.images %}{{ product.images|length }}/5{% else %}1/5{% endif %} 张图</span>
+                                    <span class="rounded-full border border-white/10 bg-white/[0.045] px-2 py-0.5 text-white/62" data-commerce-product-summary-image-count>{% if product.images %}{{ product.images|length }}/5{% else %}1/5{% endif %} 张图</span>
                                     <span class="rounded-full border border-cyan-200/15 bg-cyan-300/10 px-2 py-0.5 text-cyan-100/75">视频比例可选</span>
                                 </div>
                             </div>
@@ -89,26 +121,73 @@
                         </div>
                         <div class="mt-4 hidden border-t border-white/[0.06] pt-4" data-commerce-product-details hidden>
                             <div class="flex flex-col gap-4 sm:flex-row">
-                                <div class="w-full flex-none sm:w-40" data-commerce-product-gallery>
-                                    <div class="relative flex h-44 w-full items-center justify-center overflow-hidden rounded-xl border border-white/[0.08] bg-black/25">
+                                <div class="w-full flex-none sm:w-48" data-commerce-product-gallery data-commerce-product-gallery-index="0">
+                                    <div class="group relative flex h-44 w-full cursor-zoom-in items-center justify-center overflow-hidden rounded-xl border border-white/[0.08] bg-black/25 transition hover:border-cyan-100/35" data-commerce-product-gallery-preview title="查看大图">
                                         <img src="{% if product.images %}{{ product.images.0.url }}{% else %}{{ product.imageUrl }}{% endif %}" alt="{{ product.name }}" class="h-full w-full object-contain" loading="lazy" data-commerce-product-gallery-main>
-                                        <span class="absolute right-2 top-2 rounded-full border border-white/10 bg-black/55 px-2 py-1 text-[11px] font-semibold text-white/78">
-                                            {% if product.images %}{{ product.images|length }}/5{% else %}1/5{% endif %}
+                                        <span class="pointer-events-none absolute left-2 top-2 flex h-7 w-7 items-center justify-center rounded-full border border-white/12 bg-black/55 text-white/70 opacity-0 transition group-hover:opacity-100">
+                                            <i data-lucide="maximize-2" class="h-3.5 w-3.5"></i>
                                         </span>
+                                        <span role="button" tabindex="0" class="absolute left-2 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full border border-white/12 bg-black/55 text-white/78 transition hover:border-emerald-200/35 hover:bg-emerald-300/16 hover:text-white" data-commerce-product-gallery-prev aria-label="上一张商品图">
+                                            <i data-lucide="chevron-left" class="h-4 w-4"></i>
+                                        </span>
+                                        <span role="button" tabindex="0" class="absolute right-2 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full border border-white/12 bg-black/55 text-white/78 transition hover:border-emerald-200/35 hover:bg-emerald-300/16 hover:text-white" data-commerce-product-gallery-next aria-label="下一张商品图">
+                                            <i data-lucide="chevron-right" class="h-4 w-4"></i>
+                                        </span>
+                                        <span class="absolute right-2 top-2 rounded-full border border-white/10 bg-black/55 px-2 py-1 text-[11px] font-semibold text-white/78" data-commerce-product-gallery-index>
+                                            {% if product.images %}1/{{ product.images|length }}{% else %}1/1{% endif %}
+                                        </span>
+                                        <button type="button" class="absolute bottom-2 right-2 flex h-7 w-7 items-center justify-center rounded-full border border-white/12 bg-black/62 text-white/72 shadow-lg shadow-black/20 transition hover:border-rose-100/45 hover:bg-rose-500 hover:text-white {% if product.images|length <= 1 %}hidden{% endif %}" data-commerce-product-gallery-delete aria-label="删除当前图片" title="删除当前图片" {% if product.images|length <= 1 %}hidden{% endif %}>
+                                            <i data-lucide="trash-2" class="h-3.5 w-3.5"></i>
+                                        </button>
                                     </div>
-                                    <div class="mt-2 flex gap-1.5 overflow-x-auto pb-1">
+                                    <button type="button" class="mt-2 flex h-8 w-full items-center justify-center gap-1.5 rounded-lg border border-dashed border-cyan-100/18 bg-cyan-300/[0.06] px-2 text-xs font-semibold text-cyan-50/78 transition hover:border-cyan-100/38 hover:bg-cyan-300/12 hover:text-cyan-50" data-commerce-product-gallery-add-row data-commerce-product-add-trigger aria-label="添加商品图片" title="添加商品图片">
+                                        <i data-lucide="plus" class="h-3.5 w-3.5"></i>
+                                        添加商品图
+                                    </button>
+                                    <div class="mt-2 flex flex-wrap gap-1.5" data-commerce-product-gallery-thumbs>
                                         {% for image in product.images %}
-                                            <button type="button" class="group relative flex h-14 w-14 flex-none items-center justify-center overflow-hidden rounded-md border bg-white/[0.035] transition hover:border-emerald-200/45 {% if forloop.first %}border-emerald-200/60 ring-1 ring-emerald-200/25{% else %}border-white/10{% endif %}" data-commerce-product-gallery-thumb data-image-url="{{ image.url }}" data-image-alt="{{ product.name }} - {{ image.usage|default:'商品图' }}" aria-label="查看{{ image.usage|default:'商品图' }}">
-                                                <img src="{{ image.url }}" alt="{{ product.name }} - {{ image.usage|default:'商品图' }}" class="h-full w-full object-contain" loading="lazy">
-                                                <span class="absolute bottom-0 left-0 right-0 truncate bg-black/65 px-1 py-0.5 text-[10px] font-semibold text-white/78">{{ image.usage|default:"商品图" }}</span>
-                                            </button>
+                                            <div class="group relative flex h-14 w-14 flex-none items-center justify-center overflow-hidden rounded-md border bg-white/[0.035] transition hover:border-emerald-200/45 {% if forloop.first %}border-emerald-200/60 ring-1 ring-emerald-200/25{% else %}border-white/10{% endif %}" data-commerce-product-gallery-thumb data-image-index="{{ forloop.counter0 }}" data-image-url="{{ image.url }}" data-image-usage="{{ image.usage|default:'细节图' }}" data-image-alt="{{ product.name }} - {{ image.usage|default:'商品图' }}">
+                                                <button type="button" class="flex h-full w-full items-center justify-center" data-commerce-product-thumb-select aria-label="查看{{ image.usage|default:'商品图' }}">
+                                                    <img src="{{ image.url }}" alt="{{ product.name }} - {{ image.usage|default:'商品图' }}" class="h-full w-full object-contain" loading="lazy">
+                                                </button>
+                                                <span class="absolute left-0 top-0 max-w-full truncate rounded-br bg-black/65 px-1 py-0.5 text-[10px] font-semibold text-white/78">{{ image.usage|default:"商品图" }}</span>
+                                                <button type="button" class="absolute right-0 top-0 flex h-5 w-5 items-center justify-center rounded-bl bg-black/62 text-white/72 opacity-0 transition hover:bg-cyan-400/80 hover:text-white group-hover:opacity-100" data-commerce-product-thumb-preview aria-label="查看大图" title="查看大图">
+                                                    <i data-lucide="maximize-2" class="h-3 w-3"></i>
+                                                </button>
+                                            </div>
                                         {% empty %}
-                                            <button type="button" class="group relative flex h-14 w-14 flex-none items-center justify-center overflow-hidden rounded-md border border-emerald-200/60 bg-white/[0.035] ring-1 ring-emerald-200/25" data-commerce-product-gallery-thumb data-image-url="{{ product.imageUrl }}" data-image-alt="{{ product.name }} - 主图" aria-label="查看主图">
-                                                <img src="{{ product.imageUrl }}" alt="{{ product.name }} - 主图" class="h-full w-full object-contain" loading="lazy">
-                                                <span class="absolute bottom-0 left-0 right-0 truncate bg-black/65 px-1 py-0.5 text-[10px] font-semibold text-white/78">主图</span>
-                                            </button>
+                                            <div class="group relative flex h-14 w-14 flex-none items-center justify-center overflow-hidden rounded-md border border-emerald-200/60 bg-white/[0.035] ring-1 ring-emerald-200/25" data-commerce-product-gallery-thumb data-image-index="0" data-image-url="{{ product.imageUrl }}" data-image-usage="主图" data-image-alt="{{ product.name }} - 主图">
+                                                <button type="button" class="flex h-full w-full items-center justify-center" data-commerce-product-thumb-select aria-label="查看主图">
+                                                    <img src="{{ product.imageUrl }}" alt="{{ product.name }} - 主图" class="h-full w-full object-contain" loading="lazy">
+                                                </button>
+                                                <span class="absolute left-0 top-0 max-w-full truncate rounded-br bg-black/65 px-1 py-0.5 text-[10px] font-semibold text-white/78">主图</span>
+                                                <button type="button" class="absolute right-0 top-0 flex h-5 w-5 items-center justify-center rounded-bl bg-black/62 text-white/72 opacity-0 transition hover:bg-cyan-400/80 hover:text-white group-hover:opacity-100" data-commerce-product-thumb-preview aria-label="查看大图" title="查看大图">
+                                                    <i data-lucide="maximize-2" class="h-3 w-3"></i>
+                                                </button>
+                                            </div>
                                         {% endfor %}
                                     </div>
+                                    <form method="post" action="/commerce/products/{{ product.id }}/images/update/" enctype="multipart/form-data" class="mt-2" data-commerce-product-replace-form>
+                                        {% csrf_token %}
+                                        <input type="hidden" name="model_id" value="{{ model_id }}">
+                                        {% for image in product.images %}
+                                            <input type="hidden" name="product_image_urls" value="{{ image.url }}">
+                                            <input type="hidden" name="product_image_usages" value="{{ image.usage|default:'细节图' }}">
+                                        {% empty %}
+                                            <input type="hidden" name="product_image_urls" value="{{ product.imageUrl }}">
+                                            <input type="hidden" name="product_image_usages" value="主图">
+                                        {% endfor %}
+                                        <input type="hidden" value="{% if product.images %}{{ product.images.0.usage|default:'细节图' }}{% else %}主图{% endif %}" data-commerce-product-replace-usage-input data-current-usage="{% if product.images %}{{ product.images.0.usage|default:'细节图' }}{% else %}主图{% endif %}">
+                                        <div class="flex items-center gap-1.5 rounded-lg border border-white/[0.08] bg-black/18 p-1" data-commerce-product-image-actions>
+                                            <button type="button" class="group flex h-8 min-w-0 flex-1 items-center justify-center gap-1.5 rounded-md bg-emerald-300/14 px-2 text-xs font-semibold text-emerald-50 transition hover:bg-emerald-300/22" data-commerce-product-replace-trigger aria-label="替换当前商品图" title="替换当前商品图">
+                                                <i data-lucide="replace" class="h-3.5 w-3.5 flex-none"></i>
+                                                <span class="whitespace-nowrap">替换当前商品图</span>
+                                            </button>
+                                        </div>
+                                        <span class="sr-only">删除当前图片</span>
+                                        <input type="file" name="product_image_0" accept="image/jpeg,image/png,image/webp" class="sr-only" data-commerce-product-current-replace-input>
+                                        <input type="file" name="product_image_0" accept="image/jpeg,image/png,image/webp" class="sr-only" data-commerce-product-add-input>
+                                    </form>
                                 </div>
                                 <div class="min-w-0 flex-1">
                                     <div class="flex flex-wrap items-center justify-between gap-3">
@@ -124,9 +203,10 @@
 
                                     <div class="mt-4 rounded-xl border border-white/[0.08] bg-black/10 p-3">
                                     <div class="commerce-video-mode-selector grid gap-2 sm:grid-cols-2">
-                                        <button type="button" class="commerce-video-mode-choice flex h-11 items-center justify-center gap-2 rounded-lg px-3 text-sm font-semibold" data-commerce-video-mode="talking" aria-pressed="false">
+                                        <button type="button" class="commerce-video-mode-choice flex h-11 items-center justify-center gap-2 rounded-lg px-3 text-sm font-semibold" data-commerce-video-mode="talking" aria-pressed="false" aria-disabled="true" disabled title="口播种草暂未开放">
                                             <i data-lucide="message-circle" class="h-4 w-4"></i>
-                                            口播种草
+                                            <span>口播种草</span>
+                                            <span class="rounded-full border border-white/10 bg-white/[0.04] px-1.5 py-0.5 text-[10px] font-bold text-white/38">暂未开放</span>
                                         </button>
                                         <button type="button" class="commerce-video-mode-choice flex h-11 items-center justify-center gap-2 rounded-lg px-3 text-sm font-semibold" data-commerce-video-mode="try_on" aria-pressed="false">
                                             <i data-lucide="shirt" class="h-4 w-4"></i>
@@ -177,6 +257,40 @@
                                                         <span class="flex min-h-12 flex-col items-center justify-center rounded-lg border border-white/10 bg-white/[0.04] px-2 py-1.5 text-center transition group-hover:border-emerald-200/35 group-hover:bg-emerald-300/10 peer-checked:border-emerald-200/55 peer-checked:bg-emerald-300/18">
                                                             <span class="text-sm font-semibold text-white/62 peer-checked:text-white">{{ shot.value }}</span>
                                                             <span class="mt-0.5 text-[11px] font-medium text-white/35">{{ shot.duration }}</span>
+                                                        </span>
+                                                    </label>
+                                                {% endfor %}
+                                            </div>
+                                        </div>
+                                        <div class="commerce-try-on-performance-style-options rounded-xl border border-white/[0.08] bg-white/[0.025] p-3">
+                                            <div class="mb-2 flex items-center justify-between gap-3">
+                                                <span class="text-xs font-semibold text-white/58">表演风格</span>
+                                                <span class="text-xs text-white/35">单选，决定模特整体气质</span>
+                                            </div>
+                                            <div class="grid gap-2 sm:grid-cols-2">
+                                                {% for style in try_on_performance_styles %}
+                                                    <label class="group cursor-pointer">
+                                                        <input type="radio" name="try_on_performance_style" value="{{ style.value }}" class="peer sr-only" {% if style.value == try_on_default_performance_style %}checked{% endif %}>
+                                                        <span class="flex min-h-16 flex-col justify-center rounded-lg border border-white/10 bg-white/[0.04] px-3 py-2 transition group-hover:border-emerald-200/35 group-hover:bg-emerald-300/10 peer-checked:border-emerald-200/60 peer-checked:bg-emerald-300/18">
+                                                            <span class="text-sm font-semibold text-white/68 peer-checked:text-white">{{ style.value }}</span>
+                                                            <span class="mt-1 text-xs leading-relaxed text-white/38">{{ style.description }}</span>
+                                                        </span>
+                                                    </label>
+                                                {% endfor %}
+                                            </div>
+                                        </div>
+                                        <div class="commerce-try-on-performance-boost-options rounded-xl border border-white/[0.08] bg-white/[0.025] p-3">
+                                            <div class="mb-2 flex items-center justify-between gap-3">
+                                                <span class="text-xs font-semibold text-white/58">动作/表情强化</span>
+                                                <span class="text-xs text-white/35">最多选 {{ try_on_max_performance_boosts }} 个</span>
+                                            </div>
+                                            <div class="grid grid-cols-2 gap-2 sm:grid-cols-3">
+                                                {% for boost in try_on_performance_boosts %}
+                                                    <label class="group cursor-pointer">
+                                                        <input type="checkbox" name="try_on_performance_boosts" value="{{ boost.value }}" class="peer sr-only">
+                                                        <span class="flex min-h-16 flex-col justify-center rounded-lg border border-white/10 bg-white/[0.04] px-2.5 py-2 transition group-hover:border-cyan-200/35 group-hover:bg-cyan-300/10 peer-checked:border-cyan-200/60 peer-checked:bg-cyan-300/18">
+                                                            <span class="text-sm font-semibold text-white/68 peer-checked:text-white">{{ boost.value }}</span>
+                                                            <span class="mt-1 text-[11px] leading-relaxed text-white/36">{{ boost.hint }}</span>
                                                         </span>
                                                     </label>
                                                 {% endfor %}
@@ -277,43 +391,47 @@
                                         <div class="mb-2 flex items-center justify-between gap-3">
                                             <div>
                                                 <p class="text-sm font-semibold text-white/82">试穿视频管理</p>
-                                                <p class="mt-0.5 text-xs text-white/38">生成中会自动刷新，完成后可直接播放</p>
+                                                <p class="mt-0.5 text-xs text-white/38">生成中会自动刷新，完成后点封面大窗播放</p>
                                             </div>
-                                            <span class="rounded-full border border-white/10 bg-white/[0.04] px-2 py-1 text-xs font-semibold text-white/45">
+                                            <span class="rounded-full border border-white/10 bg-white/[0.04] px-2 py-1 text-xs font-semibold text-white/45" data-commerce-try-on-project-count>
                                                 {{ product.tryOnProjects|length|default:0 }} 条
                                             </span>
                                         </div>
                                         <div class="space-y-2" data-commerce-try-on-project-list>
                                             {% for project in product.tryOnProjects %}
-                                                <div class="rounded-lg border border-white/10 bg-black/18 p-2" data-commerce-try-on-project-card data-commerce-try-on-project-id="{{ project.id }}" data-commerce-try-on-project-status="{{ project.status|default:'generating' }}" data-commerce-try-on-status-url="/commerce/projects/{{ project.id }}/status/" data-commerce-try-on-generate-url="/commerce/projects/{{ project.id }}/generation/start/">
-                                                    <div class="flex items-start gap-2">
-                                                        <div class="flex h-16 w-24 flex-none items-center justify-center overflow-hidden rounded-md border border-white/[0.08] bg-black/30" data-commerce-try-on-project-preview>
-                                                            {% with first_shot=project.shots.0 %}
+                                                {% with first_shot=project.shots.0 %}
+                                                <div class="rounded-lg border border-white/10 bg-black/18 p-2.5" data-commerce-try-on-project-card data-commerce-try-on-project-id="{{ project.id }}" data-commerce-try-on-project-status="{% if project.status == 'partial_completed' %}partial_completed{% elif project.status == 'failed' %}failed{% elif project.status == 'completed' or first_shot.videoUrl %}completed{% else %}{{ project.status|default:'generating' }}{% endif %}" data-commerce-try-on-status-url="/commerce/projects/{{ project.id }}/status/" data-commerce-try-on-generate-url="/commerce/projects/{{ project.id }}/generation/start/">
+                                                    <div class="flex items-start gap-3">
+                                                        <div class="flex flex-none items-center justify-center overflow-hidden rounded-lg border border-white/[0.08] bg-black/30 {% if project.aspectRatio == '16:9' %}h-28 w-48{% elif project.aspectRatio == '1:1' %}h-32 w-32{% else %}h-36 w-24{% endif %}" data-commerce-try-on-project-preview>
                                                                 {% if first_shot.videoUrl %}
-                                                                    <video src="{{ first_shot.videoUrl }}" class="h-full w-full object-contain" controls playsinline data-commerce-try-on-project-video></video>
+                                                                    <button type="button" class="group relative h-full w-full overflow-hidden" data-commerce-try-on-project-open data-commerce-try-on-project-cover-button data-video-url="{{ first_shot.videoUrl }}" aria-label="播放试穿视频">
+                                                                        <video src="{{ first_shot.videoUrl }}" class="pointer-events-none h-full w-full object-cover" muted preload="metadata" playsinline data-commerce-try-on-project-cover></video>
+                                                                        <span class="absolute inset-0 bg-black/18 transition group-hover:bg-black/26"></span>
+                                                                        <span class="absolute inset-0 flex items-center justify-center">
+                                                                            <span class="flex h-11 w-11 items-center justify-center rounded-full border border-white/25 bg-black/55 text-white shadow-lg shadow-black/25 transition group-hover:scale-105 group-hover:border-cyan-100/55 group-hover:bg-cyan-300/22">
+                                                                                <i data-lucide="play" class="ml-0.5 h-5 w-5 fill-current"></i>
+                                                                            </span>
+                                                                        </span>
+                                                                    </button>
                                                                 {% else %}
                                                                     <div class="flex h-full w-full flex-col items-center justify-center gap-1 text-white/40">
                                                                         <i data-lucide="loader-2" class="h-4 w-4 animate-spin"></i>
                                                                         <span class="text-[11px]">生成中</span>
                                                                     </div>
                                                                 {% endif %}
-                                                            {% endwith %}
                                                         </div>
                                                         <div class="min-w-0 flex-1">
                                                             <div class="flex flex-wrap items-center gap-1.5">
                                                                 <span class="rounded-full border border-white/10 bg-white/[0.04] px-2 py-0.5 text-[11px] font-semibold text-white/62" data-commerce-try-on-project-status-label>
-                                                                    {% if project.status == 'completed' %}已完成{% elif project.status == 'failed' %}失败{% else %}生成中{% endif %}
+                                                                    {% if project.status == 'partial_completed' %}部分完成{% elif project.status == 'failed' %}失败{% elif project.status == 'completed' or first_shot.videoUrl %}已完成{% else %}生成中{% endif %}
                                                                 </span>
-                                                                <span class="rounded-full border border-white/10 bg-white/[0.04] px-2 py-0.5 text-[11px] font-semibold text-white/45">{{ project.aspectRatio|default:"9:16" }}</span>
-                                                                {% with first_shot=project.shots.0 %}
-                                                                    {% if first_shot.resolution %}
-                                                                        <span class="rounded-full border border-white/10 bg-white/[0.04] px-2 py-0.5 text-[11px] font-semibold text-white/45">{{ first_shot.resolution }}</span>
-                                                                    {% endif %}
-                                                                {% endwith %}
+                                                                <span class="rounded-full border border-white/10 bg-white/[0.04] px-2 py-0.5 text-[11px] font-semibold text-white/45" data-commerce-try-on-project-ratio>{{ project.aspectRatio|default:"9:16" }}</span>
+                                                                <span class="rounded-full border border-white/10 bg-white/[0.04] px-2 py-0.5 text-[11px] font-semibold text-white/45" data-commerce-try-on-project-resolution>{{ first_shot.resolution|default:"" }}</span>
                                                             </div>
                                                             <p class="mt-1 truncate text-xs text-white/45" data-commerce-try-on-project-summary>
                                                                 {% for shot in project.shots %}{{ shot.title }}{% if not forloop.last %} / {% endif %}{% empty %}试穿视频任务{% endfor %}
                                                             </p>
+                                                            <p class="mt-1 {% if not project.tryOnPerformanceSummary %}hidden{% endif %} text-xs leading-5 text-cyan-50/62" data-commerce-try-on-project-performance data-try-on-requirements="{{ project.tryOnRequirements|default:'' }}">{{ project.tryOnPerformanceSummary|default:"" }}</p>
                                                             {% if project.errorMessage %}
                                                                 <p class="mt-1 text-xs text-rose-200" data-commerce-try-on-project-error>{{ project.errorMessage }}</p>
                                                             {% else %}
@@ -326,6 +444,7 @@
                                                         </button>
                                                     </div>
                                                 </div>
+                                                {% endwith %}
                                             {% empty %}
                                                 <div class="rounded-lg border border-dashed border-white/10 bg-black/10 px-3 py-4 text-center text-xs text-white/38" data-commerce-try-on-project-empty>暂无试穿视频</div>
                                             {% endfor %}
@@ -339,8 +458,73 @@
                 {% empty %}
                     <div class="rounded-xl border border-dashed border-white/15 p-6 text-white/45">还没有商品，先在右侧添加。</div>
                 {% endfor %}
+                <div class="hidden rounded-xl border border-dashed border-white/12 bg-black/10 p-6 text-center text-sm text-white/42" data-commerce-product-filter-empty>当前分类下还没有商品</div>
             </div>
         </section>
+
+        <div class="fixed inset-0 z-50 hidden items-center justify-center bg-black/62 px-4 py-6 backdrop-blur-sm" data-commerce-product-replace-modal hidden>
+            <div class="w-full max-w-sm rounded-2xl border border-white/12 bg-slate-950 p-4 shadow-2xl shadow-black/30" data-commerce-product-replace-modal-card>
+                <div class="flex items-start justify-between gap-3">
+                    <div>
+                        <h2 class="text-base font-semibold text-white">选择图片用途</h2>
+                        <p class="mt-1 text-xs text-white/45">确认后再选择要替换的新图片。</p>
+                    </div>
+                    <button type="button" class="flex h-8 w-8 items-center justify-center rounded-lg border border-white/10 bg-white/[0.04] text-white/45 transition hover:border-white/20 hover:text-white" data-commerce-product-replace-modal-close aria-label="关闭">
+                        <i data-lucide="x" class="h-4 w-4"></i>
+                    </button>
+                </div>
+                <div class="mt-4 grid grid-cols-3 gap-2" data-commerce-product-replace-modal-form>
+                    <button type="button" class="h-10 rounded-lg border border-white/10 bg-white/[0.04] text-xs font-semibold text-white/58 transition hover:border-emerald-200/35 hover:bg-emerald-300/10 hover:text-white" data-commerce-product-replace-modal-usage data-usage="主图" aria-pressed="false">主图</button>
+                    <button type="button" class="h-10 rounded-lg border border-white/10 bg-white/[0.04] text-xs font-semibold text-white/58 transition hover:border-emerald-200/35 hover:bg-emerald-300/10 hover:text-white" data-commerce-product-replace-modal-usage data-usage="细节图" aria-pressed="false">细节图</button>
+                    <button type="button" class="h-10 rounded-lg border border-white/10 bg-white/[0.04] text-xs font-semibold text-white/58 transition hover:border-emerald-200/35 hover:bg-emerald-300/10 hover:text-white" data-commerce-product-replace-modal-usage data-usage="上身参考" aria-pressed="false">上身参考</button>
+                </div>
+                <div class="mt-4 grid grid-cols-2 gap-2">
+                    <button type="button" class="flex h-10 items-center justify-center rounded-lg border border-white/10 bg-white/[0.04] text-sm font-semibold text-white/58 transition hover:border-white/20 hover:bg-white/[0.07] hover:text-white" data-commerce-product-replace-modal-close>取消</button>
+                    <button type="button" class="flex h-10 items-center justify-center rounded-lg bg-emerald-500 text-sm font-semibold text-white transition hover:bg-emerald-400" data-commerce-product-replace-modal-confirm>确定</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="fixed inset-0 z-50 hidden items-center justify-center bg-black/62 px-4 py-6 backdrop-blur-sm" data-commerce-product-delete-modal hidden>
+            <div class="w-full max-w-sm rounded-2xl border border-white/12 bg-slate-950 p-4 shadow-2xl shadow-black/30">
+                <div class="flex items-start justify-between gap-3">
+                    <div>
+                        <h2 class="text-base font-semibold text-white">删除当前图片</h2>
+                        <p class="mt-1 text-xs text-white/45">删除后会更新商品图片组，至少需要保留 1 张图片。</p>
+                    </div>
+                    <button type="button" class="flex h-8 w-8 items-center justify-center rounded-lg border border-white/10 bg-white/[0.04] text-white/45 transition hover:border-white/20 hover:text-white" data-commerce-product-delete-modal-close aria-label="关闭">
+                        <i data-lucide="x" class="h-4 w-4"></i>
+                    </button>
+                </div>
+                <div class="mt-4 grid grid-cols-2 gap-2">
+                    <button type="button" class="flex h-10 items-center justify-center rounded-lg border border-white/10 bg-white/[0.04] text-sm font-semibold text-white/58 transition hover:border-white/20 hover:bg-white/[0.07] hover:text-white" data-commerce-product-delete-modal-close>取消</button>
+                    <button type="button" class="flex h-10 items-center justify-center rounded-lg bg-rose-500 text-sm font-semibold text-white transition hover:bg-rose-400" data-commerce-product-delete-modal-confirm>删除</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="fixed inset-0 z-50 hidden items-center justify-center bg-black/72 px-4 py-6 backdrop-blur-sm" data-commerce-try-on-video-modal hidden>
+            <div class="w-full max-w-5xl rounded-2xl border border-white/12 bg-slate-950 p-4 shadow-2xl shadow-black/35">
+                <div class="mb-3 flex items-center justify-between gap-3">
+                    <div>
+                        <h2 class="text-base font-semibold text-white">试穿视频预览</h2>
+                        <p class="mt-0.5 text-xs text-white/42">检查动作、商品还原和画面比例</p>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <a href="#" download class="flex h-8 items-center gap-1.5 rounded-lg border border-white/10 bg-white/[0.04] px-3 text-xs font-semibold text-white/58 transition hover:border-cyan-100/35 hover:bg-cyan-300/10 hover:text-white" data-commerce-try-on-video-download>
+                            <i data-lucide="download" class="h-3.5 w-3.5"></i>
+                            下载
+                        </a>
+                        <button type="button" class="flex h-8 w-8 items-center justify-center rounded-lg border border-white/10 bg-white/[0.04] text-white/45 transition hover:border-white/20 hover:text-white" data-commerce-try-on-video-modal-close aria-label="关闭">
+                            <i data-lucide="x" class="h-4 w-4"></i>
+                        </button>
+                    </div>
+                </div>
+                <div class="flex max-h-[78vh] min-h-60 items-center justify-center overflow-hidden rounded-xl border border-white/[0.08] bg-black/45">
+                    <video class="max-h-[78vh] w-full object-contain" controls autoplay playsinline data-commerce-try-on-video-modal-player></video>
+                </div>
+            </div>
+        </div>
 
         <aside class="glass-card p-6">
             <h2 class="text-lg font-semibold">添加商品</h2>
@@ -482,6 +666,11 @@
                                     <img src="/static/images/commerce/product-types/plus-size-women.webp" alt="大码女装" class="commerce-product-type-image mx-auto h-14 w-14 object-contain">
                                     <span class="mt-1 block">大码女装</span>
                                 </button>
+                            </div>
+                        </div>
+                        <div>
+                            <p class="mb-2 text-xs font-semibold text-white/50">其他</p>
+                            <div class="grid grid-cols-3 gap-2">
                                 <button type="button" class="commerce-product-type-option flex min-h-[5rem] items-center justify-center rounded-lg border border-white/10 bg-white/[0.035] p-2 text-sm font-semibold text-white/65 transition hover:border-cyan-200/40 hover:bg-cyan-300/10" data-product-type-option data-product-type="其他">
                                     <span>其他</span>
                                 </button>
@@ -566,19 +755,317 @@ function selectCommerceProductGalleryImage(button) {
     if (!gallery) {
         return;
     }
+    const thumbs = Array.from(gallery.querySelectorAll('[data-commerce-product-gallery-thumb]'));
+    const selectedIndex = Number(button.dataset.imageIndex || thumbs.indexOf(button) || 0);
+    gallery.dataset.commerceProductGalleryIndex = String(selectedIndex);
     const mainImage = gallery.querySelector('[data-commerce-product-gallery-main]');
     const imageUrl = button.dataset.imageUrl || '';
     if (mainImage && imageUrl) {
         mainImage.src = imageUrl;
         mainImage.alt = button.dataset.imageAlt || mainImage.alt;
     }
-    gallery.querySelectorAll('[data-commerce-product-gallery-thumb]').forEach((thumb) => {
+    thumbs.forEach((thumb) => {
         const selected = thumb === button;
         thumb.classList.toggle('border-emerald-200/60', selected);
         thumb.classList.toggle('ring-1', selected);
         thumb.classList.toggle('ring-emerald-200/25', selected);
         thumb.classList.toggle('border-white/10', !selected);
     });
+    const indexLabel = gallery.querySelector('[data-commerce-product-gallery-index]');
+    if (indexLabel) {
+        indexLabel.textContent = `${selectedIndex + 1}/${Math.max(thumbs.length, 1)}`;
+    }
+    updateCommerceProductReplacementTarget(gallery, selectedIndex);
+    selectCommerceProductReplacementUsage(gallery, button.dataset.imageUsage || '细节图');
+}
+
+function updateCommerceProductReplacementTarget(gallery, selectedIndex) {
+    const input = gallery.querySelector('[data-commerce-product-current-replace-input]');
+    if (!input) {
+        return;
+    }
+    input.name = `product_image_${Math.max(selectedIndex, 0)}`;
+    input.value = '';
+}
+
+function commerceProductGalleryImageCount(gallery) {
+    return gallery?.querySelectorAll('input[name="product_image_urls"]').length || 0;
+}
+
+function updateCommerceProductGalleryActions(gallery) {
+    const count = commerceProductGalleryImageCount(gallery);
+    const deleteButton = gallery?.querySelector('[data-commerce-product-gallery-delete]');
+    if (deleteButton) {
+        deleteButton.hidden = count <= 1;
+        deleteButton.classList.toggle('hidden', count <= 1);
+    }
+}
+
+function commerceProductImageAlt(gallery, image) {
+    const productName = gallery?.querySelector('[data-commerce-product-gallery-main]')?.alt?.split(' - ')[0] || '商品图';
+    return `${productName} - ${image.usage || '商品图'}`;
+}
+
+function createCommerceProductGalleryThumb(gallery, image, index) {
+    const button = document.createElement('div');
+    button.className = 'group relative flex h-14 w-14 flex-none items-center justify-center overflow-hidden rounded-md border bg-white/[0.035] transition hover:border-emerald-200/45 border-white/10';
+    button.dataset.commerceProductGalleryThumb = '';
+    button.dataset.imageIndex = String(index);
+    button.dataset.imageUrl = image.url || '';
+    button.dataset.imageUsage = image.usage || '细节图';
+    button.dataset.imageAlt = commerceProductImageAlt(gallery, image);
+    button.innerHTML = `
+        <button type="button" class="flex h-full w-full items-center justify-center" data-commerce-product-thumb-select aria-label="查看${image.usage || '商品图'}">
+            <img src="${image.url || ''}" alt="${commerceProductImageAlt(gallery, image)}" class="h-full w-full object-contain" loading="lazy">
+        </button>
+        <span class="absolute left-0 top-0 max-w-full truncate rounded-br bg-black/65 px-1 py-0.5 text-[10px] font-semibold text-white/78">${image.usage || '商品图'}</span>
+        <button type="button" class="absolute right-0 top-0 flex h-5 w-5 items-center justify-center rounded-bl bg-black/62 text-white/72 opacity-0 transition hover:bg-cyan-400/80 hover:text-white group-hover:opacity-100" data-commerce-product-thumb-preview aria-label="查看大图" title="查看大图">
+            <i data-lucide="maximize-2" class="h-3 w-3"></i>
+        </button>
+    `;
+    return button;
+}
+
+function renderCommerceProductGalleryImages(gallery, images, preferredIndex = 0) {
+    const safeImages = Array.isArray(images) ? images.filter((image) => image?.url) : [];
+    if (!gallery || !safeImages.length) {
+        return;
+    }
+    const thumbs = gallery.querySelector('[data-commerce-product-gallery-thumbs]');
+    const form = gallery.querySelector('[data-commerce-product-replace-form]');
+    const marker = gallery.querySelector('[data-commerce-product-replace-usage-input]');
+    if (!thumbs || !form || !marker) {
+        return;
+    }
+    gallery.querySelectorAll('input[name="product_image_urls"], input[name="product_image_usages"]').forEach((input) => input.remove());
+    safeImages.forEach((image) => {
+        const urlInput = document.createElement('input');
+        urlInput.type = 'hidden';
+        urlInput.name = 'product_image_urls';
+        urlInput.value = image.url || '';
+        const usageInput = document.createElement('input');
+        usageInput.type = 'hidden';
+        usageInput.name = 'product_image_usages';
+        usageInput.value = image.usage || '细节图';
+        form.insertBefore(urlInput, marker);
+        form.insertBefore(usageInput, marker);
+    });
+    thumbs.innerHTML = '';
+    safeImages.forEach((image, index) => {
+        thumbs.appendChild(createCommerceProductGalleryThumb(gallery, image, index));
+    });
+    const selectedIndex = Math.min(Math.max(preferredIndex, 0), safeImages.length - 1);
+    const selectedThumb = thumbs.querySelector(`[data-image-index="${selectedIndex}"]`) || thumbs.querySelector('[data-commerce-product-gallery-thumb]');
+    if (selectedThumb) {
+        selectCommerceProductGalleryImage(selectedThumb);
+    }
+    const summaryCount = gallery.closest('[data-commerce-product-card]')?.querySelector('[data-commerce-product-summary-image-count]');
+    if (summaryCount) {
+        summaryCount.textContent = `${safeImages.length}/5 张图`;
+    }
+    updateCommerceProductGalleryActions(gallery);
+    safeCreateIcons();
+}
+
+function selectCommerceProductReplacementUsage(gallery, usage) {
+    const normalizedUsage = usage || '细节图';
+    const selectedIndex = Number(gallery?.dataset.commerceProductGalleryIndex || 0);
+    const usageInputs = Array.from(gallery?.querySelectorAll('input[name="product_image_usages"]') || []);
+    const currentUsageInput = gallery?.querySelector('[data-commerce-product-replace-usage-input]');
+    if (usageInputs[selectedIndex]) {
+        usageInputs[selectedIndex].value = normalizedUsage;
+    }
+    if (currentUsageInput) {
+        currentUsageInput.value = normalizedUsage;
+        currentUsageInput.dataset.currentUsage = normalizedUsage;
+    }
+}
+
+function setCommerceProductReplacementModalUsage(modal, usage) {
+    const normalizedUsage = usage || '细节图';
+    if (modal) {
+        modal.dataset.selectedUsage = normalizedUsage;
+    }
+    modal?.querySelectorAll('[data-commerce-product-replace-modal-usage]').forEach((button) => {
+        const selected = button.dataset.usage === normalizedUsage;
+        button.classList.toggle('border-emerald-200/55', selected);
+        button.classList.toggle('bg-emerald-300/18', selected);
+        button.classList.toggle('text-white', selected);
+        button.classList.toggle('ring-1', selected);
+        button.classList.toggle('ring-emerald-200/30', selected);
+        button.classList.toggle('border-white/10', !selected);
+        button.classList.toggle('bg-white/[0.04]', !selected);
+        button.classList.toggle('text-white/58', !selected);
+        button.setAttribute('aria-pressed', selected ? 'true' : 'false');
+    });
+}
+
+function openCommerceProductReplacementModal(gallery, mode = 'replace') {
+    const modal = document.querySelector('[data-commerce-product-replace-modal]');
+    if (!modal || !gallery) {
+        return;
+    }
+    if (mode === 'add' && commerceProductGalleryImageCount(gallery) >= 5) {
+        showCommerceToast('最多上传5张商品图片', 'warning');
+        return;
+    }
+    const usage = gallery.querySelector('[data-commerce-product-replace-usage-input]')?.value || '细节图';
+    modal.dataset.targetGalleryIndex = gallery.dataset.commerceProductGalleryInstance || '';
+    modal.dataset.mode = mode;
+    modal.querySelector('h2').textContent = mode === 'add' ? '选择新增图片用途' : '选择图片用途';
+    modal.querySelector('p').textContent = mode === 'add' ? '确认后选择要添加的新图片。' : '确认后再选择要替换的新图片。';
+    setCommerceProductReplacementModalUsage(modal, usage);
+    modal.hidden = false;
+    modal.classList.remove('hidden');
+    modal.classList.add('flex');
+}
+
+function closeCommerceProductReplacementModal() {
+    const modal = document.querySelector('[data-commerce-product-replace-modal]');
+    if (!modal) {
+        return;
+    }
+    modal.hidden = true;
+    modal.classList.add('hidden');
+    modal.classList.remove('flex');
+    modal.dataset.targetGalleryIndex = '';
+    modal.dataset.mode = '';
+}
+
+function triggerCommerceProductReplacementUpload(gallery, usage, mode = 'replace') {
+    const selectedUsage = usage || '细节图';
+    let input = gallery?.querySelector('[data-commerce-product-current-replace-input]');
+    if (mode === 'add') {
+        const count = commerceProductGalleryImageCount(gallery);
+        if (count >= 5) {
+            showCommerceToast('最多上传5张商品图片', 'warning');
+            return;
+        }
+        const urlInput = document.createElement('input');
+        urlInput.type = 'hidden';
+        urlInput.name = 'product_image_urls';
+        urlInput.value = '';
+        const usageInput = document.createElement('input');
+        usageInput.type = 'hidden';
+        usageInput.name = 'product_image_usages';
+        usageInput.value = selectedUsage;
+        urlInput.dataset.pendingAddField = 'true';
+        usageInput.dataset.pendingAddField = 'true';
+        const form = gallery?.querySelector('[data-commerce-product-replace-form]');
+        input = gallery?.querySelector('[data-commerce-product-add-input]');
+        if (!form || !input) {
+            return;
+        }
+        form.insertBefore(urlInput, gallery.querySelector('[data-commerce-product-replace-usage-input]'));
+        form.insertBefore(usageInput, gallery.querySelector('[data-commerce-product-replace-usage-input]'));
+        input.name = `product_image_${count}`;
+        input.dataset.pendingUrlInput = 'true';
+        input.value = '';
+    } else {
+        selectCommerceProductReplacementUsage(gallery, selectedUsage);
+    }
+    closeCommerceProductReplacementModal();
+    input?.click();
+}
+
+function removeCommerceProductPendingAddInput(input) {
+    if (!input?.dataset.pendingUrlInput) {
+        return;
+    }
+    const form = input.closest('[data-commerce-product-replace-form]');
+    form?.querySelectorAll('[data-pending-add-field="true"]').forEach((field) => field.remove());
+    delete input.dataset.pendingUrlInput;
+}
+
+function submitCommerceProductImagesForm(gallery, preferredIndex = null) {
+    const form = gallery?.querySelector('[data-commerce-product-replace-form]');
+    if (!form) {
+        return;
+    }
+    gallery.dataset.commerceProductImagesUpdating = 'true';
+    commerceFetchFormJson(form)
+        .then((product) => {
+            const images = product.images || [];
+            const fallbackIndex = Number(gallery.dataset.commerceProductGalleryIndex || 0);
+            const selectedIndex = preferredIndex === null ? fallbackIndex : preferredIndex;
+            renderCommerceProductGalleryImages(gallery, images, selectedIndex);
+            showCommerceToast('商品图片已更新', 'success');
+        })
+        .catch((error) => {
+            showCommerceToast(error.message || '更新商品图片失败', 'warning');
+        })
+        .finally(() => {
+            gallery.dataset.commerceProductImagesUpdating = 'false';
+            gallery.querySelectorAll('[data-commerce-product-current-replace-input], [data-commerce-product-add-input]').forEach((input) => {
+                input.value = '';
+                if (input.matches('[data-commerce-product-add-input]')) {
+                    removeCommerceProductPendingAddInput(input);
+                }
+            });
+        });
+}
+
+function openCommerceProductGalleryPreview(gallery, thumb = null) {
+    const url = thumb?.dataset.imageUrl || gallery?.querySelector('[data-commerce-product-gallery-main]')?.src || '';
+    if (url && typeof openModal === 'function') {
+        openModal(url);
+    }
+}
+
+function openCommerceProductDeleteModal(gallery, thumb = null) {
+    if (commerceProductGalleryImageCount(gallery) <= 1) {
+        showCommerceToast('至少保留1张商品图片', 'warning');
+        return;
+    }
+    const modal = document.querySelector('[data-commerce-product-delete-modal]');
+    if (!modal || !gallery) {
+        return;
+    }
+    modal.dataset.targetGalleryIndex = gallery.dataset.commerceProductGalleryInstance || '';
+    if (thumb) {
+        const selectedIndex = Number(thumb.dataset.imageIndex || 0);
+        gallery.dataset.commerceProductGalleryIndex = String(selectedIndex);
+        modal.dataset.targetImageIndex = String(selectedIndex);
+    }
+    modal.hidden = false;
+    modal.classList.remove('hidden');
+    modal.classList.add('flex');
+}
+
+function closeCommerceProductDeleteModal() {
+    const modal = document.querySelector('[data-commerce-product-delete-modal]');
+    if (!modal) {
+        return;
+    }
+    modal.hidden = true;
+    modal.classList.add('hidden');
+    modal.classList.remove('flex');
+    modal.dataset.targetGalleryIndex = '';
+    modal.dataset.targetImageIndex = '';
+}
+
+function deleteCommerceProductCurrentImage(gallery, imageIndex = null) {
+    const selectedIndex = Number(imageIndex ?? gallery?.dataset.commerceProductGalleryIndex ?? 0);
+    const urls = Array.from(gallery?.querySelectorAll('input[name="product_image_urls"]') || []);
+    const usages = Array.from(gallery?.querySelectorAll('input[name="product_image_usages"]') || []);
+    if (!gallery || urls.length <= 1) {
+        showCommerceToast('至少保留1张商品图片', 'warning');
+        return;
+    }
+    urls[selectedIndex]?.remove();
+    usages[selectedIndex]?.remove();
+    closeCommerceProductDeleteModal();
+    submitCommerceProductImagesForm(gallery, Math.max(selectedIndex - 1, 0));
+}
+
+function selectCommerceProductGalleryByOffset(gallery, offset) {
+    const thumbs = Array.from(gallery.querySelectorAll('[data-commerce-product-gallery-thumb]'));
+    if (!thumbs.length) {
+        return;
+    }
+    const selectedIndex = thumbs.findIndex((thumb) => thumb.classList.contains('border-emerald-200/60'));
+    const nextIndex = ((selectedIndex < 0 ? 0 : selectedIndex) + offset + thumbs.length) % thumbs.length;
+    selectCommerceProductGalleryImage(thumbs[nextIndex]);
 }
 
 function selectCommerceProductCardExpanded(target, forceExpanded) {
@@ -601,6 +1088,199 @@ function selectCommerceProductCardExpanded(target, forceExpanded) {
     card.querySelector('[data-commerce-product-toggle-open]')?.classList.toggle('hidden', expanded);
     card.querySelector('[data-commerce-product-toggle-close]')?.classList.toggle('hidden', !expanded);
     card.querySelector('[data-commerce-product-toggle-icon]')?.classList.toggle('rotate-180', expanded);
+}
+
+const COMMERCE_PRODUCT_CATEGORY_GROUPS = [
+    ['上装', ['T恤', '衬衫', '毛衣', '雪纺衫', '马甲', '卫衣']],
+    ['女裙', ['连衣裙', '半身裙', '旗袍']],
+    ['女裤', ['休闲裤', '牛仔裤', '打底裤', '棉裤羽绒裤']],
+    ['套装', ['时尚套装', '运动套装']],
+    ['外套', ['短外套', '西装', '风衣', '羽绒服', '毛呢大衣', '皮衣', '皮草', '棉衣棉服']],
+    ['特色女装', ['中老年女装', '大码女装']],
+    ['其他', ['其他']],
+];
+
+function commerceProductCategoryForType(productType) {
+    const normalizedType = productType || '其他';
+    const group = COMMERCE_PRODUCT_CATEGORY_GROUPS.find(([, types]) => types.includes(normalizedType));
+    return group ? group[0] : '其他';
+}
+
+function commerceProductCategoryButtonClass(active, count) {
+    const baseClass = 'flex h-9 items-center justify-center gap-1.5 rounded-lg px-3 text-sm font-semibold transition';
+    if (active) {
+        return `${baseClass} bg-emerald-400 text-slate-950 shadow-[0_8px_24px_rgba(52,211,153,0.20)]`;
+    }
+    const inactiveClass = `${baseClass} text-white/62 hover:bg-white/[0.07] hover:text-white`;
+    return count > 0 ? inactiveClass : `${inactiveClass} opacity-45`;
+}
+
+function commerceProductSubcategoryButtonClass(active, count) {
+    const baseClass = 'flex h-8 items-center justify-center gap-1.5 rounded-lg border px-2.5 text-xs font-semibold transition';
+    if (active) {
+        return `${baseClass} border-cyan-100/55 bg-cyan-300/18 text-white shadow-[0_0_0_1px_rgba(103,232,249,0.12)]`;
+    }
+    const inactiveClass = `${baseClass} border-white/10 bg-white/[0.035] text-white/56 hover:border-cyan-100/30 hover:bg-cyan-300/10 hover:text-white`;
+    return count > 0 ? inactiveClass : `${inactiveClass} opacity-45`;
+}
+
+function commerceProductFilterButtonClass(active, count, dataName) {
+    return dataName === 'commerceProductCategoryFilter'
+        ? commerceProductCategoryButtonClass(active, count)
+        : commerceProductSubcategoryButtonClass(active, count);
+}
+
+function buildCommerceProductFilterButton(label, count, active, dataName) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = commerceProductFilterButtonClass(active, count, dataName);
+    button.dataset[dataName] = label;
+    button.setAttribute('aria-pressed', active ? 'true' : 'false');
+    if (dataName === 'commerceProductCategoryFilter') {
+        button.dataset.commerceProductCategoryCount = String(count);
+    }
+    const labelSpan = document.createElement('span');
+    labelSpan.textContent = label;
+    const countSpan = document.createElement('span');
+    countSpan.className = dataName === 'commerceProductCategoryFilter'
+        ? 'rounded-md bg-black/[0.12] px-1.5 py-0.5 text-xs font-bold text-current opacity-80'
+        : 'text-white/42';
+    countSpan.textContent = String(count);
+    button.append(labelSpan, countSpan);
+    return button;
+}
+
+function renderCommerceProductFilterSummary(filterRoot, visibleCount, total) {
+    const activeCategory = filterRoot.dataset.commerceProductActiveCategory || '全部';
+    const activeSubcategory = filterRoot.dataset.commerceProductActiveSubcategory || '全部';
+    const summary = filterRoot.querySelector('[data-commerce-product-filter-summary]');
+    const resetButton = filterRoot.querySelector('[data-commerce-product-filter-reset]');
+    const picked = [];
+    if (activeCategory !== '全部') {
+        picked.push(activeCategory);
+    }
+    if (activeSubcategory !== '全部') {
+        picked.push(activeSubcategory);
+    }
+    if (summary) {
+        summary.textContent = picked.length
+            ? `当前筛选：${picked.join(' · ')} · ${visibleCount} 件`
+            : `当前筛选：全部商品 · ${total} 件`;
+    }
+    if (resetButton) {
+        const active = picked.length > 0;
+        resetButton.classList.toggle('hidden', !active);
+        resetButton.classList.toggle('inline-flex', active);
+    }
+}
+
+function renderCommerceProductSubcategoryFilters(filterRoot, activeCategory, activeSubcategory) {
+    const subcategoryContainer = filterRoot.querySelector('[data-commerce-product-subcategory-filters]');
+    const panel = filterRoot.querySelector('[data-commerce-product-filter-panel]');
+    const panelTitle = filterRoot.querySelector('[data-commerce-product-filter-panel-title]');
+    if (!subcategoryContainer) {
+        return;
+    }
+    subcategoryContainer.innerHTML = '';
+    const cards = Array.from(document.querySelectorAll('[data-commerce-product-card]'));
+    const categoryTypes = activeCategory === '全部'
+        ? []
+        : (COMMERCE_PRODUCT_CATEGORY_GROUPS.find(([category]) => category === activeCategory)?.[1] || []);
+    if (!categoryTypes.length) {
+        panel?.classList.add('hidden');
+        return;
+    }
+    panel?.classList.remove('hidden');
+    if (panelTitle) {
+        panelTitle.textContent = activeCategory;
+    }
+    const counts = new Map(categoryTypes.map((type) => [type, 0]));
+    cards.forEach((card) => {
+        const type = card.dataset.commerceProductType || '其他';
+        if (counts.has(type)) {
+            counts.set(type, counts.get(type) + 1);
+        }
+    });
+    const total = categoryTypes.reduce((sum, type) => sum + (counts.get(type) || 0), 0);
+    const options = [['全部', total], ...categoryTypes.map((type) => [type, counts.get(type) || 0])];
+    options.forEach(([label, count]) => {
+        const button = buildCommerceProductFilterButton(label, count, activeSubcategory === label, 'commerceProductSubcategoryFilter');
+        subcategoryContainer.appendChild(button);
+    });
+}
+
+function updateCommerceProductFilters() {
+    const filterRoot = document.querySelector('[data-commerce-product-filters]');
+    const categoryContainer = filterRoot?.querySelector('[data-commerce-product-category-filters]');
+    const list = document.querySelector('[data-commerce-product-list]');
+    if (!filterRoot || !categoryContainer || !list) {
+        return;
+    }
+    const cards = Array.from(list.querySelectorAll('[data-commerce-product-card]'));
+    cards.forEach((card) => {
+        card.dataset.commerceProductCategory = commerceProductCategoryForType(card.dataset.commerceProductType || '其他');
+    });
+    const counts = new Map(COMMERCE_PRODUCT_CATEGORY_GROUPS.map(([category]) => [category, 0]));
+    cards.forEach((card) => {
+        const category = card.dataset.commerceProductCategory || '其他';
+        counts.set(category, (counts.get(category) || 0) + 1);
+    });
+    const total = cards.length;
+    const activeCategory = filterRoot.dataset.commerceProductActiveCategory || '全部';
+    const activeSubcategory = filterRoot.dataset.commerceProductActiveSubcategory || '全部';
+    categoryContainer.innerHTML = '';
+    const categoryOptions = [['全部', total], ...COMMERCE_PRODUCT_CATEGORY_GROUPS.map(([category]) => [category, counts.get(category) || 0])];
+    categoryOptions.forEach(([label, count]) => {
+        categoryContainer.appendChild(buildCommerceProductFilterButton(label, count, activeCategory === label, 'commerceProductCategoryFilter'));
+    });
+    renderCommerceProductSubcategoryFilters(filterRoot, activeCategory, activeSubcategory);
+    let visibleCount = 0;
+    cards.forEach((card) => {
+        const category = card.dataset.commerceProductCategory || '其他';
+        const type = card.dataset.commerceProductType || '其他';
+        const visible = (
+            (activeCategory === '全部' || category === activeCategory)
+            && (activeSubcategory === '全部' || type === activeSubcategory)
+        );
+        card.hidden = !visible;
+        card.classList.toggle('hidden', !visible);
+        if (visible) {
+            visibleCount += 1;
+        }
+    });
+    const empty = list.querySelector('[data-commerce-product-filter-empty]');
+    if (empty) {
+        empty.classList.toggle('hidden', visibleCount > 0 || total === 0);
+    }
+    renderCommerceProductFilterSummary(filterRoot, visibleCount, total);
+}
+
+function selectCommerceProductCategoryFilter(button) {
+    const filterRoot = button.closest('[data-commerce-product-filters]');
+    if (!filterRoot) {
+        return;
+    }
+    filterRoot.dataset.commerceProductActiveCategory = button.dataset.commerceProductCategoryFilter || '全部';
+    filterRoot.dataset.commerceProductActiveSubcategory = '全部';
+    updateCommerceProductFilters();
+}
+
+function selectCommerceProductSubcategoryFilter(button) {
+    const filterRoot = button.closest('[data-commerce-product-filters]');
+    if (!filterRoot) {
+        return;
+    }
+    filterRoot.dataset.commerceProductActiveSubcategory = button.dataset.commerceProductSubcategoryFilter || '全部';
+    updateCommerceProductFilters();
+}
+
+function resetCommerceProductFilters(filterRoot = document.querySelector('[data-commerce-product-filters]')) {
+    if (!filterRoot) {
+        return;
+    }
+    filterRoot.dataset.commerceProductActiveCategory = '全部';
+    filterRoot.dataset.commerceProductActiveSubcategory = '全部';
+    updateCommerceProductFilters();
 }
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -754,6 +1434,7 @@ document.addEventListener('DOMContentLoaded', () => {
     window.selectCommerceProductImageUsage = selectCommerceProductImageUsage;
     window.addCommerceProductImageRow = addCommerceProductImageRow;
     window.updateCommerceProductImageRows = updateCommerceProductImageRows;
+
     function showCommerceToast(message, type = 'info') {
         if (typeof showToast === 'function') {
             showToast(message, type);
@@ -777,9 +1458,20 @@ document.addEventListener('DOMContentLoaded', () => {
             }));
     }
 
+    function commerceFetchFormJson(form) {
+        return commerceFetchJson(form.action, {
+            method: 'POST',
+            body: new FormData(form),
+            headers: {},
+        });
+    }
+
     function commerceTryOnStatusText(status) {
         if (status === 'completed') {
             return '已完成';
+        }
+        if (status === 'partial_completed') {
+            return '部分完成';
         }
         if (status === 'failed') {
             return '失败';
@@ -787,10 +1479,65 @@ document.addEventListener('DOMContentLoaded', () => {
         return '生成中';
     }
 
+    function commerceTryOnShotVideoUrl(shot) {
+        return shot?.videoUrl || shot?.video_url || '';
+    }
+
+    function commerceTryOnShotStatus(shot) {
+        return shot?.generationStatus || shot?.generation_status || shot?.status || '';
+    }
+
     function commerceTryOnProjectVideoUrl(project) {
         const shots = project?.shots || [];
-        const shot = shots.find((item) => item.videoUrl) || shots[0] || {};
-        return shot.videoUrl || '';
+        const shot = shots.find((item) => commerceTryOnShotVideoUrl(item)) || shots[0] || {};
+        return commerceTryOnShotVideoUrl(shot);
+    }
+
+    function commerceTryOnProjectCoverUrl(project) {
+        const shots = project?.shots || [];
+        const shot = shots.find((item) => commerceTryOnShotVideoUrl(item)) || shots[0] || {};
+        return shot?.coverUrl || shot?.cover_url || shot?.thumbnailUrl || shot?.thumbnail_url || shot?.posterUrl || shot?.poster_url || '';
+    }
+
+    function commerceTryOnProjectEffectiveStatus(project) {
+        const status = project?.status || 'generating';
+        const shots = project?.shots || [];
+        const hasVideo = shots.some((shot) => commerceTryOnShotVideoUrl(shot));
+        const hasFailed = shots.some((shot) => commerceTryOnShotStatus(shot) === 'failed');
+        if (status === 'partial_completed' || (hasVideo && hasFailed)) {
+            return 'partial_completed';
+        }
+        if (status === 'failed' || hasFailed) {
+            return 'failed';
+        }
+        if (
+            status === 'completed'
+            || hasVideo
+            || (shots.length > 0 && shots.every((shot) => commerceTryOnShotStatus(shot) === 'completed'))
+        ) {
+            return 'completed';
+        }
+        return status;
+    }
+
+    function commerceTryOnProjectPreviewClass(project) {
+        const ratio = project?.aspectRatio || '9:16';
+        if (ratio === '16:9') {
+            return 'h-28 w-48';
+        }
+        if (ratio === '1:1') {
+            return 'h-32 w-32';
+        }
+        return 'h-36 w-24';
+    }
+
+    function escapeCommerceHtml(value) {
+        return String(value || '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
     }
 
     function commerceTryOnProjectSummary(project) {
@@ -802,31 +1549,129 @@ document.addEventListener('DOMContentLoaded', () => {
         return '试穿视频任务';
     }
 
+    function commerceTryOnRequirementSection(requirements, label) {
+        const text = String(requirements || '');
+        if (!text) {
+            return '';
+        }
+        const sections = text.split(/[；;]/).map((section) => section.trim()).filter(Boolean);
+        const section = sections.find((item) => item.startsWith(label));
+        return section ? section.slice(label.length).trim() : '';
+    }
+
+    function commerceTryOnProjectPerformanceSummary(project) {
+        const requirements = project?.tryOnRequirements || '';
+        const style = commerceTryOnRequirementSection(requirements, '表演风格：');
+        const boosts = commerceTryOnRequirementSection(requirements, '动作表情：');
+        const parts = [];
+        if (style) {
+            parts.push(`表演风格：${style}`);
+        }
+        if (boosts) {
+            parts.push(`动作/表情：${boosts}`);
+        }
+        return parts.join(' · ');
+    }
+
+    function updateCommerceTryOnProjectPerformance(card, project) {
+        const performance = card.querySelector('[data-commerce-try-on-project-performance]');
+        if (!performance) {
+            return;
+        }
+        const text = commerceTryOnProjectPerformanceSummary(project || {
+            tryOnRequirements: performance.dataset.tryOnRequirements || '',
+        });
+        performance.textContent = text;
+        performance.classList.toggle('hidden', !text);
+    }
+
+    function updateCommerceTryOnProjectCount(list) {
+        const container = list?.closest('[data-commerce-try-on-projects]');
+        const countEl = container?.querySelector('[data-commerce-try-on-project-count]');
+        if (!countEl) {
+            return;
+        }
+        const count = list.querySelectorAll('[data-commerce-try-on-project-card]').length;
+        countEl.textContent = `${count} 条`;
+    }
+
+    function openCommerceTryOnProjectVideo(videoUrl) {
+        if (!videoUrl) {
+            return;
+        }
+        const modal = document.querySelector('[data-commerce-try-on-video-modal]');
+        const player = modal?.querySelector('[data-commerce-try-on-video-modal-player]');
+        const downloadLink = modal?.querySelector('[data-commerce-try-on-video-download]');
+        if (!modal || !player) {
+            window.open(videoUrl, '_blank', 'noopener');
+            return;
+        }
+        if (downloadLink) {
+            downloadLink.href = videoUrl;
+        }
+        player.src = videoUrl;
+        player.load();
+        modal.hidden = false;
+        modal.classList.remove('hidden');
+        modal.classList.add('flex');
+        player.play?.().catch(() => {});
+    }
+
+    function closeCommerceTryOnProjectVideo() {
+        const modal = document.querySelector('[data-commerce-try-on-video-modal]');
+        const player = modal?.querySelector('[data-commerce-try-on-video-modal-player]');
+        if (!modal) {
+            return;
+        }
+        if (player) {
+            player.pause();
+            player.removeAttribute('src');
+            player.load();
+        }
+        modal.hidden = true;
+        modal.classList.add('hidden');
+        modal.classList.remove('flex');
+    }
+
     function renderCommerceTryOnProject(project, list) {
         if (!project || !project.id || !list) {
             return null;
         }
         list.querySelector('[data-commerce-try-on-project-empty]')?.remove();
         let card = list.querySelector(`[data-commerce-try-on-project-id="${project.id}"]`);
-        const status = project.status || 'generating';
+        const status = commerceTryOnProjectEffectiveStatus(project);
         const videoUrl = commerceTryOnProjectVideoUrl(project);
+        const safeVideoUrl = escapeCommerceHtml(videoUrl);
+        const coverUrl = commerceTryOnProjectCoverUrl(project);
+        const safeCoverUrl = escapeCommerceHtml(coverUrl);
         const firstShot = (project.shots || [])[0] || {};
+        const previewFrameClass = commerceTryOnProjectPreviewClass(project);
         const previewHtml = videoUrl
-            ? `<video src="${videoUrl}" class="h-full w-full object-contain" controls playsinline data-commerce-try-on-project-video></video>`
+            ? `<button type="button" class="group relative h-full w-full overflow-hidden" data-commerce-try-on-project-open data-commerce-try-on-project-cover-button data-video-url="${safeVideoUrl}" aria-label="播放试穿视频">
+                    ${coverUrl
+                        ? `<img src="${safeCoverUrl}" class="pointer-events-none h-full w-full object-cover" alt="试穿视频预览图" loading="lazy" data-commerce-try-on-project-cover>`
+                        : `<video src="${safeVideoUrl}" class="pointer-events-none h-full w-full object-cover" muted preload="metadata" playsinline data-commerce-try-on-project-cover></video>`}
+                    <span class="absolute inset-0 bg-black/18 transition group-hover:bg-black/26"></span>
+                    <span class="absolute inset-0 flex items-center justify-center">
+                        <span class="flex h-11 w-11 items-center justify-center rounded-full border border-white/25 bg-black/55 text-white shadow-lg shadow-black/25 transition group-hover:scale-105 group-hover:border-cyan-100/55 group-hover:bg-cyan-300/22">
+                            <i data-lucide="play" class="ml-0.5 h-5 w-5 fill-current"></i>
+                        </span>
+                    </span>
+                </button>`
             : `<div class="flex h-full w-full flex-col items-center justify-center gap-1 text-white/40">
                     <i data-lucide="loader-2" class="h-4 w-4 animate-spin"></i>
                     <span class="text-[11px]">${commerceTryOnStatusText(status)}</span>
                 </div>`;
         if (!card) {
             card = document.createElement('div');
-            card.className = 'rounded-lg border border-white/10 bg-black/18 p-2';
+            card.className = 'rounded-lg border border-white/10 bg-black/18 p-2.5';
             card.dataset.commerceTryOnProjectCard = '';
             card.dataset.commerceTryOnProjectId = String(project.id);
             card.dataset.commerceTryOnStatusUrl = `/commerce/projects/${project.id}/status/`;
             card.dataset.commerceTryOnGenerateUrl = `/commerce/projects/${project.id}/generation/start/`;
             card.innerHTML = `
-                <div class="flex items-start gap-2">
-                    <div class="flex h-16 w-24 flex-none items-center justify-center overflow-hidden rounded-md border border-white/[0.08] bg-black/30" data-commerce-try-on-project-preview></div>
+                <div class="flex items-start gap-3">
+                    <div class="flex flex-none items-center justify-center overflow-hidden rounded-lg border border-white/[0.08] bg-black/30" data-commerce-try-on-project-preview></div>
                     <div class="min-w-0 flex-1">
                         <div class="flex flex-wrap items-center gap-1.5">
                             <span class="rounded-full border border-white/10 bg-white/[0.04] px-2 py-0.5 text-[11px] font-semibold text-white/62" data-commerce-try-on-project-status-label></span>
@@ -834,6 +1679,7 @@ document.addEventListener('DOMContentLoaded', () => {
                             <span class="rounded-full border border-white/10 bg-white/[0.04] px-2 py-0.5 text-[11px] font-semibold text-white/45" data-commerce-try-on-project-resolution></span>
                         </div>
                         <p class="mt-1 truncate text-xs text-white/45" data-commerce-try-on-project-summary></p>
+                        <p class="mt-1 hidden text-xs leading-5 text-cyan-50/62" data-commerce-try-on-project-performance></p>
                         <p class="mt-1 hidden text-xs text-rose-200" data-commerce-try-on-project-error></p>
                     </div>
                     <button type="button" class="flex h-8 flex-none items-center gap-1 rounded-lg border border-white/10 bg-white/[0.04] px-2 text-xs font-semibold text-white/55 transition hover:border-emerald-200/35 hover:bg-emerald-300/10 hover:text-white" data-commerce-try-on-project-retry>
@@ -844,11 +1690,26 @@ document.addEventListener('DOMContentLoaded', () => {
             list.prepend(card);
         }
         card.dataset.commerceTryOnProjectStatus = status;
-        card.querySelector('[data-commerce-try-on-project-preview]').innerHTML = previewHtml;
-        card.querySelector('[data-commerce-try-on-project-status-label]').textContent = commerceTryOnStatusText(status);
-        card.querySelector('[data-commerce-try-on-project-ratio]').textContent = project.aspectRatio || '9:16';
-        card.querySelector('[data-commerce-try-on-project-resolution]').textContent = firstShot.resolution || '';
-        card.querySelector('[data-commerce-try-on-project-summary]').textContent = commerceTryOnProjectSummary(project);
+        const preview = card.querySelector('[data-commerce-try-on-project-preview]');
+        preview.className = `flex flex-none items-center justify-center overflow-hidden rounded-lg border border-white/[0.08] bg-black/30 ${previewFrameClass}`;
+        preview.innerHTML = previewHtml;
+        const statusLabel = card.querySelector('[data-commerce-try-on-project-status-label]');
+        const ratioLabel = card.querySelector('[data-commerce-try-on-project-ratio]');
+        const resolutionLabel = card.querySelector('[data-commerce-try-on-project-resolution]');
+        const summaryLabel = card.querySelector('[data-commerce-try-on-project-summary]');
+        if (statusLabel) {
+            statusLabel.textContent = commerceTryOnStatusText(status);
+        }
+        if (ratioLabel) {
+            ratioLabel.textContent = project.aspectRatio || '9:16';
+        }
+        if (resolutionLabel) {
+            resolutionLabel.textContent = firstShot.resolution || '';
+        }
+        if (summaryLabel) {
+            summaryLabel.textContent = commerceTryOnProjectSummary(project);
+        }
+        updateCommerceTryOnProjectPerformance(card, project);
         const error = card.querySelector('[data-commerce-try-on-project-error]');
         if (error) {
             error.textContent = project.errorMessage || '';
@@ -857,6 +1718,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (typeof safeCreateIcons === 'function') {
             safeCreateIcons();
         }
+        updateCommerceTryOnProjectCount(list);
         return card;
     }
 
@@ -870,7 +1732,8 @@ document.addEventListener('DOMContentLoaded', () => {
             commerceFetchJson(statusUrl)
                 .then((project) => {
                     const updatedCard = renderCommerceTryOnProject(project, list) || card;
-                    if (project.status === 'generating' || project.status === 'draft') {
+                    const status = commerceTryOnProjectEffectiveStatus(project);
+                    if (status === 'generating' || status === 'draft') {
                         setTimeout(() => pollCommerceTryOnProject(updatedCard), 3000);
                     }
                 })
@@ -888,13 +1751,14 @@ document.addEventListener('DOMContentLoaded', () => {
     function startCommerceTryOnProjectGeneration(card) {
         const generateUrl = card?.dataset.commerceTryOnGenerateUrl;
         if (!generateUrl) {
-            return;
+            return Promise.resolve(null);
         }
-        commerceFetchJson(generateUrl, {method: 'POST'})
+        return commerceFetchJson(generateUrl, {method: 'POST'})
             .then((project) => {
                 const list = card.closest('[data-commerce-try-on-project-list]');
                 const updatedCard = renderCommerceTryOnProject(project, list) || card;
                 pollCommerceTryOnProject(updatedCard);
+                return project;
             })
             .catch((error) => {
                 showCommerceToast(error.message, 'error');
@@ -903,18 +1767,45 @@ document.addEventListener('DOMContentLoaded', () => {
                     errorEl.textContent = error.message;
                     errorEl.classList.remove('hidden');
                 }
+                throw error;
             });
     }
 
-    function submitCommerceTryOnProjectForm(form) {
+    function setCommerceTryOnSubmitState(form, submitting) {
         const button = form.querySelector('[data-commerce-try-on-submit]');
+        if (submitting) {
+            form.dataset.commerceTryOnSubmitting = 'true';
+        } else {
+            form.dataset.commerceTryOnSubmitting = 'false';
+        }
+        if (!button) {
+            return;
+        }
+        if (!button.dataset.defaultLabel) {
+            button.dataset.defaultLabel = button.textContent.trim() || '创建试穿视频';
+        }
+        button.disabled = submitting;
+        button.setAttribute('aria-busy', submitting ? 'true' : 'false');
+        button.classList.toggle('opacity-60', submitting);
+        button.classList.toggle('cursor-wait', submitting);
+        button.innerHTML = submitting
+            ? '<i data-lucide="loader-2" class="h-4 w-4 animate-spin"></i><span>试穿视频创建中...</span>'
+            : '<i data-lucide="video" class="h-4 w-4"></i><span>' + escapeCommerceHtml(button.dataset.defaultLabel) + '</span>';
+        if (typeof safeCreateIcons === 'function') {
+            safeCreateIcons();
+        }
+    }
+
+    function submitCommerceTryOnProjectForm(form) {
+        if (form.dataset.commerceTryOnSubmitting === 'true') {
+            return;
+        }
         const list = form.closest('[data-commerce-product-details]')?.querySelector('[data-commerce-try-on-project-list]');
         if (!list) {
             form.submit();
             return;
         }
-        button.disabled = true;
-        button.classList.add('opacity-60', 'cursor-wait');
+        setCommerceTryOnSubmitState(form, true);
         commerceFetchJson(form.action, {
             method: 'POST',
             body: new FormData(form),
@@ -922,13 +1813,13 @@ document.addEventListener('DOMContentLoaded', () => {
             .then((project) => {
                 const card = renderCommerceTryOnProject(project, list);
                 if (card) {
-                    startCommerceTryOnProjectGeneration(card);
+                    return startCommerceTryOnProjectGeneration(card);
                 }
+                return project;
             })
             .catch((error) => showCommerceToast(error.message, 'error'))
             .finally(() => {
-                button.disabled = false;
-                button.classList.remove('opacity-60', 'cursor-wait');
+                setCommerceTryOnSubmitState(form, false);
             });
     }
 
@@ -936,6 +1827,30 @@ document.addEventListener('DOMContentLoaded', () => {
     window.pollCommerceTryOnProject = pollCommerceTryOnProject;
     window.startCommerceTryOnProjectGeneration = startCommerceTryOnProjectGeneration;
     window.submitCommerceTryOnProjectForm = submitCommerceTryOnProjectForm;
+    window.setCommerceTryOnSubmitState = setCommerceTryOnSubmitState;
+    window.openCommerceTryOnProjectVideo = openCommerceTryOnProjectVideo;
+    window.updateCommerceProductFilters = updateCommerceProductFilters;
+    window.selectCommerceProductCategoryFilter = selectCommerceProductCategoryFilter;
+    window.selectCommerceProductSubcategoryFilter = selectCommerceProductSubcategoryFilter;
+    window.resetCommerceProductFilters = resetCommerceProductFilters;
+    window.renderCommerceProductFilterSummary = renderCommerceProductFilterSummary;
+    updateCommerceProductFilters();
+    document.querySelector('[data-commerce-product-filters]')?.addEventListener('click', (event) => {
+        const categoryButton = event.target.closest('[data-commerce-product-category-filter]');
+        if (categoryButton) {
+            selectCommerceProductCategoryFilter(categoryButton);
+            return;
+        }
+        const subcategoryButton = event.target.closest('[data-commerce-product-subcategory-filter]');
+        if (subcategoryButton) {
+            selectCommerceProductSubcategoryFilter(subcategoryButton);
+            return;
+        }
+        const resetButton = event.target.closest('[data-commerce-product-filter-reset]');
+        if (resetButton) {
+            resetCommerceProductFilters(resetButton.closest('[data-commerce-product-filters]'));
+        }
+    });
     document.querySelectorAll('[data-product-type-option]').forEach((button) => {
         button.addEventListener('click', () => selectCommerceProductType(button));
     });
@@ -989,12 +1904,21 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     document.querySelectorAll('[data-commerce-try-on-project-card]').forEach((card) => {
+        updateCommerceTryOnProjectPerformance(card);
         if (card.dataset.commerceTryOnProjectStatus === 'generating' || card.dataset.commerceTryOnProjectStatus === 'draft') {
             pollCommerceTryOnProject(card);
         }
     });
+    document.querySelectorAll('[data-commerce-try-on-project-list]').forEach(updateCommerceTryOnProjectCount);
 
     document.addEventListener('click', (event) => {
+        const openVideoButton = event.target.closest('[data-commerce-try-on-project-open]');
+        if (openVideoButton) {
+            event.preventDefault();
+            event.stopPropagation();
+            openCommerceTryOnProjectVideo(openVideoButton.dataset.videoUrl || '');
+            return;
+        }
         const retryButton = event.target.closest('[data-commerce-try-on-project-retry]');
         if (!retryButton) {
             return;
@@ -1002,6 +1926,16 @@ document.addEventListener('DOMContentLoaded', () => {
         const card = retryButton.closest('[data-commerce-try-on-project-card]');
         if (card) {
             startCommerceTryOnProjectGeneration(card);
+        }
+    });
+
+    const tryOnVideoModal = document.querySelector('[data-commerce-try-on-video-modal]');
+    tryOnVideoModal?.querySelectorAll('[data-commerce-try-on-video-modal-close]').forEach((button) => {
+        button.addEventListener('click', closeCommerceTryOnProjectVideo);
+    });
+    tryOnVideoModal?.addEventListener('click', (event) => {
+        if (event.target === tryOnVideoModal) {
+            closeCommerceTryOnProjectVideo();
         }
     });
 
@@ -1032,10 +1966,131 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
     window.selectCommerceProductCardExpanded = selectCommerceProductCardExpanded;
-    document.querySelectorAll('[data-commerce-product-gallery-thumb]').forEach((button) => {
-        button.addEventListener('click', () => selectCommerceProductGalleryImage(button));
+    document.querySelectorAll('[data-commerce-product-gallery]').forEach((gallery, galleryIndex) => {
+        gallery.dataset.commerceProductGalleryInstance = String(galleryIndex);
+        gallery.querySelector('[data-commerce-product-gallery-preview]')?.addEventListener('click', (event) => {
+            if (event.target.closest('[data-commerce-product-gallery-delete], [data-commerce-product-gallery-prev], [data-commerce-product-gallery-next]')) {
+                return;
+            }
+            openCommerceProductGalleryPreview(gallery);
+        });
+        gallery.querySelector('[data-commerce-product-gallery-preview]')?.addEventListener('keydown', (event) => {
+            if (!['Enter', ' '].includes(event.key)) {
+                return;
+            }
+            event.preventDefault();
+            openCommerceProductGalleryPreview(gallery);
+        });
+        gallery.addEventListener('click', (event) => {
+            if (event.target.closest('[data-commerce-product-gallery-delete]')) {
+                event.preventDefault();
+                event.stopPropagation();
+                openCommerceProductDeleteModal(gallery);
+                return;
+            }
+            const thumb = event.target.closest('[data-commerce-product-gallery-thumb]');
+            if (!thumb || !gallery.contains(thumb)) {
+                return;
+            }
+            if (event.target.closest('[data-commerce-product-thumb-preview]')) {
+                event.preventDefault();
+                event.stopPropagation();
+                openCommerceProductGalleryPreview(gallery, thumb);
+                return;
+            }
+            if (event.target.closest('[data-commerce-product-thumb-select]')) {
+                selectCommerceProductGalleryImage(thumb);
+            }
+        });
+        gallery.querySelector('[data-commerce-product-gallery-prev]')?.addEventListener('click', (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            selectCommerceProductGalleryByOffset(gallery, -1);
+        });
+        gallery.querySelector('[data-commerce-product-gallery-next]')?.addEventListener('click', (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            selectCommerceProductGalleryByOffset(gallery, 1);
+        });
+        gallery.querySelector('[data-commerce-product-replace-trigger]')?.addEventListener('click', () => {
+            openCommerceProductReplacementModal(gallery, 'replace');
+        });
+        gallery.querySelector('[data-commerce-product-add-trigger]')?.addEventListener('click', () => {
+            openCommerceProductReplacementModal(gallery, 'add');
+        });
+        const selectedThumb = gallery.querySelector('[data-commerce-product-gallery-thumb].border-emerald-200\\/60')
+            || gallery.querySelector('[data-commerce-product-gallery-thumb]');
+        if (selectedThumb) {
+            selectCommerceProductGalleryImage(selectedThumb);
+        }
+        updateCommerceProductGalleryActions(gallery);
+    });
+    document.querySelectorAll('[data-commerce-product-current-replace-input]').forEach((input) => {
+        input.addEventListener('change', () => {
+            if (input.files?.length) {
+                const gallery = input.closest('[data-commerce-product-gallery]');
+                submitCommerceProductImagesForm(gallery, Number(gallery?.dataset.commerceProductGalleryIndex || 0));
+            }
+        });
+    });
+    document.querySelectorAll('[data-commerce-product-add-input]').forEach((input) => {
+        input.addEventListener('change', () => {
+            if (input.files?.length) {
+                const gallery = input.closest('[data-commerce-product-gallery]');
+                submitCommerceProductImagesForm(gallery, Math.max(commerceProductGalleryImageCount(gallery) - 1, 0));
+                return;
+            }
+            removeCommerceProductPendingAddInput(input);
+        });
+    });
+    const replacementModal = document.querySelector('[data-commerce-product-replace-modal]');
+    replacementModal?.querySelectorAll('[data-commerce-product-replace-modal-usage]').forEach((button) => {
+        button.addEventListener('click', () => {
+            setCommerceProductReplacementModalUsage(replacementModal, button.dataset.usage || '细节图');
+        });
+    });
+    replacementModal?.querySelector('[data-commerce-product-replace-modal-confirm]')?.addEventListener('click', () => {
+        const gallery = document.querySelector(`[data-commerce-product-gallery-instance="${replacementModal.dataset.targetGalleryIndex || ''}"]`);
+        if (gallery) {
+            triggerCommerceProductReplacementUpload(gallery, replacementModal.dataset.selectedUsage || '细节图', replacementModal.dataset.mode || 'replace');
+        }
+    });
+    replacementModal?.querySelectorAll('[data-commerce-product-replace-modal-close]').forEach((button) => {
+        button.addEventListener('click', closeCommerceProductReplacementModal);
+    });
+    replacementModal?.addEventListener('click', (event) => {
+        if (event.target === replacementModal) {
+            closeCommerceProductReplacementModal();
+        }
+    });
+    const deleteModal = document.querySelector('[data-commerce-product-delete-modal]');
+    deleteModal?.querySelector('[data-commerce-product-delete-modal-confirm]')?.addEventListener('click', () => {
+        const gallery = document.querySelector(`[data-commerce-product-gallery-instance="${deleteModal.dataset.targetGalleryIndex || ''}"]`);
+        if (gallery) {
+            deleteCommerceProductCurrentImage(gallery, deleteModal.dataset.targetImageIndex || null);
+        }
+    });
+    deleteModal?.querySelectorAll('[data-commerce-product-delete-modal-close]').forEach((button) => {
+        button.addEventListener('click', closeCommerceProductDeleteModal);
+    });
+    deleteModal?.addEventListener('click', (event) => {
+        if (event.target === deleteModal) {
+            closeCommerceProductDeleteModal();
+        }
     });
     window.selectCommerceProductGalleryImage = selectCommerceProductGalleryImage;
+    window.selectCommerceProductGalleryByOffset = selectCommerceProductGalleryByOffset;
+    window.updateCommerceProductReplacementTarget = updateCommerceProductReplacementTarget;
+    window.selectCommerceProductReplacementUsage = selectCommerceProductReplacementUsage;
+    window.openCommerceProductReplacementModal = openCommerceProductReplacementModal;
+    window.closeCommerceProductReplacementModal = closeCommerceProductReplacementModal;
+    window.triggerCommerceProductReplacementUpload = triggerCommerceProductReplacementUpload;
+    window.openCommerceProductDeleteModal = openCommerceProductDeleteModal;
+    window.deleteCommerceProductCurrentImage = deleteCommerceProductCurrentImage;
+    window.openCommerceProductGalleryPreview = openCommerceProductGalleryPreview;
+    window.submitCommerceProductImagesForm = submitCommerceProductImagesForm;
+    window.renderCommerceProductGalleryImages = renderCommerceProductGalleryImages;
+    window.commerceFetchFormJson = commerceFetchFormJson;
 
     function setCommerceTryOnSceneFilterButtonState(picker, activeFilter) {
         picker.querySelectorAll('[data-commerce-try-on-scene-filter]').forEach((button) => {
@@ -1208,6 +2263,22 @@ document.addEventListener('DOMContentLoaded', () => {
                 event.target.checked = false;
                 if (typeof showToast === 'function') {
                     showToast(`展示方式最多选择 ${maxTryOnShots} 个`, 'warning');
+                }
+            }
+        });
+    });
+
+    const maxTryOnPerformanceBoosts = Number('{{ try_on_max_performance_boosts|default:3 }}');
+    document.querySelectorAll('.commerce-try-on-performance-boost-options').forEach((boostPanel) => {
+        boostPanel.addEventListener('change', (event) => {
+            if (!event.target.matches('input[name="try_on_performance_boosts"]')) {
+                return;
+            }
+            const checked = boostPanel.querySelectorAll('input[name="try_on_performance_boosts"]:checked');
+            if (checked.length > maxTryOnPerformanceBoosts) {
+                event.target.checked = false;
+                if (typeof showToast === 'function') {
+                    showToast(`动作表情最多选择 ${maxTryOnPerformanceBoosts} 个`, 'warning');
                 }
             }
         });

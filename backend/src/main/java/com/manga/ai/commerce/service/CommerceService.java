@@ -33,6 +33,10 @@ public interface CommerceService {
 
     List<CommerceModelVO> listModels(Long seriesId);
 
+    List<CommerceModelVO> listModelLibrary(Long targetSeriesId);
+
+    CommerceModelVO reuseModelIntoSeries(Long seriesId, Long sourceModelId);
+
     CommerceModelVO regenerateModel(Long modelId);
 
     CommerceModelVO confirmModel(Long modelId);
@@ -40,6 +44,8 @@ public interface CommerceService {
     CommerceModelVO unlockModel(Long modelId);
 
     CommerceProductVO createProduct(Long modelId, CommerceProductCreateRequest request);
+
+    CommerceProductVO updateProductImages(Long productId, CommerceProductCreateRequest request);
 
     List<CommerceProductVO> listProducts(Long modelId);
 

@@ -56,14 +56,20 @@
                                 <span class="rounded-full bg-white/[0.045] px-2 py-1 text-white/65">{{ model.modelAspectRatio|default:"16:9" }}</span>
                                 <span class="commerce-model-created-at rounded-full bg-white/[0.045] px-2 py-1 text-white/65">创建时间 {{ model.createdAtDisplay|default:"-" }}</span>
                             </div>
-                            <div class="mt-2 text-xs leading-5 text-white/45">
-                                <span class="font-semibold text-white/50">模特提示词：</span>
-                                <span class="commerce-model-prompt-preview block whitespace-pre-wrap break-words text-white/60">{{ model.appearancePrompt|default:"-" }}</span>
+                            <div class="mt-2 rounded-lg border border-white/[0.06] bg-white/[0.025] px-2.5 py-2 text-xs leading-5 text-white/45" data-commerce-model-prompt>
+                                <div class="flex items-center justify-between gap-2">
+                                    <span class="font-semibold text-white/55">模特提示词</span>
+                                    <button type="button" class="flex h-7 shrink-0 items-center gap-1 rounded-md border border-white/10 bg-white/[0.045] px-2 text-[11px] font-semibold text-white/62 transition hover:border-cyan-100/30 hover:bg-cyan-300/10 hover:text-white" data-commerce-model-prompt-toggle aria-expanded="false">
+                                        <span data-commerce-model-prompt-toggle-label>展开提示词</span>
+                                        <i data-lucide="chevron-down" class="h-3.5 w-3.5 transition-transform" data-commerce-model-prompt-toggle-icon></i>
+                                    </button>
+                                </div>
+                                <div class="commerce-model-prompt-preview mt-2 whitespace-pre-wrap break-words rounded-md bg-black/18 p-2 text-white/60" data-commerce-model-prompt-content hidden>{{ model.appearancePrompt|default:"-" }}</div>
                             </div>
                             {% if model.status == 'failed' %}
                                 <p class="mt-2 text-sm text-red-200/80">{{ model.errorMessage|default:"模特图生成失败，请重新生成" }}</p>
                             {% endif %}
-                            <div class="mt-3 grid gap-2 sm:grid-cols-2">
+                            <div class="mt-3 grid gap-2 sm:grid-cols-2" data-commerce-model-action-panel>
                                 {% if model.status == 'locked' %}
                                     <a href="/commerce/models/{{ model.id }}/" class="commerce-model-bind-link w-full rounded-lg bg-cyan-500 px-3 py-2 text-center text-sm font-semibold text-white transition hover:bg-cyan-400">去绑定商品</a>
                                     <form method="post" action="/commerce/models/{{ model.id }}/unlock/" class="commerce-model-unlock-form">
@@ -73,7 +79,7 @@
                                 {% elif model.status == 'pending_review' %}
                                     <form method="post" action="/commerce/models/{{ model.id }}/confirm/" class="commerce-model-confirm-form">
                                         {% csrf_token %}
-                                        <button type="submit" class="w-full rounded-lg bg-emerald-500 px-3 py-2 text-sm font-semibold text-white transition hover:bg-emerald-400">锁定</button>
+                                        <button type="submit" class="w-full rounded-lg bg-emerald-500 px-3 py-2 text-sm font-semibold text-white transition hover:bg-emerald-400 disabled:cursor-not-allowed disabled:bg-white/15 disabled:text-white/45" data-commerce-model-confirm-button>锁定</button>
                                     </form>
                                     <form method="post" action="/commerce/models/{{ model.id }}/regenerate/" class="commerce-model-regenerate-form sm:col-span-2">
                                         {% csrf_token %}
@@ -89,7 +95,14 @@
                         </div>
                     </article>
                 {% empty %}
-                    <div class="rounded-xl border border-dashed border-white/15 p-6 text-white/45">还没有模特，先在右侧创建一个。</div>
+                    <div class="rounded-xl border border-dashed border-white/15 p-6 text-white/52">
+                        <p class="font-semibold text-white/72">还没有模特</p>
+                        <p class="mt-2 text-sm leading-6">可以在右侧创建新模特，也可以从模特库沿用已锁定模特到当前系列。</p>
+                        <a href="/commerce/series/{{ commerce_series.id }}/model-library/" class="mt-4 inline-flex items-center gap-2 rounded-lg border border-emerald-200/25 bg-emerald-300/10 px-3 py-2 text-sm font-semibold text-emerald-50 transition hover:border-emerald-200/45 hover:bg-emerald-300/16">
+                            <i data-lucide="users" class="h-4 w-4"></i>
+                            <span>去模特库沿用</span>
+                        </a>
+                    </div>
                 {% endfor %}
             </div>
         </section>
@@ -103,6 +116,18 @@
                     <span class="min-w-0">
                         <span class="block text-lg font-semibold">场景库</span>
                         <span class="mt-1 block text-sm leading-5 text-cyan-50/62">生成和维护试穿场景图</span>
+                    </span>
+                </span>
+            </a>
+
+            <a href="/commerce/series/{{ commerce_series.id }}/model-library/" class="commerce-model-library-entry block rounded-lg border border-emerald-200/25 bg-emerald-300/10 p-4 text-emerald-50 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)] transition hover:border-emerald-200/50 hover:bg-emerald-300/16">
+                <span class="flex items-center gap-3">
+                    <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-emerald-300/16 text-emerald-100">
+                        <i data-lucide="users" class="h-5 w-5"></i>
+                    </span>
+                    <span class="min-w-0">
+                        <span class="block text-lg font-semibold">模特库</span>
+                        <span class="mt-1 block text-sm leading-5 text-emerald-50/62">沿用已锁定模特到当前系列</span>
                     </span>
                 </span>
             </a>
@@ -236,7 +261,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const promptInput = document.getElementById('commerceModelPrompt');
     const status = document.getElementById('commerceModelPromptStatus');
     const createButton = document.getElementById('commerceModelCreateButton');
-    const nameInput = form ? form.elements.name : null;
+    const nameInput = form ? form.querySelector('[name="name"]') : null;
     let isPromptGenerating = false;
     let isModelCreating = false;
 
@@ -359,7 +384,13 @@ document.addEventListener('DOMContentLoaded', () => {
                         body_profile: form.elements.body_profile.value,
                     }),
                 });
-                const result = await response.json();
+                const responseText = await response.text();
+                let result = {};
+                try {
+                    result = responseText ? JSON.parse(responseText) : {};
+                } catch (parseError) {
+                    throw new Error(response.ok ? '生成提示词返回格式异常' : '生成提示词请求失败，请刷新页面后重试');
+                }
                 if (!response.ok || !result.success) {
                     throw new Error(result.error || '生成提示词失败');
                 }
@@ -384,6 +415,99 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     let isCommerceModelRegenerating = false;
+    function showCommerceSeriesToast(message, type = 'info') {
+        if (typeof showToast === 'function') {
+            showToast(message, type);
+            return;
+        }
+        console.log(message);
+    }
+
+    function commerceModelIdFromAction(action) {
+        const match = String(action || '').match(/\/commerce\/models\/(\d+)\//);
+        return match ? match[1] : '';
+    }
+
+    function bindCommerceModelUnlockForms(root = document) {
+        root.querySelectorAll('.commerce-model-unlock-form').forEach((unlockForm) => {
+            if (unlockForm.dataset.bound === 'true') {
+                return;
+            }
+            unlockForm.dataset.bound = 'true';
+            unlockForm.addEventListener('submit', () => {
+                const button = unlockForm.querySelector('button[type="submit"]');
+                if (button) {
+                    button.disabled = true;
+                    button.textContent = '解锁中...';
+                }
+            });
+        });
+    }
+
+    function applyCommerceModelLockedState(row, model = {}) {
+        if (!row) {
+            return;
+        }
+        const modelId = model.id || commerceModelIdFromAction(row.querySelector('.commerce-model-confirm-form')?.action);
+        row.dataset.modelStatus = 'locked';
+        const actions = row.querySelector('.commerce-model-actions');
+        if (actions) {
+            actions.innerHTML = '<span class="status-badge status-locked">已锁定</span>';
+        }
+        const actionPanel = row.querySelector('[data-commerce-model-action-panel]');
+        if (actionPanel && modelId) {
+            actionPanel.innerHTML = `
+                <a href="/commerce/models/${modelId}/" class="commerce-model-bind-link w-full rounded-lg bg-cyan-500 px-3 py-2 text-center text-sm font-semibold text-white transition hover:bg-cyan-400">去绑定商品</a>
+                <form method="post" action="/commerce/models/${modelId}/unlock/" class="commerce-model-unlock-form">
+                    <input type="hidden" name="csrfmiddlewaretoken" value="${document.querySelector('[name=csrfmiddlewaretoken]')?.value || ''}">
+                    <button type="submit" class="w-full rounded-lg border border-white/10 bg-white/[0.06] px-3 py-2 text-sm font-semibold text-white/75 transition hover:bg-white/[0.1]">解锁</button>
+                </form>`;
+            bindCommerceModelUnlockForms(actionPanel);
+            bindCommerceModelBindLinks(actionPanel);
+        }
+    }
+
+    function bindCommerceModelConfirmForms(root = document) {
+        root.querySelectorAll('.commerce-model-confirm-form').forEach((confirmForm) => {
+            if (confirmForm.dataset.bound === 'true') {
+                return;
+            }
+            confirmForm.dataset.bound = 'true';
+            confirmForm.addEventListener('submit', async (event) => {
+                event.preventDefault();
+                const button = confirmForm.querySelector('[data-commerce-model-confirm-button]') || confirmForm.querySelector('button[type="submit"]');
+                const row = confirmForm.closest('.commerce-model-row');
+                if (button?.disabled) {
+                    return;
+                }
+                if (button) {
+                    button.disabled = true;
+                    button.textContent = '锁定中...';
+                }
+                try {
+                    const response = await fetch(confirmForm.action, {
+                        method: 'POST',
+                        body: new FormData(confirmForm),
+                        headers: {'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json'},
+                    });
+                    const result = await response.json().catch(() => ({}));
+                    if (!response.ok || (result.code && result.code !== 200)) {
+                        throw new Error(result.message || '锁定失败');
+                    }
+                    const model = result.data || {};
+                    applyCommerceModelLockedState(row, model);
+                    showCommerceSeriesToast(result.message || '模特已锁定', 'success');
+                } catch (error) {
+                    showCommerceSeriesToast(error.message || '锁定失败', 'error');
+                    if (button) {
+                        button.disabled = false;
+                        button.textContent = '锁定';
+                    }
+                }
+            });
+        });
+    }
+
     function bindCommerceModelRegenerateForms() {
         document.querySelectorAll('.commerce-model-regenerate-form').forEach((regenerateForm) => {
             if (regenerateForm.dataset.bound === 'true') {
@@ -403,6 +527,60 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             });
         });
+    }
+
+    function bindCommerceModelBindLinks(root = document) {
+        root.querySelectorAll('.commerce-model-bind-link').forEach((link) => {
+            if (link.dataset.bound === 'true') {
+                return;
+            }
+            link.dataset.bound = 'true';
+            link.addEventListener('click', (event) => {
+                if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) {
+                    return;
+                }
+                if (link.getAttribute('aria-disabled') === 'true') {
+                    event.preventDefault();
+                    return;
+                }
+                link.textContent = '加载商品中...';
+                link.setAttribute('aria-disabled', 'true');
+                link.classList.add('pointer-events-none', 'cursor-wait', 'opacity-80');
+            });
+        });
+    }
+
+    function bindCommerceModelPromptToggles(root = document) {
+        root.querySelectorAll('[data-commerce-model-prompt-toggle]').forEach((button) => {
+            if (button.dataset.bound === 'true') {
+                return;
+            }
+            button.dataset.bound = 'true';
+            button.addEventListener('click', () => {
+                const promptBox = button.closest('[data-commerce-model-prompt]');
+                const promptContent = promptBox?.querySelector('[data-commerce-model-prompt-content]');
+                const label = button.querySelector('[data-commerce-model-prompt-toggle-label]');
+                const icon = button.querySelector('[data-commerce-model-prompt-toggle-icon]');
+                if (!promptContent) {
+                    return;
+                }
+                const expanded = button.getAttribute('aria-expanded') === 'true';
+                promptContent.hidden = expanded;
+                button.setAttribute('aria-expanded', expanded ? 'false' : 'true');
+                if (label) {
+                    label.textContent = expanded ? '展开提示词' : '收起提示词';
+                }
+                if (icon) {
+                    icon.classList.toggle('rotate-180', !expanded);
+                }
+            });
+        });
+    }
+
+    function refreshCommerceModelIcons() {
+        if (typeof lucide !== 'undefined' && lucide.createIcons) {
+            lucide.createIcons();
+        }
     }
 
     const activeModelSelector = '.commerce-model-row[data-model-status="queued"], .commerce-model-row[data-model-status="generating"]';
@@ -433,7 +611,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 return;
             }
             modelList.innerHTML = freshList.innerHTML;
+            bindCommerceModelPromptToggles(modelList);
+            bindCommerceModelBindLinks(modelList);
+            bindCommerceModelConfirmForms(modelList);
+            bindCommerceModelUnlockForms(modelList);
             bindCommerceModelRegenerateForms();
+            refreshCommerceModelIcons();
             if (!hasActiveCommerceModelGeneration() && commerceModelPollTimer) {
                 window.clearInterval(commerceModelPollTimer);
                 commerceModelPollTimer = null;
@@ -443,7 +626,12 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
+    bindCommerceModelPromptToggles();
+    bindCommerceModelBindLinks();
+    bindCommerceModelConfirmForms();
+    bindCommerceModelUnlockForms();
     bindCommerceModelRegenerateForms();
+    refreshCommerceModelIcons();
     if (hasActiveCommerceModelGeneration()) {
         commerceModelPollTimer = setInterval(pollCommerceModelList, 5000);
     }

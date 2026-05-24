@@ -245,6 +245,7 @@ public class SchemaMigrationConfig {
             ensureCommerceProductImageColumns(connection, mysql);
             ensureCommerceProjectFirstFrameColumns(connection, mysql);
             ensureCommerceProjectSceneColumns(connection, mysql);
+            ensureCommerceProjectTryOnRequirementColumns(connection, mysql);
             ensureCommerceShotVideoSettingColumns(connection, mysql);
         } catch (Exception e) {
             log.error("数据库迁移失败: commerce tables", e);
@@ -331,6 +332,12 @@ public class SchemaMigrationConfig {
     private void ensureCommerceProjectSceneColumns(Connection connection, boolean mysql) throws Exception {
         ensureColumn(connection, mysql, "commerce_project", "scene_image_urls_json",
                 "TEXT COMMENT '试穿项目引用的场景图URL列表JSON'",
+                "CLOB");
+    }
+
+    private void ensureCommerceProjectTryOnRequirementColumns(Connection connection, boolean mysql) throws Exception {
+        ensureColumn(connection, mysql, "commerce_project", "try_on_requirements",
+                "TEXT COMMENT '试穿视频创建时选择的展示方式、表演风格和动作表情'",
                 "CLOB");
     }
 
@@ -584,6 +591,7 @@ public class SchemaMigrationConfig {
                 + "aspect_ratio VARCHAR(10) NOT NULL DEFAULT '9:16',"
                 + "model_image_url VARCHAR(1024) NOT NULL,"
                 + "product_image_url VARCHAR(1024) NOT NULL,"
+                + "try_on_requirements TEXT,"
                 + "scene_image_urls_json TEXT,"
                 + "try_on_first_frame_enabled TINYINT(1) DEFAULT 0,"
                 + "try_on_first_frame_aspect_ratio VARCHAR(10) DEFAULT '9:16',"
@@ -609,6 +617,7 @@ public class SchemaMigrationConfig {
                 + "aspect_ratio VARCHAR(10) NOT NULL DEFAULT '9:16',"
                 + "model_image_url VARCHAR(1024) NOT NULL,"
                 + "product_image_url VARCHAR(1024) NOT NULL,"
+                + "try_on_requirements CLOB,"
                 + "scene_image_urls_json CLOB,"
                 + "try_on_first_frame_enabled INT DEFAULT 0,"
                 + "try_on_first_frame_aspect_ratio VARCHAR(10) DEFAULT '9:16',"

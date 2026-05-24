@@ -54,6 +54,11 @@ public class CommerceController {
         return Result.success(commerceService.listModels(seriesId));
     }
 
+    @GetMapping("/series/{seriesId}/model-library")
+    public Result<List<CommerceModelVO>> listModelLibrary(@PathVariable Long seriesId) {
+        return Result.success(commerceService.listModelLibrary(seriesId));
+    }
+
     @PostMapping("/models/prompt")
     public Result<CommerceModelProfile> generateModelPrompt(@RequestBody CommerceModelCreateRequest request) {
         return Result.success(commerceService.generateModelPrompt(
@@ -69,6 +74,13 @@ public class CommerceController {
             @PathVariable Long seriesId,
             @RequestBody CommerceModelCreateRequest request) {
         return Result.success(commerceService.createModel(seriesId, request));
+    }
+
+    @PostMapping("/series/{seriesId}/models/reuse/{sourceModelId}")
+    public Result<CommerceModelVO> reuseModelIntoSeries(
+            @PathVariable Long seriesId,
+            @PathVariable Long sourceModelId) {
+        return Result.success(commerceService.reuseModelIntoSeries(seriesId, sourceModelId));
     }
 
     @PostMapping("/models/{modelId}/generate-image")
@@ -106,6 +118,13 @@ public class CommerceController {
             @PathVariable Long modelId,
             @RequestBody CommerceProductCreateRequest request) {
         return Result.success(commerceService.createProduct(modelId, request));
+    }
+
+    @PostMapping("/products/{productId}/images")
+    public Result<CommerceProductVO> updateProductImages(
+            @PathVariable Long productId,
+            @RequestBody CommerceProductCreateRequest request) {
+        return Result.success(commerceService.updateProductImages(productId, request));
     }
 
     @PostMapping("/products/upload-image")

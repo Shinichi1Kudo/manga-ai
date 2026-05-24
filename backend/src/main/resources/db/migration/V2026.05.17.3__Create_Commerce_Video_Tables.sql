@@ -87,6 +87,7 @@ CREATE TABLE IF NOT EXISTS commerce_project (
     aspect_ratio VARCHAR(10) NOT NULL DEFAULT '3:4',
     model_image_url VARCHAR(1024) NOT NULL,
     product_image_url VARCHAR(1024) NOT NULL,
+    try_on_requirements TEXT,
     scene_image_urls_json TEXT,
     try_on_first_frame_enabled TINYINT(1) NOT NULL DEFAULT 0,
     try_on_first_frame_aspect_ratio VARCHAR(10) DEFAULT '9:16',

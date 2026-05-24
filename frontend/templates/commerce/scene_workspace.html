@@ -5,7 +5,7 @@
 {% block content %}
 <div class="mx-auto max-w-6xl py-8">
     <a href="/commerce/series/{{ commerce_series.id }}/" class="text-sm text-white/50 hover:text-white">← 返回电商系列</a>
-    <div class="mt-5 grid gap-5 lg:grid-cols-[minmax(0,1fr)_360px]">
+    <div class="mt-5 grid gap-5 lg:grid-cols-[minmax(0,1fr)_420px]">
         <section class="glass-card p-6">
             <div class="mb-5 flex items-start justify-between gap-4">
                 <div>
@@ -62,19 +62,31 @@
 
         <aside class="glass-card p-6">
             <h2 class="text-lg font-semibold">批量生成场景图</h2>
-            <form method="post" action="/commerce/series/{{ commerce_series.id }}/scenes/create/" class="mt-4 space-y-3">
+            <form method="post" action="/commerce/series/{{ commerce_series.id }}/scenes/create/" class="mt-4 space-y-3" data-commerce-scene-create-form>
                 {% csrf_token %}
                 <div class="rounded-xl border border-white/10 bg-white/[0.03] p-3">
                     <div class="mb-2 flex items-center justify-between gap-3">
                         <span class="text-sm font-medium text-white/70">场景类型</span>
                         <span class="text-xs text-white/35">可多选</span>
                     </div>
-                    <div class="grid grid-cols-2 gap-2">
-                        {% for scene_type in scene_types %}
-                            <label class="group cursor-pointer">
-                                <input type="checkbox" name="scene_types" value="{{ scene_type }}" class="peer sr-only" data-commerce-scene-type-input>
-                                <span class="flex h-10 items-center justify-center rounded-lg border border-white/10 bg-white/[0.04] px-2 text-sm font-semibold text-white/62 transition peer-checked:border-cyan-200/55 peer-checked:bg-cyan-300/18 peer-checked:text-white">{{ scene_type }}</span>
-                            </label>
+                    <div class="space-y-3">
+                        {% for group in scene_type_groups %}
+                            <div class="rounded-lg border border-white/[0.07] bg-black/10 p-2.5" data-commerce-scene-type-group="{{ group.title }}">
+                                <div class="mb-2 flex items-end justify-between gap-3">
+                                    <div class="min-w-0">
+                                        <p class="text-sm font-semibold text-white/80">{{ group.title }}</p>
+                                        <p class="mt-0.5 text-xs leading-relaxed text-white/38">{{ group.description }}</p>
+                                    </div>
+                                </div>
+                                <div class="grid grid-cols-2 gap-2">
+                                    {% for scene_type in group.scene_types %}
+                                        <label class="group cursor-pointer">
+                                            <input type="checkbox" name="scene_types" value="{{ scene_type }}" class="peer sr-only" data-commerce-scene-type-input>
+                                            <span class="flex h-10 items-center justify-center whitespace-nowrap rounded-lg border border-white/10 bg-white/[0.04] px-3 text-sm font-semibold text-white/62 transition peer-checked:border-cyan-200/55 peer-checked:bg-cyan-300/18 peer-checked:text-white" data-commerce-scene-type-pill>{{ scene_type }}</span>
+                                        </label>
+                                    {% endfor %}
+                                </div>
+                            </div>
                         {% endfor %}
                     </div>
                 </div>
@@ -83,6 +95,34 @@
                     <input name="brand_scene_name" class="input-modern w-full text-sm" placeholder="例如：LUMIA Studio">
                     <span class="mt-2 block text-xs text-white/35">选择品牌场景时，会用于门头、Logo墙或广告牌</span>
                 </label>
+                <div class="grid gap-3">
+                    <div class="rounded-xl border border-white/10 bg-white/[0.03] p-3">
+                        <span class="mb-2 block text-sm font-medium text-white/70">时间氛围</span>
+                        <div class="flex rounded-lg border border-white/10 bg-black/15 p-1">
+                            <label class="flex-1 cursor-pointer">
+                                <input type="radio" name="time_mood" value="day" class="sr-only" checked data-commerce-segment-input>
+                                <span class="commerce-segment-option commerce-segment-option--warm flex h-9 min-w-0 items-center justify-center whitespace-nowrap rounded-md px-4 text-sm font-semibold transition">白天</span>
+                            </label>
+                            <label class="flex-1 cursor-pointer">
+                                <input type="radio" name="time_mood" value="night" class="sr-only" data-commerce-segment-input>
+                                <span class="commerce-segment-option flex h-9 min-w-0 items-center justify-center whitespace-nowrap rounded-md px-4 text-sm font-semibold transition">夜晚</span>
+                            </label>
+                        </div>
+                    </div>
+                    <div class="rounded-xl border border-white/10 bg-white/[0.03] p-3">
+                        <span class="mb-2 block text-sm font-medium text-white/70">人群氛围</span>
+                        <div class="flex rounded-lg border border-white/10 bg-black/15 p-1">
+                            <label class="flex-1 cursor-pointer">
+                                <input type="radio" name="crowd_mode" value="empty" class="sr-only" checked data-commerce-segment-input>
+                                <span class="commerce-segment-option flex h-9 min-w-0 items-center justify-center whitespace-nowrap rounded-md px-4 text-sm font-semibold transition">空场</span>
+                            </label>
+                            <label class="flex-1 cursor-pointer">
+                                <input type="radio" name="crowd_mode" value="ambient" class="sr-only" data-commerce-segment-input>
+                                <span class="commerce-segment-option flex h-9 min-w-0 items-center justify-center whitespace-nowrap rounded-md px-4 text-sm font-semibold transition">有人</span>
+                            </label>
+                        </div>
+                    </div>
+                </div>
                 <div class="rounded-xl border border-white/10 bg-white/[0.03] p-3">
                     <div class="mb-2 flex items-center justify-between gap-3">
                         <span class="text-sm font-medium text-white/70">其他场景</span>
@@ -119,9 +159,9 @@
                         <input name="count_per_scene" type="number" min="1" max="4" value="1" class="input-modern w-full text-sm">
                     </label>
                 </div>
-                <button class="flex h-10 w-full items-center justify-center gap-2 rounded-lg bg-cyan-500 px-3 text-sm font-semibold text-white transition hover:bg-cyan-400">
+                <button class="flex h-10 w-full items-center justify-center gap-2 rounded-lg bg-cyan-500 px-3 text-sm font-semibold text-white transition hover:bg-cyan-400 disabled:cursor-wait disabled:bg-cyan-500/45" data-commerce-scene-create-submit>
                     <i data-lucide="sparkles" class="h-4 w-4"></i>
-                    批量生成场景图
+                    <span data-commerce-scene-create-submit-text>批量生成场景图</span>
                 </button>
             </form>
         </aside>
@@ -129,12 +169,56 @@
 </div>
 {% endblock %}
 
+{% block extra_css %}
+<style>
+    .commerce-segment-option {
+        background: rgba(255, 255, 255, 0.045);
+        border: 1px solid transparent;
+        color: rgba(255, 255, 255, 0.62);
+        box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
+    }
+
+    .commerce-segment-option--active {
+        background: linear-gradient(135deg, rgba(34, 211, 238, 0.34), rgba(16, 185, 129, 0.26));
+        border-color: rgba(165, 243, 252, 0.62);
+        color: #fff;
+        box-shadow:
+            0 8px 20px rgba(8, 145, 178, 0.18),
+            inset 0 1px 0 rgba(255, 255, 255, 0.16);
+    }
+
+    .commerce-segment-option--warm.commerce-segment-option--active {
+        background: linear-gradient(135deg, rgba(251, 191, 36, 0.36), rgba(34, 211, 238, 0.18));
+        border-color: rgba(253, 230, 138, 0.68);
+    }
+</style>
+{% endblock %}
+
 {% block extra_js %}
 <script>
 document.addEventListener('DOMContentLoaded', () => {
+    const commerceSegmentInputs = document.querySelectorAll('[data-commerce-segment-input]');
     const sceneTypeInputs = document.querySelectorAll('[data-commerce-scene-type-input]');
+    const sceneCreateForm = document.querySelector('[data-commerce-scene-create-form]');
+    const sceneCreateSubmit = document.querySelector('[data-commerce-scene-create-submit]');
+    const sceneCreateSubmitText = document.querySelector('[data-commerce-scene-create-submit-text]');
     const brandSceneField = document.querySelector('[data-commerce-brand-scene-field]');
     const brandInput = brandSceneField ? brandSceneField.querySelector('input[name="brand_scene_name"]') : null;
+
+    function syncCommerceSegmentState() {
+        commerceSegmentInputs.forEach(input => {
+            const option = input.nextElementSibling;
+            if (!option) {
+                return;
+            }
+            option.classList.toggle('commerce-segment-option--active', input.checked);
+        });
+    }
+
+    commerceSegmentInputs.forEach(input => {
+        input.addEventListener('change', syncCommerceSegmentState);
+    });
+    syncCommerceSegmentState();
 
     function toggleCommerceBrandSceneField() {
         if (!brandSceneField) {
@@ -152,6 +236,15 @@ document.addEventListener('DOMContentLoaded', () => {
         input.addEventListener('change', toggleCommerceBrandSceneField);
     });
     toggleCommerceBrandSceneField();
+
+    if (sceneCreateForm && sceneCreateSubmit) {
+        sceneCreateForm.addEventListener('submit', () => {
+            sceneCreateSubmit.disabled = true;
+            if (sceneCreateSubmitText) {
+                sceneCreateSubmitText.textContent = '正在提交，马上显示生成中...';
+            }
+        });
+    }
 
     const addButton = document.querySelector('[data-add-commerce-custom-scene]');
     const list = document.querySelector('[data-commerce-custom-scenes]');

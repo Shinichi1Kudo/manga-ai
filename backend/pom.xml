@@ -89,6 +89,13 @@
             <version>3.17.4</version>
         </dependency>
 
+        <!-- OpenCV / JavaCV for local face detection before external generation calls -->
+        <dependency>
+            <groupId>org.bytedeco</groupId>
+            <artifactId>opencv-platform</artifactId>
+            <version>4.9.0-1.5.10</version>
+        </dependency>
+
         <!-- JWT -->
         <dependency>
             <groupId>io.jsonwebtoken</groupId>

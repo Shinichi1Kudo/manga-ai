@@ -9,9 +9,12 @@ from urllib.parse import urlencode
 import json
 import requests
 from django.core.serializers.json import DjangoJSONEncoder
+import logging
 
 from api.backend_client import BackendClient, BackendAPIError
 
+
+logger = logging.getLogger(__name__)
 
 COMMERCE_ASPECT_RATIOS = ('9:16', '3:4', '1:1', '16:9')
 COMMERCE_ASPECT_RATIO_OPTIONS = (
@@ -27,17 +30,38 @@ COMMERCE_TRY_ON_SHOTS = (
     {'value': '转身展示', 'duration': '约5秒'},
     {'value': '走动展示', 'duration': '约5秒'},
     {'value': '细节展示', 'duration': '约4秒'},
-    {'value': '侧身展示', 'duration': '约3秒'},
-    {'value': '背面展示', 'duration': '约3秒'},
     {'value': '半身近景', 'duration': '约3秒'},
     {'value': '坐姿展示', 'duration': '约4秒'},
     {'value': '抬手展示', 'duration': '约3秒'},
-    {'value': '下摆展示', 'duration': '约3秒'},
-    {'value': '面料特写', 'duration': '约3秒'},
+    {'value': '整理衣摆', 'duration': '约3秒'},
+    {'value': '拿包通勤', 'duration': '约4秒'},
+    {'value': '戴帽展示', 'duration': '约3秒'},
     {'value': '搭配展示', 'duration': '约4秒'},
 )
 COMMERCE_TRY_ON_SHOT_VALUES = tuple(shot['value'] for shot in COMMERCE_TRY_ON_SHOTS)
 COMMERCE_TRY_ON_MAX_SHOTS = 4
+COMMERCE_TRY_ON_PERFORMANCE_STYLES = (
+    {'value': '自信大片', 'description': '张扬大方、主动掌控镜头，适合时装大片和高级街拍。'},
+    {'value': '甜酷活力', 'description': '明亮有能量，动作更轻快，适合年轻女装和日常出街。'},
+    {'value': '高冷超模', 'description': '眼神更锋利、步伐更利落，适合廓形感和秀场感服装。'},
+    {'value': '松弛度假', 'description': '自然舒展、风吹发丝和衣摆，适合旅拍、海边和户外场景。'},
+    {'value': '明朗亲和', 'description': '笑容更自然亲切，适合直播间、通勤和日常种草氛围。'},
+)
+COMMERCE_TRY_ON_PERFORMANCE_STYLE_VALUES = tuple(style['value'] for style in COMMERCE_TRY_ON_PERFORMANCE_STYLES)
+COMMERCE_TRY_ON_DEFAULT_PERFORMANCE_STYLE = '自信大片'
+COMMERCE_TRY_ON_PERFORMANCE_BOOSTS = (
+    {'value': '轻跑靠近镜头', 'hint': '两三步轻跑入画，发丝和衣摆有风感。'},
+    {'value': '快走急停回看', 'hint': '有气场快走后稳稳停住，再回看镜头。'},
+    {'value': '旋身甩发', 'hint': '肩线带动旋身，发丝甩出动态弧线。'},
+    {'value': '主动靠近镜头', 'hint': '从中景走近镜头，制造强镜头互动。'},
+    {'value': '回头挑眉', 'hint': '回头看镜头，眉峰轻挑，有短暂停顿。'},
+    {'value': '大胆回看镜头', 'hint': '眼神更直接，自信停留后再移开。'},
+    {'value': '自信微笑', 'hint': '嘴角自然上扬，不僵硬不假笑。'},
+    {'value': '开朗笑起来', 'hint': '笑容更明亮，适合活力和日常风格。'},
+    {'value': '爽朗大笑', 'hint': '短暂真实大笑，动作外放但不夸张。'},
+)
+COMMERCE_TRY_ON_PERFORMANCE_BOOST_VALUES = tuple(boost['value'] for boost in COMMERCE_TRY_ON_PERFORMANCE_BOOSTS)
+COMMERCE_TRY_ON_MAX_PERFORMANCE_BOOSTS = 3
 COMMERCE_TRY_ON_VIDEO_DURATIONS = tuple(range(4, 16))
 COMMERCE_TRY_ON_DEFAULT_DURATION = 8
 COMMERCE_TRY_ON_VIDEO_RESOLUTIONS = (
@@ -62,7 +86,12 @@ COMMERCE_TRY_ON_SUPPORTED_RESOLUTIONS_BY_MODEL = {
     )
     for model in COMMERCE_TRY_ON_VIDEO_MODELS
 }
-COMMERCE_TRY_ON_SCENES = ('室内全身镜', '纯色棚拍', '通勤街景', '户外自然光', '商场试衣间', '直播间背景')
+COMMERCE_TRY_ON_SCENES = (
+    '室内全身镜', '棚拍场景', '街拍场景', '户外自然光', '商场试衣间', '直播间背景',
+    '田间自然', '海边旅拍', '海边氛围', '山野公路', '湖畔草地', '花房庭院', '咖啡店外',
+    '复古街区', '城市夜景', '天台露台', '艺术馆', '酒店民宿', '地铁通勤',
+    '校园林荫', '公园绿荫',
+)
 COMMERCE_MODEL_TYPES_BY_GENDER = {
     '女': ('年轻美女', '成熟女性', '中年女性', '老年女性', '高级感女模特', '亲和素人女性'),
     '男': ('年轻帅哥', '成熟男性', '中年男性', '老年男性', '高级感男模特', '亲和素人男性'),
@@ -71,14 +100,79 @@ COMMERCE_MODEL_TYPES_BY_GENDER = {
 COMMERCE_MODEL_ETHNICITIES = ('中国', '华人', '东亚', '日韩', '亚洲', '东南亚', '南亚', '欧美', '拉美', '中东', '非洲', '混血感')
 COMMERCE_MODEL_BODY_PROFILES = ('标准匀称', '纤细修长', '高挑模特', '微胖亲和', '丰满曲线', '大码胖模特')
 DEFAULT_COMMERCE_MODEL_BODY_PROFILE = '标准匀称'
-COMMERCE_SCENE_TYPES = ('品牌场景', '直播间背景', '街拍场景', '棚拍场景', '商场试衣间', '室内全身镜')
+COMMERCE_DAILY_SCENE_TYPES = (
+    '品牌场景', '直播间背景', '棚拍场景', '商场试衣间', '室内全身镜',
+)
+COMMERCE_ATMOSPHERE_SCENE_TYPES = (
+    '街拍场景', '田间自然', '海边旅拍', '海边氛围', '山野公路', '湖畔草地',
+    '花房庭院', '咖啡店外', '复古街区', '城市夜景', '天台露台',
+    '艺术馆', '酒店民宿', '地铁通勤', '校园林荫', '公园绿荫',
+)
+COMMERCE_SCENE_TYPE_GROUPS = (
+    {
+        'title': '基础商拍',
+        'description': '适合商品页、直播间、棚拍和试衣间，出图稳定、主体落位清楚',
+        'scene_types': COMMERCE_DAILY_SCENE_TYPES,
+    },
+    {
+        'title': '出片氛围',
+        'description': '适合生活方式大片、街拍旅拍、自然光和城市夜景，更强调情绪和画面感',
+        'scene_types': COMMERCE_ATMOSPHERE_SCENE_TYPES,
+    },
+)
+COMMERCE_SCENE_TYPES = COMMERCE_DAILY_SCENE_TYPES + COMMERCE_ATMOSPHERE_SCENE_TYPES
 COMMERCE_CUSTOM_SCENE_FILTER = '其他场景'
 COMMERCE_SCENE_RESOLUTIONS = ('2K', '3K', '4K')
+COMMERCE_SCENE_TIME_MOODS = ('day', 'night')
+COMMERCE_SCENE_CROWD_MODES = ('empty', 'ambient')
+COMMERCE_PRODUCT_IMAGE_USAGES = ('主图', '细节图', '上身参考')
+COMMERCE_PRODUCT_IMAGE_ALLOWED_TYPES = {'image/jpeg', 'image/png', 'image/webp'}
+COMMERCE_PRODUCT_IMAGE_ALLOWED_EXTENSIONS = ('.jpg', '.jpeg', '.png', '.webp')
+COMMERCE_PRODUCT_IMAGE_MAX_SIZE = 10 * 1024 * 1024
+COMMERCE_PRODUCT_IMAGE_MAX_COUNT = 5
 
 
 def _commerce_scene_filter_categories(scenes):
     """构建场景图工作区筛选分类：全部、系统场景、其他场景。"""
     return ['全部', *COMMERCE_SCENE_TYPES, COMMERCE_CUSTOM_SCENE_FILTER]
+
+
+def _redirect_to_commerce_model_detail(model_id):
+    try:
+        model_id = int(model_id)
+    except (TypeError, ValueError):
+        model_id = 0
+    if model_id > 0:
+        return redirect('series:commerce_model_detail', model_id=model_id)
+    return redirect('series:commerce_series_list')
+
+
+def _validate_commerce_product_upload(product_image):
+    filename = (getattr(product_image, 'name', '') or '').lower()
+    content_type = getattr(product_image, 'content_type', '') or ''
+    if content_type not in COMMERCE_PRODUCT_IMAGE_ALLOWED_TYPES and not filename.endswith(COMMERCE_PRODUCT_IMAGE_ALLOWED_EXTENSIONS):
+        return '只支持 JPG、PNG、WEBP 格式的商品图片'
+    if getattr(product_image, 'size', 0) and product_image.size > COMMERCE_PRODUCT_IMAGE_MAX_SIZE:
+        return '商品图片大小不能超过10MB'
+    return ''
+
+
+def _upload_commerce_product_image(client, product_image):
+    validation_error = _validate_commerce_product_upload(product_image)
+    if validation_error:
+        raise ValueError(validation_error)
+    files = {
+        'file': (
+            product_image.name,
+            product_image.read(),
+            product_image.content_type or 'application/octet-stream',
+        )
+    }
+    upload_result = client.upload('/v1/commerce/products/upload-image', files)
+    image_url = (upload_result or {}).get('url', '').strip()
+    if not image_url:
+        raise ValueError('商品图片上传失败')
+    return image_url
 
 
 def get_client(request):
@@ -106,6 +200,117 @@ def _parallel_backend_gets(token, endpoints):
             name = future_map[future]
             results[name] = future.result()
         return results
+
+
+def _parallel_client_gets(client, endpoints, client_factory=None):
+    """使用当前请求的客户端并发加载互不依赖的数据。"""
+    if not endpoints:
+        return {}
+
+    def fetch(endpoint):
+        request_client = client_factory() if client_factory else client
+        return request_client.get(endpoint)
+
+    max_workers = min(len(endpoints), 8)
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        future_map = {
+            executor.submit(fetch, endpoint): name
+            for name, endpoint in endpoints.items()
+        }
+        results = {}
+        for future in as_completed(future_map):
+            name = future_map[future]
+            results[name] = future.result()
+        return results
+
+
+def _commerce_try_on_requirement_section(requirements, label):
+    for section in (requirements or '').replace(';', '；').split('；'):
+        section = section.strip()
+        if section.startswith(label):
+            return section[len(label):].strip()
+    return ''
+
+
+def _commerce_try_on_performance_summary(requirements):
+    style = _commerce_try_on_requirement_section(requirements, '表演风格：')
+    boosts = _commerce_try_on_requirement_section(requirements, '动作表情：')
+    parts = []
+    if style:
+        parts.append(f'表演风格：{style}')
+    if boosts:
+        parts.append(f'动作/表情：{boosts}')
+    return ' · '.join(parts)
+
+
+def _enrich_commerce_try_on_project(project):
+    project['tryOnPerformanceSummary'] = _commerce_try_on_performance_summary(project.get('tryOnRequirements'))
+    return project
+
+
+def _enrich_commerce_try_on_projects(projects):
+    return [_enrich_commerce_try_on_project(project) for project in (projects or [])]
+
+
+def _attach_commerce_product_try_on_projects(client, products, client_factory=None):
+    """并发补齐每个商品的试穿视频项目，单个商品失败不阻塞详情页。"""
+    product_list = products or []
+    product_map = {
+        product.get('id'): product
+        for product in product_list
+        if product.get('id')
+    }
+    for product in product_list:
+        if not product.get('id'):
+            product['tryOnProjects'] = _enrich_commerce_try_on_projects(product.get('tryOnProjects') or [])
+
+    if not product_map:
+        return product_list
+
+    def fetch(project_product_id):
+        request_client = client_factory() if client_factory else client
+        return request_client.get(f'/v1/commerce/products/{project_product_id}/projects?contentType=try_on')
+
+    max_workers = min(len(product_map), 8)
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        future_map = {
+            executor.submit(fetch, product_id): product_id
+            for product_id in product_map
+        }
+        for future in as_completed(future_map):
+            product_id = future_map[future]
+            product = product_map[product_id]
+            fallback_try_on_projects = _enrich_commerce_try_on_projects(product.get('tryOnProjects') or [])
+            try:
+                try_on_projects = future.result()
+                product['tryOnProjects'] = _enrich_commerce_try_on_projects(try_on_projects if try_on_projects is not None else [])
+            except BackendAPIError as e:
+                logger.warning('加载商品试穿视频项目失败 product_id=%s: %s', product_id, e.message)
+                product['tryOnProjects'] = fallback_try_on_projects
+            except Exception:
+                logger.exception('加载商品试穿视频项目异常 product_id=%s', product_id)
+                product['tryOnProjects'] = fallback_try_on_projects
+
+    return product_list
+
+
+def _start_commerce_scene_batch_async(token, series_id, scene_ids):
+    """后台触发场景图生成，让页面在落库后立即返回生成中占位。"""
+    scene_ids = [int(scene_id) for scene_id in (scene_ids or []) if scene_id]
+    if not scene_ids:
+        return
+
+    def start_batch():
+        try:
+            BackendClient(token=token).post(f'/v1/commerce/series/{series_id}/scenes/batch/start', {
+                'sceneIds': scene_ids,
+            })
+        except Exception:
+            logger.exception('Failed to start commerce scene batch generation: series_id=%s scene_ids=%s', series_id, scene_ids)
+
+    executor = ThreadPoolExecutor(max_workers=1)
+    future = executor.submit(start_batch)
+    future.add_done_callback(lambda _: executor.shutdown(wait=False))
 
 
 def _build_roles_from_role_assets(role_assets):
@@ -354,7 +559,15 @@ def gpt_image2_page(request):
 
 def commerce_series_list(request):
     """电商带货系列列表"""
-    return render(request, 'commerce/series_list.html')
+    client = get_client(request)
+    try:
+        series_list_data = client.get('/v1/commerce/series') or []
+    except BackendAPIError as e:
+        messages.error(request, f'获取电商系列失败: {e.message}')
+        series_list_data = []
+    return render(request, 'commerce/series_list.html', {
+        'commerce_series_list': series_list_data,
+    })
 
 
 def commerce_series_api(request):
@@ -435,9 +648,43 @@ def commerce_scene_workspace(request, series_id):
         'scenes': scenes or [],
         'scene_filter_categories': _commerce_scene_filter_categories(scenes),
         'scene_types': COMMERCE_SCENE_TYPES,
+        'scene_type_groups': COMMERCE_SCENE_TYPE_GROUPS,
         'scene_resolutions': COMMERCE_SCENE_RESOLUTIONS,
         'aspect_ratios': COMMERCE_ASPECT_RATIO_OPTIONS,
     })
+
+
+def commerce_model_library(request, series_id):
+    """电商模特库工作区"""
+    client = get_client(request)
+    try:
+        series = client.get(f'/v1/commerce/series/{series_id}')
+        models = client.get(f'/v1/commerce/series/{series_id}/model-library')
+    except BackendAPIError as e:
+        messages.error(request, f'获取模特库失败: {e.message}')
+        return redirect('series:commerce_series_detail', series_id=series_id)
+
+    enriched_models = [_enrich_commerce_model(model) for model in (models or [])]
+    return render(request, 'commerce/model_library.html', {
+        'commerce_series': series,
+        'library_models': enriched_models,
+        'model_library_groups': _group_commerce_models_by_series(enriched_models, series.get('id')),
+    })
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def commerce_model_library_reuse(request, series_id, source_model_id):
+    """沿用模特库中的锁定模特到当前系列"""
+    client = get_client(request)
+    try:
+        result = client.post(f'/v1/commerce/series/{series_id}/models/reuse/{source_model_id}')
+        model_name = result.get('name') or '模特'
+        messages.success(request, f'已沿用模特 "{model_name}" 到当前系列')
+    except BackendAPIError as e:
+        messages.error(request, f'沿用模特失败: {e.message}')
+        return redirect('series:commerce_model_library', series_id=series_id)
+    return redirect('series:commerce_series_detail', series_id=series_id)
 
 
 @csrf_exempt
@@ -458,6 +705,12 @@ def commerce_scene_batch_create(request, series_id):
     resolution = request.POST.get('resolution', '2K').strip().upper()
     if resolution not in COMMERCE_SCENE_RESOLUTIONS:
         resolution = '2K'
+    time_mood = request.POST.get('time_mood', 'day').strip()
+    if time_mood not in COMMERCE_SCENE_TIME_MOODS:
+        time_mood = 'day'
+    crowd_mode = request.POST.get('crowd_mode', 'empty').strip()
+    if crowd_mode not in COMMERCE_SCENE_CROWD_MODES:
+        crowd_mode = 'empty'
     try:
         count_per_scene = int(request.POST.get('count_per_scene', '1'))
     except ValueError:
@@ -470,6 +723,8 @@ def commerce_scene_batch_create(request, series_id):
         'aspectRatio': aspect_ratio,
         'resolution': resolution,
         'countPerScene': count_per_scene,
+        'timeMood': time_mood,
+        'crowdMode': crowd_mode,
     }
     if '品牌场景' in scene_types and brand_scene_name:
         payload['brandSceneName'] = brand_scene_name
@@ -482,9 +737,7 @@ def commerce_scene_batch_create(request, series_id):
             if scene.get('id')
         ]
         if scene_ids:
-            client.post(f'/v1/commerce/series/{series_id}/scenes/batch/start', {
-                'sceneIds': scene_ids,
-            })
+            _start_commerce_scene_batch_async(request.session.get('token'), series_id, scene_ids)
         messages.success(request, '场景图已提交生成')
     except BackendAPIError as e:
         messages.error(request, f'生成场景图失败: {e.message}')
@@ -501,6 +754,33 @@ def _enrich_commerce_model(model):
         model['modelAspectRatio'] = DEFAULT_COMMERCE_MODEL_ASPECT_RATIO
     model['createdAtDisplay'] = _format_commerce_model_created_at(model.get('createdAt'))
     return model
+
+
+def _group_commerce_models_by_series(models, target_series_id=None):
+    groups = []
+    group_index = {}
+    for model in models or []:
+        series_id = model.get('seriesId')
+        series_name = model.get('seriesName') or '未知系列'
+        key = series_id if series_id is not None else f'unknown:{series_name}'
+        if key not in group_index:
+            group_index[key] = {
+                'seriesId': series_id,
+                'seriesName': series_name,
+                'models': [],
+                'count': 0,
+                'inTargetSeries': False,
+            }
+            groups.append(group_index[key])
+        group = group_index[key]
+        group['models'].append(model)
+        group['count'] = len(group['models'])
+        group['inTargetSeries'] = (
+            group['inTargetSeries']
+            or bool(model.get('inTargetSeries'))
+            or (target_series_id is not None and series_id == target_series_id)
+        )
+    return groups
 
 
 def _format_commerce_model_created_at(value):
@@ -630,6 +910,7 @@ def _validate_commerce_model_choices(gender, model_type, ethnicity):
 
 def commerce_model_detail(request, model_id):
     """电商模特详情"""
+    token = request.session.get('token')
     client = get_client(request)
     try:
         model = client.get(f'/v1/commerce/models/{model_id}')
@@ -638,10 +919,15 @@ def commerce_model_detail(request, model_id):
             series_id = model.get('seriesId')
             if series_id:
                 return redirect('series:commerce_series_detail', series_id=series_id)
-        products = client.get(f'/v1/commerce/models/{model_id}/products')
-        scenes = client.get(f'/v1/commerce/series/{model.get("seriesId")}/scenes') if model.get('seriesId') else []
-        for product in products or []:
-            product['tryOnProjects'] = product.get('tryOnProjects') or []
+        endpoints = {
+            'products': f'/v1/commerce/models/{model_id}/products',
+        }
+        if model.get('seriesId'):
+            endpoints['scenes'] = f'/v1/commerce/series/{model.get("seriesId")}/scenes'
+        client_factory = (lambda: BackendClient(token=token)) if isinstance(client, BackendClient) else None
+        results = _parallel_client_gets(client, endpoints, client_factory=client_factory)
+        products = _attach_commerce_product_try_on_projects(client, results.get('products') or [], client_factory=client_factory)
+        scenes = results.get('scenes') or []
     except BackendAPIError as e:
         messages.error(request, f'获取模特商品失败: {e.message}')
         products = []
@@ -660,6 +946,10 @@ def commerce_model_detail(request, model_id):
         'try_on_default_aspect_ratio': DEFAULT_COMMERCE_ASPECT_RATIO,
         'try_on_shots': COMMERCE_TRY_ON_SHOTS,
         'try_on_max_shots': COMMERCE_TRY_ON_MAX_SHOTS,
+        'try_on_performance_styles': COMMERCE_TRY_ON_PERFORMANCE_STYLES,
+        'try_on_default_performance_style': COMMERCE_TRY_ON_DEFAULT_PERFORMANCE_STYLE,
+        'try_on_performance_boosts': COMMERCE_TRY_ON_PERFORMANCE_BOOSTS,
+        'try_on_max_performance_boosts': COMMERCE_TRY_ON_MAX_PERFORMANCE_BOOSTS,
         'try_on_video_durations': COMMERCE_TRY_ON_VIDEO_DURATIONS,
         'try_on_default_duration': COMMERCE_TRY_ON_DEFAULT_DURATION,
         'try_on_video_resolutions': COMMERCE_TRY_ON_VIDEO_RESOLUTIONS,
@@ -674,13 +964,18 @@ def commerce_model_detail(request, model_id):
 def commerce_model_confirm(request, model_id):
     """锁定电商模特"""
     client = get_client(request)
+    is_ajax = request.headers.get('X-Requested-With') == 'XMLHttpRequest'
     try:
         result = client.post(f'/v1/commerce/models/{model_id}/confirm')
+        if is_ajax:
+            return JsonResponse({'code': 200, 'data': result, 'message': '模特已锁定'})
         messages.success(request, '模特已锁定')
         series_id = result.get('seriesId')
         if series_id:
             return redirect('series:commerce_series_detail', series_id=series_id)
     except BackendAPIError as e:
+        if is_ajax:
+            return JsonResponse({'code': e.status_code, 'message': e.message}, status=e.status_code)
         messages.error(request, f'锁定失败: {e.message}')
     return redirect('series:commerce_model_detail', model_id=model_id)
 
@@ -740,33 +1035,19 @@ def commerce_product_create(request, model_id):
         if not grouped_product_images:
             messages.error(request, '请上传商品图片')
             return redirect('series:commerce_model_detail', model_id=model_id)
-        if len(grouped_product_images) > 5:
+        if len(grouped_product_images) > COMMERCE_PRODUCT_IMAGE_MAX_COUNT:
             messages.error(request, '最多上传5张商品图片')
             return redirect('series:commerce_model_detail', model_id=model_id)
         if legacy_product_images and len(grouped_product_images) != len(legacy_product_images):
             messages.error(request, '请为每张商品图片选择用途')
             return redirect('series:commerce_model_detail', model_id=model_id)
-        allowed_types = {'image/jpeg', 'image/png', 'image/webp'}
-        allowed_usages = {'主图', '细节图', '上身参考'}
         uploaded_images = []
         for product_image, usage in grouped_product_images:
             usage = (usage or '').strip()
-            if usage not in allowed_usages:
+            if usage not in COMMERCE_PRODUCT_IMAGE_USAGES:
                 messages.error(request, '请为每张商品图片选择用途')
                 return redirect('series:commerce_model_detail', model_id=model_id)
-            filename = (product_image.name or '').lower()
-            if product_image.content_type not in allowed_types and not filename.endswith(('.jpg', '.jpeg', '.png', '.webp')):
-                messages.error(request, '只支持 JPG、PNG、WEBP 格式的商品图片')
-                return redirect('series:commerce_model_detail', model_id=model_id)
-            if product_image.size and product_image.size > 10 * 1024 * 1024:
-                messages.error(request, '商品图片大小不能超过10MB')
-                return redirect('series:commerce_model_detail', model_id=model_id)
-            files = {'file': (product_image.name, product_image.read(), product_image.content_type or 'application/octet-stream')}
-            upload_result = client.upload('/v1/commerce/products/upload-image', files)
-            image_url = (upload_result or {}).get('url', '').strip()
-            if not image_url:
-                messages.error(request, '商品图片上传失败')
-                return redirect('series:commerce_model_detail', model_id=model_id)
+            image_url = _upload_commerce_product_image(client, product_image)
             uploaded_images.append({'url': image_url, 'usage': usage})
         main_image = next((image for image in uploaded_images if image['usage'] == '主图'), uploaded_images[0])
         payload = {
@@ -779,7 +1060,64 @@ def commerce_product_create(request, model_id):
         messages.success(request, f'商品 "{payload["name"]}" 已添加')
     except BackendAPIError as e:
         messages.error(request, f'添加商品失败: {e.message}')
+    except ValueError as e:
+        messages.error(request, str(e))
     return redirect('series:commerce_model_detail', model_id=model_id)
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def commerce_product_images_update(request, product_id):
+    """更新已绑定商品的图片组，保留商品本身和既有视频记录。"""
+    client = get_client(request)
+    model_id = request.POST.get('model_id')
+    is_ajax = request.headers.get('X-Requested-With') == 'XMLHttpRequest'
+
+    def error_response(message, status=400):
+        if is_ajax:
+            return JsonResponse({'code': status, 'message': message}, status=status)
+        messages.error(request, message)
+        return _redirect_to_commerce_model_detail(model_id)
+
+    try:
+        image_urls = request.POST.getlist('product_image_urls')
+        usages = request.POST.getlist('product_image_usages')
+        image_rows = []
+        max_rows = max(len(image_urls), len(usages))
+        for index in range(max_rows):
+            usage = (usages[index] if index < len(usages) else '').strip()
+            image_url = (image_urls[index] if index < len(image_urls) else '').strip()
+            upload_file = request.FILES.get(f'product_image_{index}')
+            if upload_file:
+                image_url = _upload_commerce_product_image(client, upload_file)
+            if not image_url and not usage:
+                continue
+            if usage not in COMMERCE_PRODUCT_IMAGE_USAGES:
+                return error_response('请为每张商品图片选择用途')
+            if not image_url:
+                return error_response('请上传商品图片')
+            image_rows.append({'url': image_url, 'usage': usage})
+
+        if not image_rows:
+            return error_response('请上传商品图片')
+        if len(image_rows) > COMMERCE_PRODUCT_IMAGE_MAX_COUNT:
+            return error_response('最多上传5张商品图片')
+
+        result = client.post(f'/v1/commerce/products/{product_id}/images', {'images': image_rows})
+        model_id = result.get('modelId') or model_id
+        if is_ajax:
+            data = {**result, 'images': image_rows}
+            return JsonResponse({'code': 200, 'data': data})
+        messages.success(request, '商品图片已更新')
+    except BackendAPIError as e:
+        if is_ajax:
+            return JsonResponse({'code': e.status_code, 'message': e.message}, status=e.status_code)
+        messages.error(request, f'更新商品图片失败: {e.message}')
+    except ValueError as e:
+        if is_ajax:
+            return JsonResponse({'code': 400, 'message': str(e)}, status=400)
+        messages.error(request, str(e))
+    return _redirect_to_commerce_model_detail(model_id)
 
 
 @csrf_exempt
@@ -811,6 +1149,13 @@ def commerce_project_create(request, product_id):
                 shot for shot in request.POST.getlist('try_on_shots')
                 if shot in COMMERCE_TRY_ON_SHOT_VALUES
             ][:COMMERCE_TRY_ON_MAX_SHOTS]
+            performance_style = request.POST.get('try_on_performance_style', '').strip()
+            if performance_style and performance_style not in COMMERCE_TRY_ON_PERFORMANCE_STYLE_VALUES:
+                performance_style = COMMERCE_TRY_ON_DEFAULT_PERFORMANCE_STYLE
+            selected_performance_boosts = [
+                boost for boost in request.POST.getlist('try_on_performance_boosts')
+                if boost in COMMERCE_TRY_ON_PERFORMANCE_BOOST_VALUES
+            ][:COMMERCE_TRY_ON_MAX_PERFORMANCE_BOOSTS]
             try:
                 duration_seconds = int(request.POST.get('duration_seconds', COMMERCE_TRY_ON_DEFAULT_DURATION))
             except (TypeError, ValueError):
@@ -840,6 +1185,10 @@ def commerce_project_create(request, product_id):
             try_on_parts = []
             if selected_shots:
                 try_on_parts.append(f'展示方式：{"、".join(selected_shots)}')
+            if performance_style:
+                try_on_parts.append(f'表演风格：{performance_style}')
+            if selected_performance_boosts:
+                try_on_parts.append(f'动作表情：{"、".join(selected_performance_boosts)}')
             if try_on_parts:
                 payload['tryOnRequirements'] = '；'.join(try_on_parts)
             if scene_ids:

@@ -1,6 +1,9 @@
 package com.manga.ai.commerce.controller;
 
 import com.manga.ai.commerce.service.CommerceService;
+import com.manga.ai.commerce.dto.CommerceModelVO;
+import com.manga.ai.commerce.dto.CommerceProductCreateRequest;
+import com.manga.ai.commerce.dto.CommerceProductVO;
 import com.manga.ai.commerce.dto.CommerceProjectVO;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -13,6 +16,7 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.lang.reflect.Method;
 import java.lang.reflect.Parameter;
+import java.util.List;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
@@ -53,6 +57,29 @@ class CommerceControllerTest {
     }
 
     @Test
+    void controllerExposesProductImagesUpdateEndpoint() throws Exception {
+        Method updateProductImages = CommerceController.class.getDeclaredMethod(
+                "updateProductImages", Long.class, CommerceProductCreateRequest.class);
+
+        assertThat(updateProductImages.getAnnotation(PostMapping.class).value())
+                .containsExactly("/products/{productId}/images");
+    }
+
+    @Test
+    void updateProductImagesReturnsServiceResult() {
+        CommerceProductCreateRequest request = new CommerceProductCreateRequest();
+        CommerceProductVO product = new CommerceProductVO();
+        product.setId(77L);
+        product.setImageUrl("https://oss.example.com/commerce/products/new-main.png");
+        when(commerceService.updateProductImages(77L, request)).thenReturn(product);
+
+        var result = controller.updateProductImages(77L, request);
+
+        assertThat(result.getData().getId()).isEqualTo(77L);
+        assertThat(result.getData().getImageUrl()).isEqualTo("https://oss.example.com/commerce/products/new-main.png");
+    }
+
+    @Test
     void controllerExposesCommerceSceneLibraryEndpoints() throws Exception {
         Method listScenes = CommerceController.class.getDeclaredMethod("listScenes", Long.class);
         Method prepareScenes = CommerceController.class.getDeclaredMethod(
@@ -86,6 +113,33 @@ class CommerceControllerTest {
         assertThat(getProject.getAnnotation(GetMapping.class).value()).containsExactly("/projects/{projectId}");
         assertThat(startProjectVideoGeneration.getAnnotation(PostMapping.class).value())
                 .containsExactly("/projects/{projectId}/generation/start");
+    }
+
+    @Test
+    void controllerExposesModelLibraryEndpoints() throws Exception {
+        Method listModelLibrary = CommerceController.class.getDeclaredMethod("listModelLibrary", Long.class);
+        Method reuseModel = CommerceController.class.getDeclaredMethod("reuseModelIntoSeries", Long.class, Long.class);
+
+        assertThat(listModelLibrary.getAnnotation(GetMapping.class).value()).containsExactly("/series/{seriesId}/model-library");
+        assertThat(listModelLibrary.getParameters()[0].getAnnotation(org.springframework.web.bind.annotation.PathVariable.class)).isNotNull();
+        assertThat(reuseModel.getAnnotation(PostMapping.class).value())
+                .containsExactly("/series/{seriesId}/models/reuse/{sourceModelId}");
+    }
+
+    @Test
+    void modelLibraryEndpointsReturnServiceResults() {
+        CommerceModelVO model = new CommerceModelVO();
+        model.setId(66L);
+        model.setName("小雅");
+        model.setStatus("locked");
+        when(commerceService.listModelLibrary(10L)).thenReturn(List.of(model));
+        when(commerceService.reuseModelIntoSeries(10L, 66L)).thenReturn(model);
+
+        var listResult = controller.listModelLibrary(10L);
+        var reuseResult = controller.reuseModelIntoSeries(10L, 66L);
+
+        assertThat(listResult.getData()).extracting(CommerceModelVO::getId).containsExactly(66L);
+        assertThat(reuseResult.getData().getId()).isEqualTo(66L);
     }
 
     @Test

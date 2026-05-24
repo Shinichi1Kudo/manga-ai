@@ -242,6 +242,28 @@ class ImageGenerateServiceImplTest {
     }
 
     @Test
+    void commerceModelPromptAnchorsHairAcrossSideAndBackViews() throws Exception {
+        ImageGenerateServiceImpl service = createService();
+        ImageGenerateRequest request = ImageGenerateRequest.builder()
+                .roleName("小雅")
+                .customPrompt("年轻东亚女性，长发，五官清爽自然，适合女装种草。")
+                .styleKeywords("真人写实")
+                .build();
+
+        String prompt = invokePrompt(service, "buildCommerceModelPrompt", request);
+
+        assertThat(prompt)
+                .contains("右侧三视图必须严格按正面、标准90度侧面、标准背面排列")
+                .contains("头部大小、脖颈连接、肩线高度、身高比例和站姿重心一致")
+                .contains("同一个发根位置、发缝方向、刘海轮廓、耳侧碎发和发束绑定点")
+                .contains("侧面头发必须贴合头部后方自然垂落")
+                .contains("背面必须显示后脑勺和发顶的真实背向结构")
+                .contains("发束中心线与脊柱中心线自然对齐")
+                .contains("短发贴合头型，长发或马尾沿后背自然下垂")
+                .contains("禁止头发漂移、头发离头、发型前后不一致、侧面回头、背面转脸");
+    }
+
+    @Test
     void commerceModelImageUsesVolcengineArkSeedreamModelWithFixedSixteenNineFourKSize() {
         ImageGenerateServiceImpl service = createService();
         RestTemplate restTemplate = mock(RestTemplate.class);

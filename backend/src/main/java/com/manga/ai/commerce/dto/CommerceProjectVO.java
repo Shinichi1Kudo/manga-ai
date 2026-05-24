@@ -19,6 +19,7 @@ public class CommerceProjectVO implements Serializable {
     private String aspectRatio;
     private String modelImageUrl;
     private String productImageUrl;
+    private String tryOnRequirements;
     private Boolean tryOnFirstFrameEnabled;
     private String tryOnFirstFrameAspectRatio;
     private String tryOnFirstFrameResolution;

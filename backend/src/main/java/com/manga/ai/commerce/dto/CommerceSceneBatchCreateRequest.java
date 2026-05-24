@@ -16,5 +16,7 @@ public class CommerceSceneBatchCreateRequest implements Serializable {
     private String aspectRatio;
     private String resolution;
     private Integer countPerScene;
+    private String timeMood;
+    private String crowdMode;
     private String description;
 }
