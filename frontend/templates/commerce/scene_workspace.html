@@ -156,8 +156,11 @@
                     </label>
                     <label class="block">
                         <span class="mb-1 block text-xs font-semibold text-white/55">每类数量</span>
-                        <input name="count_per_scene" type="number" min="1" max="4" value="1" class="input-modern w-full text-sm">
+                        <input name="count_per_scene" type="number" min="1" max="4" value="1" class="input-modern w-full text-sm" data-commerce-scene-count-per-scene>
                     </label>
+                </div>
+                <div class="rounded-xl border border-yellow-200/12 bg-yellow-300/[0.06] px-3 py-2 text-xs font-semibold text-yellow-50/78" data-commerce-scene-credit-cost>
+                    预计生成 0 张 · 消耗 0 积分
                 </div>
                 <button class="flex h-10 w-full items-center justify-center gap-2 rounded-lg bg-cyan-500 px-3 text-sm font-semibold text-white transition hover:bg-cyan-400 disabled:cursor-wait disabled:bg-cyan-500/45" data-commerce-scene-create-submit>
                     <i data-lucide="sparkles" class="h-4 w-4"></i>
@@ -204,6 +207,9 @@ document.addEventListener('DOMContentLoaded', () => {
     const sceneCreateSubmitText = document.querySelector('[data-commerce-scene-create-submit-text]');
     const brandSceneField = document.querySelector('[data-commerce-brand-scene-field]');
     const brandInput = brandSceneField ? brandSceneField.querySelector('input[name="brand_scene_name"]') : null;
+    const sceneCountPerSceneInput = document.querySelector('[data-commerce-scene-count-per-scene]');
+    const sceneCreditCost = document.querySelector('[data-commerce-scene-credit-cost]');
+    const commerceSceneCreditsPerImage = 8;
 
     function syncCommerceSegmentState() {
         commerceSegmentInputs.forEach(input => {
@@ -233,9 +239,37 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     sceneTypeInputs.forEach(input => {
-        input.addEventListener('change', toggleCommerceBrandSceneField);
+        input.addEventListener('change', () => {
+            toggleCommerceBrandSceneField();
+            updateCommerceSceneCreditDisplay();
+        });
     });
     toggleCommerceBrandSceneField();
+
+    function normalizedCommerceSceneCountPerScene() {
+        const rawValue = Number(sceneCountPerSceneInput?.value || 1);
+        if (!Number.isFinite(rawValue)) {
+            return 1;
+        }
+        return Math.max(1, Math.min(4, Math.floor(rawValue)));
+    }
+
+    function calculateCommerceSceneGenerateCount() {
+        const selectedSceneTypeCount = Array.from(sceneTypeInputs).filter(input => input.checked).length;
+        const customSceneCount = Array.from(document.querySelectorAll('input[name="custom_scenes"]'))
+            .filter(input => input.value.trim().length > 0)
+            .length;
+        return (selectedSceneTypeCount + customSceneCount) * normalizedCommerceSceneCountPerScene();
+    }
+
+    function updateCommerceSceneCreditDisplay() {
+        if (!sceneCreditCost) {
+            return;
+        }
+        const count = calculateCommerceSceneGenerateCount();
+        const credits = count * commerceSceneCreditsPerImage;
+        sceneCreditCost.textContent = `预计生成 ${count} 张 · 消耗 ${credits} 积分`;
+    }
 
     if (sceneCreateForm && sceneCreateSubmit) {
         sceneCreateForm.addEventListener('submit', () => {
@@ -269,7 +303,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 safeCreateIcons();
             }
             const input = row.querySelector('input');
+            input.addEventListener('input', updateCommerceSceneCreditDisplay);
             input.focus();
+            updateCommerceSceneCreditDisplay();
+        });
+        list.querySelectorAll('input[name="custom_scenes"]').forEach(input => {
+            input.addEventListener('input', updateCommerceSceneCreditDisplay);
         });
         list.addEventListener('click', event => {
             const removeButton = event.target.closest('[data-remove-commerce-custom-scene]');
@@ -279,9 +318,12 @@ document.addEventListener('DOMContentLoaded', () => {
             const row = removeButton.closest('[data-commerce-custom-scene-row]');
             if (row) {
                 row.remove();
+                updateCommerceSceneCreditDisplay();
             }
         });
     }
+    sceneCountPerSceneInput?.addEventListener('input', updateCommerceSceneCreditDisplay);
+    updateCommerceSceneCreditDisplay();
     const sceneList = document.querySelector('[data-commerce-scene-list]');
     const sceneFilterContainer = document.querySelector('[data-commerce-scene-filters]');
     let commerceScenePollTimer = null;
