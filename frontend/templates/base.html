@@ -1321,6 +1321,32 @@
     </a>
     {% endif %}
 
+    <!-- 底部备案信息 -->
+    <footer class="w-full py-6 mt-12" style="border-top: 1px solid rgba(255,255,255,0.06); background: rgba(0,0,0,0.15);">
+        <div class="max-w-4xl mx-auto text-center space-y-1.5">
+            <!-- 第一行：版权 -->
+            <p class="text-xs text-white/30 leading-relaxed">
+                Copyright © 2024-{{ current_year|default:"2026" }} 海带 AI 内容智能创作平台 All Rights Reserved
+            </p>
+            <!-- 第二行：备案号 -->
+            <p class="text-xs text-white/30 flex items-center justify-center gap-2 flex-wrap leading-loose py-0.5">
+                <span class="inline-flex items-center gap-1">
+                    <svg class="w-3.5 h-3.5 flex-shrink-0" viewBox="0 0 32 34" fill="none"><path d="M16 2L4 8v10c0 7.2 5.1 13.9 12 15.5 6.9-1.6 12-8.3 12-15.5V8L16 2z" fill="#2563eb" stroke="#fff" stroke-width="1.5"/><text x="16" y="23" text-anchor="middle" fill="#fff" font-size="12" font-weight="bold">公</text></svg>
+                    <a href="https://beian.mps.gov.cn/#/query/webSearch?code=11010502060961" target="_blank" rel="noopener noreferrer" class="hover:text-white/50 transition-colors">京公网安备11010502060961号</a>
+                </span>
+                <span class="text-white/10">|</span>
+                <a href="https://beian.miit.gov.cn/" target="_blank" rel="noopener noreferrer" class="hover:opacity-80 transition-opacity inline-flex items-center gap-1">
+                    <img src="/static/icp-badge.png?v=5" alt="ICP备案" class="w-4 h-4 flex-shrink-0" style="vertical-align: middle;">
+                京ICP备2026029163号-1
+                </a>
+            </p>
+            <!-- 第三行：平台声明 -->
+            <p class="text-xs text-white/20 leading-relaxed">
+                本站内容由 AI 生成，仅供学习交流使用，请遵守相关法律法规
+            </p>
+        </div>
+    </footer>
+
     <!-- 百度自动推送 -->
     <script>
     (function(){

@@ -77,14 +77,6 @@ public class RoleServiceImpl implements RoleService {
             throw new BusinessException("用户未登录");
         }
 
-        // 检查系列下是否已有同名角色
-        LambdaQueryWrapper<Role> checkWrapper = new LambdaQueryWrapper<>();
-        checkWrapper.eq(Role::getSeriesId, request.getSeriesId())
-                .eq(Role::getRoleName, request.getRoleName());
-        if (roleMapper.selectCount(checkWrapper) > 0) {
-            throw new BusinessException("该系列下已存在同名角色");
-        }
-
         // 生成角色编码
         String roleCode = NamingUtil.generateRoleCode(request.getRoleName(), request.getSeriesId());
 
