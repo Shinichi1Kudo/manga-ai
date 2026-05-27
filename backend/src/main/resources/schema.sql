@@ -3,7 +3,8 @@
 -- 用户表
 CREATE TABLE IF NOT EXISTS user (
     id BIGINT AUTO_INCREMENT PRIMARY KEY,
-    email VARCHAR(100) NOT NULL UNIQUE,
+    email VARCHAR(100) UNIQUE,
+    phone VARCHAR(20) UNIQUE,
     password VARCHAR(255) NOT NULL,
     nickname VARCHAR(50),
     credits INT DEFAULT 10,
@@ -16,7 +17,8 @@ CREATE TABLE IF NOT EXISTS user (
 -- 邮箱验证码表
 CREATE TABLE IF NOT EXISTS email_verification (
     id BIGINT AUTO_INCREMENT PRIMARY KEY,
-    email VARCHAR(100) NOT NULL,
+    email VARCHAR(100),
+    phone VARCHAR(20),
     code VARCHAR(6) NOT NULL,
     type VARCHAR(20) NOT NULL,
     expired_at TIMESTAMP NOT NULL,

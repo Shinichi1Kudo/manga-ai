@@ -81,6 +81,17 @@ commerce:
   try-on-first-frame:
     model: doubao-seedream-5-0-lite-260128
 
+tencent:
+  sms:
+    secret-id: ${TENCENT_SMS_SECRET_ID:}
+    secret-key: ${TENCENT_SMS_SECRET_KEY:}
+    sdk-app-id: ${TENCENT_SMS_SDK_APP_ID:1400632889}
+    sign-name: ${TENCENT_SMS_SIGN_NAME:北京乙帧科技有限公司}
+    login-template-id: ${TENCENT_SMS_LOGIN_TEMPLATE_ID:2645843}
+    reset-template-id: ${TENCENT_SMS_RESET_TEMPLATE_ID:2647581}
+    region: ${TENCENT_SMS_REGION:ap-guangzhou}
+    code-expire-minutes: ${TENCENT_SMS_CODE_EXPIRE_MINUTES:10}
+
 # 文件存储配置
 storage:
   base-path: ./storage

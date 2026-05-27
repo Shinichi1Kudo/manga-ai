@@ -1,6 +1,7 @@
 package com.manga.ai.shot.service.impl;
 
 import com.manga.ai.asset.mapper.RoleAssetMapper;
+import com.manga.ai.common.enums.EpisodeStatus;
 import com.manga.ai.common.enums.ShotGenerationStatus;
 import com.manga.ai.common.enums.ShotStatus;
 import com.manga.ai.common.exception.BusinessException;
@@ -250,6 +251,69 @@ class ShotServiceImplTest {
         verify(episodeMapper, never()).selectById(any());
         verify(propMapper, never()).selectList(any());
         verify(propAssetMapper, never()).selectList(any());
+    }
+
+    @Test
+    void createShotPersistsVideoSettingsAndReopensCompletedEpisodeForReview() {
+        ShotMapper shotMapper = mock(ShotMapper.class);
+        EpisodeMapper episodeMapper = mock(EpisodeMapper.class);
+        ShotVideoAssetMapper shotVideoAssetMapper = mock(ShotVideoAssetMapper.class);
+        ShotCharacterMapper shotCharacterMapper = mock(ShotCharacterMapper.class);
+        ShotPropMapper shotPropMapper = mock(ShotPropMapper.class);
+
+        Episode episode = new Episode();
+        episode.setId(77L);
+        episode.setStatus(EpisodeStatus.COMPLETED.getCode());
+        when(episodeMapper.selectById(77L)).thenReturn(episode);
+        when(shotMapper.selectMaxUnlockedShotNumber(77L, ShotStatus.APPROVED.getCode())).thenReturn(2);
+        org.mockito.Mockito.doAnswer(invocation -> {
+            Shot inserted = invocation.getArgument(0);
+            inserted.setId(703L);
+            when(shotMapper.selectById(703L)).thenReturn(inserted);
+            return 1;
+        }).when(shotMapper).insert(any(Shot.class));
+        when(shotVideoAssetMapper.selectActiveByShotId(any())).thenReturn(null);
+        when(shotCharacterMapper.selectList(any())).thenReturn(List.of());
+        when(shotPropMapper.selectList(any())).thenReturn(List.of());
+
+        ShotUpdateRequest request = new ShotUpdateRequest();
+        request.setShotName("补拍镜头");
+        request.setDuration(12);
+        request.setResolution("1080p");
+        request.setAspectRatio("9:16");
+        request.setVideoModel("seedance-2.0");
+
+        createService(
+                shotMapper,
+                shotCharacterMapper,
+                shotPropMapper,
+                mock(SceneMapper.class),
+                mock(SceneAssetMapper.class),
+                mock(RoleMapper.class),
+                mock(RoleAssetMapper.class),
+                mock(PropAssetMapper.class),
+                mock(PropMapper.class),
+                episodeMapper,
+                mock(SeedanceService.class),
+                shotVideoAssetMapper,
+                mock(ShotVideoAssetMetadataMapper.class)
+        ).createShot(77L, request);
+
+        ArgumentCaptor<Shot> shotCaptor = ArgumentCaptor.forClass(Shot.class);
+        verify(shotMapper).insert(shotCaptor.capture());
+        Shot inserted = shotCaptor.getValue();
+        assertThat(inserted.getShotNumber()).isEqualTo(3);
+        assertThat(inserted.getGenerationStatus()).isEqualTo(ShotGenerationStatus.PENDING.getCode());
+        assertThat(inserted.getStatus()).isEqualTo(ShotStatus.PENDING_REVIEW.getCode());
+        assertThat(inserted.getDuration()).isEqualTo(12);
+        assertThat(inserted.getEndTime()).isEqualTo(12);
+        assertThat(inserted.getResolution()).isEqualTo("1080p");
+        assertThat(inserted.getAspectRatio()).isEqualTo("9:16");
+        assertThat(inserted.getVideoModel()).isEqualTo("seedance-2.0");
+
+        ArgumentCaptor<Episode> episodeCaptor = ArgumentCaptor.forClass(Episode.class);
+        verify(episodeMapper).updateById(episodeCaptor.capture());
+        assertThat(episodeCaptor.getValue().getStatus()).isEqualTo(EpisodeStatus.PENDING_REVIEW.getCode());
     }
 
     @Test

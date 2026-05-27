@@ -14,6 +14,7 @@ class BackendClient:
         self.base_url = settings.BACKEND_API_URL
         self.timeout = settings.BACKEND_API_TIMEOUT
         self.session = requests.Session()
+        self.session.trust_env = False
         self.session.headers.update({
             'Content-Type': 'application/json',
             'Accept': 'application/json',
@@ -117,9 +118,9 @@ class BackendClient:
         """上传文件"""
         # 上传文件时需要移除 Content-Type，让 requests 自动设置
         headers = dict(self.session.headers)
-        headers.pop('Content-Type', None)
+        headers['Content-Type'] = None
 
-        response = requests.post(
+        response = self.session.post(
             self._build_url(endpoint),
             files=files,
             data=data,

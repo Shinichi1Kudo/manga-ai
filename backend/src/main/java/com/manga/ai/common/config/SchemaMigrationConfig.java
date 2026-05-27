@@ -25,6 +25,7 @@ public class SchemaMigrationConfig {
     @Bean
     public ApplicationRunner propAssetEpisodeIdMigrationRunner() {
         return args -> {
+            ensureUserPhoneSchema();
             ensurePropAssetEpisodeIdColumn();
             ensureCommerceTables();
             ensureSubjectReplacementTaskTable();
@@ -56,6 +57,17 @@ public class SchemaMigrationConfig {
         } catch (Exception e) {
             log.error("数据库迁移失败: prop_asset.episode_id", e);
             throw new IllegalStateException("数据库迁移失败: prop_asset.episode_id", e);
+        }
+    }
+
+    private void ensureUserPhoneSchema() {
+        try (Connection connection = dataSource.getConnection()) {
+            String productName = connection.getMetaData().getDatabaseProductName();
+            boolean mysql = productName != null && productName.toLowerCase().contains("mysql");
+            ensureUserPhoneColumns(connection, mysql);
+        } catch (Exception e) {
+            log.error("数据库迁移失败: user.phone/email_verification.phone", e);
+            throw new IllegalStateException("数据库迁移失败: user.phone/email_verification.phone", e);
         }
     }
 
@@ -100,6 +112,7 @@ public class SchemaMigrationConfig {
             String productName = connection.getMetaData().getDatabaseProductName();
             boolean mysql = productName != null && productName.toLowerCase().contains("mysql");
             ensureEpisodeDetailShotColumns(connection, mysql);
+            ensureUserPhoneColumns(connection, mysql);
             ensureRoleCreationSettingColumns(connection, mysql);
             ensureAssetMetadataCreationSettingColumns(connection, mysql);
             ensureIndex(connection, "idx_series_user_deleted_created", "series", "user_id, is_deleted, created_at");
@@ -113,6 +126,54 @@ public class SchemaMigrationConfig {
             ensureIndex(connection, "idx_shot_video_asset_shot_active_version", "shot_video_asset", "shot_id, is_active, version");
         } catch (Exception e) {
             log.warn("性能索引检查失败: {}", e.getMessage());
+        }
+    }
+
+    private void ensureUserPhoneColumns(Connection connection, boolean mysql) throws Exception {
+        if (!hasTable(connection, "user")) {
+            return;
+        }
+        ensureColumn(connection, mysql, "user", "phone",
+                "VARCHAR(20) DEFAULT NULL COMMENT '手机号'",
+                "VARCHAR(20)");
+        ensureIndex(connection, "idx_user_phone", "user", "phone");
+        ensureUserEmailNullable(connection);
+        if (hasTable(connection, "email_verification")) {
+            ensureEmailVerificationEmailNullable(connection);
+            ensureColumn(connection, mysql, "email_verification", "phone",
+                    "VARCHAR(20) DEFAULT NULL COMMENT '手机号'",
+                    "VARCHAR(20)");
+            ensureIndex(connection, "idx_email_verification_phone_type", "email_verification", "phone, type, used, created_at");
+        }
+    }
+
+    private void ensureUserEmailNullable(Connection connection) {
+        String[] sqlCandidates = {
+                "ALTER TABLE user MODIFY COLUMN email VARCHAR(100) NULL",
+                "ALTER TABLE user ALTER COLUMN email DROP NOT NULL"
+        };
+        for (String sql : sqlCandidates) {
+            try (Statement statement = connection.createStatement()) {
+                statement.execute(sql);
+                return;
+            } catch (Exception e) {
+                log.debug("user.email 允许为空迁移尝试失败: sql={}, message={}", sql, e.getMessage());
+            }
+        }
+    }
+
+    private void ensureEmailVerificationEmailNullable(Connection connection) {
+        String[] sqlCandidates = {
+                "ALTER TABLE email_verification MODIFY COLUMN email VARCHAR(100) NULL",
+                "ALTER TABLE email_verification ALTER COLUMN email DROP NOT NULL"
+        };
+        for (String sql : sqlCandidates) {
+            try (Statement statement = connection.createStatement()) {
+                statement.execute(sql);
+                return;
+            } catch (Exception e) {
+                log.debug("email_verification.email 允许为空迁移尝试失败: sql={}, message={}", sql, e.getMessage());
+            }
         }
     }
 

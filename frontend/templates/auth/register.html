@@ -594,10 +594,10 @@
             {% csrf_token %}
 
             <div class="form-group">
-                <label class="form-label">邮箱</label>
+                <label class="form-label">手机号</label>
                 <div class="input-wrapper">
-                    <input type="email" name="email" id="email" class="form-input" placeholder="your@email.com" required>
-                    <i data-lucide="mail" class="w-4 h-4 input-icon"></i>
+                    <input type="tel" name="phone" id="phone" class="form-input" placeholder="请输入手机号" required maxlength="11">
+                    <i data-lucide="smartphone" class="w-4 h-4 input-icon"></i>
                 </div>
             </div>
 
@@ -660,9 +660,13 @@
         let timer = null;
 
         function sendCode() {
-            const email = document.getElementById('email').value.trim();
-            if (!email) {
-                alert('请先输入邮箱地址');
+            const phone = document.getElementById('phone').value.trim();
+            if (!phone) {
+                alert('请先输入手机号');
+                return;
+            }
+            if (!/^1[3-9]\d{9}$/.test(phone)) {
+                alert('请输入正确的手机号');
                 return;
             }
 
@@ -675,12 +679,12 @@
                     'Content-Type': 'application/json',
                     'X-CSRFToken': document.querySelector('[name="csrfmiddlewaretoken"]').value
                 },
-                body: JSON.stringify({ email: email, type: 'register' })
+                body: JSON.stringify({ phone: phone, type: 'register' })
             })
             .then(res => res.json())
             .then(data => {
                 if (data.code === 200) {
-                    alert('验证码已发送到您的邮箱');
+                    alert('验证码已发送到您的手机');
                     startCountdown(60);
                 } else {
                     alert(data.message || '发送失败');

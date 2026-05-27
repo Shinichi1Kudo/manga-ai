@@ -8,7 +8,7 @@ from django.conf import settings
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase
 
-from api.backend_client import BackendAPIError
+from api.backend_client import BackendAPIError, BackendClient
 from apps.series.views import (
     COMMERCE_ASPECT_RATIO_OPTIONS,
     COMMERCE_SCENE_TYPES,
@@ -23,6 +23,11 @@ from apps.series.views import (
 
 
 class AnonymousPublicEndpointTests(TestCase):
+    def test_backend_client_ignores_environment_proxy(self):
+        client = BackendClient()
+
+        self.assertFalse(client.session.trust_env)
+
     def test_contact_image_endpoint_is_public(self):
         backend_client = Mock()
         backend_client.get.return_value = {'url': 'https://example.com/contact.jpg'}
@@ -623,6 +628,13 @@ class RoleNameGuidanceTests(TestCase):
             self.assertIn('uploadedImageUrl', template)
             self.assertIn('toggleManualRoleUpload', template)
 
+        self.assertIn('id="addRoleCreditBadge"', review_template)
+        self.assertIn('id="addRoleFreeBadge"', review_template)
+        self.assertIn('不扣积分', review_template)
+        self.assertIn('function updateAddRoleSubmitCreditDisplay()', review_template)
+        self.assertIn("creditBadge?.classList.toggle('hidden', manualUploadEnabled);", review_template)
+        self.assertIn("freeBadge?.classList.toggle('hidden', !manualUploadEnabled);", review_template)
+
     def test_role_layout_options_are_marked_as_optional_advanced_choices(self):
         template_root = Path(settings.BASE_DIR) / 'templates/series'
         init_template = (template_root / 'series_init.html').read_text(encoding='utf-8')
@@ -916,6 +928,17 @@ class GptImage2HomeTests(TestCase):
 
 
 class EpisodeDetailShotCreditTests(TestCase):
+    def test_pending_shot_generation_button_is_not_gated_by_episode_status(self):
+        template_path = Path(settings.BASE_DIR) / 'templates/episode/episode_detail.html'
+        template = template_path.read_text(encoding='utf-8')
+
+        self.assertIn('{% if shot.generationStatus == 0 and shot.status != 1 %}', template)
+        self.assertNotIn('{% if shot.generationStatus == 0 and episode.status == 2 %}', template)
+
+        render_actions_body = template.split('function renderPendingShotActions(card)', 1)[1].split('function applyPendingShotCardState(card)', 1)[0]
+        self.assertIn('if (status === 0) {', render_actions_body)
+        self.assertNotIn('if (status === 0 && episodeStatus === 2)', render_actions_body)
+
     def test_unlocked_shot_rebinds_model_select_and_refreshes_regenerate_credit(self):
         template_path = Path(settings.BASE_DIR) / 'templates/episode/episode_detail.html'
         template = template_path.read_text(encoding='utf-8')

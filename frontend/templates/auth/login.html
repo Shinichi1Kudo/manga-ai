@@ -333,6 +333,33 @@
             transform: translateY(-50%) scale(1.1);
         }
 
+        .code-btn {
+            position: absolute;
+            right: 6px;
+            top: 50%;
+            transform: translateY(-50%);
+            padding: 8px 14px;
+            background: linear-gradient(135deg, rgba(147, 51, 234, 0.2), rgba(34, 211, 238, 0.2));
+            border: 1px solid rgba(34, 211, 238, 0.32);
+            border-radius: 8px;
+            color: #e0f2fe;
+            font-size: 12px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            z-index: 2;
+        }
+
+        .code-btn:hover:not(:disabled) {
+            background: linear-gradient(135deg, rgba(147, 51, 234, 0.3), rgba(34, 211, 238, 0.3));
+            transform: translateY(-50%) scale(1.02);
+        }
+
+        .code-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
         /* 提交按钮 */
         .submit-btn {
             width: 100%;
@@ -525,20 +552,35 @@
             {% csrf_token %}
 
             <div class="form-group">
-                <label class="form-label">邮箱</label>
+                <label class="form-label">手机号或邮箱</label>
                 <div class="input-wrapper">
-                    <input type="email" name="email" class="form-input" placeholder="your@email.com" required>
-                    <i data-lucide="mail" class="w-5 h-5 input-icon"></i>
+                    <input type="text" name="account" id="account" class="form-input" placeholder="手机号或邮箱" required>
+                    <i data-lucide="user-round" class="w-5 h-5 input-icon"></i>
                 </div>
             </div>
 
-            <div class="form-group">
+            <input type="hidden" name="login_type" id="loginType" value="password">
+
+            <div class="form-group" id="passwordLoginGroup">
                 <label class="form-label">密码</label>
                 <div class="input-wrapper">
                     <input type="password" name="password" class="form-input" placeholder="••••••••" required>
                     <i data-lucide="key-round" class="w-5 h-5 input-icon"></i>
                 </div>
             </div>
+
+            <div class="form-group hidden" id="smsLoginGroup">
+                <label class="form-label">短信验证码</label>
+                <div class="input-wrapper">
+                    <input type="text" name="code" id="smsLoginCode" class="form-input" style="padding-right: 100px;" placeholder="输入6位验证码" maxlength="6">
+                    <i data-lucide="message-square-code" class="w-5 h-5 input-icon"></i>
+                    <button type="button" id="sendLoginCodeBtn" class="code-btn" onclick="sendLoginCode()">获取验证码</button>
+                </div>
+            </div>
+
+            <button type="button" class="mb-4 text-sm text-cyan-200 hover:text-white transition-colors" onclick="toggleLoginType()">
+                <span id="loginTypeToggleText">使用短信验证码登录</span>
+            </button>
 
             <button type="submit" class="submit-btn">
                 登录账户
@@ -560,6 +602,73 @@
                 toast.classList.remove('show');
             });
         }, 5000);
+
+        let smsLoginCountdown = 0;
+        let smsLoginTimer = null;
+
+        function toggleLoginType() {
+            const loginType = document.getElementById('loginType');
+            const passwordGroup = document.getElementById('passwordLoginGroup');
+            const smsGroup = document.getElementById('smsLoginGroup');
+            const toggleText = document.getElementById('loginTypeToggleText');
+            const passwordInput = passwordGroup.querySelector('input[name="password"]');
+            const codeInput = document.getElementById('smsLoginCode');
+            const nextType = loginType.value === 'password' ? 'sms' : 'password';
+            loginType.value = nextType;
+            passwordGroup.classList.toggle('hidden', nextType !== 'password');
+            smsGroup.classList.toggle('hidden', nextType !== 'sms');
+            passwordInput.required = nextType === 'password';
+            codeInput.required = nextType === 'sms';
+            toggleText.textContent = nextType === 'password' ? '使用短信验证码登录' : '使用密码登录';
+        }
+
+        function sendLoginCode() {
+            const account = document.getElementById('account').value.trim();
+            if (!/^1[3-9]\d{9}$/.test(account)) {
+                alert('短信登录请输入正确的手机号');
+                return;
+            }
+            const btn = document.getElementById('sendLoginCodeBtn');
+            btn.disabled = true;
+            fetch('/auth/send-code/', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': document.querySelector('[name="csrfmiddlewaretoken"]').value
+                },
+                body: JSON.stringify({ phone: account, type: 'login' })
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data.code === 200) {
+                    alert('验证码已发送到您的手机');
+                    startSmsLoginCountdown(60);
+                } else {
+                    alert(data.message || '发送失败');
+                    btn.disabled = false;
+                }
+            })
+            .catch(() => {
+                alert('发送失败，请稍后重试');
+                btn.disabled = false;
+            });
+        }
+
+        function startSmsLoginCountdown(seconds) {
+            smsLoginCountdown = seconds;
+            const btn = document.getElementById('sendLoginCodeBtn');
+            btn.textContent = smsLoginCountdown + 's';
+            smsLoginTimer = setInterval(() => {
+                smsLoginCountdown--;
+                if (smsLoginCountdown <= 0) {
+                    clearInterval(smsLoginTimer);
+                    btn.textContent = '获取验证码';
+                    btn.disabled = false;
+                } else {
+                    btn.textContent = smsLoginCountdown + 's';
+                }
+            }, 1000);
+        }
     </script>
 </body>
 </html>

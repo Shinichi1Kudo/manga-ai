@@ -9,15 +9,13 @@ import com.manga.ai.user.entity.User;
 import com.manga.ai.user.mapper.EmailVerificationMapper;
 import com.manga.ai.user.mapper.UserMapper;
 import com.manga.ai.user.service.CreditRecordService;
+import com.manga.ai.user.service.SmsSender;
 import com.manga.ai.user.service.UserService;
 import com.manga.ai.user.util.JwtUtil;
 import com.manga.ai.user.service.TokenService;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Lazy;
-import org.springframework.mail.SimpleMailMessage;
-import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
 
@@ -38,14 +36,11 @@ public class UserServiceImpl implements UserService {
     private final BCryptPasswordEncoder passwordEncoder = new BCryptPasswordEncoder();
 
     @Autowired(required = false)
-    private JavaMailSender mailSender;
+    private SmsSender smsSender;
 
     @Autowired
     @Lazy
     private CreditRecordService creditRecordService;
-
-    @Value("${spring.mail.username:}")
-    private String fromEmail;
 
     // 验证码有效期（分钟）
     private static final int CODE_EXPIRE_MINUTES = 10;
@@ -60,36 +55,40 @@ public class UserServiceImpl implements UserService {
 
     @Override
     public void sendCode(SendCodeRequest request) {
-        String email = request.getEmail();
+        String phone = normalizePhone(request.getPhone());
         String type = request.getType();
 
-        // 检查邮件服务是否可用
-        if (mailSender == null || fromEmail == null || fromEmail.isEmpty()) {
-            throw new BusinessException("邮件服务未配置，请联系管理员");
+        if (isBlank(phone)) {
+            throw new BusinessException("请输入手机号");
+        }
+        if (smsSender == null) {
+            throw new BusinessException("短信服务未配置，请联系管理员");
         }
 
-        // 检查邮箱是否已注册（注册时）
+        // 检查手机号是否已注册（注册时）
         if ("register".equals(type)) {
-            User existUser = getByEmail(email);
+            User existUser = getByPhone(phone);
             if (existUser != null) {
-                throw new BusinessException("该邮箱已注册");
+                throw new BusinessException("该手机号已注册");
             }
         }
 
-        // 检查邮箱是否存在（重置密码时）
-        if ("reset".equals(type)) {
-            User existUser = getByEmail(email);
+        // 检查手机号是否存在（登录或重置密码时）
+        if ("login".equals(type) || "reset".equals(type)) {
+            User existUser = getByPhone(phone);
             if (existUser == null) {
-                throw new BusinessException("该邮箱未注册");
+                throw new BusinessException("该手机号未注册");
             }
         }
 
         // 生成6位验证码
         String code = generateCode();
 
-        // 保存验证码
+        smsSender.sendVerificationCode(phone, code, type);
+
+        // 发送成功后再保存验证码，避免短信通道失败时留下可用验证码。
         EmailVerification verification = new EmailVerification();
-        verification.setEmail(email);
+        verification.setPhone(phone);
         verification.setCode(code);
         verification.setType(type);
         verification.setExpiredAt(LocalDateTime.now().plusMinutes(CODE_EXPIRE_MINUTES));
@@ -97,77 +96,72 @@ public class UserServiceImpl implements UserService {
         verification.setCreatedAt(LocalDateTime.now());
         emailVerificationMapper.insert(verification);
 
-        // 发送邮件
-        try {
-            SimpleMailMessage message = new SimpleMailMessage();
-            message.setFrom(fromEmail);
-            message.setTo(email);
-            message.setSubject("【海带 AI 内容智能创作平台】验证码");
-            message.setText("您的验证码是：" + code + "，有效期" + CODE_EXPIRE_MINUTES + "分钟，请勿泄露给他人。");
-            mailSender.send(message);
-            log.info("验证码发送成功: email={}", email);
-        } catch (Exception e) {
-            log.error("验证码发送失败: email={}", email, e);
-            throw new BusinessException("验证码发送失败，请稍后重试");
-        }
+        log.info("短信验证码发送成功: phone={}, type={}", maskPhone(phone), type);
     }
 
     @Override
     public UserVO register(RegisterRequest request) {
-        String email = request.getEmail();
+        String phone = normalizePhone(request.getPhone());
         String code = request.getCode();
         String password = request.getPassword();
 
         // 验证验证码
-        if (!verifyCode(email, code, "register")) {
+        if (!verifyCode(phone, null, code, "register")) {
             throw new BusinessException("验证码错误或已过期");
         }
 
-        // 检查邮箱是否已注册
-        User existUser = getByEmail(email);
+        // 检查手机号是否已注册
+        User existUser = getByPhone(phone);
         if (existUser != null) {
-            throw new BusinessException("该邮箱已注册");
+            throw new BusinessException("该手机号已注册");
         }
 
         // 创建用户
         User user = new User();
-        user.setEmail(email);
+        user.setPhone(phone);
         user.setPassword(passwordEncoder.encode(password));
-        user.setNickname(request.getNickname() != null ? request.getNickname() : email.split("@")[0]);
+        user.setNickname(!isBlank(request.getNickname()) ? request.getNickname().trim() : "用户" + phone.substring(phone.length() - 4));
         user.setCredits(NEW_USER_REWARD_CREDITS);
         user.setStatus(1);
         user.setCreatedAt(LocalDateTime.now());
         user.setUpdatedAt(LocalDateTime.now());
         userMapper.insert(user);
 
-        log.info("用户注册成功: userId={}, email={}", user.getId(), email);
+        log.info("用户注册成功: userId={}, phone={}", user.getId(), maskPhone(phone));
 
-        // 生成 Token
-        String token = jwtUtil.generateToken(user.getId(), user.getEmail());
-
-        // 存入Redis
-        tokenService.storeToken(token, user.getId());
-
-        return convertToVO(user, token);
+        return issueTokenAndConvert(user);
     }
 
     @Override
     public UserVO login(LoginRequest request) {
-        String email = request.getEmail();
+        String account = !isBlank(request.getAccount()) ? request.getAccount().trim() : request.getEmail();
         String password = request.getPassword();
+        String loginType = isBlank(request.getLoginType()) ? "password" : request.getLoginType();
 
-        // 查找用户
-        User user = getByEmail(email);
-        if (user == null) {
-            throw new BusinessException("邮箱或密码错误");
-        }
-
-        // 验证密码
-        if (!passwordEncoder.matches(password, user.getPassword())) {
-            throw new BusinessException("邮箱或密码错误");
+        User user;
+        if ("sms".equals(loginType)) {
+            String phone = normalizePhone(account);
+            if (!verifyCode(phone, null, request.getCode(), "login")) {
+                throw new BusinessException("验证码错误或已过期");
+            }
+            user = getByPhone(phone);
+            if (user == null) {
+                throw new BusinessException("手机号未注册");
+            }
+        } else {
+            user = getByAccount(account);
+            if (user == null) {
+                throw new BusinessException("账号或密码错误");
+            }
+            if (isBlank(password) || !passwordEncoder.matches(password, user.getPassword())) {
+                throw new BusinessException("账号或密码错误");
+            }
         }
 
         // 检查状态
+        if (user == null) {
+            throw new BusinessException("账号不存在");
+        }
         if (user.getStatus() != 1) {
             throw new BusinessException("账号已被禁用");
         }
@@ -175,15 +169,9 @@ public class UserServiceImpl implements UserService {
         // 更新最后登录时间
         updateLastLogin(user.getId());
 
-        // 生成 Token
-        String token = jwtUtil.generateToken(user.getId(), user.getEmail());
+        log.info("用户登录成功: userId={}, account={}", user.getId(), maskAccount(account));
 
-        // 存入Redis
-        tokenService.storeToken(token, user.getId());
-
-        log.info("用户登录成功: userId={}, email={}", user.getId(), email);
-
-        return convertToVO(user, token);
+        return issueTokenAndConvert(user);
     }
 
     @Override
@@ -193,9 +181,49 @@ public class UserServiceImpl implements UserService {
 
     @Override
     public User getByEmail(String email) {
+        if (isBlank(email)) {
+            return null;
+        }
         LambdaQueryWrapper<User> wrapper = new LambdaQueryWrapper<>();
         wrapper.eq(User::getEmail, email);
         return userMapper.selectOne(wrapper);
+    }
+
+    @Override
+    public User getByPhone(String phone) {
+        if (isBlank(phone)) {
+            return null;
+        }
+        LambdaQueryWrapper<User> wrapper = new LambdaQueryWrapper<>();
+        wrapper.eq(User::getPhone, normalizePhone(phone));
+        return userMapper.selectOne(wrapper);
+    }
+
+    @Override
+    public UserVO bindPhone(Long userId, BindPhoneRequest request) {
+        String phone = normalizePhone(request.getPhone());
+        if (!verifyCode(phone, null, request.getCode(), "bind")) {
+            throw new BusinessException("验证码错误或已过期");
+        }
+
+        User existing = getByPhone(phone);
+        if (existing != null && !existing.getId().equals(userId)) {
+            throw new BusinessException("该手机号已绑定其他账号");
+        }
+
+        User update = new User();
+        update.setId(userId);
+        update.setPhone(phone);
+        update.setUpdatedAt(LocalDateTime.now());
+        userMapper.updateById(update);
+
+        User user = userMapper.selectById(userId);
+        if (user == null) {
+            throw new BusinessException("用户不存在");
+        }
+        user.setPhone(phone);
+        log.info("用户绑定手机号成功: userId={}, phone={}", userId, maskPhone(phone));
+        return issueTokenAndConvert(user);
     }
 
     @Override
@@ -225,10 +253,14 @@ public class UserServiceImpl implements UserService {
     /**
      * 验证验证码
      */
-    private boolean verifyCode(String email, String code, String type) {
+    private boolean verifyCode(String phone, String email, String code, String type) {
         LambdaQueryWrapper<EmailVerification> wrapper = new LambdaQueryWrapper<>();
-        wrapper.eq(EmailVerification::getEmail, email)
-               .eq(EmailVerification::getCode, code)
+        if (!isBlank(phone)) {
+            wrapper.eq(EmailVerification::getPhone, normalizePhone(phone));
+        } else {
+            wrapper.eq(EmailVerification::getEmail, email);
+        }
+        wrapper.eq(EmailVerification::getCode, code)
                .eq(EmailVerification::getType, type)
                .eq(EmailVerification::getUsed, 0)
                .gt(EmailVerification::getExpiredAt, LocalDateTime.now())
@@ -263,14 +295,72 @@ public class UserServiceImpl implements UserService {
         UserVO vo = new UserVO();
         vo.setId(user.getId());
         vo.setEmail(user.getEmail());
+        vo.setPhone(user.getPhone());
         vo.setNickname(user.getNickname());
         vo.setCredits(user.getCredits());
         vo.setStatus(user.getStatus());
+        vo.setRequiresPhoneBinding(isBlank(user.getPhone()));
         vo.setCreatedAt(user.getCreatedAt());
         vo.setLastLoginAt(user.getLastLoginAt());
         vo.setAvatar(user.getAvatar());
         vo.setToken(token);
         return vo;
+    }
+
+    private UserVO issueTokenAndConvert(User user) {
+        String tokenSubject = !isBlank(user.getEmail()) ? user.getEmail() : user.getPhone();
+        String token = jwtUtil.generateToken(user.getId(), tokenSubject);
+        tokenService.storeToken(token, user.getId());
+        return convertToVO(user, token);
+    }
+
+    private User getByAccount(String account) {
+        if (isBlank(account)) {
+            return null;
+        }
+        String normalized = account.trim();
+        if (isEmail(normalized)) {
+            return getByEmail(normalized);
+        }
+        return getByPhone(normalized);
+    }
+
+    private boolean isEmail(String value) {
+        return value != null && value.contains("@");
+    }
+
+    private String normalizePhone(String phone) {
+        if (phone == null) {
+            return "";
+        }
+        String normalized = phone.trim();
+        if (normalized.startsWith("+86")) {
+            normalized = normalized.substring(3);
+        } else if (normalized.startsWith("0086")) {
+            normalized = normalized.substring(4);
+        } else if (normalized.startsWith("86") && normalized.length() == 13) {
+            normalized = normalized.substring(2);
+        }
+        return normalized;
+    }
+
+    private boolean isBlank(String value) {
+        return value == null || value.trim().isEmpty();
+    }
+
+    private String maskPhone(String phone) {
+        if (phone == null || phone.length() < 7) {
+            return "***";
+        }
+        return phone.substring(0, 3) + "****" + phone.substring(phone.length() - 4);
+    }
+
+    private String maskAccount(String account) {
+        if (isEmail(account)) {
+            int at = account.indexOf('@');
+            return at <= 1 ? "***" + account.substring(at) : account.charAt(0) + "***" + account.substring(at);
+        }
+        return maskPhone(account);
     }
 
     @Override

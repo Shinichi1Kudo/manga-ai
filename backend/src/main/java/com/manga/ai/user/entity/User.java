@@ -24,6 +24,11 @@ public class User implements Serializable {
     private String email;
 
     /**
+     * 手机号
+     */
+    private String phone;
+
+    /**
      * 密码（加密存储）
      */
     private String password;

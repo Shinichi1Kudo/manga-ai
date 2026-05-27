@@ -2,19 +2,25 @@ package com.manga.ai.user.dto;
 
 import lombok.Data;
 
-import jakarta.validation.constraints.Email;
-import jakarta.validation.constraints.NotBlank;
-
 /**
  * 登录请求
  */
 @Data
 public class LoginRequest {
 
-    @NotBlank(message = "邮箱不能为空")
-    @Email(message = "邮箱格式不正确")
+    private String account;
+
+    /**
+     * 兼容旧前端字段。
+     */
     private String email;
 
-    @NotBlank(message = "密码不能为空")
+    /**
+     * 登录方式：password-密码登录，sms-短信验证码登录。
+     */
+    private String loginType = "password";
+
     private String password;
+
+    private String code;
 }

@@ -2811,6 +2811,9 @@ public class ShotServiceImpl implements ShotService {
         shot.setStartTime(0);
         shot.setEndTime(5);
         shot.setDuration(5);
+        shot.setResolution("720p");
+        shot.setAspectRatio("16:9");
+        shot.setVideoModel("seedance-2.0-fast");
         shot.setGenerationStatus(ShotGenerationStatus.PENDING.getCode());
         shot.setStatus(ShotStatus.PENDING_REVIEW.getCode());
         shot.setCreatedAt(LocalDateTime.now());
@@ -2831,6 +2834,14 @@ public class ShotServiceImpl implements ShotService {
                 shot.setDuration(Math.min(request.getDuration(), 15));
                 shot.setEndTime(shot.getDuration());
             }
+            String nextVideoModel = request.getVideoModel() != null ? request.getVideoModel() : shot.getVideoModel();
+            String nextResolution = request.getResolution() != null ? request.getResolution() : shot.getResolution();
+            nextResolution = normalizeResolutionForModel(nextVideoModel, nextResolution);
+            shot.setVideoModel(nextVideoModel);
+            shot.setResolution(nextResolution);
+            if (request.getAspectRatio() != null) {
+                shot.setAspectRatio(normalizeShotAspectRatio(request.getAspectRatio()));
+            }
             if (request.getShotType() != null) {
                 shot.setShotType(request.getShotType());
             }
@@ -2847,6 +2858,11 @@ public class ShotServiceImpl implements ShotService {
 
         shotMapper.insert(shot);
         log.info("分镜创建成功: shotId={}, shotNumber={}", shot.getId(), shotNumber);
+        if (EpisodeStatus.COMPLETED.getCode().equals(episode.getStatus())) {
+            episode.setStatus(EpisodeStatus.PENDING_REVIEW.getCode());
+            episode.setUpdatedAt(LocalDateTime.now());
+            episodeMapper.updateById(episode);
+        }
 
         return getShotDetail(shot.getId());
     }

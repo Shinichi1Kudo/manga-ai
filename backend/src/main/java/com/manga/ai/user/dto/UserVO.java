@@ -15,9 +15,11 @@ public class UserVO implements Serializable {
 
     private Long id;
     private String email;
+    private String phone;
     private String nickname;
     private Integer credits;
     private Integer status;
+    private Boolean requiresPhoneBinding;
     private LocalDateTime createdAt;
     private LocalDateTime lastLoginAt;
 

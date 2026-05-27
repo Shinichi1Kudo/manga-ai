@@ -748,7 +748,7 @@
                                 <i data-lucide="user" class="w-4 h-4" id="avatarPlaceholder"></i>
                                 <img id="avatarImg" src="" alt="头像" class="w-full h-full object-cover hidden">
                             </div>
-                            <span class="text-sm font-medium" id="userNickname">{% firstof request.session.nickname request.session.email "" %}</span>
+                            <span class="text-sm font-medium" id="userNickname">{% firstof request.session.nickname request.session.phone request.session.email "" %}</span>
                             <i data-lucide="chevron-down" class="w-4 h-4"></i>
                         </button>
                         <div id="userDropdown" class="absolute right-0 top-full mt-2 w-48 glass-card py-2 hidden">

@@ -24,6 +24,11 @@ public interface UserService {
     UserVO login(LoginRequest request);
 
     /**
+     * 绑定手机号
+     */
+    UserVO bindPhone(Long userId, BindPhoneRequest request);
+
+    /**
      * 根据ID获取用户
      */
     User getById(Long id);
@@ -32,6 +37,11 @@ public interface UserService {
      * 根据邮箱获取用户
      */
     User getByEmail(String email);
+
+    /**
+     * 根据手机号获取用户
+     */
+    User getByPhone(String phone);
 
     /**
      * 获取当前登录用户

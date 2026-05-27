@@ -20,6 +20,7 @@ class LoginRequiredMiddleware:
         self.exempt_paths = [
             '/auth/login/',
             '/auth/register/',
+            '/auth/bind-phone/',
             '/auth/send-code/',
             '/auth/logout/',
             '/favicon.ico',
@@ -52,6 +53,11 @@ class LoginRequiredMiddleware:
             # 保存原始请求路径，登录后跳转回来
             request.session['next'] = path
             return redirect('/auth/login/')
+
+        if is_logged_in and request.session.get('requires_phone_binding') and not is_exempt:
+            if is_api_path:
+                return JsonResponse({'code': 403, 'message': '请先绑定手机号'}, status=403)
+            return redirect('/auth/bind-phone/')
 
         response = self.get_response(request)
         return response

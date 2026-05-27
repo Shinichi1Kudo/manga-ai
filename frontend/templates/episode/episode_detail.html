@@ -1400,7 +1400,7 @@
                 </div>
                 <!-- 操作按钮（两列排列） -->
                 <div class="shot-actions grid gap-1.5 w-full">
-                    {% if shot.generationStatus == 0 and episode.status == 2 %}
+                    {% if shot.generationStatus == 0 and shot.status != 1 %}
                     <button class="generate-btn min-w-0 px-2.5 py-1.5 rounded-lg bg-gradient-to-r from-blue-500 to-cyan-500 hover:from-blue-600 hover:to-cyan-600 transition-colors text-xs flex items-center justify-center gap-1.5 text-white"
                             data-shot-id="{{ shot.id }}"
                             data-duration="{{ shot.duration|default:5 }}"
@@ -1833,7 +1833,7 @@ function renderPendingShotActions(card) {
     const completedWithVideo = status === 2 && shot.videoUrl;
 
     let html = '';
-    if (status === 0 && episodeStatus === 2) {
+    if (status === 0) {
         html += `
             <button class="generate-btn min-w-0 px-2.5 py-1.5 rounded-lg bg-gradient-to-r from-blue-500 to-cyan-500 hover:from-blue-600 hover:to-cyan-600 transition-colors text-xs flex items-center justify-center gap-1.5 text-white"
                     data-shot-id="${escapeHtml(shotId)}"
@@ -9104,6 +9104,7 @@ async function confirmAddShot() {
         duration: parseInt(document.getElementById('addShotDuration').value),
         resolution: document.getElementById('addShotResolution').value,
         aspectRatio: document.getElementById('addShotAspectRatio').value,
+        videoModel: 'seedance-2.0-fast',
         description: descText  // 直接保存完整文本，不解析
     };
 

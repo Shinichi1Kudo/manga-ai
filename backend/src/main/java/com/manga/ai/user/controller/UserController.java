@@ -50,6 +50,19 @@ public class UserController {
     }
 
     /**
+     * 登录后绑定手机号
+     */
+    @PostMapping("/auth/bind-phone")
+    public Result<UserVO> bindPhone(@Valid @RequestBody BindPhoneRequest request) {
+        Long userId = UserContextHolder.getUserId();
+        if (userId == null) {
+            return Result.error(401, "请先登录");
+        }
+        UserVO user = userService.bindPhone(userId, request);
+        return Result.success(user);
+    }
+
+    /**
      * 获取当前用户信息
      */
     @GetMapping("/user/info")
@@ -61,12 +74,14 @@ public class UserController {
         UserVO vo = new UserVO();
         vo.setId(user.getId());
         vo.setEmail(user.getEmail());
+        vo.setPhone(user.getPhone());
         vo.setNickname(user.getNickname());
         vo.setCredits(user.getCredits());
         vo.setStatus(user.getStatus());
         vo.setCreatedAt(user.getCreatedAt());
         vo.setLastLoginAt(user.getLastLoginAt());
         vo.setAvatar(user.getAvatar());
+        vo.setRequiresPhoneBinding(user.getPhone() == null || user.getPhone().isBlank());
         return Result.success(vo);
     }
 
@@ -107,12 +122,14 @@ public class UserController {
         UserVO vo = new UserVO();
         vo.setId(user.getId());
         vo.setEmail(user.getEmail());
+        vo.setPhone(user.getPhone());
         vo.setNickname(user.getNickname());
         vo.setCredits(user.getCredits());
         vo.setStatus(user.getStatus());
         vo.setCreatedAt(user.getCreatedAt());
         vo.setLastLoginAt(user.getLastLoginAt());
         vo.setAvatar(user.getAvatar());
+        vo.setRequiresPhoneBinding(user.getPhone() == null || user.getPhone().isBlank());
         return Result.success(vo);
     }
 
