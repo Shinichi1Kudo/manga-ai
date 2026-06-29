@@ -30,6 +30,7 @@ public class SchemaMigrationConfig {
             ensureCommerceTables();
             ensureSubjectReplacementTaskTable();
             ensureGptImage2TaskTable();
+            ensurePaymentTables();
             ensurePerformanceIndexes();
         };
     }
@@ -327,6 +328,22 @@ public class SchemaMigrationConfig {
         } catch (Exception e) {
             log.error("数据库迁移失败: gpt_image2_task", e);
             throw new IllegalStateException("数据库迁移失败: gpt_image2_task", e);
+        }
+    }
+
+    private void ensurePaymentTables() {
+        try (Connection connection = dataSource.getConnection();
+             Statement statement = connection.createStatement()) {
+            statement.execute(paymentOrderSql());
+            statement.execute(userMembershipSql());
+            statement.execute(creditBalanceBucketSql());
+            ensureIndex(connection, "uk_payment_order_no", "payment_order", "order_no");
+            ensureIndex(connection, "idx_payment_user_status", "payment_order", "user_id, status, created_at");
+            ensureIndex(connection, "idx_user_membership_user_expires", "user_membership", "user_id, status, expires_at");
+            ensureIndex(connection, "idx_credit_bucket_user_expires", "credit_balance_bucket", "user_id, expires_at, remaining_amount");
+        } catch (Exception e) {
+            log.error("数据库迁移失败: payment membership tables", e);
+            throw new IllegalStateException("数据库迁移失败: payment membership tables", e);
         }
     }
 
@@ -772,6 +789,68 @@ public class SchemaMigrationConfig {
                 + "submitted_at TIMESTAMP,"
                 + "completed_at TIMESTAMP,"
                 + "generation_duration INT,"
+                + "created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,"
+                + "updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
+                + ")";
+    }
+
+    private String paymentOrderSql() {
+        return "CREATE TABLE IF NOT EXISTS payment_order ("
+                + "id BIGINT AUTO_INCREMENT PRIMARY KEY,"
+                + "order_no VARCHAR(64) NOT NULL UNIQUE,"
+                + "user_id BIGINT NOT NULL,"
+                + "order_type VARCHAR(30) NOT NULL,"
+                + "product_code VARCHAR(80) NOT NULL,"
+                + "product_name VARCHAR(120) NOT NULL,"
+                + "amount_cents INT NOT NULL,"
+                + "status VARCHAR(30) NOT NULL,"
+                + "channel VARCHAR(30) DEFAULT 'ALIPAY',"
+                + "qrcode TEXT,"
+                + "alipay_trade_no VARCHAR(80),"
+                + "app_id VARCHAR(64),"
+                + "seller_id VARCHAR(64),"
+                + "notify_id VARCHAR(128),"
+                + "trade_status VARCHAR(40),"
+                + "base_credits INT DEFAULT 0,"
+                + "bonus_credits INT DEFAULT 0,"
+                + "total_credits INT DEFAULT 0,"
+                + "membership_tier VARCHAR(30),"
+                + "membership_period VARCHAR(30),"
+                + "membership_months INT DEFAULT 0,"
+                + "paid_at TIMESTAMP NULL,"
+                + "credited_at TIMESTAMP NULL,"
+                + "raw_notify TEXT,"
+                + "created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,"
+                + "updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
+                + ")";
+    }
+
+    private String userMembershipSql() {
+        return "CREATE TABLE IF NOT EXISTS user_membership ("
+                + "id BIGINT AUTO_INCREMENT PRIMARY KEY,"
+                + "user_id BIGINT NOT NULL,"
+                + "tier VARCHAR(30) NOT NULL,"
+                + "product_code VARCHAR(80) NOT NULL,"
+                + "period VARCHAR(30) NOT NULL,"
+                + "months INT NOT NULL,"
+                + "status VARCHAR(30) NOT NULL,"
+                + "source_order_no VARCHAR(64) NOT NULL,"
+                + "started_at TIMESTAMP NOT NULL,"
+                + "expires_at TIMESTAMP NOT NULL,"
+                + "created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,"
+                + "updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
+                + ")";
+    }
+
+    private String creditBalanceBucketSql() {
+        return "CREATE TABLE IF NOT EXISTS credit_balance_bucket ("
+                + "id BIGINT AUTO_INCREMENT PRIMARY KEY,"
+                + "user_id BIGINT NOT NULL,"
+                + "source_type VARCHAR(40) NOT NULL,"
+                + "source_order_no VARCHAR(64),"
+                + "total_amount INT NOT NULL,"
+                + "remaining_amount INT NOT NULL,"
+                + "expires_at TIMESTAMP NULL,"
                 + "created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,"
                 + "updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP"
                 + ")";

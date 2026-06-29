@@ -2626,6 +2626,77 @@ def showcase_assets(request):
         return JsonResponse({'code': 400, 'message': e.message}, status=400)
 
 
+def membership_page(request):
+    """会员与积分充值页面"""
+    return render(request, 'payments/membership.html')
+
+
+def payment_products_api(request):
+    """会员/充值产品API代理"""
+    client = get_client(request)
+    try:
+        result = client.get('/v1/payments/products')
+        return JsonResponse({'code': 200, 'data': result})
+    except BackendAPIError as e:
+        return JsonResponse({'code': e.status_code, 'message': e.message}, status=400)
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def payment_membership_order(request):
+    """会员订单创建API代理"""
+    client = get_client(request)
+    try:
+        data = json.loads(request.body or '{}')
+        result = client.post('/v1/payments/membership/orders', {
+            'productCode': data.get('productCode')
+        })
+        return JsonResponse({'code': 200, 'data': result})
+    except BackendAPIError as e:
+        return JsonResponse({'code': e.status_code, 'message': e.message}, status=400)
+    except json.JSONDecodeError:
+        return JsonResponse({'code': 400, 'message': 'Invalid JSON'}, status=400)
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def payment_recharge_order(request):
+    """积分充值订单创建API代理"""
+    client = get_client(request)
+    try:
+        data = json.loads(request.body or '{}')
+        result = client.post('/v1/payments/recharge/orders', {
+            'amountCents': data.get('amountCents')
+        })
+        return JsonResponse({'code': 200, 'data': result})
+    except BackendAPIError as e:
+        return JsonResponse({'code': e.status_code, 'message': e.message}, status=400)
+    except json.JSONDecodeError:
+        return JsonResponse({'code': 400, 'message': 'Invalid JSON'}, status=400)
+
+
+def payment_order_status(request, order_no):
+    """支付订单状态查询代理"""
+    client = get_client(request)
+    try:
+        result = client.get(f'/v1/payments/orders/{order_no}')
+        return JsonResponse({'code': 200, 'data': result})
+    except BackendAPIError as e:
+        return JsonResponse({'code': e.status_code, 'message': e.message}, status=400)
+
+
+@csrf_exempt
+@require_http_methods(["POST"])
+def payment_order_sync(request, order_no):
+    """支付订单状态同步代理"""
+    client = get_client(request)
+    try:
+        result = client.post(f'/v1/payments/orders/{order_no}/sync')
+        return JsonResponse({'code': 200, 'data': result})
+    except BackendAPIError as e:
+        return JsonResponse({'code': e.status_code, 'message': e.message}, status=400)
+
+
 def credit_records(request):
     """积分记录页面"""
     return render(request, 'credits/credit_records.html')

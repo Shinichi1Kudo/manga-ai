@@ -12,7 +12,9 @@ public enum CreditUsageType {
     SCENE_CREATE("scene_create", "场景创建"),
     PROP_CREATE("prop_create", "道具创建"),
     SUBJECT_REPLACEMENT("subject_replacement", "主体替换"),
-    REDEEM_CODE("redeem_code", "兑换码兑换");
+    REDEEM_CODE("redeem_code", "兑换码兑换"),
+    RECHARGE("recharge", "积分充值"),
+    MEMBERSHIP("membership", "会员赠送");
 
     private final String code;
     private final String desc;

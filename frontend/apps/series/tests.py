@@ -182,6 +182,64 @@ class SeriesListIsolationTests(TestCase):
         self.assertIn('前往登录', template)
 
 
+class MembershipPaymentPageTests(TestCase):
+    def test_membership_page_is_public(self):
+        response = self.client.get('/membership/')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, 'member-pricing-app')
+        self.assertContains(response, '会员体系')
+
+    def test_nav_places_membership_link_next_to_contact_button(self):
+        template_path = Path(settings.BASE_DIR) / 'templates/base.html'
+        template = template_path.read_text(encoding='utf-8')
+
+        contact_index = template.index('showContactModal()')
+        membership_index = template.index('href="/membership/"')
+        self.assertGreater(membership_index, contact_index)
+        self.assertIn('会员充值', template)
+
+    def test_payment_products_proxy_forwards_session_token_to_backend(self):
+        session = self.client.session
+        session['token'] = 'token-pay'
+        session.save()
+
+        backend_client = Mock()
+        backend_client.get.return_value = {'membershipProducts': {}, 'rechargePackages': []}
+
+        with patch('apps.series.views.BackendClient', return_value=backend_client) as backend_client_cls:
+            response = self.client.get('/api/payments/products/')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['data']['rechargePackages'], [])
+        backend_client_cls.assert_called_once_with(token='token-pay')
+        backend_client.get.assert_called_once_with('/v1/payments/products')
+
+    def test_create_recharge_order_proxy_posts_json_to_backend(self):
+        session = self.client.session
+        session['token'] = 'token-pay'
+        session.save()
+
+        backend_client = Mock()
+        backend_client.post.return_value = {
+            'orderNo': 'PAY202606290001',
+            'qrcode': 'https://qr.example/alipay',
+            'totalCredits': 1150,
+        }
+
+        with patch('apps.series.views.BackendClient', return_value=backend_client) as backend_client_cls:
+            response = self.client.post(
+                '/api/payments/recharge/orders/',
+                data=json.dumps({'amountCents': 5000}),
+                content_type='application/json',
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['data']['totalCredits'], 1150)
+        backend_client_cls.assert_called_once_with(token='token-pay')
+        backend_client.post.assert_called_once_with('/v1/payments/recharge/orders', {'amountCents': 5000})
+
+
 class EpisodeEntryPerformanceTests(TestCase):
     def test_parallel_backend_gets_collects_named_results_with_authenticated_clients(self):
         from apps.series.views import _parallel_backend_gets

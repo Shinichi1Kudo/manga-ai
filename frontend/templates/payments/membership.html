@@ -1,0 +1,610 @@
+{% extends 'base.html' %}
+
+{% block title %}会员体系 - 海带 AI 内容智能创作平台{% endblock %}
+
+{% block extra_css %}
+<style>
+    .membership-shell {
+        max-width: 1320px;
+        margin: 0 auto;
+    }
+
+    .membership-toolbar {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        margin-bottom: 22px;
+    }
+
+    .pricing-tabs {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(92px, 1fr));
+        gap: 4px;
+        width: min(680px, 100%);
+        padding: 4px;
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.08);
+        border: 1px solid rgba(255, 255, 255, 0.12);
+    }
+
+    .pricing-tab {
+        height: 42px;
+        border: 0;
+        border-radius: 999px;
+        background: transparent;
+        color: rgba(255, 255, 255, 0.72);
+        font-size: 14px;
+        font-weight: 700;
+        cursor: pointer;
+        transition: background 0.18s ease, color 0.18s ease;
+    }
+
+    .pricing-tab.active {
+        background: rgba(255, 255, 255, 0.94);
+        color: #10131a;
+        box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+    }
+
+    .membership-grid {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 16px;
+        align-items: stretch;
+    }
+
+    .membership-card {
+        min-height: 560px;
+        display: flex;
+        flex-direction: column;
+        border-radius: 18px;
+        background: rgba(255, 255, 255, 0.96);
+        color: #111827;
+        border: 1px solid rgba(255, 255, 255, 0.5);
+        box-shadow: 0 18px 60px rgba(0, 0, 0, 0.22);
+        overflow: hidden;
+    }
+
+    .membership-card.disabled {
+        opacity: 0.64;
+    }
+
+    .membership-card-body {
+        padding: 30px 28px 24px;
+        flex: 1;
+    }
+
+    .membership-title {
+        font-size: 18px;
+        font-weight: 800;
+        color: #10131a;
+        margin-bottom: 12px;
+    }
+
+    .membership-price {
+        display: flex;
+        align-items: baseline;
+        gap: 8px;
+        margin-bottom: 8px;
+    }
+
+    .membership-price strong {
+        font-size: 42px;
+        line-height: 1;
+        letter-spacing: 0;
+    }
+
+    .membership-price span {
+        color: #6b7280;
+        font-size: 13px;
+    }
+
+    .membership-subcopy {
+        min-height: 38px;
+        color: #84909f;
+        font-size: 13px;
+        line-height: 1.5;
+    }
+
+    .credit-box {
+        margin: 68px 0 16px;
+        padding: 18px;
+        border-radius: 14px;
+        background: #f4f5f7;
+    }
+
+    .credit-box strong {
+        display: block;
+        font-size: 15px;
+        color: #111827;
+        margin-bottom: 8px;
+    }
+
+    .credit-box span {
+        color: #778392;
+        font-size: 12px;
+    }
+
+    .membership-action {
+        width: 100%;
+        height: 44px;
+        border: 0;
+        border-radius: 999px;
+        background: #101114;
+        color: #fff;
+        font-weight: 800;
+        cursor: pointer;
+        transition: transform 0.16s ease, background 0.16s ease;
+    }
+
+    .membership-action:hover {
+        transform: translateY(-1px);
+        background: #25272c;
+    }
+
+    .membership-action:disabled {
+        cursor: not-allowed;
+        background: #e6e8ec;
+        color: #a0a7b1;
+        transform: none;
+    }
+
+    .membership-features {
+        border-top: 1px solid #e7e9ee;
+        padding: 22px 28px 26px;
+        min-height: 220px;
+    }
+
+    .membership-feature {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        font-size: 13px;
+        color: #1f2937;
+        margin-bottom: 16px;
+    }
+
+    .membership-feature i {
+        width: 14px;
+        height: 14px;
+        color: #111827;
+        flex: 0 0 auto;
+    }
+
+    .feature-pill {
+        flex: 0 0 auto;
+        padding: 3px 8px;
+        border-radius: 8px;
+        background: #f0f1f3;
+        color: #111827;
+        font-size: 11px;
+        font-weight: 800;
+    }
+
+    .recharge-section {
+        margin-top: 34px;
+        padding: 26px;
+        border-radius: 18px;
+        background: rgba(255, 255, 255, 0.08);
+        border: 1px solid rgba(255, 255, 255, 0.12);
+    }
+
+    .recharge-grid {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 12px;
+        margin-top: 18px;
+    }
+
+    .recharge-card {
+        padding: 18px;
+        border-radius: 14px;
+        background: rgba(8, 12, 22, 0.58);
+        border: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    .recharge-card strong {
+        display: block;
+        font-size: 24px;
+        margin-bottom: 8px;
+    }
+
+    .recharge-card span {
+        display: block;
+        color: rgba(255, 255, 255, 0.68);
+        font-size: 13px;
+        line-height: 1.5;
+        min-height: 40px;
+    }
+
+    .recharge-card button {
+        width: 100%;
+        height: 38px;
+        margin-top: 14px;
+        border: 0;
+        border-radius: 999px;
+        background: #f8fafc;
+        color: #111827;
+        font-weight: 800;
+        cursor: pointer;
+    }
+
+    .pay-modal-panel {
+        width: min(440px, calc(100vw - 32px));
+        border-radius: 18px;
+        background: #fff;
+        color: #111827;
+        padding: 24px;
+        box-shadow: 0 24px 80px rgba(0, 0, 0, 0.45);
+    }
+
+    .qr-stage {
+        width: 240px;
+        height: 240px;
+        margin: 18px auto;
+        display: grid;
+        place-items: center;
+        border-radius: 16px;
+        background: #f5f7fb;
+        border: 1px solid #e5e7eb;
+    }
+
+    @media (max-width: 1120px) {
+        .membership-grid,
+        .recharge-grid {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+    }
+
+    @media (max-width: 720px) {
+        .membership-toolbar {
+            align-items: stretch;
+        }
+
+        .pricing-tabs {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            border-radius: 18px;
+        }
+
+        .membership-grid,
+        .recharge-grid {
+            grid-template-columns: 1fr;
+        }
+
+        .membership-card {
+            min-height: auto;
+        }
+
+        .credit-box {
+            margin-top: 36px;
+        }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div id="member-pricing-app" class="membership-shell">
+    <div class="membership-toolbar">
+        <div>
+            <p class="text-sm text-cyan-200 font-semibold mb-2">会员体系</p>
+            <h1 class="text-3xl md:text-4xl font-extrabold tracking-normal">会员与积分充值</h1>
+        </div>
+        <div class="pricing-tabs" id="periodTabs"></div>
+    </div>
+
+    <div class="membership-grid" id="membershipGrid"></div>
+
+    <section class="recharge-section">
+        <div class="flex flex-col md:flex-row md:items-end md:justify-between gap-3">
+            <div>
+                <p class="text-sm text-amber-200 font-semibold mb-2">积分充值</p>
+                <h2 class="text-2xl font-extrabold">50 元 1000 积分起，会员少量加赠</h2>
+            </div>
+            <p class="text-sm text-white/55">赠送积分 30 天有效，最高级会员 50 元封顶 1150 积分</p>
+        </div>
+        <div class="recharge-grid" id="rechargeGrid"></div>
+    </section>
+</div>
+
+<div class="modal-backdrop hidden" id="payModal" onclick="if(event.target === this) closePayModal()">
+    <div class="pay-modal-panel">
+        <div class="flex items-start justify-between gap-4">
+            <div>
+                <p class="text-sm text-gray-500 mb-1" id="payOrderNo">订单</p>
+                <h3 class="text-2xl font-extrabold" id="payTitle">支付宝扫码支付</h3>
+            </div>
+            <button onclick="closePayModal()" class="p-2 rounded-lg hover:bg-gray-100 transition-colors" title="关闭">
+                <i data-lucide="x" class="w-5 h-5"></i>
+            </button>
+        </div>
+        <div class="qr-stage">
+            <canvas id="payQrCanvas" width="220" height="220"></canvas>
+            <p id="payQrFallback" class="hidden px-4 text-center text-xs text-gray-500 break-all"></p>
+        </div>
+        <p class="text-center text-sm text-gray-500" id="payStatus">请使用支付宝扫码完成支付</p>
+        <button onclick="syncCurrentOrder()" class="mt-5 w-full h-11 rounded-full bg-gray-950 text-white font-bold">我已支付，刷新状态</button>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
+<script>
+    const IS_AUTHENTICATED = {{ request.session.token|yesno:"true,false" }};
+    const tabs = [
+        {key: 'YEAR', label: '包年'},
+        {key: 'MONTH', label: '包月'},
+        {key: 'QUARTER', label: '包季'},
+        {key: 'SINGLE_MONTH', label: '单月购买'}
+    ];
+    const fallbackProducts = {
+        membershipProducts: {
+            YEAR: [
+                {code: 'year_basic', tier: 'BASIC', title: '基础会员', priceCents: 65900, monthlyCredits: 725, enabled: true, buttonText: '订阅包年基础会员', features: []},
+                {code: 'year_standard', tier: 'STANDARD', title: '标准会员', priceCents: 189900, monthlyCredits: 2210, enabled: true, buttonText: '订阅包年标准会员', features: []},
+                {code: 'year_advanced', tier: 'ADVANCED', title: '高级会员', priceCents: 519900, monthlyCredits: 12320, enabled: true, buttonText: '订阅包年高级会员', features: []},
+                {code: 'year_super', tier: 'SUPER', title: '超级会员', priceCents: 0, monthlyCredits: 54600, enabled: false, buttonText: '敬请期待', features: []}
+            ],
+            MONTH: [
+                {code: 'month_basic', tier: 'BASIC', title: '基础会员', priceCents: 6900, monthlyCredits: 725, enabled: true, buttonText: '订阅包月基础会员', features: []},
+                {code: 'month_standard', tier: 'STANDARD', title: '标准会员', priceCents: 19900, monthlyCredits: 2210, enabled: true, buttonText: '订阅包月标准会员', features: []},
+                {code: 'month_advanced', tier: 'ADVANCED', title: '高级会员', priceCents: 99800, monthlyCredits: 12320, enabled: true, buttonText: '订阅包月高级会员', features: []},
+                {code: 'month_super', tier: 'SUPER', title: '超级会员', priceCents: 429900, monthlyCredits: 54600, enabled: true, buttonText: '订阅包月超级会员', features: []}
+            ],
+            QUARTER: [
+                {code: 'quarter_basic', tier: 'BASIC', title: '基础会员', priceCents: 18800, monthlyCredits: 725, enabled: true, buttonText: '订阅包季基础会员', features: []},
+                {code: 'quarter_standard', tier: 'STANDARD', title: '标准会员', priceCents: 56800, monthlyCredits: 2210, enabled: true, buttonText: '订阅包季标准会员', features: []},
+                {code: 'quarter_advanced', tier: 'ADVANCED', title: '高级会员', priceCents: 195900, monthlyCredits: 12320, enabled: true, buttonText: '订阅包季高级会员', features: []},
+                {code: 'quarter_super', tier: 'SUPER', title: '超级会员', priceCents: 818900, monthlyCredits: 54600, enabled: true, buttonText: '订阅包季超级会员', features: []}
+            ],
+            SINGLE_MONTH: [
+                {code: 'single_month_basic', tier: 'BASIC', title: '基础会员', priceCents: 7900, monthlyCredits: 725, enabled: true, buttonText: '购买', features: []},
+                {code: 'single_month_standard', tier: 'STANDARD', title: '标准会员', priceCents: 23900, monthlyCredits: 2210, enabled: true, buttonText: '购买', features: []},
+                {code: 'single_month_advanced', tier: 'ADVANCED', title: '高级会员', priceCents: 64900, monthlyCredits: 12320, enabled: true, buttonText: '购买', features: []},
+                {code: 'single_month_super', tier: 'SUPER', title: '超级会员', priceCents: 0, monthlyCredits: 54600, enabled: false, buttonText: '敬请期待', features: []}
+            ]
+        },
+        rechargePackages: [
+            {amountCents: 5000, baseCredits: 1000, bonusCredits: 0, totalCredits: 1000, bonusPercent: 0},
+            {amountCents: 10000, baseCredits: 2000, bonusCredits: 0, totalCredits: 2000, bonusPercent: 0},
+            {amountCents: 20000, baseCredits: 4000, bonusCredits: 0, totalCredits: 4000, bonusPercent: 0},
+            {amountCents: 50000, baseCredits: 10000, bonusCredits: 0, totalCredits: 10000, bonusPercent: 0}
+        ]
+    };
+    const defaultFeatures = ['Seedance 2.0', 'Seedance 1.5 Pro', '图片4.0', '标准生成通道', '无忧退款', '生成作品去除品牌水印'];
+    let currentTab = 'MONTH';
+    let productsState = fallbackProducts;
+    let currentOrderNo = '';
+    let pollTimer = null;
+
+    document.addEventListener('DOMContentLoaded', () => {
+        renderTabs();
+        renderAll();
+        loadProducts();
+    });
+
+    function renderTabs() {
+        const container = document.getElementById('periodTabs');
+        container.innerHTML = tabs.map(tab => `
+            <button class="pricing-tab ${tab.key === currentTab ? 'active' : ''}" onclick="switchTab('${tab.key}')">${tab.label}</button>
+        `).join('');
+    }
+
+    function switchTab(tabKey) {
+        currentTab = tabKey;
+        renderTabs();
+        renderMembershipCards();
+    }
+
+    function renderAll() {
+        renderMembershipCards();
+        renderRechargeCards();
+        if (window.lucide) {
+            lucide.createIcons();
+        }
+    }
+
+    async function loadProducts() {
+        try {
+            const response = await fetch('/api/payments/products/');
+            const payload = await response.json();
+            if (payload.code === 200 && payload.data) {
+                productsState = payload.data;
+                renderAll();
+            }
+        } catch (error) {
+            console.warn('加载会员产品失败', error);
+        }
+    }
+
+    function renderMembershipCards() {
+        const products = (productsState.membershipProducts || {})[currentTab] || [];
+        document.getElementById('membershipGrid').innerHTML = products.map(product => {
+            const features = product.features && product.features.length ? product.features : defaultFeatures;
+            return `
+                <article class="membership-card ${product.enabled ? '' : 'disabled'}">
+                    <div class="membership-card-body">
+                        <h2 class="membership-title">${product.title}</h2>
+                        <div class="membership-price">
+                            <span>¥</span>
+                            <strong>${product.enabled ? formatPrice(product.priceCents) : '????'}</strong>
+                            <span>${periodUnit(currentTab)}</span>
+                        </div>
+                        <p class="membership-subcopy">${periodCopy(currentTab, product)}</p>
+                        <div class="credit-box">
+                            <strong>✦ ${formatNumber(product.monthlyCredits)} 积分每月</strong>
+                            <span>换算 ¥10≈${Math.round(product.monthlyCredits / 8)} 积分</span>
+                        </div>
+                        <button class="membership-action" ${product.enabled ? '' : 'disabled'} onclick="purchaseMembership('${product.code}')">${product.buttonText || '购买'}</button>
+                    </div>
+                    <div class="membership-features">
+                        ${features.map((feature, index) => `
+                            <div class="membership-feature">
+                                <span class="flex items-center gap-3"><i data-lucide="check"></i>${feature}</span>
+                                ${featureBadge(index, feature)}
+                            </div>
+                        `).join('')}
+                    </div>
+                </article>
+            `;
+        }).join('');
+        if (window.lucide) {
+            lucide.createIcons();
+        }
+    }
+
+    function renderRechargeCards() {
+        const packages = productsState.rechargePackages || fallbackProducts.rechargePackages;
+        document.getElementById('rechargeGrid').innerHTML = packages.map(item => `
+            <article class="recharge-card">
+                <strong>¥${formatPrice(item.amountCents)}</strong>
+                <span>${formatNumber(item.baseCredits)} 基础积分${item.bonusCredits ? `，加赠 ${formatNumber(item.bonusCredits)} 积分` : ''}<br>合计 ${formatNumber(item.totalCredits)} 积分</span>
+                <button onclick="purchaseRecharge(${item.amountCents})">支付宝扫码支付</button>
+            </article>
+        `).join('');
+    }
+
+    function purchaseMembership(productCode) {
+        if (!ensureAuthenticated()) return;
+        createOrder('/api/payments/membership/orders/', {productCode});
+    }
+
+    function purchaseRecharge(amountCents) {
+        if (!ensureAuthenticated()) return;
+        createOrder('/api/payments/recharge/orders/', {amountCents});
+    }
+
+    async function createOrder(url, payload) {
+        setPayStatus('正在创建订单...');
+        try {
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(payload)
+            });
+            const data = await response.json();
+            if (response.status === 401 || data.code === 401) {
+                window.location.href = '/auth/login/';
+                return;
+            }
+            if (data.code !== 200) {
+                throw new Error(data.message || '创建订单失败');
+            }
+            openPayModal(data.data);
+        } catch (error) {
+            alert(error.message || '创建订单失败');
+        }
+    }
+
+    function openPayModal(order) {
+        currentOrderNo = order.orderNo;
+        document.getElementById('payOrderNo').textContent = order.orderNo;
+        document.getElementById('payTitle').textContent = order.productName || '支付宝扫码支付';
+        document.getElementById('payModal').classList.remove('hidden');
+        setPayStatus('请使用支付宝扫码完成支付');
+        renderQr(order.qrcode || '');
+        startPolling();
+        if (window.lucide) {
+            lucide.createIcons();
+        }
+    }
+
+    function closePayModal() {
+        document.getElementById('payModal').classList.add('hidden');
+        if (pollTimer) {
+            clearInterval(pollTimer);
+            pollTimer = null;
+        }
+    }
+
+    function renderQr(value) {
+        const canvas = document.getElementById('payQrCanvas');
+        const fallback = document.getElementById('payQrFallback');
+        fallback.classList.add('hidden');
+        canvas.classList.remove('hidden');
+        if (window.QRCode && value) {
+            QRCode.toCanvas(canvas, value, {
+                width: 220,
+                margin: 2,
+                color: {dark: '#111827', light: '#ffffff'}
+            });
+        } else {
+            canvas.classList.add('hidden');
+            fallback.textContent = value || '二维码生成失败，请刷新订单';
+            fallback.classList.remove('hidden');
+        }
+    }
+
+    function startPolling() {
+        if (pollTimer) {
+            clearInterval(pollTimer);
+        }
+        pollTimer = setInterval(syncCurrentOrder, 3000);
+    }
+
+    async function syncCurrentOrder() {
+        if (!currentOrderNo) return;
+        try {
+            const response = await fetch(`/api/payments/orders/${currentOrderNo}/sync/`, {method: 'POST'});
+            const data = await response.json();
+            if (data.code === 200 && data.data && data.data.status === 'PAID') {
+                setPayStatus('支付成功，积分已到账');
+                if (pollTimer) {
+                    clearInterval(pollTimer);
+                    pollTimer = null;
+                }
+                if (typeof fetchUserCredits === 'function') {
+                    fetchUserCredits();
+                }
+            }
+        } catch (error) {
+            console.warn('同步订单状态失败', error);
+        }
+    }
+
+    function ensureAuthenticated() {
+        if (IS_AUTHENTICATED) {
+            return true;
+        }
+        window.location.href = '/auth/login/';
+        return false;
+    }
+
+    function setPayStatus(text) {
+        const target = document.getElementById('payStatus');
+        if (target) {
+            target.textContent = text;
+        }
+    }
+
+    function formatPrice(cents) {
+        return Math.round((cents || 0) / 100).toString();
+    }
+
+    function formatNumber(value) {
+        return Number(value || 0).toLocaleString('en-US');
+    }
+
+    function periodUnit(period) {
+        if (period === 'YEAR') return '每年';
+        if (period === 'QUARTER') return '每季';
+        return '每月';
+    }
+
+    function periodCopy(period, product) {
+        if (!product.enabled) return '更高额度套餐正在准备中';
+        if (period === 'YEAR') return `折合每月 ¥${Math.round(product.priceCents / 1200)}，购买后按周期生效`;
+        if (period === 'QUARTER') return '购买后按季度生效，可随时升级更高等级';
+        if (period === 'SINGLE_MONTH') return '单月购买，到期后可手动续购';
+        return '按月购买，到期后可手动续购';
+    }
+
+    function featureBadge(index, feature) {
+        if (index === 0) return '<span class="feature-pill">专属通道</span>';
+        if (feature.includes('1.5')) return '<span class="feature-pill">生成 8 折</span>';
+        if (feature.includes('4K')) return '<span class="feature-pill">4K 限时免费</span>';
+        if (feature.includes('图片4.0')) return '<span class="feature-pill">2K 限时免费</span>';
+        return '';
+    }
+</script>
+{% endblock %}

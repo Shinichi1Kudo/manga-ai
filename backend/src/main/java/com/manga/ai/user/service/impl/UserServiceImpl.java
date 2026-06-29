@@ -8,6 +8,7 @@ import com.manga.ai.user.entity.EmailVerification;
 import com.manga.ai.user.entity.User;
 import com.manga.ai.user.mapper.EmailVerificationMapper;
 import com.manga.ai.user.mapper.UserMapper;
+import com.manga.ai.payment.service.CreditAccountService;
 import com.manga.ai.user.service.CreditRecordService;
 import com.manga.ai.user.service.SmsSender;
 import com.manga.ai.user.service.UserService;
@@ -41,6 +42,10 @@ public class UserServiceImpl implements UserService {
     @Autowired
     @Lazy
     private CreditRecordService creditRecordService;
+
+    @Autowired(required = false)
+    @Lazy
+    private CreditAccountService creditAccountService;
 
     // 验证码有效期（分钟）
     private static final int CODE_EXPIRE_MINUTES = 10;
@@ -375,6 +380,11 @@ public class UserServiceImpl implements UserService {
 
     @Override
     public void deductCredits(Long userId, int amount, String usageType, String description, Long referenceId, String referenceType) {
+        if (creditAccountService != null) {
+            creditAccountService.consumeCredits(userId, amount, usageType, description, referenceId, referenceType);
+            return;
+        }
+
         if (amount <= 0) {
             throw new BusinessException("扣除积分数量必须大于0");
         }

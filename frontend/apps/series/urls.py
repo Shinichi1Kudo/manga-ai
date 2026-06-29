@@ -13,6 +13,14 @@ urlpatterns = [
     # 创建新系列
     path('init/', views.series_init, name='init'),
 
+    # 会员与支付
+    path('membership/', views.membership_page, name='membership'),
+    path('api/payments/products/', views.payment_products_api, name='payment_products_api'),
+    path('api/payments/membership/orders/', views.payment_membership_order, name='payment_membership_order'),
+    path('api/payments/recharge/orders/', views.payment_recharge_order, name='payment_recharge_order'),
+    path('api/payments/orders/<str:order_no>/', views.payment_order_status, name='payment_order_status'),
+    path('api/payments/orders/<str:order_no>/sync/', views.payment_order_sync, name='payment_order_sync'),
+
     # 主体替换
     path('subject-replacement/', views.subject_replacement_page, name='subject_replacement'),
     path('api/v1/subject-replacements/', views.subject_replacement_tasks, name='subject_replacement_tasks'),

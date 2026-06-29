@@ -92,6 +92,17 @@ tencent:
     region: ${TENCENT_SMS_REGION:ap-guangzhou}
     code-expire-minutes: ${TENCENT_SMS_CODE_EXPIRE_MINUTES:10}
 
+alipay:
+  server-url: ${ALIPAY_SERVER_URL:https://openapi-sandbox.dl.alipaydev.com/gateway.do}
+  app-id: ${ALIPAY_APP_ID:}
+  app-private-key: ${ALIPAY_APP_PRIVATE_KEY:}
+  alipay-public-key: ${ALIPAY_PUBLIC_KEY:}
+  seller-id: ${ALIPAY_SELLER_ID:}
+  notify-url: ${ALIPAY_NOTIFY_URL:https://www.yzmovie.com/api/v1/payments/alipay/notify}
+  charset: UTF-8
+  sign-type: RSA2
+  timeout-express: 2h
+
 # 文件存储配置
 storage:
   base-path: ./storage
