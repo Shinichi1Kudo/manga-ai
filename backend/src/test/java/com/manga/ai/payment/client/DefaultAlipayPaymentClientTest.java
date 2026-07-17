@@ -16,6 +16,7 @@ import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
 import java.math.BigDecimal;
+import java.util.HashMap;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -130,6 +131,16 @@ class DefaultAlipayPaymentClientTest {
         assertThat(result.tradeStatus()).isEqualTo("TRADE_SUCCESS");
         assertThat(result.totalAmount()).isEqualByComparingTo("50.00");
         verify(sdkClient, times(1)).execute(any(AlipayTradeQueryRequest.class));
+    }
+
+    @Test
+    void verifyNotifyOnlyRequiresSdkCredentials() {
+        AlipayProperties properties = properties();
+        properties.setNotifyUrl(null);
+        properties.setReturnUrl(null);
+        DefaultAlipayPaymentClient paymentClient = new DefaultAlipayPaymentClient(properties);
+
+        assertThat(paymentClient.verifyNotify(new HashMap<>())).isFalse();
     }
 
     @Test
