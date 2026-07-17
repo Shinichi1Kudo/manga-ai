@@ -98,7 +98,8 @@ alipay:
   app-private-key: ${ALIPAY_APP_PRIVATE_KEY:}
   alipay-public-key: ${ALIPAY_PUBLIC_KEY:}
   seller-id: ${ALIPAY_SELLER_ID:}
-  notify-url: ${ALIPAY_NOTIFY_URL:https://www.yzmovie.com/api/v1/payments/alipay/notify}
+  notify-url: ${ALIPAY_NOTIFY_URL:https://www.yzmovie.cn/api/v1/payments/alipay/notify}
+  return-url: ${ALIPAY_RETURN_URL:https://www.yzmovie.cn/membership/payment/result/}
   charset: UTF-8
   sign-type: RSA2
   timeout-express: 2h

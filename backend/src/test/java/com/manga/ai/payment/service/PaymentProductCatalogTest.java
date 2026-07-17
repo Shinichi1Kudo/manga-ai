@@ -57,6 +57,20 @@ class PaymentProductCatalogTest {
     }
 
     @Test
+    void enabledMembershipProductsUseOneTimePurchaseCopy() {
+        assertThat(catalog.allMembershipProducts())
+                .filteredOn(MembershipProduct::enabled)
+                .allSatisfy(product -> {
+                    String periodLabel = product.period() == MembershipPeriod.SINGLE_MONTH
+                            ? ""
+                            : product.period().getLabel();
+                    assertThat(product.buttonText())
+                            .doesNotContain("订阅")
+                            .isEqualTo("购买" + periodLabel + product.title());
+                });
+    }
+
+    @Test
     void rechargePackagesCapSuperBonusAt1150PointsForFiftyYuan() {
         RechargePackage superPackage = catalog.rechargePackage(5000, MembershipTier.SUPER);
 

@@ -110,9 +110,9 @@ public class PaymentProductCatalog {
 
     private String buttonText(MembershipPeriod period, MembershipTier tier, int priceCents) {
         if (period == MembershipPeriod.SINGLE_MONTH) {
-            return "购买";
+            return "购买" + tier.getDisplayName();
         }
-        return "订阅" + period.getLabel() + tier.getDisplayName();
+        return "购买" + period.getLabel() + tier.getDisplayName();
     }
 
     private int monthlyCredits(MembershipTier tier) {

@@ -12,14 +12,19 @@ public class AlipayProperties {
     private String appPrivateKey;
     private String alipayPublicKey;
     private String sellerId;
-    private String notifyUrl;
-    private String returnUrl;
+    private String notifyUrl = "https://www.yzmovie.cn/api/v1/payments/alipay/notify";
+    private String returnUrl = "https://www.yzmovie.cn/membership/payment/result/";
     private String charset = "UTF-8";
     private String signType = "RSA2";
     private String timeoutExpress = "2h";
 
     public boolean configured() {
-        return notBlank(serverUrl) && notBlank(appId) && notBlank(appPrivateKey) && notBlank(alipayPublicKey);
+        return notBlank(serverUrl)
+                && notBlank(appId)
+                && notBlank(appPrivateKey)
+                && notBlank(alipayPublicKey)
+                && notBlank(notifyUrl)
+                && notBlank(returnUrl);
     }
 
     private boolean notBlank(String value) {

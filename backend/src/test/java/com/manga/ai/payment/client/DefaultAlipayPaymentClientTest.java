@@ -142,8 +142,6 @@ class DefaultAlipayPaymentClientTest {
         properties.setAppId("test");
         properties.setAppPrivateKey("test");
         properties.setAlipayPublicKey("test");
-        properties.setNotifyUrl("https://www.yzmovie.cn/api/v1/payments/alipay/notify");
-        properties.setReturnUrl("https://www.yzmovie.cn/membership/payment/result/");
         properties.setTimeoutExpress("2h");
         return properties;
     }
