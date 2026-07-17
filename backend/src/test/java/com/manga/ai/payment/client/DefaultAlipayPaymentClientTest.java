@@ -4,11 +4,14 @@ import com.alipay.api.AlipayApiException;
 import com.alipay.api.AlipayClient;
 import com.alipay.api.domain.AlipayTradePagePayModel;
 import com.alipay.api.request.AlipayTradePagePayRequest;
+import com.alipay.api.request.AlipayTradeQueryRequest;
 import com.alipay.api.response.AlipayTradePagePayResponse;
+import com.alipay.api.response.AlipayTradeQueryResponse;
 import com.manga.ai.common.exception.BusinessException;
 import com.manga.ai.payment.config.AlipayProperties;
 import com.manga.ai.payment.dto.AlipayPagePayRequest;
 import com.manga.ai.payment.dto.AlipayPagePayResult;
+import com.manga.ai.payment.dto.AlipayQueryResult;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
@@ -21,6 +24,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 class DefaultAlipayPaymentClientTest {
@@ -90,6 +94,42 @@ class DefaultAlipayPaymentClientTest {
         assertThat(captured.getReturnUrl())
                 .isEqualTo("https://www.yzmovie.cn/membership/payment/result/");
         assertThat(model.getTimeoutExpress()).isEqualTo("2h");
+    }
+
+    @Test
+    void pagePayRequiresReturnUrlBeforeCallingSdk() {
+        AlipayClient sdkClient = mock(AlipayClient.class);
+        AlipayProperties properties = properties();
+        properties.setReturnUrl(" ");
+        DefaultAlipayPaymentClient paymentClient = new TestDefaultAlipayPaymentClient(properties, sdkClient);
+
+        assertThatThrownBy(() -> paymentClient.pagePay(pagePayRequest()))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("支付宝电脑网站支付配置未完成，请配置凭证及回调地址后重试");
+
+        verifyNoInteractions(sdkClient);
+    }
+
+    @Test
+    void queryOnlyRequiresSdkCredentials() throws AlipayApiException {
+        AlipayClient sdkClient = mock(AlipayClient.class);
+        AlipayTradeQueryResponse response = new AlipayTradeQueryResponse();
+        response.setCode("10000");
+        response.setTradeNo("2026071700001");
+        response.setTradeStatus("TRADE_SUCCESS");
+        response.setTotalAmount("50.00");
+        when(sdkClient.execute(any(AlipayTradeQueryRequest.class))).thenReturn(response);
+        AlipayProperties properties = properties();
+        properties.setReturnUrl(null);
+        DefaultAlipayPaymentClient paymentClient = new TestDefaultAlipayPaymentClient(properties, sdkClient);
+
+        AlipayQueryResult result = paymentClient.query("PAY202607170001");
+
+        assertThat(result.orderNo()).isEqualTo("PAY202607170001");
+        assertThat(result.alipayTradeNo()).isEqualTo("2026071700001");
+        assertThat(result.tradeStatus()).isEqualTo("TRADE_SUCCESS");
+        assertThat(result.totalAmount()).isEqualByComparingTo("50.00");
+        verify(sdkClient, times(1)).execute(any(AlipayTradeQueryRequest.class));
     }
 
     @Test

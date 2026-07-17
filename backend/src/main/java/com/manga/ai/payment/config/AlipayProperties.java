@@ -18,13 +18,15 @@ public class AlipayProperties {
     private String signType = "RSA2";
     private String timeoutExpress = "2h";
 
-    public boolean configured() {
+    public boolean credentialsConfigured() {
         return notBlank(serverUrl)
                 && notBlank(appId)
                 && notBlank(appPrivateKey)
-                && notBlank(alipayPublicKey)
-                && notBlank(notifyUrl)
-                && notBlank(returnUrl);
+                && notBlank(alipayPublicKey);
+    }
+
+    public boolean configured() {
+        return credentialsConfigured() && notBlank(notifyUrl) && notBlank(returnUrl);
     }
 
     private boolean notBlank(String value) {

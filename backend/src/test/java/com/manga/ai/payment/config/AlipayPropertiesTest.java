@@ -23,13 +23,16 @@ class AlipayPropertiesTest {
     void configuredRequiresNotifyAndReturnUrls() {
         AlipayProperties properties = configuredProperties();
 
+        assertThat(properties.credentialsConfigured()).isTrue();
         assertThat(properties.configured()).isTrue();
 
         properties.setNotifyUrl(" ");
+        assertThat(properties.credentialsConfigured()).isTrue();
         assertThat(properties.configured()).isFalse();
 
         properties.setNotifyUrl(NOTIFY_URL);
         properties.setReturnUrl(null);
+        assertThat(properties.credentialsConfigured()).isTrue();
         assertThat(properties.configured()).isFalse();
     }
 

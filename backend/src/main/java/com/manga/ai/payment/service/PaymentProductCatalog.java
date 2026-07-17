@@ -99,7 +99,7 @@ public class PaymentProductCatalog {
                 monthlyCredits,
                 totalCredits,
                 enabled,
-                enabled ? buttonText(period, tier, priceCents) : "敬请期待",
+                enabled ? buttonText(period, tier) : "敬请期待",
                 features(tier)
         );
     }
@@ -108,7 +108,7 @@ public class PaymentProductCatalog {
         return period.name().toLowerCase() + "_" + tier.name().toLowerCase();
     }
 
-    private String buttonText(MembershipPeriod period, MembershipTier tier, int priceCents) {
+    private String buttonText(MembershipPeriod period, MembershipTier tier) {
         if (period == MembershipPeriod.SINGLE_MONTH) {
             return "购买" + tier.getDisplayName();
         }

@@ -31,7 +31,7 @@ public class DefaultAlipayPaymentClient implements AlipayPaymentClient {
 
     @Override
     public AlipayPagePayResult pagePay(AlipayPagePayRequest request) {
-        ensureConfigured();
+        ensurePagePayConfigured();
         AlipayTradePagePayRequest alipayRequest = new AlipayTradePagePayRequest();
         alipayRequest.setNotifyUrl(notBlank(request.notifyUrl()) ? request.notifyUrl() : properties.getNotifyUrl());
         alipayRequest.setReturnUrl(notBlank(request.returnUrl()) ? request.returnUrl() : properties.getReturnUrl());
@@ -62,7 +62,7 @@ public class DefaultAlipayPaymentClient implements AlipayPaymentClient {
 
     @Override
     public AlipayQueryResult query(String orderNo) {
-        ensureConfigured();
+        ensureCredentialsConfigured();
         AlipayTradeQueryRequest request = new AlipayTradeQueryRequest();
         AlipayTradeQueryModel model = new AlipayTradeQueryModel();
         model.setOutTradeNo(orderNo);
@@ -87,7 +87,7 @@ public class DefaultAlipayPaymentClient implements AlipayPaymentClient {
 
     @Override
     public boolean verifyNotify(Map<String, String> params) {
-        ensureConfigured();
+        ensureCredentialsConfigured();
         try {
             return AlipaySignature.rsaCheckV1(
                     params,
@@ -113,9 +113,15 @@ public class DefaultAlipayPaymentClient implements AlipayPaymentClient {
         );
     }
 
-    private void ensureConfigured() {
+    private void ensurePagePayConfigured() {
         if (!properties.configured()) {
-            throw new BusinessException("支付宝配置未完成，请配置环境变量后重试");
+            throw new BusinessException("支付宝电脑网站支付配置未完成，请配置凭证及回调地址后重试");
+        }
+    }
+
+    private void ensureCredentialsConfigured() {
+        if (!properties.credentialsConfigured()) {
+            throw new BusinessException("支付宝凭证配置未完成，请配置环境变量后重试");
         }
     }
 
