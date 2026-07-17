@@ -374,6 +374,19 @@ class MembershipPaymentPageTests(TestCase):
         self.assertGreater(membership_index, contact_index)
         self.assertIn('会员充值', template)
 
+    def test_nav_exposes_mobile_menu_for_compact_viewports(self):
+        template_path = Path(settings.BASE_DIR) / 'templates/base.html'
+        template = template_path.read_text(encoding='utf-8')
+
+        self.assertIn('id="mobileNavToggle"', template)
+        self.assertIn('aria-controls="siteNavActions"', template)
+        self.assertIn('id="siteNavActions"', template)
+        self.assertIn('.site-nav-inner .site-nav-actions {', template)
+        self.assertIn('.site-nav-actions.is-open', template)
+        self.assertIn('toggleMobileNav()', template)
+        self.assertIn('id="userMenuToggle"', template)
+        self.assertIn("if (action.id === 'userMenuToggle') return;", template)
+
     def test_payment_products_proxy_forwards_session_token_to_backend(self):
         session = self.client.session
         session['token'] = 'token-pay'

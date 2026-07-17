@@ -657,8 +657,71 @@
         .toast.error { border-left: 4px solid #ef4444; }
         .toast.warning { border-left: 4px solid #f59e0b; }
 
+        .mobile-nav-toggle {
+            display: none;
+        }
+
         /* Responsive */
         @media (max-width: 768px) {
+            nav {
+                padding: 12px 16px !important;
+            }
+
+            .site-nav-inner {
+                position: relative;
+            }
+
+            .mobile-nav-toggle {
+                display: inline-flex;
+                width: 44px;
+                height: 44px;
+                flex: 0 0 44px;
+                align-items: center;
+                justify-content: center;
+                border: 1px solid rgba(255, 255, 255, 0.16);
+                border-radius: 8px;
+                background: rgba(18, 20, 43, 0.92);
+                color: #fff;
+                backdrop-filter: blur(18px);
+            }
+
+            .site-nav-inner .site-nav-actions {
+                display: none;
+                position: absolute;
+                top: calc(100% + 10px);
+                right: 0;
+                width: min(300px, calc(100vw - 32px));
+                max-height: calc(100vh - 88px);
+                overflow-y: auto;
+                align-items: stretch;
+                flex-direction: column;
+                gap: 8px;
+                padding: 12px;
+                border: 1px solid rgba(255, 255, 255, 0.14);
+                border-radius: 8px;
+                background: rgba(18, 20, 43, 0.97);
+                box-shadow: 0 18px 48px rgba(0, 0, 0, 0.38);
+                backdrop-filter: blur(22px);
+            }
+
+            .site-nav-inner .site-nav-actions.is-open {
+                display: flex;
+            }
+
+            .site-nav-actions > a,
+            .site-nav-actions > button {
+                width: 100%;
+                min-height: 44px;
+                justify-content: flex-start;
+                padding: 10px 12px;
+                border-radius: 8px;
+                white-space: nowrap;
+            }
+
+            .site-nav-actions > div {
+                width: 100%;
+            }
+
             .nav-brand-wordmark {
                 gap: 7px;
             }
@@ -719,7 +782,7 @@
 
     <!-- Navigation -->
     <nav class="fixed top-0 left-0 right-0 z-50 px-6 py-4">
-        <div class="max-w-7xl mx-auto flex items-center justify-between">
+        <div class="site-nav-inner max-w-7xl mx-auto flex items-center justify-between">
             <a href="/" class="flex items-center gap-3 group">
                 <div class="brand-logo-shell nav-brand-logo">
                     <img src="/site-logo.png?v=20260515" alt="海带 AI 内容智能创作平台 Logo" class="brand-logo-img">
@@ -730,7 +793,11 @@
                 </span>
             </a>
 
-            <div class="flex items-center gap-4">
+            <button id="mobileNavToggle" type="button" class="mobile-nav-toggle" aria-label="打开导航菜单" aria-controls="siteNavActions" aria-expanded="false" onclick="toggleMobileNav()">
+                <i data-lucide="menu" class="w-5 h-5"></i>
+            </button>
+
+            <div id="siteNavActions" class="site-nav-actions flex items-center gap-4">
                 <!-- 联系我们按钮 -->
                 <button onclick="showContactModal()" class="px-5 py-2.5 rounded-xl bg-gradient-to-r from-green-500/20 to-emerald-500/20 border border-green-500/30 hover:from-green-500/30 hover:to-emerald-500/30 transition-all font-medium text-sm flex items-center gap-2 text-green-300">
                     <i data-lucide="message-circle" class="w-4 h-4"></i>联系我们
@@ -746,7 +813,7 @@
                         <span id="userCredits" class="text-sm font-medium">0</span>
                     </div>
                     <div class="relative" id="userMenu">
-                        <button onclick="toggleUserMenu()" class="flex items-center gap-2 px-4 py-2 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 transition-all">
+                        <button id="userMenuToggle" onclick="toggleUserMenu()" class="flex items-center gap-2 px-4 py-2 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 transition-all">
                             <div id="userAvatar" class="w-8 h-8 rounded-full bg-gradient-to-br from-violet-500 to-blue-500 flex items-center justify-center overflow-hidden">
                                 <i data-lucide="user" class="w-4 h-4" id="avatarPlaceholder"></i>
                                 <img id="avatarImg" src="" alt="头像" class="w-full h-full object-cover hidden">
@@ -977,6 +1044,39 @@
                 dropdown.classList.toggle('hidden');
             }
         }
+
+        function closeMobileNav() {
+            const actions = document.getElementById('siteNavActions');
+            const toggle = document.getElementById('mobileNavToggle');
+            if (actions) actions.classList.remove('is-open');
+            if (toggle) toggle.setAttribute('aria-expanded', 'false');
+        }
+
+        function toggleMobileNav() {
+            const actions = document.getElementById('siteNavActions');
+            const toggle = document.getElementById('mobileNavToggle');
+            if (!actions || !toggle) return;
+
+            const willOpen = !actions.classList.contains('is-open');
+            actions.classList.toggle('is-open', willOpen);
+            toggle.setAttribute('aria-expanded', String(willOpen));
+        }
+
+        document.getElementById('siteNavActions')?.addEventListener('click', (event) => {
+            const action = event.target.closest('a, button');
+            if (!action) return;
+            if (action.id === 'userMenuToggle') return;
+            closeMobileNav();
+        });
+
+        document.addEventListener('click', (event) => {
+            const inner = document.querySelector('.site-nav-inner');
+            if (inner && !inner.contains(event.target)) closeMobileNav();
+        });
+
+        window.addEventListener('resize', () => {
+            if (window.innerWidth > 768) closeMobileNav();
+        });
 
         // Close user menu when clicking outside
         document.addEventListener('click', (e) => {
