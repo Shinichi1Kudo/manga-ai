@@ -435,23 +435,29 @@
         const originalButtonText = button.textContent;
         button.disabled = true;
         button.textContent = '正在前往支付宝';
+        console.log('[支付] 开始创建订单', url, payload);
         try {
             const response = await fetch(url, {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
                 body: JSON.stringify(payload)
             });
+            console.log('[支付] 响应状态', response.status);
             const data = await response.json();
+            console.log('[支付] 响应数据', data);
             if (response.status === 401 || data.code === 401) {
                 restoreOrderButton(button, originalButtonText);
+                console.log('[支付] 未登录，跳转登录页');
                 window.location.href = '/auth/login/';
                 return;
             }
             if (data.code !== 200) {
                 throw new Error(data.message || '创建订单失败');
             }
+            console.log('[支付] payForm 长度:', data.data && data.data.paymentHtml ? data.data.paymentHtml.length : 'null');
             submitAlipayForm(data.data.paymentHtml);
         } catch (error) {
+            console.error('[支付] 异常:', error);
             restoreOrderButton(button, originalButtonText);
             alert(error.message || '创建订单失败');
         }
@@ -463,17 +469,21 @@
     }
 
     function submitAlipayForm(paymentHtml) {
+        console.log('[支付] submitAlipayForm 被调用');
         if (typeof paymentHtml !== 'string' || !paymentHtml.trim()) {
             throw new Error('支付宝支付表单为空，请稍后重试');
         }
+        console.log('[支付] HTML 前200字:', paymentHtml.substring(0, 200));
 
         const parsedDocument = new DOMParser().parseFromString(paymentHtml, 'text/html');
         const sourceForms = parsedDocument.querySelectorAll('form');
+        console.log('[支付] 找到表单数:', sourceForms.length);
         if (sourceForms.length !== 1) {
             throw new Error('支付宝支付表单无效，请稍后重试');
         }
 
         const sourceForm = sourceForms[0];
+        console.log('[支付] form method:', sourceForm.method, 'action:', sourceForm.getAttribute('action'));
         if (sourceForm.method.toUpperCase() !== 'POST') {
             throw new Error('支付宝支付方式无效，请稍后重试');
         }
@@ -482,6 +492,7 @@
         let action;
         try {
             action = new URL(actionValue, window.location.href);
+            console.log('[支付] 解析后的 URL:', action.href);
         } catch (error) {
             throw new Error('支付宝支付地址无效，请稍后重试');
         }
