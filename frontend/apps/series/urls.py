@@ -15,6 +15,7 @@ urlpatterns = [
 
     # 会员与支付
     path('membership/', views.membership_page, name='membership'),
+    path('membership/payment/result/', views.payment_result_page, name='payment_result'),
     path('api/payments/products/', views.payment_products_api, name='payment_products_api'),
     path('api/payments/membership/orders/', views.payment_membership_order, name='payment_membership_order'),
     path('api/payments/recharge/orders/', views.payment_recharge_order, name='payment_recharge_order'),

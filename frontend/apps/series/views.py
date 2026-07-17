@@ -2631,6 +2631,16 @@ def membership_page(request):
     return render(request, 'payments/membership.html')
 
 
+def payment_result_page(request):
+    """支付结果确认页面"""
+    if not request.session.get('token'):
+        request.session['next'] = request.get_full_path()
+        return redirect('/auth/login/')
+
+    order_no = (request.GET.get('out_trade_no') or '').strip()
+    return render(request, 'payments/payment_result.html', {'order_no': order_no})
+
+
 def payment_products_api(request):
     """会员/充值产品API代理"""
     client = get_client(request)

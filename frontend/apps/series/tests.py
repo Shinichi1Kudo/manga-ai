@@ -7,6 +7,7 @@ from unittest.mock import Mock, patch
 from django.conf import settings
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase
+from django.utils.html import escapejs
 
 from api.backend_client import BackendAPIError, BackendClient
 from apps.series.views import (
@@ -241,6 +242,128 @@ class MembershipPaymentPageTests(TestCase):
             'const defaultFeatures', 1
         )[0]
         self.assertNotIn('订阅', fallback_products)
+
+    def test_payment_result_requires_auth_and_preserves_full_return_path(self):
+        return_path = '/membership/payment/result/?out_trade_no=PAY202607170001'
+
+        response = self.client.get(return_path)
+
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response['Location'], '/auth/login/')
+        self.assertEqual(self.client.session['next'], return_path)
+
+    def test_payment_result_renders_authoritative_server_sync_contract(self):
+        session = self.client.session
+        session['token'] = 'token-pay'
+        session.save()
+
+        response = self.client.get(
+            '/membership/payment/result/',
+            {'out_trade_no': 'PAY202607170001'},
+        )
+        body = response.content.decode('utf-8')
+        result_template = (
+            Path(settings.BASE_DIR) / 'templates/payments/payment_result.html'
+        ).read_text(encoding='utf-8')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, '正在确认支付结果')
+        self.assertContains(response, 'PAY202607170001')
+        self.assertIn("const ORDER_NO = 'PAY202607170001';", body)
+        self.assertIn("document.addEventListener('DOMContentLoaded'", body)
+        self.assertIn('confirmPayment();', body)
+        self.assertIn(
+            '/api/payments/orders/${encodeURIComponent(ORDER_NO)}/sync/',
+            body,
+        )
+        self.assertIn("method: 'POST'", body)
+        self.assertIn('response.status === 401', body)
+        self.assertIn("window.location.href = '/auth/login/'", body)
+        self.assertIn('payload.data.status', body)
+        self.assertIn("status === 'PAID'", body)
+        self.assertIn("status === 'CLOSED' || status === 'FAILED'", body)
+        self.assertIn('支付成功', body)
+        self.assertIn('会员权益或积分已到账', body)
+        self.assertIn('订单未完成', body)
+        self.assertIn('等待支付确认', body)
+        self.assertIn('暂时无法确认', body)
+        self.assertIn('if (requestInFlight)', body)
+        self.assertIn("retryButton.addEventListener('click', confirmPayment)", body)
+        self.assertNotIn('setInterval(', result_template)
+        self.assertNotIn('setTimeout(', result_template)
+
+    def test_payment_result_escapes_order_number_for_javascript(self):
+        session = self.client.session
+        session['token'] = 'token-pay'
+        session.save()
+        order_no = "PAY'</script><script>alert(1)</script>"
+
+        response = self.client.get(
+            '/membership/payment/result/',
+            {'out_trade_no': order_no},
+        )
+        body = response.content.decode('utf-8')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(f"const ORDER_NO = '{escapejs(order_no)}';", body)
+        self.assertNotIn(f"const ORDER_NO = '{order_no}';", body)
+
+    def test_payment_result_handles_missing_order_number_as_failure(self):
+        session = self.client.session
+        session['token'] = 'token-pay'
+        session.save()
+
+        response = self.client.get('/membership/payment/result/')
+        body = response.content.decode('utf-8')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, '订单号缺失')
+        self.assertIn("const ORDER_NO = '';", body)
+        self.assertIn('if (!ORDER_NO)', body)
+        self.assertIn("setResultState('failed', '暂时无法确认', '订单号缺失')", body)
+
+    def test_payment_result_does_not_trust_alipay_return_status(self):
+        session = self.client.session
+        session['token'] = 'token-pay'
+        session.save()
+
+        response = self.client.get(
+            '/membership/payment/result/',
+            {
+                'out_trade_no': '  PAY202607170001  ',
+                'trade_status': 'TRADE_SUCCESS_FROM_URL',
+                'trade_no': 'ALIPAY_TRADE_NO_FROM_URL',
+                'total_amount': '999999_FROM_URL',
+                'sign': 'UNTRUSTED_SIGNATURE_FROM_URL',
+            },
+        )
+        body = response.content.decode('utf-8')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.context['order_no'], 'PAY202607170001')
+        self.assertContains(response, '正在确认支付结果')
+        for untrusted_value in (
+            'TRADE_SUCCESS_FROM_URL',
+            'ALIPAY_TRADE_NO_FROM_URL',
+            '999999_FROM_URL',
+            'UNTRUSTED_SIGNATURE_FROM_URL',
+        ):
+            self.assertNotIn(untrusted_value, body)
+
+    def test_payment_sync_proxy_returns_backend_order_status(self):
+        session = self.client.session
+        session['token'] = 'token-pay'
+        session.save()
+        backend_client = Mock()
+        backend_client.post.return_value = {'status': 'PAID'}
+
+        with patch('apps.series.views.BackendClient', return_value=backend_client) as backend_client_cls:
+            response = self.client.post('/api/payments/orders/PAY202607170001/sync/')
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['data']['status'], 'PAID')
+        backend_client_cls.assert_called_once_with(token='token-pay')
+        backend_client.post.assert_called_once_with('/v1/payments/orders/PAY202607170001/sync')
 
     def test_nav_places_membership_link_next_to_contact_button(self):
         template_path = Path(settings.BASE_DIR) / 'templates/base.html'
