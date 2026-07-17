@@ -215,6 +215,28 @@ class MembershipPaymentPageTests(TestCase):
         self.assertIn('openapi.alipay.com', template)
         self.assertIn('openapi-sandbox.dl.alipaydev.com', template)
 
+        for cashier_contract in (
+            "button.disabled = true",
+            "button.textContent = '正在前往支付宝'",
+            'restoreOrderButton(button, originalButtonText)',
+            "window.location.href = '/auth/login/'",
+            'submitAlipayForm(data.data.paymentHtml)',
+            "sourceForms.length !== 1",
+            "sourceForm.method.toUpperCase() !== 'POST'",
+            "action.protocol !== 'https:'",
+            "action.pathname !== '/gateway.do'",
+            "sourceForm.querySelectorAll('input[name]')",
+            "document.createElement('form')",
+            "document.createElement('input')",
+            "input.type = 'hidden'",
+            "form.target = '_self'",
+        ):
+            self.assertIn(cashier_contract, template)
+
+        self.assertNotIn('innerHTML = paymentHtml', template)
+        self.assertNotIn('insertAdjacentHTML', template)
+        self.assertNotIn('document.write', template)
+
         fallback_products = template.split('const fallbackProducts =', 1)[1].split(
             'const defaultFeatures', 1
         )[0]
