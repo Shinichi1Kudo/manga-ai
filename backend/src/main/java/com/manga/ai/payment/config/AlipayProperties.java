@@ -13,6 +13,7 @@ public class AlipayProperties {
     private String alipayPublicKey;
     private String sellerId;
     private String notifyUrl;
+    private String returnUrl;
     private String charset = "UTF-8";
     private String signType = "RSA2";
     private String timeoutExpress = "2h";
@@ -71,6 +72,14 @@ public class AlipayProperties {
 
     public void setNotifyUrl(String notifyUrl) {
         this.notifyUrl = notifyUrl;
+    }
+
+    public String getReturnUrl() {
+        return returnUrl;
+    }
+
+    public void setReturnUrl(String returnUrl) {
+        this.returnUrl = returnUrl;
     }
 
     public String getCharset() {
