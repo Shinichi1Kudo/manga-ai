@@ -231,26 +231,6 @@
         cursor: pointer;
     }
 
-    .pay-modal-panel {
-        width: min(440px, calc(100vw - 32px));
-        border-radius: 18px;
-        background: #fff;
-        color: #111827;
-        padding: 24px;
-        box-shadow: 0 24px 80px rgba(0, 0, 0, 0.45);
-    }
-
-    .qr-stage {
-        width: 240px;
-        height: 240px;
-        margin: 18px auto;
-        display: grid;
-        place-items: center;
-        border-radius: 16px;
-        background: #f5f7fb;
-        border: 1px solid #e5e7eb;
-    }
-
     @media (max-width: 1120px) {
         .membership-grid,
         .recharge-grid {
@@ -308,27 +288,6 @@
     </section>
 </div>
 
-<div class="modal-backdrop hidden" id="payModal" onclick="if(event.target === this) closePayModal()">
-    <div class="pay-modal-panel">
-        <div class="flex items-start justify-between gap-4">
-            <div>
-                <p class="text-sm text-gray-500 mb-1" id="payOrderNo">订单</p>
-                <h3 class="text-2xl font-extrabold" id="payTitle">支付宝扫码支付</h3>
-            </div>
-            <button onclick="closePayModal()" class="p-2 rounded-lg hover:bg-gray-100 transition-colors" title="关闭">
-                <i data-lucide="x" class="w-5 h-5"></i>
-            </button>
-        </div>
-        <div class="qr-stage">
-            <canvas id="payQrCanvas" width="220" height="220"></canvas>
-            <p id="payQrFallback" class="hidden px-4 text-center text-xs text-gray-500 break-all"></p>
-        </div>
-        <p class="text-center text-sm text-gray-500" id="payStatus">请使用支付宝扫码完成支付</p>
-        <button onclick="syncCurrentOrder()" class="mt-5 w-full h-11 rounded-full bg-gray-950 text-white font-bold">我已支付，刷新状态</button>
-    </div>
-</div>
-
-<script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.3/build/qrcode.min.js"></script>
 <script>
     const IS_AUTHENTICATED = {{ request.session.token|yesno:"true,false" }};
     const tabs = [
@@ -340,27 +299,27 @@
     const fallbackProducts = {
         membershipProducts: {
             YEAR: [
-                {code: 'year_basic', tier: 'BASIC', title: '基础会员', priceCents: 65900, monthlyCredits: 725, enabled: true, buttonText: '订阅包年基础会员', features: []},
-                {code: 'year_standard', tier: 'STANDARD', title: '标准会员', priceCents: 189900, monthlyCredits: 2210, enabled: true, buttonText: '订阅包年标准会员', features: []},
-                {code: 'year_advanced', tier: 'ADVANCED', title: '高级会员', priceCents: 519900, monthlyCredits: 12320, enabled: true, buttonText: '订阅包年高级会员', features: []},
+                {code: 'year_basic', tier: 'BASIC', title: '基础会员', priceCents: 65900, monthlyCredits: 725, enabled: true, buttonText: '购买包年基础会员', features: []},
+                {code: 'year_standard', tier: 'STANDARD', title: '标准会员', priceCents: 189900, monthlyCredits: 2210, enabled: true, buttonText: '购买包年标准会员', features: []},
+                {code: 'year_advanced', tier: 'ADVANCED', title: '高级会员', priceCents: 519900, monthlyCredits: 12320, enabled: true, buttonText: '购买包年高级会员', features: []},
                 {code: 'year_super', tier: 'SUPER', title: '超级会员', priceCents: 0, monthlyCredits: 54600, enabled: false, buttonText: '敬请期待', features: []}
             ],
             MONTH: [
-                {code: 'month_basic', tier: 'BASIC', title: '基础会员', priceCents: 6900, monthlyCredits: 725, enabled: true, buttonText: '订阅包月基础会员', features: []},
-                {code: 'month_standard', tier: 'STANDARD', title: '标准会员', priceCents: 19900, monthlyCredits: 2210, enabled: true, buttonText: '订阅包月标准会员', features: []},
-                {code: 'month_advanced', tier: 'ADVANCED', title: '高级会员', priceCents: 99800, monthlyCredits: 12320, enabled: true, buttonText: '订阅包月高级会员', features: []},
-                {code: 'month_super', tier: 'SUPER', title: '超级会员', priceCents: 429900, monthlyCredits: 54600, enabled: true, buttonText: '订阅包月超级会员', features: []}
+                {code: 'month_basic', tier: 'BASIC', title: '基础会员', priceCents: 6900, monthlyCredits: 725, enabled: true, buttonText: '购买包月基础会员', features: []},
+                {code: 'month_standard', tier: 'STANDARD', title: '标准会员', priceCents: 19900, monthlyCredits: 2210, enabled: true, buttonText: '购买包月标准会员', features: []},
+                {code: 'month_advanced', tier: 'ADVANCED', title: '高级会员', priceCents: 99800, monthlyCredits: 12320, enabled: true, buttonText: '购买包月高级会员', features: []},
+                {code: 'month_super', tier: 'SUPER', title: '超级会员', priceCents: 429900, monthlyCredits: 54600, enabled: true, buttonText: '购买包月超级会员', features: []}
             ],
             QUARTER: [
-                {code: 'quarter_basic', tier: 'BASIC', title: '基础会员', priceCents: 18800, monthlyCredits: 725, enabled: true, buttonText: '订阅包季基础会员', features: []},
-                {code: 'quarter_standard', tier: 'STANDARD', title: '标准会员', priceCents: 56800, monthlyCredits: 2210, enabled: true, buttonText: '订阅包季标准会员', features: []},
-                {code: 'quarter_advanced', tier: 'ADVANCED', title: '高级会员', priceCents: 195900, monthlyCredits: 12320, enabled: true, buttonText: '订阅包季高级会员', features: []},
-                {code: 'quarter_super', tier: 'SUPER', title: '超级会员', priceCents: 818900, monthlyCredits: 54600, enabled: true, buttonText: '订阅包季超级会员', features: []}
+                {code: 'quarter_basic', tier: 'BASIC', title: '基础会员', priceCents: 18800, monthlyCredits: 725, enabled: true, buttonText: '购买包季基础会员', features: []},
+                {code: 'quarter_standard', tier: 'STANDARD', title: '标准会员', priceCents: 56800, monthlyCredits: 2210, enabled: true, buttonText: '购买包季标准会员', features: []},
+                {code: 'quarter_advanced', tier: 'ADVANCED', title: '高级会员', priceCents: 195900, monthlyCredits: 12320, enabled: true, buttonText: '购买包季高级会员', features: []},
+                {code: 'quarter_super', tier: 'SUPER', title: '超级会员', priceCents: 818900, monthlyCredits: 54600, enabled: true, buttonText: '购买包季超级会员', features: []}
             ],
             SINGLE_MONTH: [
-                {code: 'single_month_basic', tier: 'BASIC', title: '基础会员', priceCents: 7900, monthlyCredits: 725, enabled: true, buttonText: '购买', features: []},
-                {code: 'single_month_standard', tier: 'STANDARD', title: '标准会员', priceCents: 23900, monthlyCredits: 2210, enabled: true, buttonText: '购买', features: []},
-                {code: 'single_month_advanced', tier: 'ADVANCED', title: '高级会员', priceCents: 64900, monthlyCredits: 12320, enabled: true, buttonText: '购买', features: []},
+                {code: 'single_month_basic', tier: 'BASIC', title: '基础会员', priceCents: 7900, monthlyCredits: 725, enabled: true, buttonText: '购买基础会员', features: []},
+                {code: 'single_month_standard', tier: 'STANDARD', title: '标准会员', priceCents: 23900, monthlyCredits: 2210, enabled: true, buttonText: '购买标准会员', features: []},
+                {code: 'single_month_advanced', tier: 'ADVANCED', title: '高级会员', priceCents: 64900, monthlyCredits: 12320, enabled: true, buttonText: '购买高级会员', features: []},
                 {code: 'single_month_super', tier: 'SUPER', title: '超级会员', priceCents: 0, monthlyCredits: 54600, enabled: false, buttonText: '敬请期待', features: []}
             ]
         },
@@ -374,8 +333,6 @@
     const defaultFeatures = ['Seedance 2.0', 'Seedance 1.5 Pro', '图片4.0', '标准生成通道', '无忧退款', '生成作品去除品牌水印'];
     let currentTab = 'MONTH';
     let productsState = fallbackProducts;
-    let currentOrderNo = '';
-    let pollTimer = null;
 
     document.addEventListener('DOMContentLoaded', () => {
         renderTabs();
@@ -435,7 +392,7 @@
                             <strong>✦ ${formatNumber(product.monthlyCredits)} 积分每月</strong>
                             <span>换算 ¥10≈${Math.round(product.monthlyCredits / 8)} 积分</span>
                         </div>
-                        <button class="membership-action" ${product.enabled ? '' : 'disabled'} onclick="purchaseMembership('${product.code}')">${product.buttonText || '购买'}</button>
+                        <button class="membership-action" ${product.enabled ? '' : 'disabled'} onclick="purchaseMembership('${product.code}', this)">${product.buttonText || '购买'}</button>
                     </div>
                     <div class="membership-features">
                         ${features.map((feature, index) => `
@@ -459,23 +416,25 @@
             <article class="recharge-card">
                 <strong>¥${formatPrice(item.amountCents)}</strong>
                 <span>${formatNumber(item.baseCredits)} 基础积分${item.bonusCredits ? `，加赠 ${formatNumber(item.bonusCredits)} 积分` : ''}<br>合计 ${formatNumber(item.totalCredits)} 积分</span>
-                <button onclick="purchaseRecharge(${item.amountCents})">支付宝扫码支付</button>
+                <button onclick="purchaseRecharge(${item.amountCents}, this)">前往支付宝支付</button>
             </article>
         `).join('');
     }
 
-    function purchaseMembership(productCode) {
+    function purchaseMembership(productCode, button) {
         if (!ensureAuthenticated()) return;
-        createOrder('/api/payments/membership/orders/', {productCode});
+        createOrder('/api/payments/membership/orders/', {productCode}, button);
     }
 
-    function purchaseRecharge(amountCents) {
+    function purchaseRecharge(amountCents, button) {
         if (!ensureAuthenticated()) return;
-        createOrder('/api/payments/recharge/orders/', {amountCents});
+        createOrder('/api/payments/recharge/orders/', {amountCents}, button);
     }
 
-    async function createOrder(url, payload) {
-        setPayStatus('正在创建订单...');
+    async function createOrder(url, payload, button) {
+        const originalButtonText = button.textContent;
+        button.disabled = true;
+        button.textContent = '正在前往支付宝';
         try {
             const response = await fetch(url, {
                 method: 'POST',
@@ -484,82 +443,82 @@
             });
             const data = await response.json();
             if (response.status === 401 || data.code === 401) {
+                restoreOrderButton(button, originalButtonText);
                 window.location.href = '/auth/login/';
                 return;
             }
             if (data.code !== 200) {
                 throw new Error(data.message || '创建订单失败');
             }
-            openPayModal(data.data);
+            submitAlipayForm(data.data.paymentHtml);
         } catch (error) {
+            restoreOrderButton(button, originalButtonText);
             alert(error.message || '创建订单失败');
         }
     }
 
-    function openPayModal(order) {
-        currentOrderNo = order.orderNo;
-        document.getElementById('payOrderNo').textContent = order.orderNo;
-        document.getElementById('payTitle').textContent = order.productName || '支付宝扫码支付';
-        document.getElementById('payModal').classList.remove('hidden');
-        setPayStatus('请使用支付宝扫码完成支付');
-        renderQr(order.qrcode || '');
-        startPolling();
-        if (window.lucide) {
-            lucide.createIcons();
-        }
+    function restoreOrderButton(button, originalButtonText) {
+        button.disabled = false;
+        button.textContent = originalButtonText;
     }
 
-    function closePayModal() {
-        document.getElementById('payModal').classList.add('hidden');
-        if (pollTimer) {
-            clearInterval(pollTimer);
-            pollTimer = null;
+    function submitAlipayForm(paymentHtml) {
+        if (typeof paymentHtml !== 'string' || !paymentHtml.trim()) {
+            throw new Error('支付宝支付表单为空，请稍后重试');
         }
-    }
 
-    function renderQr(value) {
-        const canvas = document.getElementById('payQrCanvas');
-        const fallback = document.getElementById('payQrFallback');
-        fallback.classList.add('hidden');
-        canvas.classList.remove('hidden');
-        if (window.QRCode && value) {
-            QRCode.toCanvas(canvas, value, {
-                width: 220,
-                margin: 2,
-                color: {dark: '#111827', light: '#ffffff'}
-            });
-        } else {
-            canvas.classList.add('hidden');
-            fallback.textContent = value || '二维码生成失败，请刷新订单';
-            fallback.classList.remove('hidden');
+        const parsedDocument = new DOMParser().parseFromString(paymentHtml, 'text/html');
+        const sourceForms = parsedDocument.querySelectorAll('form');
+        if (sourceForms.length !== 1) {
+            throw new Error('支付宝支付表单无效，请稍后重试');
         }
-    }
 
-    function startPolling() {
-        if (pollTimer) {
-            clearInterval(pollTimer);
+        const sourceForm = sourceForms[0];
+        if (sourceForm.method.toUpperCase() !== 'POST') {
+            throw new Error('支付宝支付方式无效，请稍后重试');
         }
-        pollTimer = setInterval(syncCurrentOrder, 3000);
-    }
 
-    async function syncCurrentOrder() {
-        if (!currentOrderNo) return;
+        const actionValue = sourceForm.getAttribute('action');
+        let action;
         try {
-            const response = await fetch(`/api/payments/orders/${currentOrderNo}/sync/`, {method: 'POST'});
-            const data = await response.json();
-            if (data.code === 200 && data.data && data.data.status === 'PAID') {
-                setPayStatus('支付成功，积分已到账');
-                if (pollTimer) {
-                    clearInterval(pollTimer);
-                    pollTimer = null;
-                }
-                if (typeof fetchUserCredits === 'function') {
-                    fetchUserCredits();
-                }
-            }
+            action = new URL(actionValue, window.location.href);
         } catch (error) {
-            console.warn('同步订单状态失败', error);
+            throw new Error('支付宝支付地址无效，请稍后重试');
         }
+
+        const allowedAlipayHosts = new Set([
+            'openapi.alipay.com',
+            'openapi-sandbox.dl.alipaydev.com'
+        ]);
+        if (
+            action.protocol !== 'https:' ||
+            !allowedAlipayHosts.has(action.host) ||
+            action.pathname !== '/gateway.do'
+        ) {
+            throw new Error('支付宝支付地址不受信任，请稍后重试');
+        }
+
+        const sourceInputs = sourceForm.querySelectorAll('input[name]');
+        if (!sourceInputs.length) {
+            throw new Error('支付宝支付参数缺失，请稍后重试');
+        }
+
+        const form = document.createElement('form');
+        form.method = 'POST';
+        form.action = action.href;
+        form.target = '_self';
+        form.hidden = true;
+
+        sourceInputs.forEach(sourceInput => {
+            const input = document.createElement('input');
+            input.type = 'hidden';
+            input.name = sourceInput.getAttribute('name');
+            input.value = sourceInput.value;
+            form.appendChild(input);
+        });
+
+        document.body.appendChild(form);
+        form.submit();
     }
 
     function ensureAuthenticated() {
@@ -568,13 +527,6 @@
         }
         window.location.href = '/auth/login/';
         return false;
-    }
-
-    function setPayStatus(text) {
-        const target = document.getElementById('payStatus');
-        if (target) {
-            target.textContent = text;
-        }
     }
 
     function formatPrice(cents) {
@@ -593,10 +545,7 @@
 
     function periodCopy(period, product) {
         if (!product.enabled) return '更高额度套餐正在准备中';
-        if (period === 'YEAR') return `折合每月 ¥${Math.round(product.priceCents / 1200)}，购买后按周期生效`;
-        if (period === 'QUARTER') return '购买后按季度生效，可随时升级更高等级';
-        if (period === 'SINGLE_MONTH') return '单月购买，到期后可手动续购';
-        return '按月购买，到期后可手动续购';
+        return '单次支付，到期自动结束';
     }
 
     function featureBadge(index, feature) {

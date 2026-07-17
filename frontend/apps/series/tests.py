@@ -190,6 +190,36 @@ class MembershipPaymentPageTests(TestCase):
         self.assertContains(response, 'member-pricing-app')
         self.assertContains(response, '会员体系')
 
+    def test_membership_page_uses_one_time_alipay_cashier_flow(self):
+        response = self.client.get('/membership/')
+        template = response.content.decode('utf-8')
+
+        self.assertContains(response, '前往支付宝支付')
+        self.assertContains(response, '单次支付，到期自动结束', count=1)
+
+        for legacy_qr_marker in (
+            'qrcode@1.5.3',
+            'payQrCanvas',
+            'payModal',
+            'openPayModal',
+            'renderQr',
+            'startPolling',
+            'syncCurrentOrder',
+            'currentOrderNo',
+            'pollTimer',
+        ):
+            self.assertNotIn(legacy_qr_marker, template)
+
+        self.assertIn('data.data.paymentHtml', template)
+        self.assertIn('form.submit()', template)
+        self.assertIn('openapi.alipay.com', template)
+        self.assertIn('openapi-sandbox.dl.alipaydev.com', template)
+
+        fallback_products = template.split('const fallbackProducts =', 1)[1].split(
+            'const defaultFeatures', 1
+        )[0]
+        self.assertNotIn('订阅', fallback_products)
+
     def test_nav_places_membership_link_next_to_contact_button(self):
         template_path = Path(settings.BASE_DIR) / 'templates/base.html'
         template = template_path.read_text(encoding='utf-8')
@@ -222,8 +252,12 @@ class MembershipPaymentPageTests(TestCase):
 
         backend_client = Mock()
         backend_client.post.return_value = {
-            'orderNo': 'PAY202606290001',
-            'qrcode': 'https://qr.example/alipay',
+            'orderNo': 'PAY202607170001',
+            'paymentHtml': (
+                '<form action="https://openapi-sandbox.dl.alipaydev.com/gateway.do" method="post">'
+                '<input type="hidden" name="app_id" value="sandbox-app-id">'
+                '</form>'
+            ),
             'totalCredits': 1150,
         }
 
@@ -236,6 +270,11 @@ class MembershipPaymentPageTests(TestCase):
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()['data']['totalCredits'], 1150)
+        self.assertEqual(response.json()['data']['orderNo'], 'PAY202607170001')
+        self.assertIn(
+            'https://openapi-sandbox.dl.alipaydev.com/gateway.do',
+            response.json()['data']['paymentHtml'],
+        )
         backend_client_cls.assert_called_once_with(token='token-pay')
         backend_client.post.assert_called_once_with('/v1/payments/recharge/orders', {'amountCents': 5000})
 
