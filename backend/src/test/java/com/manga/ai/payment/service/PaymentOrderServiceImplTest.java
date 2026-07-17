@@ -297,8 +297,8 @@ class PaymentOrderServiceImplTest {
         AlipayProperties properties = new AlipayProperties();
         properties.setAppId("app-1");
         properties.setSellerId("seller-1");
-        properties.setNotifyUrl("https://www.yzmovie.com/api/v1/payments/alipay/notify");
-        properties.setReturnUrl("https://www.yzmovie.com/membership/payment/result/");
+        properties.setNotifyUrl("https://www.yzmovie.cn/api/v1/payments/alipay/notify");
+        properties.setReturnUrl("https://www.yzmovie.cn/membership/payment/result/");
         properties.setTimeoutExpress("30m");
         return properties;
     }
