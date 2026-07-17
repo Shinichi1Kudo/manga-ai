@@ -1,6 +1,7 @@
 package com.manga.ai.user.controller;
 
 import com.manga.ai.common.dto.Result;
+import com.manga.ai.payment.service.MembershipService;
 import com.manga.ai.user.dto.*;
 import com.manga.ai.user.service.TokenService;
 import com.manga.ai.user.service.UserService;
@@ -21,6 +22,7 @@ public class UserController {
 
     private final UserService userService;
     private final TokenService tokenService;
+    private final MembershipService membershipService;
 
     /**
      * 发送验证码
@@ -82,6 +84,7 @@ public class UserController {
         vo.setLastLoginAt(user.getLastLoginAt());
         vo.setAvatar(user.getAvatar());
         vo.setRequiresPhoneBinding(user.getPhone() == null || user.getPhone().isBlank());
+        populateMembership(vo);
         return Result.success(vo);
     }
 
@@ -130,7 +133,14 @@ public class UserController {
         vo.setLastLoginAt(user.getLastLoginAt());
         vo.setAvatar(user.getAvatar());
         vo.setRequiresPhoneBinding(user.getPhone() == null || user.getPhone().isBlank());
+        populateMembership(vo);
         return Result.success(vo);
+    }
+
+    private void populateMembership(UserVO vo) {
+        if (vo.getId() != null) {
+            vo.setMembership(MembershipSummaryVO.from(membershipService.getActiveMembership(vo.getId())));
+        }
     }
 
     /**

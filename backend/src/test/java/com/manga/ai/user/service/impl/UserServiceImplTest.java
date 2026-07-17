@@ -12,6 +12,8 @@ import com.manga.ai.user.mapper.UserMapper;
 import com.manga.ai.user.service.SmsSender;
 import com.manga.ai.user.util.JwtUtil;
 import com.manga.ai.common.exception.BusinessException;
+import com.manga.ai.payment.entity.UserMembership;
+import com.manga.ai.payment.service.MembershipService;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 import org.springframework.test.util.ReflectionTestUtils;
@@ -30,6 +32,46 @@ import static org.mockito.Mockito.when;
 class UserServiceImplTest {
 
     @Test
+    void loginIncludesActivePaidMembershipSummary() {
+        UserMapper userMapper = mock(UserMapper.class);
+        JwtUtil jwtUtil = mock(JwtUtil.class);
+        MembershipService membershipService = mock(MembershipService.class);
+        UserServiceImpl service = new UserServiceImpl(
+                userMapper,
+                mock(EmailVerificationMapper.class),
+                jwtUtil,
+                mock(TokenServiceImpl.class),
+                membershipService
+        );
+
+        User user = new User();
+        user.setId(12L);
+        user.setPhone("13800138000");
+        user.setPassword(new org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder().encode("password123"));
+        user.setNickname("高级用户");
+        user.setCredits(100);
+        user.setStatus(1);
+        when(userMapper.selectOne(any())).thenReturn(user);
+        when(jwtUtil.generateToken(12L, "13800138000")).thenReturn("token-advanced");
+
+        UserMembership membership = new UserMembership();
+        membership.setTier("ADVANCED");
+        membership.setExpiresAt(java.time.LocalDateTime.of(2027, 1, 2, 3, 4));
+        when(membershipService.getActiveMembership(12L)).thenReturn(membership);
+
+        LoginRequest request = new LoginRequest();
+        request.setAccount("13800138000");
+        request.setPassword("password123");
+        request.setLoginType("password");
+
+        UserVO result = service.login(request);
+
+        assertThat(result.getMembership().getTier()).isEqualTo("ADVANCED");
+        assertThat(result.getMembership().getName()).isEqualTo("高级会员");
+        assertThat(result.getMembership().getExpiresAt()).isEqualTo(membership.getExpiresAt());
+    }
+
+    @Test
     void registerRewardsNewUserWithTwentyCredits() {
         UserMapper userMapper = mock(UserMapper.class);
         EmailVerificationMapper emailVerificationMapper = mock(EmailVerificationMapper.class);
@@ -39,7 +81,8 @@ class UserServiceImplTest {
                 userMapper,
                 emailVerificationMapper,
                 jwtUtil,
-                tokenService
+                tokenService,
+                mock(MembershipService.class)
         );
 
         EmailVerification verification = new EmailVerification();
@@ -83,7 +126,8 @@ class UserServiceImplTest {
                 userMapper,
                 emailVerificationMapper,
                 mock(JwtUtil.class),
-                mock(TokenServiceImpl.class)
+                mock(TokenServiceImpl.class),
+                mock(MembershipService.class)
         );
         ReflectionTestUtils.setField(service, "smsSender", smsSender);
 
@@ -109,7 +153,8 @@ class UserServiceImplTest {
                 userMapper,
                 emailVerificationMapper,
                 mock(JwtUtil.class),
-                mock(TokenServiceImpl.class)
+                mock(TokenServiceImpl.class),
+                mock(MembershipService.class)
         );
         ReflectionTestUtils.setField(service, "smsSender", smsSender);
         doThrow(new BusinessException("短信发送失败")).when(smsSender)
@@ -133,7 +178,8 @@ class UserServiceImplTest {
                 userMapper,
                 mock(EmailVerificationMapper.class),
                 mock(JwtUtil.class),
-                mock(TokenServiceImpl.class)
+                mock(TokenServiceImpl.class),
+                mock(MembershipService.class)
         );
 
         User user = new User();
@@ -168,7 +214,8 @@ class UserServiceImplTest {
                 userMapper,
                 mock(EmailVerificationMapper.class),
                 jwtUtil,
-                tokenService
+                tokenService,
+                mock(MembershipService.class)
         );
 
         User user = new User();
@@ -204,7 +251,8 @@ class UserServiceImplTest {
                 userMapper,
                 emailVerificationMapper,
                 jwtUtil,
-                tokenService
+                tokenService,
+                mock(MembershipService.class)
         );
 
         EmailVerification verification = new EmailVerification();

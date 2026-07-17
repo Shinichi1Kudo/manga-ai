@@ -9,6 +9,8 @@ public record PaymentOrderStatusResponse(
         int amountCents,
         int totalCredits,
         String status,
+        String paymentMethod,
+        LocalDateTime expiresAt,
         LocalDateTime paidAt
 ) {
 }

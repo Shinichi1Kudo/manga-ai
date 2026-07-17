@@ -22,6 +22,11 @@ public class UserVO implements Serializable {
     private Boolean requiresPhoneBinding;
     private LocalDateTime createdAt;
     private LocalDateTime lastLoginAt;
+    private MembershipSummaryVO membership = MembershipSummaryVO.free();
+
+    public void setMembership(MembershipSummaryVO membership) {
+        this.membership = membership == null ? MembershipSummaryVO.free() : membership;
+    }
 
     /**
      * 头像URL

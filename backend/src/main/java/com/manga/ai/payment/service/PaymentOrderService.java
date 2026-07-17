@@ -4,6 +4,7 @@ import com.manga.ai.payment.dto.PaymentOrderCreateResponse;
 import com.manga.ai.payment.dto.PaymentOrderStatusResponse;
 import com.manga.ai.payment.dto.PaymentProductsResponse;
 import com.manga.ai.payment.dto.PaymentSettlement;
+import com.manga.ai.payment.enums.PaymentMethod;
 
 import java.math.BigDecimal;
 
@@ -11,13 +12,23 @@ public interface PaymentOrderService {
 
     PaymentProductsResponse products(Long userId);
 
-    PaymentOrderCreateResponse createRechargeOrder(Long userId, int amountCents);
+    default PaymentOrderCreateResponse createRechargeOrder(Long userId, int amountCents) {
+        return createRechargeOrder(userId, amountCents, PaymentMethod.PAGE);
+    }
 
-    PaymentOrderCreateResponse createMembershipOrder(Long userId, String productCode);
+    PaymentOrderCreateResponse createRechargeOrder(Long userId, int amountCents, PaymentMethod paymentMethod);
+
+    default PaymentOrderCreateResponse createMembershipOrder(Long userId, String productCode) {
+        return createMembershipOrder(userId, productCode, PaymentMethod.PAGE);
+    }
+
+    PaymentOrderCreateResponse createMembershipOrder(Long userId, String productCode, PaymentMethod paymentMethod);
 
     PaymentOrderStatusResponse getOrder(Long userId, String orderNo);
 
     PaymentOrderStatusResponse syncOrder(Long userId, String orderNo);
+
+    void processExpiredQrOrders();
 
     PaymentSettlement settlePaidOrder(String orderNo, String alipayTradeNo, String notifyId, BigDecimal paidAmount,
                                       String tradeStatus, String appId, String sellerId);

@@ -2651,6 +2651,13 @@ def payment_products_api(request):
         return JsonResponse({'code': e.status_code, 'message': e.message}, status=400)
 
 
+def _validated_payment_method(data):
+    payment_method = data.get('paymentMethod', 'PAGE')
+    if payment_method not in {'PAGE', 'QR'}:
+        raise ValueError('Invalid payment method')
+    return payment_method
+
+
 @csrf_exempt
 @require_http_methods(["POST"])
 def payment_membership_order(request):
@@ -2659,13 +2666,16 @@ def payment_membership_order(request):
     try:
         data = json.loads(request.body or '{}')
         result = client.post('/v1/payments/membership/orders', {
-            'productCode': data.get('productCode')
+            'productCode': data.get('productCode'),
+            'paymentMethod': _validated_payment_method(data),
         })
         return JsonResponse({'code': 200, 'data': result})
     except BackendAPIError as e:
         return JsonResponse({'code': e.status_code, 'message': e.message}, status=400)
     except json.JSONDecodeError:
         return JsonResponse({'code': 400, 'message': 'Invalid JSON'}, status=400)
+    except ValueError as e:
+        return JsonResponse({'code': 400, 'message': str(e)}, status=400)
 
 
 @csrf_exempt
@@ -2676,13 +2686,16 @@ def payment_recharge_order(request):
     try:
         data = json.loads(request.body or '{}')
         result = client.post('/v1/payments/recharge/orders', {
-            'amountCents': data.get('amountCents')
+            'amountCents': data.get('amountCents'),
+            'paymentMethod': _validated_payment_method(data),
         })
         return JsonResponse({'code': 200, 'data': result})
     except BackendAPIError as e:
         return JsonResponse({'code': e.status_code, 'message': e.message}, status=400)
     except json.JSONDecodeError:
         return JsonResponse({'code': 400, 'message': 'Invalid JSON'}, status=400)
+    except ValueError as e:
+        return JsonResponse({'code': 400, 'message': str(e)}, status=400)
 
 
 def payment_order_status(request, order_no):

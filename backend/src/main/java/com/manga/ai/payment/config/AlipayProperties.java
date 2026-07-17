@@ -22,7 +22,8 @@ public class AlipayProperties {
         return notBlank(serverUrl)
                 && notBlank(appId)
                 && notBlank(appPrivateKey)
-                && notBlank(alipayPublicKey);
+                && notBlank(alipayPublicKey)
+                && notBlank(sellerId);
     }
 
     public boolean configured() {

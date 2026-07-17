@@ -334,11 +334,20 @@ public class SchemaMigrationConfig {
     private void ensurePaymentTables() {
         try (Connection connection = dataSource.getConnection();
              Statement statement = connection.createStatement()) {
+            String productName = connection.getMetaData().getDatabaseProductName();
+            boolean mysql = productName != null && productName.toLowerCase().contains("mysql");
             statement.execute(paymentOrderSql());
             statement.execute(userMembershipSql());
             statement.execute(creditBalanceBucketSql());
+            ensureColumn(connection, mysql, "payment_order", "payment_method",
+                    "VARCHAR(20) NOT NULL DEFAULT 'PAGE' COMMENT '支付方式：PAGE/QR'",
+                    "VARCHAR(20) DEFAULT 'PAGE' NOT NULL");
+            ensureColumn(connection, mysql, "payment_order", "expires_at",
+                    "TIMESTAMP NULL COMMENT '本地订单到期时间'",
+                    "TIMESTAMP NULL");
             ensureIndex(connection, "uk_payment_order_no", "payment_order", "order_no");
             ensureIndex(connection, "idx_payment_user_status", "payment_order", "user_id, status, created_at");
+            ensureIndex(connection, "idx_payment_qr_expiry", "payment_order", "status, payment_method, expires_at");
             ensureIndex(connection, "idx_user_membership_user_expires", "user_membership", "user_id, status, expires_at");
             ensureIndex(connection, "idx_credit_bucket_user_expires", "credit_balance_bucket", "user_id, expires_at, remaining_amount");
         } catch (Exception e) {
@@ -805,7 +814,9 @@ public class SchemaMigrationConfig {
                 + "amount_cents INT NOT NULL,"
                 + "status VARCHAR(30) NOT NULL,"
                 + "channel VARCHAR(30) DEFAULT 'ALIPAY',"
+                + "payment_method VARCHAR(20) NOT NULL DEFAULT 'PAGE',"
                 + "qrcode TEXT,"
+                + "expires_at TIMESTAMP NULL,"
                 + "alipay_trade_no VARCHAR(80),"
                 + "app_id VARCHAR(64),"
                 + "seller_id VARCHAR(64),"

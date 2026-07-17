@@ -42,6 +42,7 @@ class AlipayPropertiesTest {
         properties.setAppId("app-id");
         properties.setAppPrivateKey("app-private-key");
         properties.setAlipayPublicKey("alipay-public-key");
+        properties.setSellerId("seller-id");
         properties.setNotifyUrl(NOTIFY_URL);
         properties.setReturnUrl(RETURN_URL);
         return properties;

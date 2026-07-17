@@ -191,27 +191,20 @@ class MembershipPaymentPageTests(TestCase):
         self.assertContains(response, 'member-pricing-app')
         self.assertContains(response, '会员体系')
 
-    def test_membership_page_uses_one_time_alipay_cashier_flow(self):
+    def test_membership_page_supports_qr_and_one_time_alipay_cashier_flow(self):
         response = self.client.get('/membership/')
         template = response.content.decode('utf-8')
 
         self.assertContains(response, '前往支付宝支付')
+        self.assertContains(response, '扫码支付')
+        self.assertContains(response, '支付宝收银台')
         self.assertContains(response, '单次支付，到期自动结束', count=1)
 
-        for legacy_qr_marker in (
-            'qrcode@1.5.3',
-            'payQrCanvas',
-            'payModal',
-            'openPayModal',
-            'renderQr',
-            'startPolling',
-            'syncCurrentOrder',
-            'currentOrderNo',
-            'pollTimer',
-        ):
-            self.assertNotIn(legacy_qr_marker, template)
-
         self.assertIn('data.data.paymentHtml', template)
+        self.assertIn("paymentMethod: selectedPaymentMethod", template)
+        self.assertIn('QRCode.toCanvas', template)
+        self.assertIn('paymentQrCanvas', template)
+        self.assertIn('startQrPolling', template)
         self.assertIn('form.submit()', template)
         self.assertIn('openapi.alipay.com', template)
         self.assertIn('openapi-sandbox.dl.alipaydev.com', template)
@@ -387,6 +380,30 @@ class MembershipPaymentPageTests(TestCase):
         self.assertIn('id="userMenuToggle"', template)
         self.assertIn("if (action.id === 'userMenuToggle') return;", template)
 
+    def test_nav_membership_badge_is_separate_accessible_and_refreshable(self):
+        template_path = Path(settings.BASE_DIR) / 'templates/base.html'
+        template = template_path.read_text(encoding='utf-8')
+
+        self.assertIn('id="membershipBadgeButton"', template)
+        badge_index = template.index('id="membershipBadgeButton"')
+        menu_button_start = template.index('id="userMenuToggle"')
+        menu_button_end = template.index('</button>', menu_button_start)
+
+        self.assertFalse(menu_button_start < badge_index < menu_button_end)
+        self.assertIn('type="button"', template[badge_index - 120:badge_index + 220])
+        self.assertIn('aria-describedby="membershipBadgeTooltip"', template)
+        self.assertIn('id="membershipBadgeTooltip"', template)
+        self.assertIn('id="membershipBadgePopover"', template)
+        self.assertIn('href="/membership/"', template[badge_index:])
+        self.assertIn('membership-badge--none', template)
+        self.assertIn('membership-badge--basic', template)
+        self.assertIn('membership-badge--standard', template)
+        self.assertIn('membership-badge--advanced', template)
+        self.assertIn('membership-badge--super', template)
+        self.assertIn('@media (prefers-reduced-motion: reduce)', template)
+        self.assertIn('updateMembershipBadge(data.data.membership);', template)
+        self.assertIn("if (action.id === 'membershipBadgeButton') return;", template)
+
     def test_payment_products_proxy_forwards_session_token_to_backend(self):
         session = self.client.session
         session['token'] = 'token-pay'
@@ -434,7 +451,10 @@ class MembershipPaymentPageTests(TestCase):
             response.json()['data']['paymentHtml'],
         )
         backend_client_cls.assert_called_once_with(token='token-pay')
-        backend_client.post.assert_called_once_with('/v1/payments/recharge/orders', {'amountCents': 5000})
+        backend_client.post.assert_called_once_with('/v1/payments/recharge/orders', {
+            'amountCents': 5000,
+            'paymentMethod': 'PAGE',
+        })
 
 
 class EpisodeEntryPerformanceTests(TestCase):

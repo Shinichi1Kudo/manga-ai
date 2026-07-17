@@ -8,7 +8,9 @@ CREATE TABLE IF NOT EXISTS payment_order (
     amount_cents INT NOT NULL,
     status VARCHAR(30) NOT NULL,
     channel VARCHAR(30) DEFAULT 'ALIPAY',
+    payment_method VARCHAR(20) NOT NULL DEFAULT 'PAGE',
     qrcode TEXT,
+    expires_at TIMESTAMP NULL,
     alipay_trade_no VARCHAR(80),
     app_id VARCHAR(64),
     seller_id VARCHAR(64),
@@ -28,6 +30,7 @@ CREATE TABLE IF NOT EXISTS payment_order (
 );
 
 CREATE INDEX idx_payment_user_status ON payment_order (user_id, status, created_at);
+CREATE INDEX idx_payment_qr_expiry ON payment_order (status, payment_method, expires_at);
 
 CREATE TABLE IF NOT EXISTS user_membership (
     id BIGINT AUTO_INCREMENT PRIMARY KEY,

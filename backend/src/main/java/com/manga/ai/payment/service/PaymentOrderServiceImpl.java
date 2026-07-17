@@ -7,6 +7,9 @@ import com.manga.ai.payment.client.AlipayPaymentClient;
 import com.manga.ai.payment.config.AlipayProperties;
 import com.manga.ai.payment.dto.AlipayPagePayRequest;
 import com.manga.ai.payment.dto.AlipayPagePayResult;
+import com.manga.ai.payment.dto.AlipayCancelResult;
+import com.manga.ai.payment.dto.AlipayPrecreateRequest;
+import com.manga.ai.payment.dto.AlipayPrecreateResult;
 import com.manga.ai.payment.dto.AlipayQueryResult;
 import com.manga.ai.payment.dto.PaymentOrderCreateResponse;
 import com.manga.ai.payment.dto.PaymentOrderStatusResponse;
@@ -18,13 +21,15 @@ import com.manga.ai.payment.enums.MembershipPeriod;
 import com.manga.ai.payment.enums.MembershipTier;
 import com.manga.ai.payment.enums.PaymentOrderStatus;
 import com.manga.ai.payment.enums.PaymentOrderType;
+import com.manga.ai.payment.enums.PaymentMethod;
 import com.manga.ai.payment.mapper.PaymentOrderMapper;
-import com.manga.ai.payment.mapper.UserMembershipMapper;
 import com.manga.ai.payment.model.MembershipProduct;
 import com.manga.ai.payment.model.RechargePackage;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -37,18 +42,19 @@ import java.util.Map;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class PaymentOrderServiceImpl implements PaymentOrderService {
 
     private static final DateTimeFormatter ORDER_TIME_FORMATTER = DateTimeFormatter.ofPattern("yyyyMMddHHmmssSSS");
     private static final SecureRandom RANDOM = new SecureRandom();
 
     private final PaymentOrderMapper paymentOrderMapper;
-    private final UserMembershipMapper userMembershipMapper;
     private final CreditAccountService creditAccountService;
     private final MembershipService membershipService;
     private final PaymentProductCatalog productCatalog;
     private final AlipayProperties alipayProperties;
     private final AlipayPaymentClient alipayPaymentClient;
+    private final TransactionTemplate transactionTemplate;
 
     @Override
     public PaymentProductsResponse products(Long userId) {
@@ -66,21 +72,21 @@ public class PaymentOrderServiceImpl implements PaymentOrderService {
 
     @Override
     @Transactional
-    public PaymentOrderCreateResponse createRechargeOrder(Long userId, int amountCents) {
+    public PaymentOrderCreateResponse createRechargeOrder(Long userId, int amountCents, PaymentMethod paymentMethod) {
         ensureLoggedIn(userId);
         RechargePackage rechargePackage = productCatalog.rechargePackage(amountCents, activeTier(userId));
         PaymentOrder order = baseOrder(userId, PaymentOrderType.RECHARGE, "recharge_" + amountCents,
-                "积分充值¥" + amountCents / 100, amountCents);
+                "积分充值¥" + amountCents / 100, amountCents, paymentMethod);
         order.setBaseCredits(rechargePackage.baseCredits());
         order.setBonusCredits(rechargePackage.bonusCredits());
         order.setTotalCredits(rechargePackage.totalCredits());
 
-        return preparePagePayAndInsert(order);
+        return preparePayAndInsert(order);
     }
 
     @Override
     @Transactional
-    public PaymentOrderCreateResponse createMembershipOrder(Long userId, String productCode) {
+    public PaymentOrderCreateResponse createMembershipOrder(Long userId, String productCode, PaymentMethod paymentMethod) {
         ensureLoggedIn(userId);
         MembershipProduct product = productCatalog.findMembershipProduct(productCode);
         if (!product.enabled()) {
@@ -88,7 +94,7 @@ public class PaymentOrderServiceImpl implements PaymentOrderService {
         }
 
         PaymentOrder order = baseOrder(userId, PaymentOrderType.MEMBERSHIP, product.code(),
-                product.period().getLabel() + product.title(), product.priceCents());
+                product.period().getLabel() + product.title(), product.priceCents(), paymentMethod);
         order.setBaseCredits(0);
         order.setBonusCredits(product.totalCredits());
         order.setTotalCredits(product.totalCredits());
@@ -96,7 +102,7 @@ public class PaymentOrderServiceImpl implements PaymentOrderService {
         order.setMembershipPeriod(product.period().name());
         order.setMembershipMonths(product.months());
 
-        return preparePagePayAndInsert(order);
+        return preparePayAndInsert(order);
     }
 
     @Override
@@ -117,11 +123,17 @@ public class PaymentOrderServiceImpl implements PaymentOrderService {
         if (!order.getUserId().equals(userId)) {
             throw new BusinessException("订单不存在");
         }
-        if (!PaymentOrderStatus.PAID.name().equals(order.getStatus())) {
+        if (PaymentOrderStatus.CREATED.name().equals(order.getStatus())) {
             AlipayQueryResult queryResult = alipayPaymentClient.query(orderNo);
             if (queryResult != null && queryResult.paid()) {
                 settlePaidOrder(orderNo, queryResult.alipayTradeNo(), "query-sync", queryResult.totalAmount(),
                         queryResult.tradeStatus(), alipayProperties.getAppId(), alipayProperties.getSellerId());
+                order = findOrder(orderNo);
+            } else if (queryResult != null && "TRADE_CLOSED".equals(queryResult.tradeStatus())) {
+                closeCreatedOrder(orderNo);
+                order = findOrder(orderNo);
+            } else if (isExpiredQrOrder(order, LocalDateTime.now())) {
+                cancelAndClose(order);
                 order = findOrder(orderNo);
             }
         }
@@ -129,14 +141,43 @@ public class PaymentOrderServiceImpl implements PaymentOrderService {
     }
 
     @Override
-    @Transactional
+    public void processExpiredQrOrders() {
+        LocalDateTime now = LocalDateTime.now();
+        LambdaQueryWrapper<PaymentOrder> wrapper = new LambdaQueryWrapper<>();
+        wrapper.eq(PaymentOrder::getStatus, PaymentOrderStatus.CREATED.name())
+                .eq(PaymentOrder::getPaymentMethod, PaymentMethod.QR.name())
+                .le(PaymentOrder::getExpiresAt, now)
+                .orderByAsc(PaymentOrder::getExpiresAt)
+                .last("LIMIT 100");
+        List<PaymentOrder> orders = paymentOrderMapper.selectList(wrapper);
+        if (orders == null || orders.isEmpty()) {
+            return;
+        }
+        for (PaymentOrder order : orders) {
+            try {
+                processExpiredQrOrder(order);
+            } catch (Exception e) {
+                log.warn("支付宝订单码过期处理失败，保留待重试: orderNo={}, message={}",
+                        order.getOrderNo(), e.getMessage());
+            }
+        }
+    }
+
+    @Override
     public PaymentSettlement settlePaidOrder(String orderNo, String alipayTradeNo, String notifyId, BigDecimal paidAmount,
                                              String tradeStatus, String appId, String sellerId) {
+        return transactionTemplate.execute(status -> doSettlePaidOrder(
+                orderNo, alipayTradeNo, notifyId, paidAmount, tradeStatus, appId, sellerId));
+    }
+
+    private PaymentSettlement doSettlePaidOrder(String orderNo, String alipayTradeNo, String notifyId,
+                                                BigDecimal paidAmount, String tradeStatus, String appId,
+                                                String sellerId) {
         if (!paidStatus(tradeStatus)) {
             return new PaymentSettlement(false, orderNo, tradeStatus);
         }
         PaymentOrder order = findOrder(orderNo);
-        if (PaymentOrderStatus.PAID.name().equals(order.getStatus())) {
+        if (!PaymentOrderStatus.CREATED.name().equals(order.getStatus())) {
             return new PaymentSettlement(false, orderNo, order.getStatus());
         }
         validateAlipayIdentity(order, appId, sellerId);
@@ -154,10 +195,11 @@ public class PaymentOrderServiceImpl implements PaymentOrderService {
 
         LambdaUpdateWrapper<PaymentOrder> wrapper = new LambdaUpdateWrapper<>();
         wrapper.eq(PaymentOrder::getOrderNo, orderNo)
-                .ne(PaymentOrder::getStatus, PaymentOrderStatus.PAID.name());
+                .eq(PaymentOrder::getStatus, PaymentOrderStatus.CREATED.name());
         int rows = paymentOrderMapper.update(update, wrapper);
         if (rows == 0) {
-            return new PaymentSettlement(false, orderNo, PaymentOrderStatus.PAID.name());
+            PaymentOrder current = findOrder(orderNo);
+            return new PaymentSettlement(false, orderNo, current.getStatus());
         }
 
         order.setStatus(PaymentOrderStatus.PAID.name());
@@ -175,23 +217,38 @@ public class PaymentOrderServiceImpl implements PaymentOrderService {
         return new PaymentSettlement(true, orderNo, PaymentOrderStatus.PAID.name());
     }
 
-    private PaymentOrderCreateResponse preparePagePayAndInsert(PaymentOrder order) {
-        AlipayPagePayResult result = alipayPaymentClient.pagePay(new AlipayPagePayRequest(
-                order.getOrderNo(),
-                order.getProductName(),
-                amountAsYuan(order.getAmountCents()),
-                alipayProperties.getNotifyUrl(),
-                alipayProperties.getReturnUrl(),
-                alipayProperties.getTimeoutExpress()
-        ));
+    private PaymentOrderCreateResponse preparePayAndInsert(PaymentOrder order) {
         LocalDateTime now = LocalDateTime.now();
+        order.setExpiresAt(now.plusHours(2));
         order.setCreatedAt(now);
         order.setUpdatedAt(now);
+        String paymentHtml = null;
+        if (PaymentMethod.QR.name().equals(order.getPaymentMethod())) {
+            AlipayPrecreateResult result = alipayPaymentClient.precreate(new AlipayPrecreateRequest(
+                    order.getOrderNo(),
+                    order.getProductName(),
+                    amountAsYuan(order.getAmountCents()),
+                    alipayProperties.getNotifyUrl(),
+                    "2h"
+            ));
+            order.setQrcode(result.qrCode());
+        } else {
+            AlipayPagePayResult result = alipayPaymentClient.pagePay(new AlipayPagePayRequest(
+                    order.getOrderNo(),
+                    order.getProductName(),
+                    amountAsYuan(order.getAmountCents()),
+                    alipayProperties.getNotifyUrl(),
+                    alipayProperties.getReturnUrl(),
+                    alipayProperties.getTimeoutExpress()
+            ));
+            paymentHtml = result.paymentHtml();
+        }
         paymentOrderMapper.insert(order);
-        return toCreateResponse(order, result.paymentHtml());
+        return toCreateResponse(order, paymentHtml);
     }
 
-    private PaymentOrder baseOrder(Long userId, PaymentOrderType type, String productCode, String productName, int amountCents) {
+    private PaymentOrder baseOrder(Long userId, PaymentOrderType type, String productCode, String productName,
+                                   int amountCents, PaymentMethod paymentMethod) {
         PaymentOrder order = new PaymentOrder();
         order.setOrderNo(nextOrderNo());
         order.setUserId(userId);
@@ -201,22 +258,55 @@ public class PaymentOrderServiceImpl implements PaymentOrderService {
         order.setAmountCents(amountCents);
         order.setStatus(PaymentOrderStatus.CREATED.name());
         order.setChannel("ALIPAY");
+        order.setPaymentMethod((paymentMethod == null ? PaymentMethod.PAGE : paymentMethod).name());
         order.setAppId(alipayProperties.getAppId());
         order.setSellerId(alipayProperties.getSellerId());
         return order;
+    }
+
+    private void processExpiredQrOrder(PaymentOrder order) {
+        AlipayQueryResult queryResult = alipayPaymentClient.query(order.getOrderNo());
+        if (queryResult != null && queryResult.paid()) {
+            settlePaidOrder(order.getOrderNo(), queryResult.alipayTradeNo(), "expiry-query",
+                    queryResult.totalAmount(), queryResult.tradeStatus(),
+                    alipayProperties.getAppId(), alipayProperties.getSellerId());
+            return;
+        }
+        if (queryResult != null && "TRADE_CLOSED".equals(queryResult.tradeStatus())) {
+            closeCreatedOrder(order.getOrderNo());
+            return;
+        }
+        cancelAndClose(order);
+    }
+
+    private void cancelAndClose(PaymentOrder order) {
+        AlipayCancelResult cancelResult = alipayPaymentClient.cancel(order.getOrderNo());
+        if (cancelResult != null && cancelResult.success() && !cancelResult.retryRequired()) {
+            closeCreatedOrder(order.getOrderNo());
+        }
+    }
+
+    private void closeCreatedOrder(String orderNo) {
+        PaymentOrder update = new PaymentOrder();
+        update.setStatus(PaymentOrderStatus.CLOSED.name());
+        update.setUpdatedAt(LocalDateTime.now());
+        LambdaUpdateWrapper<PaymentOrder> wrapper = new LambdaUpdateWrapper<>();
+        wrapper.eq(PaymentOrder::getOrderNo, orderNo)
+                .eq(PaymentOrder::getStatus, PaymentOrderStatus.CREATED.name());
+        paymentOrderMapper.update(update, wrapper);
+    }
+
+    private boolean isExpiredQrOrder(PaymentOrder order, LocalDateTime now) {
+        return PaymentMethod.QR.name().equals(order.getPaymentMethod())
+                && order.getExpiresAt() != null
+                && !order.getExpiresAt().isAfter(now);
     }
 
     private MembershipTier activeTier(Long userId) {
         if (userId == null) {
             return MembershipTier.NONE;
         }
-        LambdaQueryWrapper<UserMembership> wrapper = new LambdaQueryWrapper<>();
-        wrapper.eq(UserMembership::getUserId, userId)
-                .eq(UserMembership::getStatus, "ACTIVE")
-                .gt(UserMembership::getExpiresAt, LocalDateTime.now())
-                .orderByDesc(UserMembership::getExpiresAt)
-                .last("LIMIT 1");
-        UserMembership membership = userMembershipMapper.selectOne(wrapper);
+        UserMembership membership = membershipService.getActiveMembership(userId);
         if (membership == null || membership.getTier() == null) {
             return MembershipTier.NONE;
         }
@@ -277,7 +367,10 @@ public class PaymentOrderServiceImpl implements PaymentOrderService {
                 safe(order.getBonusCredits()),
                 safe(order.getTotalCredits()),
                 order.getStatus(),
-                paymentHtml
+                order.getPaymentMethod(),
+                paymentHtml,
+                order.getQrcode(),
+                order.getExpiresAt()
         );
     }
 
@@ -289,6 +382,8 @@ public class PaymentOrderServiceImpl implements PaymentOrderService {
                 safe(order.getAmountCents()),
                 safe(order.getTotalCredits()),
                 order.getStatus(),
+                order.getPaymentMethod(),
+                order.getExpiresAt(),
                 order.getPaidAt()
         );
     }

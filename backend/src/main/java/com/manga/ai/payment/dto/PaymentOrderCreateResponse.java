@@ -9,6 +9,9 @@ public record PaymentOrderCreateResponse(
         int bonusCredits,
         int totalCredits,
         String status,
-        String paymentHtml
+        String paymentMethod,
+        String paymentHtml,
+        String qrCode,
+        java.time.LocalDateTime expiresAt
 ) {
 }

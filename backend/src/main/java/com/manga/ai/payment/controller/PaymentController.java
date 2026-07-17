@@ -39,12 +39,14 @@ public class PaymentController {
 
     @PostMapping("/membership/orders")
     public Result<PaymentOrderCreateResponse> createMembershipOrder(@Valid @RequestBody CreateMembershipOrderRequest request) {
-        return Result.success(paymentOrderService.createMembershipOrder(UserContextHolder.getUserId(), request.getProductCode()));
+        return Result.success(paymentOrderService.createMembershipOrder(
+                UserContextHolder.getUserId(), request.getProductCode(), request.getPaymentMethod()));
     }
 
     @PostMapping("/recharge/orders")
     public Result<PaymentOrderCreateResponse> createRechargeOrder(@Valid @RequestBody CreateRechargeOrderRequest request) {
-        return Result.success(paymentOrderService.createRechargeOrder(UserContextHolder.getUserId(), request.getAmountCents()));
+        return Result.success(paymentOrderService.createRechargeOrder(
+                UserContextHolder.getUserId(), request.getAmountCents(), request.getPaymentMethod()));
     }
 
     @GetMapping("/orders/{orderNo}")

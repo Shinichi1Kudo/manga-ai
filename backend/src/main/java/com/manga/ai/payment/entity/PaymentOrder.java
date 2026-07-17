@@ -27,7 +27,9 @@ public class PaymentOrder implements Serializable {
     private Integer amountCents;
     private String status;
     private String channel;
+    private String paymentMethod;
     private String qrcode;
+    private LocalDateTime expiresAt;
     private String alipayTradeNo;
     private String appId;
     private String sellerId;

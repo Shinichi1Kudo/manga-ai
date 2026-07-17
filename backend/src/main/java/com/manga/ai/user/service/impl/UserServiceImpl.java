@@ -9,6 +9,7 @@ import com.manga.ai.user.entity.User;
 import com.manga.ai.user.mapper.EmailVerificationMapper;
 import com.manga.ai.user.mapper.UserMapper;
 import com.manga.ai.payment.service.CreditAccountService;
+import com.manga.ai.payment.service.MembershipService;
 import com.manga.ai.user.service.CreditRecordService;
 import com.manga.ai.user.service.SmsSender;
 import com.manga.ai.user.service.UserService;
@@ -34,6 +35,7 @@ public class UserServiceImpl implements UserService {
     private final EmailVerificationMapper emailVerificationMapper;
     private final JwtUtil jwtUtil;
     private final TokenService tokenService;
+    private final MembershipService membershipService;
     private final BCryptPasswordEncoder passwordEncoder = new BCryptPasswordEncoder();
 
     @Autowired(required = false)
@@ -51,11 +53,13 @@ public class UserServiceImpl implements UserService {
     private static final int CODE_EXPIRE_MINUTES = 10;
     private static final int NEW_USER_REWARD_CREDITS = 20;
 
-    public UserServiceImpl(UserMapper userMapper, EmailVerificationMapper emailVerificationMapper, JwtUtil jwtUtil, TokenService tokenService) {
+    public UserServiceImpl(UserMapper userMapper, EmailVerificationMapper emailVerificationMapper, JwtUtil jwtUtil,
+                           TokenService tokenService, MembershipService membershipService) {
         this.userMapper = userMapper;
         this.emailVerificationMapper = emailVerificationMapper;
         this.jwtUtil = jwtUtil;
         this.tokenService = tokenService;
+        this.membershipService = membershipService;
     }
 
     @Override
@@ -309,6 +313,7 @@ public class UserServiceImpl implements UserService {
         vo.setLastLoginAt(user.getLastLoginAt());
         vo.setAvatar(user.getAvatar());
         vo.setToken(token);
+        vo.setMembership(MembershipSummaryVO.from(membershipService.getActiveMembership(user.getId())));
         return vo;
     }
 
