@@ -59,7 +59,7 @@ public class DefaultAlipayPaymentClient implements AlipayPaymentClient {
             return new AlipayPagePayResult(response.getBody());
         } catch (AlipayApiException e) {
             log.warn("支付宝电脑网站支付表单生成异常: orderNo={}, message={}",
-                    request.orderNo(), e.getMessage());
+                    request.orderNo(), e.getMessage(), e);
             throw new BusinessException("支付宝支付页面生成异常，请稍后重试");
         }
     }
