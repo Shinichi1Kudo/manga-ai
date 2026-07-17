@@ -5,8 +5,8 @@ import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.manga.ai.common.exception.BusinessException;
 import com.manga.ai.payment.client.AlipayPaymentClient;
 import com.manga.ai.payment.config.AlipayProperties;
-import com.manga.ai.payment.dto.AlipayPrecreateRequest;
-import com.manga.ai.payment.dto.AlipayPrecreateResult;
+import com.manga.ai.payment.dto.AlipayPagePayRequest;
+import com.manga.ai.payment.dto.AlipayPagePayResult;
 import com.manga.ai.payment.dto.AlipayQueryResult;
 import com.manga.ai.payment.dto.PaymentOrderCreateResponse;
 import com.manga.ai.payment.dto.PaymentOrderStatusResponse;
@@ -75,8 +75,7 @@ public class PaymentOrderServiceImpl implements PaymentOrderService {
         order.setBonusCredits(rechargePackage.bonusCredits());
         order.setTotalCredits(rechargePackage.totalCredits());
 
-        precreateAndInsert(order);
-        return toCreateResponse(order);
+        return preparePagePayAndInsert(order);
     }
 
     @Override
@@ -97,8 +96,7 @@ public class PaymentOrderServiceImpl implements PaymentOrderService {
         order.setMembershipPeriod(product.period().name());
         order.setMembershipMonths(product.months());
 
-        precreateAndInsert(order);
-        return toCreateResponse(order);
+        return preparePagePayAndInsert(order);
     }
 
     @Override
@@ -177,18 +175,20 @@ public class PaymentOrderServiceImpl implements PaymentOrderService {
         return new PaymentSettlement(true, orderNo, PaymentOrderStatus.PAID.name());
     }
 
-    private void precreateAndInsert(PaymentOrder order) {
-        AlipayPrecreateResult result = alipayPaymentClient.precreate(new AlipayPrecreateRequest(
+    private PaymentOrderCreateResponse preparePagePayAndInsert(PaymentOrder order) {
+        AlipayPagePayResult result = alipayPaymentClient.pagePay(new AlipayPagePayRequest(
                 order.getOrderNo(),
                 order.getProductName(),
                 amountAsYuan(order.getAmountCents()),
-                null,
-                "2h"
+                alipayProperties.getNotifyUrl(),
+                alipayProperties.getReturnUrl(),
+                alipayProperties.getTimeoutExpress()
         ));
-        order.setQrcode(result.qrcode());
-        order.setCreatedAt(LocalDateTime.now());
-        order.setUpdatedAt(LocalDateTime.now());
+        LocalDateTime now = LocalDateTime.now();
+        order.setCreatedAt(now);
+        order.setUpdatedAt(now);
         paymentOrderMapper.insert(order);
+        return toCreateResponse(order, result.paymentHtml());
     }
 
     private PaymentOrder baseOrder(Long userId, PaymentOrderType type, String productCode, String productName, int amountCents) {
@@ -267,7 +267,7 @@ public class PaymentOrderServiceImpl implements PaymentOrderService {
                 .divide(BigDecimal.valueOf(100), 2, RoundingMode.UNNECESSARY);
     }
 
-    private PaymentOrderCreateResponse toCreateResponse(PaymentOrder order) {
+    private PaymentOrderCreateResponse toCreateResponse(PaymentOrder order, String paymentHtml) {
         return new PaymentOrderCreateResponse(
                 order.getOrderNo(),
                 order.getOrderType(),
@@ -277,7 +277,7 @@ public class PaymentOrderServiceImpl implements PaymentOrderService {
                 safe(order.getBonusCredits()),
                 safe(order.getTotalCredits()),
                 order.getStatus(),
-                order.getQrcode()
+                paymentHtml
         );
     }
 
@@ -289,7 +289,6 @@ public class PaymentOrderServiceImpl implements PaymentOrderService {
                 safe(order.getAmountCents()),
                 safe(order.getTotalCredits()),
                 order.getStatus(),
-                order.getQrcode(),
                 order.getPaidAt()
         );
     }

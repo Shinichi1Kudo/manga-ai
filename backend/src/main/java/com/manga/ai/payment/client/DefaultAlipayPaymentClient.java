@@ -4,20 +4,16 @@ import com.alipay.api.AlipayApiException;
 import com.alipay.api.AlipayClient;
 import com.alipay.api.DefaultAlipayClient;
 import com.alipay.api.domain.AlipayTradePagePayModel;
-import com.alipay.api.domain.AlipayTradePrecreateModel;
 import com.alipay.api.domain.AlipayTradeQueryModel;
 import com.alipay.api.internal.util.AlipaySignature;
 import com.alipay.api.request.AlipayTradePagePayRequest;
-import com.alipay.api.request.AlipayTradePrecreateRequest;
 import com.alipay.api.request.AlipayTradeQueryRequest;
 import com.alipay.api.response.AlipayTradePagePayResponse;
-import com.alipay.api.response.AlipayTradePrecreateResponse;
 import com.alipay.api.response.AlipayTradeQueryResponse;
 import com.manga.ai.common.exception.BusinessException;
 import com.manga.ai.payment.config.AlipayProperties;
 import com.manga.ai.payment.dto.AlipayPagePayRequest;
 import com.manga.ai.payment.dto.AlipayPagePayResult;
-import com.manga.ai.payment.dto.AlipayPrecreateResult;
 import com.manga.ai.payment.dto.AlipayQueryResult;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -61,36 +57,6 @@ public class DefaultAlipayPaymentClient implements AlipayPaymentClient {
             log.warn("支付宝电脑网站支付表单生成异常: orderNo={}, message={}",
                     request.orderNo(), e.getMessage(), e);
             throw new BusinessException("支付宝支付页面生成异常，请稍后重试");
-        }
-    }
-
-    @Override
-    public AlipayPrecreateResult precreate(com.manga.ai.payment.dto.AlipayPrecreateRequest request) {
-        ensureConfigured();
-        AlipayTradePrecreateRequest alipayRequest = new AlipayTradePrecreateRequest();
-        alipayRequest.setNotifyUrl(notBlank(request.notifyUrl()) ? request.notifyUrl() : properties.getNotifyUrl());
-
-        AlipayTradePrecreateModel model = new AlipayTradePrecreateModel();
-        model.setOutTradeNo(request.orderNo());
-        model.setSubject(request.subject());
-        model.setTotalAmount(request.totalAmount().toPlainString());
-        model.setTimeoutExpress(notBlank(request.timeoutExpress()) ? request.timeoutExpress() : properties.getTimeoutExpress());
-        if (notBlank(properties.getSellerId())) {
-            model.setSellerId(properties.getSellerId());
-        }
-        alipayRequest.setBizModel(model);
-
-        try {
-            AlipayTradePrecreateResponse response = client().execute(alipayRequest);
-            if (!response.isSuccess()) {
-                log.warn("支付宝预下单失败: orderNo={}, code={}, subCode={}, msg={}",
-                        request.orderNo(), response.getCode(), response.getSubCode(), response.getSubMsg());
-                throw new BusinessException("支付宝预下单失败: " + response.getSubMsg());
-            }
-            return new AlipayPrecreateResult(response.getQrCode(), null);
-        } catch (AlipayApiException e) {
-            log.warn("支付宝预下单异常: orderNo={}, message={}", request.orderNo(), e.getErrMsg());
-            throw new BusinessException("支付宝预下单异常，请稍后重试");
         }
     }
 

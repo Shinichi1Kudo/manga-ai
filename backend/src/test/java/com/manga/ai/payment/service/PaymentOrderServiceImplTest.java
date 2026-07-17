@@ -3,7 +3,8 @@ package com.manga.ai.payment.service;
 import com.manga.ai.common.exception.BusinessException;
 import com.manga.ai.payment.client.AlipayPaymentClient;
 import com.manga.ai.payment.config.AlipayProperties;
-import com.manga.ai.payment.dto.AlipayPrecreateResult;
+import com.manga.ai.payment.dto.AlipayPagePayRequest;
+import com.manga.ai.payment.dto.AlipayPagePayResult;
 import com.manga.ai.payment.dto.PaymentOrderCreateResponse;
 import com.manga.ai.payment.dto.PaymentSettlement;
 import com.manga.ai.payment.entity.PaymentOrder;
@@ -30,7 +31,7 @@ import static org.mockito.Mockito.when;
 class PaymentOrderServiceImplTest {
 
     @Test
-    void createRechargeOrderSnapshotsActiveMembershipBonusBeforeCallingAlipay() {
+    void createRechargeOrderReturnsPagePayHtmlFromLocalOrderSnapshot() {
         PaymentOrderMapper paymentOrderMapper = mock(PaymentOrderMapper.class);
         UserMembershipMapper userMembershipMapper = mock(UserMembershipMapper.class);
         AlipayPaymentClient alipayPaymentClient = mock(AlipayPaymentClient.class);
@@ -41,7 +42,9 @@ class PaymentOrderServiceImplTest {
         activeMembership.setTier(MembershipTier.SUPER.name());
         activeMembership.setExpiresAt(LocalDateTime.now().plusDays(5));
         when(userMembershipMapper.selectOne(any())).thenReturn(activeMembership);
-        when(alipayPaymentClient.precreate(any())).thenReturn(new AlipayPrecreateResult("https://qr.example/alipay", "ALIPAY_TRACE"));
+        when(alipayPaymentClient.pagePay(any())).thenReturn(new AlipayPagePayResult(
+                "<form action=\"https://openapi-sandbox.dl.alipaydev.com/gateway.do\" method=\"post\"></form>"
+        ));
 
         PaymentOrderServiceImpl service = new PaymentOrderServiceImpl(
                 paymentOrderMapper,
@@ -58,15 +61,26 @@ class PaymentOrderServiceImplTest {
         ArgumentCaptor<PaymentOrder> orderCaptor = ArgumentCaptor.forClass(PaymentOrder.class);
         verify(paymentOrderMapper).insert(orderCaptor.capture());
         PaymentOrder order = orderCaptor.getValue();
+        ArgumentCaptor<AlipayPagePayRequest> pagePayRequestCaptor =
+                ArgumentCaptor.forClass(AlipayPagePayRequest.class);
+        verify(alipayPaymentClient).pagePay(pagePayRequestCaptor.capture());
+        AlipayPagePayRequest pagePayRequest = pagePayRequestCaptor.getValue();
+
         assertThat(order.getUserId()).isEqualTo(7L);
         assertThat(order.getOrderType()).isEqualTo(PaymentOrderType.RECHARGE.name());
         assertThat(order.getAmountCents()).isEqualTo(5000);
         assertThat(order.getBaseCredits()).isEqualTo(1000);
         assertThat(order.getBonusCredits()).isEqualTo(150);
         assertThat(order.getTotalCredits()).isEqualTo(1150);
-        assertThat(order.getQrcode()).isEqualTo("https://qr.example/alipay");
-        assertThat(response.qrcode()).isEqualTo("https://qr.example/alipay");
+        assertThat(order.getQrcode()).isNull();
+        assertThat(response.paymentHtml()).contains("openapi-sandbox.dl.alipaydev.com");
         assertThat(response.totalCredits()).isEqualTo(1150);
+        assertThat(pagePayRequest.orderNo()).isEqualTo(order.getOrderNo());
+        assertThat(pagePayRequest.subject()).isEqualTo(order.getProductName());
+        assertThat(pagePayRequest.totalAmount()).isEqualByComparingTo("50.00");
+        assertThat(pagePayRequest.notifyUrl()).isEqualTo(alipayProperties().getNotifyUrl());
+        assertThat(pagePayRequest.returnUrl()).isEqualTo(alipayProperties().getReturnUrl());
+        assertThat(pagePayRequest.timeoutExpress()).isEqualTo(alipayProperties().getTimeoutExpress());
     }
 
     @Test
@@ -284,6 +298,8 @@ class PaymentOrderServiceImplTest {
         properties.setAppId("app-1");
         properties.setSellerId("seller-1");
         properties.setNotifyUrl("https://www.yzmovie.com/api/v1/payments/alipay/notify");
+        properties.setReturnUrl("https://www.yzmovie.com/membership/payment/result/");
+        properties.setTimeoutExpress("30m");
         return properties;
     }
 }

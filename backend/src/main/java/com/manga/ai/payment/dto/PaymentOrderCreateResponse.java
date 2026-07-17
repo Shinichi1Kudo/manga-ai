@@ -9,6 +9,6 @@ public record PaymentOrderCreateResponse(
         int bonusCredits,
         int totalCredits,
         String status,
-        String qrcode
+        String paymentHtml
 ) {
 }

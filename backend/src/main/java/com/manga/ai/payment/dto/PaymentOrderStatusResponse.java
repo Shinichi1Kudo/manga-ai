@@ -9,7 +9,6 @@ public record PaymentOrderStatusResponse(
         int amountCents,
         int totalCredits,
         String status,
-        String qrcode,
         LocalDateTime paidAt
 ) {
 }
