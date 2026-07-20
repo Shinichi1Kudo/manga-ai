@@ -12,6 +12,8 @@ public record PaymentOrderCreateResponse(
         String paymentMethod,
         String paymentHtml,
         String qrCode,
-        java.time.LocalDateTime expiresAt
+        java.time.LocalDateTime expiresAt,
+        boolean paymentReady,
+        String paymentMessage
 ) {
 }

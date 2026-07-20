@@ -1,5 +1,8 @@
 package com.manga.ai.payment.service;
 
+import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
+import com.baomidou.mybatisplus.core.MybatisConfiguration;
+import com.baomidou.mybatisplus.core.metadata.TableInfoHelper;
 import com.manga.ai.common.exception.BusinessException;
 import com.manga.ai.payment.client.AlipayPaymentClient;
 import com.manga.ai.payment.config.AlipayProperties;
@@ -17,70 +20,246 @@ import com.manga.ai.payment.enums.MembershipTier;
 import com.manga.ai.payment.enums.PaymentMethod;
 import com.manga.ai.payment.enums.PaymentOrderStatus;
 import com.manga.ai.payment.enums.PaymentOrderType;
+import com.manga.ai.payment.exception.RetryablePaymentGatewayException;
 import com.manga.ai.payment.mapper.PaymentOrderMapper;
 import com.manga.ai.payment.mapper.UserMembershipMapper;
+import org.apache.ibatis.builder.MapperBuilderAssistant;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.NullSource;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
+import org.mockito.InOrder;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.TransactionStatus;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class PaymentOrderServiceImplTest {
 
+    static {
+        TableInfoHelper.initTableInfo(
+                new MapperBuilderAssistant(new MybatisConfiguration(), ""), PaymentOrder.class);
+    }
+
     @Test
-    void createQrRechargeOrderPersistsServerPricedQrSnapshot() {
+    void qrPrecreateRetriesSamePersistedOrderNumberAfterTransientFailure() {
         PaymentOrderMapper paymentOrderMapper = mock(PaymentOrderMapper.class);
-        UserMembershipMapper userMembershipMapper = mock(UserMembershipMapper.class);
         AlipayPaymentClient alipayPaymentClient = mock(AlipayPaymentClient.class);
-        when(alipayPaymentClient.precreate(any())).thenReturn(new AlipayPrecreateResult(
-                "https://qr.alipay.com/example"
-        ));
+        PaymentRetrySleeper paymentRetrySleeper = mock(PaymentRetrySleeper.class);
+        AtomicReference<PaymentOrder> persisted = stubOrderPersistence(paymentOrderMapper);
+        when(alipayPaymentClient.precreate(any()))
+                .thenThrow(new RetryablePaymentGatewayException("temporary", new RuntimeException("504")))
+                .thenReturn(new AlipayPrecreateResult("https://qr.alipay.com/example"));
         PaymentOrderServiceImpl service = service(
                 paymentOrderMapper,
-                userMembershipMapper,
+                mock(UserMembershipMapper.class),
                 mock(CreditAccountService.class),
                 mock(MembershipService.class),
-                alipayPaymentClient
+                alipayPaymentClient,
+                paymentRetrySleeper
         );
 
         PaymentOrderCreateResponse response = service.createRechargeOrder(7L, 5000, PaymentMethod.QR);
 
         ArgumentCaptor<PaymentOrder> orderCaptor = ArgumentCaptor.forClass(PaymentOrder.class);
-        verify(paymentOrderMapper).insert(orderCaptor.capture());
-        PaymentOrder order = orderCaptor.getValue();
         ArgumentCaptor<AlipayPrecreateRequest> requestCaptor =
                 ArgumentCaptor.forClass(AlipayPrecreateRequest.class);
-        verify(alipayPaymentClient).precreate(requestCaptor.capture());
+        InOrder calls = inOrder(paymentOrderMapper, alipayPaymentClient);
+        calls.verify(paymentOrderMapper).insert(orderCaptor.capture());
+        calls.verify(alipayPaymentClient, times(2)).precreate(requestCaptor.capture());
+        PaymentOrder order = orderCaptor.getValue();
+        List<AlipayPrecreateRequest> requests = requestCaptor.getAllValues();
 
+        assertThat(order.getUserId()).isEqualTo(7L);
+        assertThat(order.getOrderType()).isEqualTo(PaymentOrderType.RECHARGE.name());
+        assertThat(order.getAmountCents()).isEqualTo(5000);
+        assertThat(order.getProductName()).isEqualTo("积分充值¥50");
+        assertThat(order.getStatus()).isEqualTo(PaymentOrderStatus.CREATED.name());
         assertThat(order.getPaymentMethod()).isEqualTo(PaymentMethod.QR.name());
         assertThat(order.getQrcode()).isEqualTo("https://qr.alipay.com/example");
         assertThat(order.getExpiresAt()).isAfter(LocalDateTime.now().plusMinutes(119));
+        assertThat(order.getCreatedAt()).isNotNull();
+        assertThat(order.getUpdatedAt()).isNotNull();
+        assertThat(requests).allMatch(request -> request.equals(requests.get(0)));
+        assertThat(requests.get(0).orderNo()).isEqualTo(order.getOrderNo());
+        assertThat(requests.get(0).subject()).isEqualTo(order.getProductName());
+        assertThat(requests.get(0).totalAmount()).isEqualByComparingTo("50.00");
+        assertThat(requests.get(0).notifyUrl()).isEqualTo(alipayProperties().getNotifyUrl());
+        assertThat(requests.get(0).timeoutExpress()).isEqualTo("2h");
+        assertThat(persisted.get()).isSameAs(order);
+        assertThat(response.orderNo()).isEqualTo(order.getOrderNo());
         assertThat(response.paymentMethod()).isEqualTo(PaymentMethod.QR.name());
         assertThat(response.paymentHtml()).isNull();
         assertThat(response.qrCode()).isEqualTo("https://qr.alipay.com/example");
         assertThat(response.expiresAt()).isEqualTo(order.getExpiresAt());
-        assertThat(requestCaptor.getValue().totalAmount()).isEqualByComparingTo("50.00");
-        assertThat(requestCaptor.getValue().notifyUrl()).endsWith(".cn/api/v1/payments/alipay/notify");
+        assertThat(response.paymentReady()).isTrue();
+        assertThat(response.paymentMessage()).isNull();
+        verify(paymentRetrySleeper).pauseBeforeAttempt(2);
     }
 
     @Test
-    void createQrOrderDoesNotInsertWhenAlipayPrecreateFails() {
+    void qrPrecreateExhaustionReturnsRecoverablePersistedOrder() {
         PaymentOrderMapper paymentOrderMapper = mock(PaymentOrderMapper.class);
         AlipayPaymentClient alipayPaymentClient = mock(AlipayPaymentClient.class);
+        PaymentRetrySleeper paymentRetrySleeper = mock(PaymentRetrySleeper.class);
+        AtomicReference<PaymentOrder> persisted = new AtomicReference<>();
+        when(paymentOrderMapper.insert(any())).thenAnswer(invocation -> {
+            persisted.set(invocation.getArgument(0));
+            return 1;
+        });
+        when(paymentOrderMapper.selectOne(any())).thenAnswer(invocation -> persisted.get());
+        when(alipayPaymentClient.precreate(any()))
+                .thenThrow(new RetryablePaymentGatewayException("temporary", new RuntimeException("504")));
+        PaymentOrderServiceImpl service = service(
+                paymentOrderMapper,
+                mock(UserMembershipMapper.class),
+                mock(CreditAccountService.class),
+                mock(MembershipService.class),
+                alipayPaymentClient,
+                paymentRetrySleeper
+        );
+
+        PaymentOrderCreateResponse response = service.createRechargeOrder(7L, 5000, PaymentMethod.QR);
+
+        ArgumentCaptor<PaymentOrder> orderCaptor = ArgumentCaptor.forClass(PaymentOrder.class);
+        ArgumentCaptor<AlipayPrecreateRequest> requestCaptor =
+                ArgumentCaptor.forClass(AlipayPrecreateRequest.class);
+        verify(paymentOrderMapper).insert(orderCaptor.capture());
+        verify(alipayPaymentClient, times(3)).precreate(requestCaptor.capture());
+        verify(paymentRetrySleeper, times(2)).pauseBeforeAttempt(anyInt());
+        verify(paymentRetrySleeper).pauseBeforeAttempt(2);
+        verify(paymentRetrySleeper).pauseBeforeAttempt(3);
+
+        PaymentOrder order = orderCaptor.getValue();
+        List<AlipayPrecreateRequest> requests = requestCaptor.getAllValues();
+        assertThat(requests).allMatch(request -> request.equals(requests.get(0)));
+        assertThat(requests.get(0).orderNo()).isEqualTo(order.getOrderNo());
+        assertThat(order.getStatus()).isEqualTo(PaymentOrderStatus.CREATED.name());
+        assertThat(order.getQrcode()).isNull();
+        assertThat(response.orderNo()).isEqualTo(order.getOrderNo());
+        assertThat(response.status()).isEqualTo(PaymentOrderStatus.CREATED.name());
+        assertThat(response.paymentReady()).isFalse();
+        assertThat(response.paymentHtml()).isNull();
+        assertThat(response.qrCode()).isNull();
+        assertThat(response.paymentMessage())
+                .isEqualTo("支付宝扫码支付服务暂时不可用，请稍后重试或改用支付宝收银台");
+        verify(paymentOrderMapper, never()).update(any(), any());
+        verify(paymentOrderMapper).selectOne(any());
+    }
+
+    @Test
+    void qrPrecreateExhaustionReturnsConcurrentTerminalOrder() {
+        PaymentOrderMapper paymentOrderMapper = mock(PaymentOrderMapper.class);
+        AlipayPaymentClient alipayPaymentClient = mock(AlipayPaymentClient.class);
+        PaymentRetrySleeper paymentRetrySleeper = mock(PaymentRetrySleeper.class);
+        AtomicReference<PaymentOrder> persisted = new AtomicReference<>();
+        when(paymentOrderMapper.insert(any())).thenAnswer(invocation -> {
+            persisted.set(invocation.getArgument(0));
+            return 1;
+        });
+        when(paymentOrderMapper.selectOne(any())).thenAnswer(invocation -> {
+            persisted.get().setStatus(PaymentOrderStatus.PAID.name());
+            persisted.get().setQrcode("https://qr.alipay.com/callback-race");
+            return persisted.get();
+        });
+        when(alipayPaymentClient.precreate(any()))
+                .thenThrow(new RetryablePaymentGatewayException("temporary", new RuntimeException("504")));
+        PaymentOrderServiceImpl service = service(
+                paymentOrderMapper,
+                mock(UserMembershipMapper.class),
+                mock(CreditAccountService.class),
+                mock(MembershipService.class),
+                alipayPaymentClient,
+                paymentRetrySleeper
+        );
+
+        PaymentOrderCreateResponse response = service.createRechargeOrder(7L, 5000, PaymentMethod.QR);
+
+        assertThat(response.status()).isEqualTo(PaymentOrderStatus.PAID.name());
+        assertThat(response.paymentReady()).isFalse();
+        assertThat(response.paymentHtml()).isNull();
+        assertThat(response.qrCode()).isNull();
+        assertThat(response.paymentMessage()).isNull();
+        verify(alipayPaymentClient, times(3)).precreate(any());
+        verify(paymentRetrySleeper, times(2)).pauseBeforeAttempt(anyInt());
+        verify(paymentOrderMapper).selectOne(any());
+    }
+
+    @Test
+    void nonRetryableQrBusinessErrorClosesInsertedCreatedOrderAndRethrowsSafeMessage() {
+        PaymentOrderMapper paymentOrderMapper = mock(PaymentOrderMapper.class);
+        AlipayPaymentClient alipayPaymentClient = mock(AlipayPaymentClient.class);
+        PaymentRetrySleeper paymentRetrySleeper = mock(PaymentRetrySleeper.class);
+        String safeMessage = "支付宝扫码支付下单失败，请稍后重试或改用支付宝收银台";
+        when(alipayPaymentClient.precreate(any())).thenThrow(new BusinessException(safeMessage));
+        when(paymentOrderMapper.update(any(), any())).thenReturn(1);
+        PaymentOrderServiceImpl service = service(
+                paymentOrderMapper,
+                mock(UserMembershipMapper.class),
+                mock(CreditAccountService.class),
+                mock(MembershipService.class),
+                alipayPaymentClient,
+                paymentRetrySleeper
+        );
+
+        assertThatThrownBy(() -> service.createRechargeOrder(7L, 5000, PaymentMethod.QR))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage(safeMessage);
+
+        ArgumentCaptor<PaymentOrder> insertedCaptor = ArgumentCaptor.forClass(PaymentOrder.class);
+        ArgumentCaptor<PaymentOrder> updateCaptor = ArgumentCaptor.forClass(PaymentOrder.class);
+        @SuppressWarnings("rawtypes")
+        ArgumentCaptor<LambdaUpdateWrapper> wrapperCaptor = ArgumentCaptor.forClass(LambdaUpdateWrapper.class);
+        InOrder calls = inOrder(paymentOrderMapper, alipayPaymentClient);
+        calls.verify(paymentOrderMapper).insert(insertedCaptor.capture());
+        calls.verify(alipayPaymentClient).precreate(any());
+        verify(paymentOrderMapper).update(updateCaptor.capture(), wrapperCaptor.capture());
+        verify(alipayPaymentClient).precreate(any());
+        verifyNoInteractions(paymentRetrySleeper);
+
+        PaymentOrder inserted = insertedCaptor.getValue();
+        assertThat(updateCaptor.getValue().getStatus()).isEqualTo(PaymentOrderStatus.CLOSED.name());
+        assertThat(updateCaptor.getValue().getUpdatedAt()).isNotNull();
+        assertCreatedGuard(wrapperCaptor.getValue(), inserted.getOrderNo());
+    }
+
+    @Test
+    void nonRetryableQrBusinessErrorReturnsConcurrentTerminalOrderWhenCloseLoses() {
+        PaymentOrderMapper paymentOrderMapper = mock(PaymentOrderMapper.class);
+        AlipayPaymentClient alipayPaymentClient = mock(AlipayPaymentClient.class);
+        PaymentRetrySleeper paymentRetrySleeper = mock(PaymentRetrySleeper.class);
+        AtomicReference<PaymentOrder> persisted = new AtomicReference<>();
+        when(paymentOrderMapper.insert(any())).thenAnswer(invocation -> {
+            persisted.set(invocation.getArgument(0));
+            return 1;
+        });
+        when(paymentOrderMapper.update(any(), any())).thenAnswer(invocation -> {
+            persisted.get().setStatus(PaymentOrderStatus.PAID.name());
+            persisted.get().setQrcode("https://qr.alipay.com/callback-race");
+            return 0;
+        });
+        when(paymentOrderMapper.selectOne(any())).thenAnswer(invocation -> persisted.get());
         when(alipayPaymentClient.precreate(any()))
                 .thenThrow(new BusinessException("支付宝扫码支付下单失败，请稍后重试或改用支付宝收银台"));
         PaymentOrderServiceImpl service = service(
@@ -88,14 +267,228 @@ class PaymentOrderServiceImplTest {
                 mock(UserMembershipMapper.class),
                 mock(CreditAccountService.class),
                 mock(MembershipService.class),
-                alipayPaymentClient
+                alipayPaymentClient,
+                paymentRetrySleeper
+        );
+        AtomicReference<PaymentOrderCreateResponse> response = new AtomicReference<>();
+
+        assertThatCode(() -> response.set(service.createRechargeOrder(7L, 5000, PaymentMethod.QR)))
+                .doesNotThrowAnyException();
+
+        assertThat(response.get().status()).isEqualTo(PaymentOrderStatus.PAID.name());
+        assertThat(response.get().paymentReady()).isFalse();
+        assertThat(response.get().paymentHtml()).isNull();
+        assertThat(response.get().qrCode()).isNull();
+        assertThat(response.get().paymentMessage()).isNull();
+        verify(alipayPaymentClient).precreate(any());
+        verifyNoInteractions(paymentRetrySleeper);
+        verify(paymentOrderMapper).selectOne(any());
+    }
+
+    @Test
+    void interruptedQrRetryReturnsConcurrentTerminalOrderWhenCloseLoses() {
+        PaymentOrderMapper paymentOrderMapper = mock(PaymentOrderMapper.class);
+        AlipayPaymentClient alipayPaymentClient = mock(AlipayPaymentClient.class);
+        PaymentRetrySleeper paymentRetrySleeper = mock(PaymentRetrySleeper.class);
+        AtomicReference<PaymentOrder> persisted = new AtomicReference<>();
+        when(paymentOrderMapper.insert(any())).thenAnswer(invocation -> {
+            persisted.set(invocation.getArgument(0));
+            return 1;
+        });
+        when(paymentOrderMapper.update(any(), any())).thenAnswer(invocation -> {
+            persisted.get().setStatus(PaymentOrderStatus.CLOSED.name());
+            return 0;
+        });
+        when(paymentOrderMapper.selectOne(any())).thenAnswer(invocation -> persisted.get());
+        when(alipayPaymentClient.precreate(any()))
+                .thenThrow(new RetryablePaymentGatewayException("temporary", new RuntimeException("504")));
+        doThrow(new BusinessException("支付宝扫码支付请求已中断，请重新尝试"))
+                .when(paymentRetrySleeper).pauseBeforeAttempt(2);
+        PaymentOrderServiceImpl service = service(
+                paymentOrderMapper,
+                mock(UserMembershipMapper.class),
+                mock(CreditAccountService.class),
+                mock(MembershipService.class),
+                alipayPaymentClient,
+                paymentRetrySleeper
+        );
+        AtomicReference<PaymentOrderCreateResponse> response = new AtomicReference<>();
+
+        assertThatCode(() -> response.set(service.createRechargeOrder(7L, 5000, PaymentMethod.QR)))
+                .doesNotThrowAnyException();
+
+        assertThat(response.get().status()).isEqualTo(PaymentOrderStatus.CLOSED.name());
+        assertThat(response.get().paymentReady()).isFalse();
+        assertThat(response.get().paymentHtml()).isNull();
+        assertThat(response.get().qrCode()).isNull();
+        assertThat(response.get().paymentMessage()).isNull();
+        verify(alipayPaymentClient).precreate(any());
+        verify(paymentRetrySleeper).pauseBeforeAttempt(2);
+        verify(paymentOrderMapper).selectOne(any());
+    }
+
+    @Test
+    void qrSuccessConditionallyStoresQrForCreatedOrder() {
+        PaymentOrderMapper paymentOrderMapper = mock(PaymentOrderMapper.class);
+        AlipayPaymentClient alipayPaymentClient = mock(AlipayPaymentClient.class);
+        PaymentRetrySleeper paymentRetrySleeper = mock(PaymentRetrySleeper.class);
+        stubOrderPersistence(paymentOrderMapper);
+        when(alipayPaymentClient.precreate(any()))
+                .thenReturn(new AlipayPrecreateResult("https://qr.alipay.com/example"));
+        PaymentOrderServiceImpl service = service(
+                paymentOrderMapper,
+                mock(UserMembershipMapper.class),
+                mock(CreditAccountService.class),
+                mock(MembershipService.class),
+                alipayPaymentClient,
+                paymentRetrySleeper
         );
 
-        assertThatThrownBy(() -> service.createRechargeOrder(7L, 5000, PaymentMethod.QR))
-                .isInstanceOf(BusinessException.class)
-                .hasMessageContaining("改用支付宝收银台");
+        PaymentOrderCreateResponse response = service.createRechargeOrder(7L, 5000, PaymentMethod.QR);
 
-        verify(paymentOrderMapper, never()).insert(any());
+        ArgumentCaptor<PaymentOrder> insertedCaptor = ArgumentCaptor.forClass(PaymentOrder.class);
+        ArgumentCaptor<PaymentOrder> updateCaptor = ArgumentCaptor.forClass(PaymentOrder.class);
+        @SuppressWarnings("rawtypes")
+        ArgumentCaptor<LambdaUpdateWrapper> wrapperCaptor = ArgumentCaptor.forClass(LambdaUpdateWrapper.class);
+        verify(paymentOrderMapper).insert(insertedCaptor.capture());
+        verify(paymentOrderMapper).update(updateCaptor.capture(), wrapperCaptor.capture());
+        PaymentOrder update = updateCaptor.getValue();
+        assertThat(update.getQrcode()).isEqualTo("https://qr.alipay.com/example");
+        assertThat(update.getUpdatedAt()).isNotNull();
+        assertThat(update.getStatus()).isNull();
+        assertThat(update.getOrderNo()).isNull();
+        assertCreatedGuard(wrapperCaptor.getValue(), insertedCaptor.getValue().getOrderNo());
+        assertThat(response.paymentReady()).isTrue();
+        assertThat(response.paymentMessage()).isNull();
+        verifyNoInteractions(paymentRetrySleeper);
+    }
+
+    @Test
+    void qrUpdateMissWithCreatedOrderReturnsRecoverableUnreadyResponse() {
+        PaymentOrderMapper paymentOrderMapper = mock(PaymentOrderMapper.class);
+        AlipayPaymentClient alipayPaymentClient = mock(AlipayPaymentClient.class);
+        AtomicReference<PaymentOrder> inserted = new AtomicReference<>();
+        when(paymentOrderMapper.insert(any())).thenAnswer(invocation -> {
+            inserted.set(invocation.getArgument(0));
+            return 1;
+        });
+        when(paymentOrderMapper.update(any(), any())).thenReturn(0);
+        when(paymentOrderMapper.selectOne(any())).thenAnswer(invocation -> inserted.get());
+        when(alipayPaymentClient.precreate(any()))
+                .thenReturn(new AlipayPrecreateResult("https://qr.alipay.com/not-persisted"));
+        PaymentOrderServiceImpl service = service(
+                paymentOrderMapper,
+                mock(UserMembershipMapper.class),
+                mock(CreditAccountService.class),
+                mock(MembershipService.class),
+                alipayPaymentClient,
+                mock(PaymentRetrySleeper.class)
+        );
+
+        PaymentOrderCreateResponse response = service.createRechargeOrder(7L, 5000, PaymentMethod.QR);
+
+        assertThat(response.status()).isEqualTo(PaymentOrderStatus.CREATED.name());
+        assertThat(response.paymentReady()).isFalse();
+        assertThat(response.qrCode()).isNull();
+        assertThat(response.paymentMessage())
+                .isEqualTo("支付宝扫码支付服务暂时不可用，请稍后重试或改用支付宝收银台");
+        assertThat(inserted.get().getQrcode()).isNull();
+        verify(paymentOrderMapper).update(any(), any());
+        verify(paymentOrderMapper).selectOne(any());
+    }
+
+    @ParameterizedTest
+    @NullSource
+    @ValueSource(strings = {"", " "})
+    void unusableQrResultReturnsRecoverableUnreadyResponse(String qrCode) {
+        PaymentOrderMapper paymentOrderMapper = mock(PaymentOrderMapper.class);
+        AlipayPaymentClient alipayPaymentClient = mock(AlipayPaymentClient.class);
+        AtomicReference<PaymentOrder> inserted = new AtomicReference<>();
+        when(paymentOrderMapper.insert(any())).thenAnswer(invocation -> {
+            inserted.set(invocation.getArgument(0));
+            return 1;
+        });
+        when(paymentOrderMapper.selectOne(any())).thenAnswer(invocation -> inserted.get());
+        when(alipayPaymentClient.precreate(any())).thenReturn(new AlipayPrecreateResult(qrCode));
+        PaymentOrderServiceImpl service = service(
+                paymentOrderMapper,
+                mock(UserMembershipMapper.class),
+                mock(CreditAccountService.class),
+                mock(MembershipService.class),
+                alipayPaymentClient,
+                mock(PaymentRetrySleeper.class)
+        );
+
+        PaymentOrderCreateResponse response = service.createRechargeOrder(7L, 5000, PaymentMethod.QR);
+
+        assertThat(response.status()).isEqualTo(PaymentOrderStatus.CREATED.name());
+        assertThat(response.paymentReady()).isFalse();
+        assertThat(response.qrCode()).isNull();
+        assertThat(response.paymentMessage())
+                .isEqualTo("支付宝扫码支付服务暂时不可用，请稍后重试或改用支付宝收银台");
+        assertThat(inserted.get().getQrcode()).isNull();
+        verify(paymentOrderMapper, never()).update(any(), any());
+        verify(paymentOrderMapper).selectOne(any());
+    }
+
+    @Test
+    void concurrentTerminalQrResultStripsPaymentPayloads() {
+        PaymentOrderMapper paymentOrderMapper = mock(PaymentOrderMapper.class);
+        AlipayPaymentClient alipayPaymentClient = mock(AlipayPaymentClient.class);
+        AtomicReference<PaymentOrder> inserted = new AtomicReference<>();
+        when(paymentOrderMapper.insert(any())).thenAnswer(invocation -> {
+            inserted.set(invocation.getArgument(0));
+            return 1;
+        });
+        when(paymentOrderMapper.update(any(), any())).thenAnswer(invocation -> {
+            inserted.get().setStatus(PaymentOrderStatus.PAID.name());
+            inserted.get().setQrcode("https://qr.alipay.com/callback-race");
+            return 0;
+        });
+        when(paymentOrderMapper.selectOne(any())).thenAnswer(invocation -> inserted.get());
+        when(alipayPaymentClient.precreate(any()))
+                .thenReturn(new AlipayPrecreateResult("https://qr.alipay.com/example"));
+        PaymentOrderServiceImpl service = service(
+                paymentOrderMapper,
+                mock(UserMembershipMapper.class),
+                mock(CreditAccountService.class),
+                mock(MembershipService.class),
+                alipayPaymentClient,
+                mock(PaymentRetrySleeper.class)
+        );
+
+        PaymentOrderCreateResponse response = service.createRechargeOrder(7L, 5000, PaymentMethod.QR);
+
+        assertThat(response.status()).isEqualTo(PaymentOrderStatus.PAID.name());
+        assertThat(response.paymentHtml()).isNull();
+        assertThat(response.qrCode()).isNull();
+        assertThat(response.paymentReady()).isFalse();
+        assertThat(response.paymentMessage()).isNull();
+        verify(paymentOrderMapper).selectOne(any());
+    }
+
+    @Test
+    void createMethodsDoNotDeclareTransactionalBoundary() throws NoSuchMethodException {
+        assertThat(PaymentOrderServiceImpl.class.getMethod(
+                "createRechargeOrder", Long.class, int.class, PaymentMethod.class
+        ).getAnnotation(Transactional.class)).isNull();
+        assertThat(PaymentOrderServiceImpl.class.getMethod(
+                "createMembershipOrder", Long.class, String.class, PaymentMethod.class
+        ).getAnnotation(Transactional.class)).isNull();
+    }
+
+    @Test
+    void retrySleeperRestoresInterruptFlagAndThrowsSafeBusinessException() {
+        PaymentRetrySleeper sleeper = new PaymentRetrySleeper();
+        Thread.currentThread().interrupt();
+        try {
+            assertThatThrownBy(() -> sleeper.pauseBeforeAttempt(2))
+                    .isInstanceOf(BusinessException.class)
+                    .hasMessage("支付宝扫码支付请求已中断，请重新尝试");
+            assertThat(Thread.currentThread().isInterrupted()).isTrue();
+        } finally {
+            Thread.interrupted();
+        }
     }
 
     @Test
@@ -125,6 +518,7 @@ class PaymentOrderServiceImplTest {
                 new PaymentProductCatalog(),
                 alipayProperties(),
                 alipayPaymentClient,
+                mock(PaymentRetrySleeper.class),
                 transactionTemplate()
         );
 
@@ -150,12 +544,17 @@ class PaymentOrderServiceImplTest {
         assertThat(response.qrCode()).isNull();
         assertThat(response.expiresAt()).isEqualTo(order.getExpiresAt());
         assertThat(response.totalCredits()).isEqualTo(1150);
+        assertThat(response.paymentReady()).isTrue();
+        assertThat(response.paymentMessage()).isNull();
         assertThat(pagePayRequest.orderNo()).isEqualTo(order.getOrderNo());
         assertThat(pagePayRequest.subject()).isEqualTo(order.getProductName());
         assertThat(pagePayRequest.totalAmount()).isEqualByComparingTo("50.00");
         assertThat(pagePayRequest.notifyUrl()).isEqualTo(alipayProperties().getNotifyUrl());
         assertThat(pagePayRequest.returnUrl()).isEqualTo(alipayProperties().getReturnUrl());
         assertThat(pagePayRequest.timeoutExpress()).isEqualTo(alipayProperties().getTimeoutExpress());
+        InOrder calls = inOrder(alipayPaymentClient, paymentOrderMapper);
+        calls.verify(alipayPaymentClient).pagePay(any());
+        calls.verify(paymentOrderMapper).insert(any());
     }
 
     @Test
@@ -184,6 +583,7 @@ class PaymentOrderServiceImplTest {
                 new PaymentProductCatalog(),
                 alipayProperties(),
                 alipayPaymentClient,
+                mock(PaymentRetrySleeper.class),
                 transactionTemplate()
         );
 
@@ -246,6 +646,7 @@ class PaymentOrderServiceImplTest {
                 new PaymentProductCatalog(),
                 alipayProperties(),
                 alipayPaymentClient,
+                mock(PaymentRetrySleeper.class),
                 transactionTemplate()
         );
 
@@ -284,6 +685,7 @@ class PaymentOrderServiceImplTest {
                 new PaymentProductCatalog(),
                 alipayProperties(),
                 alipayPaymentClient,
+                mock(PaymentRetrySleeper.class),
                 transactionTemplate()
         );
 
@@ -322,6 +724,7 @@ class PaymentOrderServiceImplTest {
                 new PaymentProductCatalog(),
                 alipayProperties(),
                 alipayPaymentClient,
+                mock(PaymentRetrySleeper.class),
                 transactionTemplate()
         );
 
@@ -387,6 +790,7 @@ class PaymentOrderServiceImplTest {
                 new PaymentProductCatalog(),
                 alipayProperties(),
                 mock(AlipayPaymentClient.class),
+                mock(PaymentRetrySleeper.class),
                 new TransactionTemplate(transactionManager)
         );
 
@@ -545,6 +949,22 @@ class PaymentOrderServiceImplTest {
                                             CreditAccountService creditAccountService,
                                             MembershipService membershipService,
                                             AlipayPaymentClient alipayPaymentClient) {
+        return service(
+                paymentOrderMapper,
+                userMembershipMapper,
+                creditAccountService,
+                membershipService,
+                alipayPaymentClient,
+                mock(PaymentRetrySleeper.class)
+        );
+    }
+
+    private PaymentOrderServiceImpl service(PaymentOrderMapper paymentOrderMapper,
+                                            UserMembershipMapper userMembershipMapper,
+                                            CreditAccountService creditAccountService,
+                                            MembershipService membershipService,
+                                            AlipayPaymentClient alipayPaymentClient,
+                                            PaymentRetrySleeper paymentRetrySleeper) {
         return new PaymentOrderServiceImpl(
                 paymentOrderMapper,
                 creditAccountService,
@@ -552,8 +972,45 @@ class PaymentOrderServiceImplTest {
                 new PaymentProductCatalog(),
                 alipayProperties(),
                 alipayPaymentClient,
+                paymentRetrySleeper,
                 transactionTemplate()
         );
+    }
+
+    private AtomicReference<PaymentOrder> stubOrderPersistence(PaymentOrderMapper paymentOrderMapper) {
+        AtomicReference<PaymentOrder> persisted = new AtomicReference<>();
+        when(paymentOrderMapper.insert(any())).thenAnswer(invocation -> {
+            PaymentOrder order = invocation.getArgument(0);
+            assertThat(order.getStatus()).isEqualTo(PaymentOrderStatus.CREATED.name());
+            assertThat(order.getQrcode()).isNull();
+            assertThat(order.getExpiresAt()).isNotNull();
+            assertThat(order.getCreatedAt()).isNotNull();
+            assertThat(order.getUpdatedAt()).isNotNull();
+            persisted.set(order);
+            return 1;
+        });
+        when(paymentOrderMapper.update(any(), any())).thenAnswer(invocation -> {
+            PaymentOrder update = invocation.getArgument(0);
+            PaymentOrder order = persisted.get();
+            if (update.getQrcode() != null) {
+                order.setQrcode(update.getQrcode());
+            }
+            if (update.getStatus() != null) {
+                order.setStatus(update.getStatus());
+            }
+            order.setUpdatedAt(update.getUpdatedAt());
+            return 1;
+        });
+        when(paymentOrderMapper.selectOne(any())).thenAnswer(invocation -> persisted.get());
+        return persisted;
+    }
+
+    @SuppressWarnings("rawtypes")
+    private void assertCreatedGuard(LambdaUpdateWrapper wrapper, String orderNo) {
+        assertThat(wrapper.getSqlSegment()).contains("order_no").contains("status");
+        @SuppressWarnings("unchecked")
+        Map<String, Object> parameters = wrapper.getParamNameValuePairs();
+        assertThat(parameters).containsValue(orderNo).containsValue(PaymentOrderStatus.CREATED.name());
     }
 
     private TransactionTemplate transactionTemplate() {

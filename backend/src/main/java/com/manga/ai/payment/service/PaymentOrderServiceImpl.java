@@ -22,6 +22,7 @@ import com.manga.ai.payment.enums.MembershipTier;
 import com.manga.ai.payment.enums.PaymentOrderStatus;
 import com.manga.ai.payment.enums.PaymentOrderType;
 import com.manga.ai.payment.enums.PaymentMethod;
+import com.manga.ai.payment.exception.RetryablePaymentGatewayException;
 import com.manga.ai.payment.mapper.PaymentOrderMapper;
 import com.manga.ai.payment.model.MembershipProduct;
 import com.manga.ai.payment.model.RechargePackage;
@@ -47,6 +48,10 @@ public class PaymentOrderServiceImpl implements PaymentOrderService {
 
     private static final DateTimeFormatter ORDER_TIME_FORMATTER = DateTimeFormatter.ofPattern("yyyyMMddHHmmssSSS");
     private static final SecureRandom RANDOM = new SecureRandom();
+    private static final int QR_PRECREATE_MAX_ATTEMPTS = 3;
+    private static final String QR_TIMEOUT_EXPRESS = "2h";
+    private static final String QR_UNAVAILABLE_MESSAGE =
+            "支付宝扫码支付服务暂时不可用，请稍后重试或改用支付宝收银台";
 
     private final PaymentOrderMapper paymentOrderMapper;
     private final CreditAccountService creditAccountService;
@@ -54,6 +59,7 @@ public class PaymentOrderServiceImpl implements PaymentOrderService {
     private final PaymentProductCatalog productCatalog;
     private final AlipayProperties alipayProperties;
     private final AlipayPaymentClient alipayPaymentClient;
+    private final PaymentRetrySleeper paymentRetrySleeper;
     private final TransactionTemplate transactionTemplate;
 
     @Override
@@ -71,7 +77,6 @@ public class PaymentOrderServiceImpl implements PaymentOrderService {
     }
 
     @Override
-    @Transactional
     public PaymentOrderCreateResponse createRechargeOrder(Long userId, int amountCents, PaymentMethod paymentMethod) {
         ensureLoggedIn(userId);
         RechargePackage rechargePackage = productCatalog.rechargePackage(amountCents, activeTier(userId));
@@ -85,7 +90,6 @@ public class PaymentOrderServiceImpl implements PaymentOrderService {
     }
 
     @Override
-    @Transactional
     public PaymentOrderCreateResponse createMembershipOrder(Long userId, String productCode, PaymentMethod paymentMethod) {
         ensureLoggedIn(userId);
         MembershipProduct product = productCatalog.findMembershipProduct(productCode);
@@ -222,29 +226,88 @@ public class PaymentOrderServiceImpl implements PaymentOrderService {
         order.setExpiresAt(now.plusHours(2));
         order.setCreatedAt(now);
         order.setUpdatedAt(now);
-        String paymentHtml = null;
         if (PaymentMethod.QR.name().equals(order.getPaymentMethod())) {
-            AlipayPrecreateResult result = alipayPaymentClient.precreate(new AlipayPrecreateRequest(
-                    order.getOrderNo(),
-                    order.getProductName(),
-                    amountAsYuan(order.getAmountCents()),
-                    alipayProperties.getNotifyUrl(),
-                    "2h"
-            ));
-            order.setQrcode(result.qrCode());
-        } else {
-            AlipayPagePayResult result = alipayPaymentClient.pagePay(new AlipayPagePayRequest(
-                    order.getOrderNo(),
-                    order.getProductName(),
-                    amountAsYuan(order.getAmountCents()),
-                    alipayProperties.getNotifyUrl(),
-                    alipayProperties.getReturnUrl(),
-                    alipayProperties.getTimeoutExpress()
-            ));
-            paymentHtml = result.paymentHtml();
+            return prepareQrPayAndInsert(order);
         }
+
+        AlipayPagePayResult result = alipayPaymentClient.pagePay(new AlipayPagePayRequest(
+                order.getOrderNo(),
+                order.getProductName(),
+                amountAsYuan(order.getAmountCents()),
+                alipayProperties.getNotifyUrl(),
+                alipayProperties.getReturnUrl(),
+                alipayProperties.getTimeoutExpress()
+        ));
         paymentOrderMapper.insert(order);
-        return toCreateResponse(order, paymentHtml);
+        return toCreateResponse(order, result.paymentHtml(), true, null);
+    }
+
+    private PaymentOrderCreateResponse prepareQrPayAndInsert(PaymentOrder order) {
+        paymentOrderMapper.insert(order);
+        AlipayPrecreateResult result;
+        try {
+            result = precreateQrWithRetry(order);
+        } catch (BusinessException exception) {
+            return closeOrReturnTerminalOrder(order.getOrderNo(), exception);
+        }
+        if (result != null && notBlank(result.qrCode())) {
+            updateQrCodeForCreatedOrder(order.getOrderNo(), result.qrCode());
+        }
+        return reloadedQrCreateResponse(order.getOrderNo());
+    }
+
+    private PaymentOrderCreateResponse reloadedQrCreateResponse(String orderNo) {
+        PaymentOrder current = findOrder(orderNo);
+        if (!PaymentOrderStatus.CREATED.name().equals(current.getStatus())) {
+            return toCreateResponse(current, null, false, null);
+        }
+        if (!notBlank(current.getQrcode())) {
+            return toCreateResponse(current, null, false, QR_UNAVAILABLE_MESSAGE);
+        }
+        return toCreateResponse(current, null, true, null);
+    }
+
+    private PaymentOrderCreateResponse closeOrReturnTerminalOrder(String orderNo, BusinessException exception) {
+        if (closeCreatedOrder(orderNo) > 0) {
+            throw exception;
+        }
+        PaymentOrder current = findOrder(orderNo);
+        if (PaymentOrderStatus.CREATED.name().equals(current.getStatus())) {
+            throw exception;
+        }
+        return toCreateResponse(current, null, false, null);
+    }
+
+    private AlipayPrecreateResult precreateQrWithRetry(PaymentOrder order) {
+        AlipayPrecreateRequest request = new AlipayPrecreateRequest(
+                order.getOrderNo(),
+                order.getProductName(),
+                amountAsYuan(order.getAmountCents()),
+                alipayProperties.getNotifyUrl(),
+                QR_TIMEOUT_EXPRESS
+        );
+        for (int attempt = 1; attempt <= QR_PRECREATE_MAX_ATTEMPTS; attempt++) {
+            try {
+                return alipayPaymentClient.precreate(request);
+            } catch (RetryablePaymentGatewayException ignored) {
+                log.warn("支付宝预下单暂时失败: orderNo={}, attempt={}/3", order.getOrderNo(), attempt);
+                if (attempt == QR_PRECREATE_MAX_ATTEMPTS) {
+                    return null;
+                }
+                paymentRetrySleeper.pauseBeforeAttempt(attempt + 1);
+            }
+        }
+        return null;
+    }
+
+    private void updateQrCodeForCreatedOrder(String orderNo, String qrCode) {
+        PaymentOrder update = new PaymentOrder();
+        update.setQrcode(qrCode);
+        update.setUpdatedAt(LocalDateTime.now());
+        LambdaUpdateWrapper<PaymentOrder> wrapper = new LambdaUpdateWrapper<>();
+        wrapper.eq(PaymentOrder::getOrderNo, orderNo)
+                .eq(PaymentOrder::getStatus, PaymentOrderStatus.CREATED.name());
+        paymentOrderMapper.update(update, wrapper);
     }
 
     private PaymentOrder baseOrder(Long userId, PaymentOrderType type, String productCode, String productName,
@@ -286,14 +349,14 @@ public class PaymentOrderServiceImpl implements PaymentOrderService {
         }
     }
 
-    private void closeCreatedOrder(String orderNo) {
+    private int closeCreatedOrder(String orderNo) {
         PaymentOrder update = new PaymentOrder();
         update.setStatus(PaymentOrderStatus.CLOSED.name());
         update.setUpdatedAt(LocalDateTime.now());
         LambdaUpdateWrapper<PaymentOrder> wrapper = new LambdaUpdateWrapper<>();
         wrapper.eq(PaymentOrder::getOrderNo, orderNo)
                 .eq(PaymentOrder::getStatus, PaymentOrderStatus.CREATED.name());
-        paymentOrderMapper.update(update, wrapper);
+        return paymentOrderMapper.update(update, wrapper);
     }
 
     private boolean isExpiredQrOrder(PaymentOrder order, LocalDateTime now) {
@@ -357,7 +420,8 @@ public class PaymentOrderServiceImpl implements PaymentOrderService {
                 .divide(BigDecimal.valueOf(100), 2, RoundingMode.UNNECESSARY);
     }
 
-    private PaymentOrderCreateResponse toCreateResponse(PaymentOrder order, String paymentHtml) {
+    private PaymentOrderCreateResponse toCreateResponse(PaymentOrder order, String paymentHtml,
+                                                        boolean paymentReady, String paymentMessage) {
         return new PaymentOrderCreateResponse(
                 order.getOrderNo(),
                 order.getOrderType(),
@@ -369,8 +433,10 @@ public class PaymentOrderServiceImpl implements PaymentOrderService {
                 order.getStatus(),
                 order.getPaymentMethod(),
                 paymentHtml,
-                order.getQrcode(),
-                order.getExpiresAt()
+                paymentReady ? order.getQrcode() : null,
+                order.getExpiresAt(),
+                paymentReady,
+                paymentMessage
         );
     }
 
