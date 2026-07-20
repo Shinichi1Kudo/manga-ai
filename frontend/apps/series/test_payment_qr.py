@@ -30,8 +30,19 @@ class MembershipQrPaymentTests(TestCase):
         self.assertIn('MIT License', (vendor_dir / 'LICENSE').read_text(encoding='utf-8'))
 
     def test_payment_qr_runtime_assets_are_discoverable(self):
-        self.assertIsNotNone(finders.find('vendor/qrcode/qrcode.min.js'))
-        self.assertIsNotNone(finders.find('js/payment-center-core.js'))
+        for asset in (
+            'vendor/qrcode/qrcode.min.js',
+            'js/payment-center-core.js',
+            'js/payment-center.js',
+            'css/payment-center.css',
+        ):
+            self.assertIsNotNone(finders.find(asset), asset)
+
+        template = (
+            Path(settings.BASE_DIR) / 'templates/payments/membership.html'
+        ).read_text(encoding='utf-8')
+        self.assertNotIn('cdn.jsdelivr.net', template)
+        self.assertNotIn('unpkg.com', template)
 
     def test_payment_center_controller_has_authoritative_state_contract(self):
         controller_path = Path(settings.BASE_DIR) / 'static/js/payment-center.js'
