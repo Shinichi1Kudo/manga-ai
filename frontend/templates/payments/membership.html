@@ -319,7 +319,7 @@
                 aria-selected="false" aria-controls="paymentCenterPendingView">
             待支付订单
             <span id="paymentCenterPendingCount" class="payment-center-tab-count"
-                  aria-live="polite" aria-atomic="true">0</span>
+                  aria-live="polite" aria-atomic="true" hidden>0</span>
         </button>
     </nav>
 
@@ -612,5 +612,5 @@
 </script>
 <script src="{% static 'vendor/qrcode/qrcode.min.js' %}?v=1.5.3"></script>
 <script src="{% static 'js/payment-center-core.js' %}?v=20260719"></script>
-<script src="{% static 'js/payment-center.js' %}?v=20260719"></script>
+<script src="{% static 'js/payment-center.js' %}?v=20260720"></script>
 {% endblock %}

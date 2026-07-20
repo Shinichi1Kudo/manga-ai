@@ -260,7 +260,10 @@
                 `/api/payments/orders/${encodeURIComponent(ORDER_NO)}/sync/`,
                 {
                     method: 'POST',
-                    headers: {'Accept': 'application/json'}
+                    headers: {
+                        'Accept': 'application/json',
+                        'X-CSRFToken': getCookie('csrftoken')
+                    }
                 }
             );
             const payload = await response.json();

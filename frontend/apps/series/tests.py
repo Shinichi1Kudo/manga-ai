@@ -194,27 +194,28 @@ class MembershipPaymentPageTests(TestCase):
     def test_membership_page_supports_qr_and_one_time_alipay_cashier_flow(self):
         response = self.client.get('/membership/')
         template = response.content.decode('utf-8')
+        controller = (
+            Path(settings.BASE_DIR) / 'static/js/payment-center.js'
+        ).read_text(encoding='utf-8')
 
         self.assertContains(response, '前往支付宝支付')
         self.assertContains(response, '扫码支付')
         self.assertContains(response, '支付宝收银台')
         self.assertContains(response, '单次支付，到期自动结束', count=1)
 
-        self.assertIn('data.data.paymentHtml', template)
-        self.assertIn("paymentMethod: selectedPaymentMethod", template)
-        self.assertIn('QRCode.toCanvas', template)
+        self.assertIn('/static/js/payment-center.js?v=20260720', template)
         self.assertIn('paymentQrCanvas', template)
-        self.assertIn('startQrPolling', template)
-        self.assertIn('form.submit()', template)
-        self.assertIn('openapi.alipay.com', template)
-        self.assertIn('openapi-sandbox.dl.alipaydev.com', template)
+        self.assertIn("paymentMethod: method", controller)
+        self.assertIn('PaymentCenterCore.renderQr', controller)
+        self.assertIn('startPolling()', controller)
+        self.assertIn('HTMLFormElement.prototype.submit.call(form)', controller)
+        self.assertIn('openapi.alipay.com', controller)
+        self.assertIn('openapi-sandbox.dl.alipaydev.com', controller)
 
         for cashier_contract in (
-            "button.disabled = true",
-            "button.textContent = '正在前往支付宝'",
-            'restoreOrderButton(button, originalButtonText)',
+            'PaymentCenterCore.UI.PAGE_REDIRECTING',
             "window.location.href = '/auth/login/'",
-            'submitAlipayForm(data.data.paymentHtml)',
+            'this.submitAlipayForm(order.paymentHtml)',
             "sourceForms.length !== 1",
             "sourceForm.method.toUpperCase() !== 'POST'",
             "action.protocol !== 'https:'",
@@ -225,11 +226,13 @@ class MembershipPaymentPageTests(TestCase):
             "input.type = 'hidden'",
             "form.target = '_self'",
         ):
-            self.assertIn(cashier_contract, template)
+            self.assertIn(cashier_contract, controller)
 
-        self.assertNotIn('innerHTML = paymentHtml', template)
-        self.assertNotIn('insertAdjacentHTML', template)
-        self.assertNotIn('document.write', template)
+        self.assertNotIn('innerHTML = paymentHtml', controller)
+        self.assertNotIn('insertAdjacentHTML', controller)
+        self.assertNotIn('document.write', controller)
+        self.assertNotIn('id="paymentMethodModal"', template)
+        self.assertNotIn('id="paymentQrModal"', template)
 
         fallback_products = template.split('const fallbackProducts =', 1)[1].split(
             'const defaultFeatures', 1
@@ -260,6 +263,7 @@ class MembershipPaymentPageTests(TestCase):
         ).read_text(encoding='utf-8')
 
         self.assertEqual(response.status_code, 200)
+        self.assertIn('csrftoken', response.cookies)
         self.assertContains(response, '正在确认支付结果')
         self.assertContains(response, 'PAY202607170001')
         self.assertIn("const ORDER_NO = 'PAY202607170001';", body)
@@ -270,6 +274,10 @@ class MembershipPaymentPageTests(TestCase):
             body,
         )
         self.assertIn("method: 'POST'", body)
+        self.assertIn(
+            "'X-CSRFToken': getCookie('csrftoken')",
+            result_template,
+        )
         self.assertIn('response.status === 401', body)
         self.assertIn("window.location.href = '/auth/login/'", body)
         self.assertIn('payload.data.status', body)

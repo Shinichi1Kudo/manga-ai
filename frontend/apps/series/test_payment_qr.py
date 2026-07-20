@@ -33,6 +33,470 @@ class MembershipQrPaymentTests(TestCase):
         self.assertIsNotNone(finders.find('vendor/qrcode/qrcode.min.js'))
         self.assertIsNotNone(finders.find('js/payment-center-core.js'))
 
+    def test_payment_center_controller_has_authoritative_state_contract(self):
+        controller_path = Path(settings.BASE_DIR) / 'static/js/payment-center.js'
+        self.assertTrue(controller_path.is_file())
+        controller = controller_path.read_text(encoding='utf-8')
+
+        for state in (
+            'CHOOSING', 'CREATING', 'CREATE_ERROR', 'QR_READY',
+            'QR_RENDER_ERROR', 'QUERYING', 'PAID', 'EXPIRED',
+            'PAGE_REDIRECTING',
+        ):
+            self.assertIn(f'PaymentCenterCore.UI.{state}', controller)
+
+        self.assertIn('class PaymentCenter {', controller)
+        self.assertIn('window.paymentCenter = new PaymentCenter(', controller)
+        self.assertIn(
+            'PaymentCenterCore.renderQr(window.QRCode, offscreenCanvas, order.qrCode',
+            controller,
+        )
+        self.assertIn('PaymentCenterCore.withRenderFailure(', controller)
+        self.assertNotIn("currentQrOrder.status = 'FAILED'", controller)
+        self.assertNotIn("this.currentOrder.status = 'FAILED'", controller)
+
+    def test_payment_center_recovery_uses_same_order_and_safe_switch_endpoint(self):
+        controller = (
+            Path(settings.BASE_DIR) / 'static/js/payment-center.js'
+        ).read_text(encoding='utf-8')
+
+        self.assertIn("fetch('/api/payments/orders/pending/')", controller)
+        self.assertIn("/${encodeURIComponent(orderNo)}/resume/`", controller)
+        self.assertIn(
+            "/${encodeURIComponent(this.currentOrder.orderNo)}/switch-to-page/`",
+            controller,
+        )
+        self.assertIn('order.paymentReady', controller)
+        self.assertIn('order.qrCode', controller)
+        self.assertIn('await this.showQrOrder(order);', controller)
+
+        resume_start = controller.index('async resume(orderNo)')
+        resume_end = controller.index('async switchCurrentQrToPage()', resume_start)
+        resume_source = controller[resume_start:resume_end]
+        self.assertNotIn('/api/payments/membership/orders/', resume_source)
+        self.assertNotIn('/api/payments/recharge/orders/', resume_source)
+
+        switch_start = controller.index('async switchCurrentQrToPage()')
+        switch_end = controller.index('async syncCurrentOrder(', switch_start)
+        switch_source = controller[switch_start:switch_end]
+        self.assertIn('/switch-to-page/', switch_source)
+        self.assertNotIn('/api/payments/membership/orders/', switch_source)
+        self.assertNotIn('/api/payments/recharge/orders/', switch_source)
+
+    def test_payment_center_posts_share_csrf_and_safe_page_form_contracts(self):
+        controller = (
+            Path(settings.BASE_DIR) / 'static/js/payment-center.js'
+        ).read_text(encoding='utf-8')
+
+        self.assertIn("getCookie('csrftoken')", controller)
+        self.assertIn("'X-CSRFToken': csrfToken", controller)
+        for method_call in (
+            'this.postJson(endpoint, payload)',
+            'this.postJson(`/api/payments/orders/${encodeURIComponent(orderNo)}/resume/`)',
+            'this.postJson(`/api/payments/orders/${encodeURIComponent(this.currentOrder.orderNo)}/switch-to-page/`)',
+            'this.postJson(`/api/payments/orders/${encodeURIComponent(orderNo)}/sync/`)',
+        ):
+            self.assertIn(method_call, controller)
+
+        for cashier_contract in (
+            'new DOMParser().parseFromString(paymentHtml,',
+            "sourceForms.length !== 1",
+            "sourceForm.method.toUpperCase() !== 'POST'",
+            "action.protocol !== 'https:'",
+            "action.pathname !== '/gateway.do'",
+            "'openapi.alipay.com'",
+            "'openapi-sandbox.dl.alipaydev.com'",
+            "sourceForm.querySelectorAll('input[name]')",
+            "document.createElement('form')",
+            "document.createElement('input')",
+            "input.type = 'hidden'",
+            "form.target = '_self'",
+            'HTMLFormElement.prototype.submit.call(form)',
+        ):
+            self.assertIn(cashier_contract, controller)
+        self.assertNotIn('innerHTML = paymentHtml', controller)
+        self.assertNotIn('insertAdjacentHTML', controller)
+        self.assertNotIn('document.write', controller)
+
+    def test_payment_center_pending_dom_and_lifecycle_are_recoverable(self):
+        controller = (
+            Path(settings.BASE_DIR) / 'static/js/payment-center.js'
+        ).read_text(encoding='utf-8')
+
+        render_start = controller.index('renderPending(orders)')
+        render_end = controller.index('async resume(orderNo)', render_start)
+        render_source = controller[render_start:render_end]
+        self.assertIn('document.createElement(', render_source)
+        self.assertIn('.textContent =', render_source)
+        self.assertIn('replaceChildren(', render_source)
+        self.assertNotIn('.innerHTML', render_source)
+
+        for lifecycle_contract in (
+            'this.root.hidden = false;',
+            "this.root.removeAttribute('inert');",
+            "this.root.setAttribute('aria-hidden', 'false');",
+            'this.root.hidden = true;',
+            "this.root.setAttribute('inert', '');",
+            "this.root.setAttribute('aria-hidden', 'true');",
+            "document.body.classList.add('payment-center-open')",
+            "document.body.classList.remove('payment-center-open')",
+            "event.key !== 'Tab'",
+            'this.focusReturn.focus()',
+            "document.addEventListener('visibilitychange'",
+            'setInterval(() => this.syncCurrentOrder(false), 5000)',
+            'setInterval(() => this.updateCountdown(), 1000)',
+            'window.loadUserCredits',
+            'window.loadPendingPaymentCount',
+        ):
+            self.assertIn(lifecycle_contract, controller)
+
+        self.assertIn("params.get('paymentCenter') === 'pending'", controller)
+        self.assertIn("window.location.pathname !== '/membership/'", controller)
+        self.assertIn('window.closeMobileNav()', controller)
+
+    def test_payment_center_close_invalidates_late_redirects_and_traps_visible_focus(self):
+        controller = (
+            Path(settings.BASE_DIR) / 'static/js/payment-center.js'
+        ).read_text(encoding='utf-8')
+
+        self.assertIn('this.operationSequence = 0;', controller)
+        close_start = controller.index('close() {')
+        close_end = controller.index('handleKeydown(event)', close_start)
+        self.assertIn('this.operationSequence += 1;', controller[close_start:close_end])
+        self.assertIn('const operation = ++this.operationSequence;', controller)
+        self.assertIn(
+            'if (operation !== this.operationSequence || this.root.hidden) return;',
+            controller,
+        )
+        self.assertIn(
+            "element.closest('[hidden], [inert], [aria-hidden=\"true\"]')",
+            controller,
+        )
+
+    def test_payment_center_purchase_and_cashier_actions_are_not_duplicated(self):
+        controller = (
+            Path(settings.BASE_DIR) / 'static/js/payment-center.js'
+        ).read_text(encoding='utf-8')
+
+        purchase_start = controller.index('this.currentPurchase = {')
+        purchase_end = controller.index('\n            };', purchase_start)
+        purchase_source = controller[purchase_start:purchase_end]
+        self.assertEqual(purchase_source.count('orderType:'), 1)
+
+        cashier_start = controller.index('submitAlipayForm(paymentHtml)')
+        cashier_end = controller.index('normalizeOrder(rawOrder', cashier_start)
+        cashier_source = controller[cashier_start:cashier_end]
+        self.assertNotIn('form.submit()', cashier_source)
+        self.assertEqual(
+            cashier_source.count('HTMLFormElement.prototype.submit.call(form)'),
+            1,
+        )
+
+    def test_payment_center_tab_switch_does_not_cancel_payment_operations(self):
+        controller = (
+            Path(settings.BASE_DIR) / 'static/js/payment-center.js'
+        ).read_text(encoding='utf-8')
+
+        bind_start = controller.index('bind() {')
+        pending_listener_start = controller.index(
+            'this.elements.pendingTab.addEventListener', bind_start
+        )
+        pending_listener_end = controller.index(
+            'this.elements.methodQr.addEventListener', pending_listener_start
+        )
+        pending_listener = controller[pending_listener_start:pending_listener_end]
+        self.assertIn('this.showPending()', pending_listener)
+        self.assertNotIn('operationSequence', pending_listener)
+
+        open_pending_start = controller.index('openPending(trigger = null)')
+        open_pending_end = controller.index('showCurrent()', open_pending_start)
+        self.assertNotIn(
+            'operationSequence',
+            controller[open_pending_start:open_pending_end],
+        )
+
+    def test_payment_center_entry_restores_created_order_unless_deep_link_forces_pending(self):
+        controller = (
+            Path(settings.BASE_DIR) / 'static/js/payment-center.js'
+        ).read_text(encoding='utf-8')
+
+        click_start = controller.index('handleDocumentClick(event)')
+        click_end = controller.index('ensureAuthenticated()', click_start)
+        click_source = controller[click_start:click_end]
+        self.assertIn('this.openFromEntry(pendingButton);', click_source)
+        self.assertNotIn('this.openPending(pendingButton);', click_source)
+        self.assertIn('window.closeMobileNav()', click_source)
+
+        entry_start = controller.index('openFromEntry(trigger = null)')
+        entry_end = controller.index('openPurchase(purchase, trigger)', entry_start)
+        entry_source = controller[entry_start:entry_end]
+        self.assertIn("this.currentOrder.status === 'CREATED'", entry_source)
+        self.assertIn('this.open(trigger);', entry_source)
+        self.assertIn('this.showCurrent();', entry_source)
+        self.assertIn('this.restoreCurrentQrLifecycle();', entry_source)
+        self.assertIn('this.syncCurrentOrder(false);', entry_source)
+        self.assertIn('this.openPending(trigger);', entry_source)
+
+        deep_link_start = controller.index("params.get('paymentCenter') === 'pending'")
+        deep_link_source = controller[deep_link_start:]
+        self.assertIn(
+            "window.paymentCenter.openPending(document.getElementById('pendingPaymentButton'))",
+            deep_link_source,
+        )
+
+    def test_payment_center_visibility_restores_render_error_polling(self):
+        controller = (
+            Path(settings.BASE_DIR) / 'static/js/payment-center.js'
+        ).read_text(encoding='utf-8')
+
+        visibility_start = controller.index('handleVisibilityChange()')
+        visibility_end = controller.index('render() {', visibility_start)
+        visibility_source = controller[visibility_start:visibility_end]
+        self.assertIn('this.resumePollingOnVisibility = true;', visibility_source)
+        self.assertIn('this.syncCurrentOrder(false);', visibility_source)
+
+        sync_start = controller.index('async syncCurrentOrder(')
+        sync_end = controller.index('submitAlipayForm(paymentHtml)', sync_start)
+        sync_source = controller[sync_start:sync_end]
+        self.assertIn('PaymentCenterCore.UI.QR_RENDER_ERROR', sync_source)
+        self.assertIn('this.resumePollingAfterVisibility();', sync_source)
+        self.assertIn('this.startPolling();', controller)
+
+    def test_payment_center_resume_is_deduplicated_per_order(self):
+        controller = (
+            Path(settings.BASE_DIR) / 'static/js/payment-center.js'
+        ).read_text(encoding='utf-8')
+
+        self.assertIn('this.resumeInFlight = new Set();', controller)
+        resume_start = controller.index('async resume(orderNo)')
+        resume_end = controller.index('async switchCurrentQrToPage()', resume_start)
+        resume_source = controller[resume_start:resume_end]
+        self.assertIn('this.resumeInFlight.has(orderNo)', resume_source)
+        self.assertIn('this.resumeInFlight.add(orderNo);', resume_source)
+        self.assertIn('this.resumeInFlight.delete(orderNo);', resume_source)
+        self.assertIn('button.disabled = true;', resume_source)
+        self.assertIn('button.disabled = false;', resume_source)
+
+    def test_payment_center_resume_and_switch_serialize_with_polling(self):
+        controller = (
+            Path(settings.BASE_DIR) / 'static/js/payment-center.js'
+        ).read_text(encoding='utf-8')
+
+        resume_start = controller.index('async resume(orderNo)')
+        resume_end = controller.index('async switchCurrentQrToPage()', resume_start)
+        resume_source = controller[resume_start:resume_end]
+        self.assertLess(
+            resume_source.index('this.stopPolling();'),
+            resume_source.index('const operation = ++this.operationSequence;'),
+        )
+        self.assertIn('this.restoreCurrentQrLifecycle();', resume_source)
+
+        switch_start = controller.index('async switchCurrentQrToPage()')
+        switch_end = controller.index('async syncCurrentOrder(', switch_start)
+        switch_source = controller[switch_start:switch_end]
+        self.assertLess(
+            switch_source.index('this.stopPolling();'),
+            switch_source.index('const operation = ++this.operationSequence;'),
+        )
+        self.assertIn('this.restoreCurrentQrLifecycle();', switch_source)
+
+        sync_start = switch_end
+        sync_end = controller.index('submitAlipayForm(paymentHtml)', sync_start)
+        sync_source = controller[sync_start:sync_end]
+        self.assertIn('this.switchInFlight', sync_source)
+        self.assertIn(
+            'this.resumeInFlight.has(this.currentOrder.orderNo)',
+            sync_source,
+        )
+
+        restore_start = controller.index('restoreCurrentQrLifecycle() {')
+        restore_end = controller.index('submitAlipayForm(paymentHtml)', restore_start)
+        restore_source = controller[restore_start:restore_end]
+        self.assertIn('this.root.hidden', restore_source)
+        self.assertIn("this.currentOrder.status !== 'CREATED'", restore_source)
+        self.assertIn('this.startPolling();', restore_source)
+        self.assertIn('this.startCountdownOnly();', restore_source)
+
+    def test_payment_center_waits_for_authoritative_expiry_and_reuses_poll_timer(self):
+        controller = (
+            Path(settings.BASE_DIR) / 'static/js/payment-center.js'
+        ).read_text(encoding='utf-8')
+
+        polling_start = controller.index('startPolling() {')
+        polling_end = controller.index('startCountdownOnly() {', polling_start)
+        polling_source = controller[polling_start:polling_end]
+        self.assertIn('PaymentCenterCore.UI.PAID', polling_source)
+        self.assertIn('PaymentCenterCore.UI.EXPIRED', polling_source)
+
+        countdown_start = polling_end
+        countdown_end = controller.index('stopPolling() {', countdown_start)
+        countdown_source = controller[countdown_start:countdown_end]
+        self.assertIn('PaymentCenterCore.UI.PAID', countdown_source)
+        self.assertIn('PaymentCenterCore.UI.EXPIRED', countdown_source)
+
+        update_start = controller.index('updateCountdown() {')
+        update_end = controller.index('handleVisibilityChange()', update_start)
+        update_source = controller[update_start:update_end]
+        paid_guard = update_source.index('PaymentCenterCore.UI.PAID')
+        expiry_start = update_source.index('if (remaining <= 0)')
+        self.assertLess(paid_guard, expiry_start)
+        expiry_source = update_source[expiry_start:]
+        self.assertNotIn('this.transition(PaymentCenterCore.UI.EXPIRED', expiry_source)
+        self.assertIn('this.stopCountdown();', expiry_source)
+        self.assertIn(
+            "this.elements.qrCountdown.textContent = '正在确认订单最终状态，请勿重复支付';",
+            expiry_source,
+        )
+        self.assertIn('this.ensurePollingInterval();', expiry_source)
+        self.assertIn('this.expirySyncRequested !== orderNo', expiry_source)
+        self.assertIn('this.syncCurrentOrder(false);', expiry_source)
+        self.assertIn(
+            'if (shouldSync && !document.hidden && !this.root.hidden)',
+            expiry_source,
+        )
+        self.assertNotIn('if (shouldSync) this.syncCurrentOrder(false);', expiry_source)
+        self.assertNotIn('setInterval(', expiry_source)
+
+        ensure_start = controller.index('ensurePollingInterval() {')
+        ensure_end = controller.index('startCountdownOnly() {', ensure_start)
+        ensure_source = controller[ensure_start:ensure_end]
+        self.assertIn('if (this.pollTimer', ensure_source)
+        self.assertEqual(ensure_source.count('setInterval('), 1)
+        self.assertIn('this.ensurePollingInterval();', polling_source)
+        self.assertIn('this.expirySyncRequested = null;', controller)
+
+        response_start = controller.index('async handleOrderResponse(order)')
+        response_end = controller.index('async showQrOrder(order)', response_start)
+        response_source = controller[response_start:response_end]
+        create_error = response_source.index('PaymentCenterCore.UI.CREATE_ERROR')
+        countdown = response_source.index('this.startCountdownOnly()', create_error)
+        self.assertLess(create_error, countdown)
+
+        closed_start = response_source.index("if (order.status === 'CLOSED')")
+        closed_end = response_source.index("if (order.paymentMethod === 'QR')", closed_start)
+        closed_source = response_source[closed_start:closed_end]
+        expired_transition = closed_source.index('PaymentCenterCore.UI.EXPIRED')
+        pending_refresh = closed_source.index('await this.loadPending();')
+        self.assertLess(expired_transition, pending_refresh)
+
+    def test_payment_center_terminal_orders_invalidate_and_hide_qr_canvas(self):
+        controller = (
+            Path(settings.BASE_DIR) / 'static/js/payment-center.js'
+        ).read_text(encoding='utf-8')
+
+        helper_start = controller.index('invalidateQrDisplay() {')
+        helper_end = controller.index('async showQrOrder(order)', helper_start)
+        helper_source = controller[helper_start:helper_end]
+        self.assertIn('this.renderSequence += 1;', helper_source)
+        self.assertIn('this.clearVisibleQrCanvas();', helper_source)
+
+        complete_start = controller.index('async completePaid(order)')
+        complete_end = controller.index('startPolling() {', complete_start)
+        complete_source = controller[complete_start:complete_end]
+        self.assertLess(
+            complete_source.index('this.invalidateQrDisplay();'),
+            complete_source.index('this.transition(PaymentCenterCore.UI.PAID'),
+        )
+
+        response_start = controller.index('async handleOrderResponse(order)')
+        response_end = controller.index('async showQrOrder(order)', response_start)
+        response_source = controller[response_start:response_end]
+        response_closed_start = response_source.index("if (order.status === 'CLOSED')")
+        response_closed_end = response_source.index(
+            "if (order.paymentMethod === 'QR')", response_closed_start
+        )
+        response_closed = response_source[response_closed_start:response_closed_end]
+        self.assertLess(
+            response_closed.index('this.invalidateQrDisplay();'),
+            response_closed.index('this.transition(PaymentCenterCore.UI.EXPIRED'),
+        )
+
+        sync_start = controller.index('async syncCurrentOrder(')
+        sync_end = controller.index('restoredUiAfterSync(previousUi)', sync_start)
+        sync_source = controller[sync_start:sync_end]
+        sync_closed_start = sync_source.index("if (order.status === 'CLOSED')")
+        sync_closed = sync_source[sync_closed_start:]
+        self.assertLess(
+            sync_closed.index('this.invalidateQrDisplay();'),
+            sync_closed.index('this.transition(PaymentCenterCore.UI.EXPIRED'),
+        )
+
+        render_start = controller.index('render() {')
+        render_end = controller.index('updateOrderStatus() {', render_start)
+        render_source = controller[render_start:render_end]
+        self.assertIn("order.status === 'CREATED'", render_source)
+        self.assertIn('ui !== PaymentCenterCore.UI.QR_RENDER_ERROR', render_source)
+        self.assertIn('ui !== PaymentCenterCore.UI.PAID', render_source)
+        self.assertIn('ui !== PaymentCenterCore.UI.EXPIRED', render_source)
+        self.assertIn('qrContainer.hidden = !showQrCanvas;', render_source)
+
+    def test_payment_center_clears_stale_canvas_and_hides_it_on_render_failure(self):
+        controller = (
+            Path(settings.BASE_DIR) / 'static/js/payment-center.js'
+        ).read_text(encoding='utf-8')
+
+        show_start = controller.index('async showQrOrder(order)')
+        show_end = controller.index('renderPending(orders)', show_start)
+        show_source = controller[show_start:show_end]
+        self.assertIn("document.createElement('canvas')", show_source)
+        self.assertIn('offscreenCanvas.width = canvas.width;', show_source)
+        self.assertIn('offscreenCanvas.height = canvas.height;', show_source)
+        self.assertIn(
+            'PaymentCenterCore.renderQr(window.QRCode, offscreenCanvas, order.qrCode',
+            show_source,
+        )
+        self.assertNotIn(
+            'PaymentCenterCore.renderQr(window.QRCode, canvas, order.qrCode',
+            show_source,
+        )
+        render_position = show_source.index('PaymentCenterCore.renderQr(')
+        stale_guard_position = show_source.index(
+            'if (sequence !== this.renderSequence || this.root.hidden) return;',
+            render_position,
+        )
+        clear_position = show_source.index('context.clearRect(', stale_guard_position)
+        draw_position = show_source.index(
+            'context.drawImage(offscreenCanvas, 0, 0);', clear_position
+        )
+        self.assertLess(render_position, stale_guard_position)
+        self.assertLess(stale_guard_position, clear_position)
+        self.assertLess(clear_position, draw_position)
+
+        render_catch_start = show_source.index('} catch (error) {', draw_position)
+        render_catch = show_source[render_catch_start:]
+        self.assertIn('this.startCountdownOnly();', render_catch)
+        self.assertNotIn('this.startPolling();', render_catch)
+
+        purchase_start = controller.index('openPurchase(purchase, trigger)')
+        purchase_end = controller.index('openPending(trigger = null)', purchase_start)
+        purchase_source = controller[purchase_start:purchase_end]
+        self.assertIn('this.renderSequence += 1;', purchase_source)
+        self.assertIn('this.clearVisibleQrCanvas();', purchase_source)
+
+        clear_helper_start = controller.index('clearVisibleQrCanvas() {')
+        clear_helper_end = controller.index('async showQrOrder(order)', clear_helper_start)
+        clear_helper = controller[clear_helper_start:clear_helper_end]
+        self.assertIn('context.clearRect(', clear_helper)
+
+        render_start = controller.index('render() {')
+        render_end = controller.index('updateOrderStatus() {', render_start)
+        render_source = controller[render_start:render_end]
+        self.assertIn('ui === PaymentCenterCore.UI.QR_RENDER_ERROR', render_source)
+        self.assertIn('qrContainer.hidden =', render_source)
+        self.assertIn('this.elements.qrView.hidden = !showQrDetails;', render_source)
+        self.assertIn('this.elements.qrOrderNo.textContent = order.orderNo;', render_source)
+        self.assertIn('this.updateCountdown();', render_source)
+        self.assertIn("this.elements.qrSync.hidden = order.status !== 'CREATED';", render_source)
+        self.assertIn(
+            'this.elements.qrRetryRender.hidden = ui !== PaymentCenterCore.UI.QR_RENDER_ERROR;',
+            render_source,
+        )
+        self.assertIn(
+            'this.elements.qrOpenLink.hidden = !(ui === PaymentCenterCore.UI.QR_RENDER_ERROR && trustedQr);',
+            render_source,
+        )
+        self.assertIn('this.elements.qrCashier.hidden = !(', render_source)
+
     def test_base_nav_has_independent_pending_payment_entry(self):
         base_template = (
             Path(settings.BASE_DIR) / 'templates/base.html'
@@ -232,7 +696,7 @@ class MembershipQrPaymentTests(TestCase):
         assets = (
             "{% static 'vendor/qrcode/qrcode.min.js' %}?v=1.5.3",
             "{% static 'js/payment-center-core.js' %}?v=20260719",
-            "{% static 'js/payment-center.js' %}?v=20260719",
+            "{% static 'js/payment-center.js' %}?v=20260720",
         )
         for asset in assets:
             self.assertIn(asset, template)
@@ -437,6 +901,96 @@ class MembershipQrPaymentTests(TestCase):
 
                 self.assertEqual(response.status_code, 200)
                 backend_client.post.assert_called_once_with(backend_path)
+
+    def test_payment_create_and_sync_reject_missing_csrf_token(self):
+        cases = (
+            (
+                '/api/payments/membership/orders/',
+                {'productCode': 'month_basic', 'paymentMethod': 'QR'},
+            ),
+            (
+                '/api/payments/recharge/orders/',
+                {'amountCents': 5000, 'paymentMethod': 'QR'},
+            ),
+            ('/api/payments/orders/PAY-CSRF/sync/', None),
+        )
+
+        for path, payload in cases:
+            with self.subTest(path=path):
+                client = Client(enforce_csrf_checks=True)
+                session = client.session
+                session['token'] = 'token-pay'
+                session.save()
+
+                with patch('apps.series.views.BackendClient') as client_class:
+                    client_class.return_value.post.return_value = {}
+                    if payload is None:
+                        response = client.post(path)
+                    else:
+                        response = client.post(
+                            path,
+                            data=json.dumps(payload),
+                            content_type='application/json',
+                        )
+
+                self.assertEqual(response.status_code, 403)
+                client_class.assert_not_called()
+
+    def test_payment_create_and_sync_accept_matching_csrf_token(self):
+        cases = (
+            (
+                '/api/payments/membership/orders/',
+                {'productCode': 'month_basic', 'paymentMethod': 'QR'},
+                '/v1/payments/membership/orders',
+                {'productCode': 'month_basic', 'paymentMethod': 'QR'},
+            ),
+            (
+                '/api/payments/recharge/orders/',
+                {'amountCents': 5000, 'paymentMethod': 'QR'},
+                '/v1/payments/recharge/orders',
+                {'amountCents': 5000, 'paymentMethod': 'QR'},
+            ),
+            (
+                '/api/payments/orders/PAY-CSRF/sync/',
+                None,
+                '/v1/payments/orders/PAY-CSRF/sync',
+                None,
+            ),
+        )
+
+        for path, payload, backend_path, backend_payload in cases:
+            with self.subTest(path=path):
+                client = Client(enforce_csrf_checks=True)
+                session = client.session
+                session['token'] = 'token-pay'
+                session.save()
+                csrf_token = 'a' * 32
+                client.cookies['csrftoken'] = csrf_token
+                backend_client = Mock()
+                backend_client.post.return_value = {
+                    'orderNo': 'PAY-CSRF',
+                    'status': 'CREATED',
+                }
+
+                with patch('apps.series.views.BackendClient', return_value=backend_client):
+                    if payload is None:
+                        response = client.post(path, HTTP_X_CSRFTOKEN=csrf_token)
+                    else:
+                        response = client.post(
+                            path,
+                            data=json.dumps(payload),
+                            content_type='application/json',
+                            HTTP_X_CSRFTOKEN=csrf_token,
+                        )
+
+                self.assertEqual(response.status_code, 200)
+                if backend_payload is None:
+                    backend_client.post.assert_called_once_with(backend_path)
+                else:
+                    backend_client.post.assert_called_once_with(
+                        backend_path,
+                        backend_payload,
+                    )
 
     def test_pending_orders_rejects_non_get_without_backend_call(self):
         session = self.client.session

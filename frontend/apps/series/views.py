@@ -2632,6 +2632,7 @@ def membership_page(request):
     return render(request, 'payments/membership.html')
 
 
+@ensure_csrf_cookie
 def payment_result_page(request):
     """支付结果确认页面"""
     if not request.session.get('token'):
@@ -2659,7 +2660,6 @@ def _validated_payment_method(data):
     return payment_method
 
 
-@csrf_exempt
 @require_http_methods(["POST"])
 def payment_membership_order(request):
     """会员订单创建API代理"""
@@ -2679,7 +2679,6 @@ def payment_membership_order(request):
         return JsonResponse({'code': 400, 'message': str(e)}, status=400)
 
 
-@csrf_exempt
 @require_http_methods(["POST"])
 def payment_recharge_order(request):
     """积分充值订单创建API代理"""
@@ -2747,7 +2746,6 @@ def payment_order_status(request, order_no):
         return JsonResponse({'code': e.status_code, 'message': e.message}, status=400)
 
 
-@csrf_exempt
 @require_http_methods(["POST"])
 def payment_order_sync(request, order_no):
     """支付订单状态同步代理"""
