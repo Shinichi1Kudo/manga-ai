@@ -1,7 +1,7 @@
 from django.shortcuts import render, redirect
 from django.http import JsonResponse, HttpResponse, HttpResponseForbidden
 from django.views.decorators.http import require_http_methods
-from django.views.decorators.csrf import csrf_exempt
+from django.views.decorators.csrf import csrf_exempt, ensure_csrf_cookie
 from django.contrib import messages
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
@@ -2626,6 +2626,7 @@ def showcase_assets(request):
         return JsonResponse({'code': 400, 'message': e.message}, status=400)
 
 
+@ensure_csrf_cookie
 def membership_page(request):
     """会员与积分充值页面"""
     return render(request, 'payments/membership.html')
@@ -2696,6 +2697,44 @@ def payment_recharge_order(request):
         return JsonResponse({'code': 400, 'message': 'Invalid JSON'}, status=400)
     except ValueError as e:
         return JsonResponse({'code': 400, 'message': str(e)}, status=400)
+
+
+def _payment_error_response(status_code, message):
+    safe_status = status_code if type(status_code) is int and 400 <= status_code <= 599 else 502
+    return JsonResponse({'code': safe_status, 'message': message}, status=safe_status)
+
+
+@require_http_methods(["GET"])
+def payment_pending_orders(request):
+    """待支付订单列表代理"""
+    client = get_client(request)
+    try:
+        result = client.get('/v1/payments/orders/pending')
+        return JsonResponse({'code': 200, 'data': result})
+    except BackendAPIError as e:
+        return _payment_error_response(e.status_code, e.message)
+
+
+@require_http_methods(["POST"])
+def payment_order_resume(request, order_no):
+    """待支付订单恢复代理"""
+    client = get_client(request)
+    try:
+        result = client.post(f'/v1/payments/orders/{order_no}/resume')
+        return JsonResponse({'code': 200, 'data': result})
+    except BackendAPIError as e:
+        return _payment_error_response(e.status_code, e.message)
+
+
+@require_http_methods(["POST"])
+def payment_order_switch_to_page(request, order_no):
+    """待支付订单安全切换收银台代理"""
+    client = get_client(request)
+    try:
+        result = client.post(f'/v1/payments/orders/{order_no}/switch-to-page')
+        return JsonResponse({'code': 200, 'data': result})
+    except BackendAPIError as e:
+        return _payment_error_response(e.status_code, e.message)
 
 
 def payment_order_status(request, order_no):

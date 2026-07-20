@@ -7,6 +7,7 @@ import com.manga.ai.payment.dto.CreateRechargeOrderRequest;
 import com.manga.ai.payment.dto.PaymentOrderCreateResponse;
 import com.manga.ai.payment.dto.PaymentOrderStatusResponse;
 import com.manga.ai.payment.dto.PaymentProductsResponse;
+import com.manga.ai.payment.dto.PendingPaymentOrderResponse;
 import com.manga.ai.payment.service.PaymentOrderService;
 import com.manga.ai.user.service.impl.UserServiceImpl.UserContextHolder;
 import jakarta.validation.Valid;
@@ -21,6 +22,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.math.BigDecimal;
+import java.util.List;
 import java.util.Map;
 
 @Slf4j
@@ -47,6 +49,21 @@ public class PaymentController {
     public Result<PaymentOrderCreateResponse> createRechargeOrder(@Valid @RequestBody CreateRechargeOrderRequest request) {
         return Result.success(paymentOrderService.createRechargeOrder(
                 UserContextHolder.getUserId(), request.getAmountCents(), request.getPaymentMethod()));
+    }
+
+    @GetMapping("/orders/pending")
+    public Result<List<PendingPaymentOrderResponse>> pendingOrders() {
+        return Result.success(paymentOrderService.pendingOrders(UserContextHolder.getUserId()));
+    }
+
+    @PostMapping("/orders/{orderNo}/resume")
+    public Result<PaymentOrderCreateResponse> resumeOrder(@PathVariable String orderNo) {
+        return Result.success(paymentOrderService.resumeOrder(UserContextHolder.getUserId(), orderNo));
+    }
+
+    @PostMapping("/orders/{orderNo}/switch-to-page")
+    public Result<PaymentOrderCreateResponse> switchToPage(@PathVariable String orderNo) {
+        return Result.success(paymentOrderService.switchToPage(UserContextHolder.getUserId(), orderNo));
     }
 
     @GetMapping("/orders/{orderNo}")
