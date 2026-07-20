@@ -20,10 +20,14 @@ import com.manga.ai.payment.dto.AlipayPagePayResult;
 import com.manga.ai.payment.dto.AlipayPrecreateRequest;
 import com.manga.ai.payment.dto.AlipayPrecreateResult;
 import com.manga.ai.payment.dto.AlipayQueryResult;
+import com.manga.ai.payment.exception.RetryablePaymentGatewayException;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
 
 import java.math.BigDecimal;
+import java.net.SocketTimeoutException;
 import java.util.HashMap;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -86,6 +90,86 @@ class DefaultAlipayPaymentClientTest {
     }
 
     @Test
+    void precreateMaps504TransportFailureToRetryableException() throws AlipayApiException {
+        AlipayClient sdkClient = mock(AlipayClient.class);
+        AlipayApiException sdkException = new AlipayApiException("504", "Gateway Timeout");
+        when(sdkClient.execute(any(AlipayTradePrecreateRequest.class))).thenThrow(sdkException);
+
+        assertThatThrownBy(() -> paymentClient(sdkClient).precreate(precreateRequest()))
+                .isExactlyInstanceOf(RetryablePaymentGatewayException.class)
+                .hasMessage("支付宝扫码支付预下单暂时不可用")
+                .hasCause(sdkException);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "timeout",
+            "timed out",
+            "Gateway Timeout",
+            "Gateway Time-out",
+            "Read timed out",
+            "Connect Timeout"
+    })
+    void precreateMapsExplicitTimeoutDiagnosticsToRetryableException(String diagnostic)
+            throws AlipayApiException {
+        AlipayClient sdkClient = mock(AlipayClient.class);
+        AlipayApiException sdkException = new AlipayApiException(diagnostic);
+        when(sdkClient.execute(any(AlipayTradePrecreateRequest.class))).thenThrow(sdkException);
+
+        assertThatThrownBy(() -> paymentClient(sdkClient).precreate(precreateRequest()))
+                .isExactlyInstanceOf(RetryablePaymentGatewayException.class)
+                .hasMessage("支付宝扫码支付预下单暂时不可用")
+                .hasCause(sdkException);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+            "timeoutExpress invalid parameter",
+            "timeout_express invalid parameter",
+            "businessTimeout invalid parameter",
+            "business timeout policy invalid"
+    })
+    void precreateLeavesBusinessTimeoutDiagnosticsNonRetryable(String diagnostic)
+            throws AlipayApiException {
+        AlipayClient sdkClient = mock(AlipayClient.class);
+        when(sdkClient.execute(any(AlipayTradePrecreateRequest.class)))
+                .thenThrow(new AlipayApiException(diagnostic));
+
+        assertThatThrownBy(() -> paymentClient(sdkClient).precreate(precreateRequest()))
+                .isExactlyInstanceOf(BusinessException.class)
+                .hasMessage("支付宝扫码支付下单异常，请稍后重试或改用支付宝收银台");
+    }
+
+    @Test
+    void precreateMapsKnownTimeoutExceptionClassToRetryableException() throws AlipayApiException {
+        AlipayClient sdkClient = mock(AlipayClient.class);
+        AlipayApiException sdkException = new AlipayApiException(
+                "SDK transport failure",
+                new SocketTimeoutException()
+        );
+        when(sdkClient.execute(any(AlipayTradePrecreateRequest.class))).thenThrow(sdkException);
+
+        assertThatThrownBy(() -> paymentClient(sdkClient).precreate(precreateRequest()))
+                .isExactlyInstanceOf(RetryablePaymentGatewayException.class)
+                .hasMessage("支付宝扫码支付预下单暂时不可用")
+                .hasCause(sdkException);
+    }
+
+    @Test
+    void precreateLeavesArbitraryTimeoutExceptionClassNonRetryable() throws AlipayApiException {
+        AlipayClient sdkClient = mock(AlipayClient.class);
+        when(sdkClient.execute(any(AlipayTradePrecreateRequest.class)))
+                .thenThrow(new AlipayApiException(
+                        "SDK business failure",
+                        new BusinessTimeoutException()
+                ));
+
+        assertThatThrownBy(() -> paymentClient(sdkClient).precreate(precreateRequest()))
+                .isExactlyInstanceOf(BusinessException.class)
+                .hasMessage("支付宝扫码支付下单异常，请稍后重试或改用支付宝收银台");
+    }
+
+    @Test
     void precreateMapsAccessForbiddenToActionableMessage() throws AlipayApiException {
         AlipayClient sdkClient = mock(AlipayClient.class);
         AlipayTradePrecreateResponse response = new AlipayTradePrecreateResponse();
@@ -94,8 +178,86 @@ class DefaultAlipayPaymentClientTest {
         when(sdkClient.execute(any(AlipayTradePrecreateRequest.class))).thenReturn(response);
 
         assertThatThrownBy(() -> paymentClient(sdkClient).precreate(precreateRequest()))
-                .isInstanceOf(BusinessException.class)
+                .isExactlyInstanceOf(BusinessException.class)
                 .hasMessage("当前支付宝应用未开通订单码支付，请改用支付宝收银台");
+    }
+
+    @Test
+    void precreateRejectsLookalikeQrHostWithUserSafeMessage() throws AlipayApiException {
+        AlipayClient sdkClient = mock(AlipayClient.class);
+        AlipayTradePrecreateResponse response = new AlipayTradePrecreateResponse();
+        response.setCode("10000");
+        response.setQrCode("https://qr.alipay.com.evil.example/pay");
+        when(sdkClient.execute(any(AlipayTradePrecreateRequest.class))).thenReturn(response);
+
+        assertThatThrownBy(() -> paymentClient(sdkClient).precreate(precreateRequest()))
+                .isExactlyInstanceOf(BusinessException.class)
+                .hasMessage("支付宝扫码支付二维码地址无效，请改用支付宝收银台");
+    }
+
+    @Test
+    void precreateRejectsNonHttpsQrUrlWithUserSafeMessage() throws AlipayApiException {
+        AlipayClient sdkClient = mock(AlipayClient.class);
+        AlipayTradePrecreateResponse response = new AlipayTradePrecreateResponse();
+        response.setCode("10000");
+        response.setQrCode("http://qr.alipay.com/pay");
+        when(sdkClient.execute(any(AlipayTradePrecreateRequest.class))).thenReturn(response);
+
+        assertThatThrownBy(() -> paymentClient(sdkClient).precreate(precreateRequest()))
+                .isExactlyInstanceOf(BusinessException.class)
+                .hasMessage("支付宝扫码支付二维码地址无效，请改用支付宝收银台");
+    }
+
+    @Test
+    void precreateRejectsQrUrlWithUserInfoWithUserSafeMessage() throws AlipayApiException {
+        AlipayClient sdkClient = mock(AlipayClient.class);
+        AlipayTradePrecreateResponse response = new AlipayTradePrecreateResponse();
+        response.setCode("10000");
+        response.setQrCode("https://user@qr.alipay.com/pay");
+        when(sdkClient.execute(any(AlipayTradePrecreateRequest.class))).thenReturn(response);
+
+        assertThatThrownBy(() -> paymentClient(sdkClient).precreate(precreateRequest()))
+                .isExactlyInstanceOf(BusinessException.class)
+                .hasMessage("支付宝扫码支付二维码地址无效，请改用支付宝收银台");
+    }
+
+    @Test
+    void precreateRejectsNonstandardHttpsPortWithUserSafeMessage() throws AlipayApiException {
+        AlipayClient sdkClient = mock(AlipayClient.class);
+        AlipayTradePrecreateResponse response = new AlipayTradePrecreateResponse();
+        response.setCode("10000");
+        response.setQrCode("https://qr.alipay.com:8080/pay");
+        when(sdkClient.execute(any(AlipayTradePrecreateRequest.class))).thenReturn(response);
+
+        assertThatThrownBy(() -> paymentClient(sdkClient).precreate(precreateRequest()))
+                .isExactlyInstanceOf(BusinessException.class)
+                .hasMessage("支付宝扫码支付二维码地址无效，请改用支付宝收银台");
+    }
+
+    @Test
+    void precreateAcceptsExactHttpsQrAlipayHost() throws AlipayApiException {
+        AlipayClient sdkClient = mock(AlipayClient.class);
+        AlipayTradePrecreateResponse response = new AlipayTradePrecreateResponse();
+        response.setCode("10000");
+        response.setQrCode("https://qr.alipay.com/pay");
+        when(sdkClient.execute(any(AlipayTradePrecreateRequest.class))).thenReturn(response);
+
+        AlipayPrecreateResult result = paymentClient(sdkClient).precreate(precreateRequest());
+
+        assertThat(result.qrCode()).isEqualTo("https://qr.alipay.com/pay");
+    }
+
+    @Test
+    void precreateAcceptsExplicitDefaultHttpsPort() throws AlipayApiException {
+        AlipayClient sdkClient = mock(AlipayClient.class);
+        AlipayTradePrecreateResponse response = new AlipayTradePrecreateResponse();
+        response.setCode("10000");
+        response.setQrCode("https://qr.alipay.com:443/pay");
+        when(sdkClient.execute(any(AlipayTradePrecreateRequest.class))).thenReturn(response);
+
+        AlipayPrecreateResult result = paymentClient(sdkClient).precreate(precreateRequest());
+
+        assertThat(result.qrCode()).isEqualTo("https://qr.alipay.com:443/pay");
     }
 
     @Test
@@ -290,6 +452,13 @@ class DefaultAlipayPaymentClientTest {
         properties.setSellerId("seller-id");
         properties.setTimeoutExpress("2h");
         return properties;
+    }
+
+    private static final class BusinessTimeoutException extends RuntimeException {
+
+        private BusinessTimeoutException() {
+            super("invalid business policy");
+        }
     }
 
     private static final class TestDefaultAlipayPaymentClient extends DefaultAlipayPaymentClient {

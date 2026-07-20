@@ -24,17 +24,40 @@ import com.manga.ai.payment.dto.AlipayCancelResult;
 import com.manga.ai.payment.dto.AlipayPrecreateRequest;
 import com.manga.ai.payment.dto.AlipayPrecreateResult;
 import com.manga.ai.payment.dto.AlipayQueryResult;
+import com.manga.ai.payment.exception.RetryablePaymentGatewayException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
+import java.net.URI;
+import java.net.URISyntaxException;
+import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
+import java.util.regex.Pattern;
 
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class DefaultAlipayPaymentClient implements AlipayPaymentClient {
+
+    private static final Pattern RETRYABLE_HTTP_STATUS =
+            Pattern.compile("(?<!\\d)(?:502|503|504)(?!\\d)");
+    private static final Pattern RETRYABLE_TIMEOUT_DIAGNOSTIC = Pattern.compile(
+            "^(?:(?:gateway|read|connect|connection|request|socket|operation)\\s+)?"
+                    + "(?:time-?out|timed\\s+out)$"
+    );
+    private static final Set<String> RETRYABLE_TIMEOUT_EXCEPTION_NAMES = Set.of(
+            "ConnectTimeoutException",
+            "ConnectionPoolTimeoutException",
+            "HttpConnectTimeoutException",
+            "HttpTimeoutException",
+            "ReadTimeoutException",
+            "SocketTimeoutException",
+            "TimeoutException",
+            "WriteTimeoutException"
+    );
 
     private final AlipayProperties properties;
 
@@ -63,8 +86,7 @@ public class DefaultAlipayPaymentClient implements AlipayPaymentClient {
             }
             return new AlipayPagePayResult(response.getBody());
         } catch (AlipayApiException e) {
-            log.warn("支付宝电脑网站支付表单生成异常: orderNo={}, message={}",
-                    request.orderNo(), e.getMessage(), e);
+            log.warn("支付宝电脑网站支付表单生成异常: orderNo={}", request.orderNo());
             throw new BusinessException("支付宝支付页面生成异常，请稍后重试");
         }
     }
@@ -97,9 +119,17 @@ public class DefaultAlipayPaymentClient implements AlipayPaymentClient {
                 log.warn("支付宝订单码响应缺少二维码: orderNo={}", request.orderNo());
                 throw new BusinessException("支付宝扫码支付二维码生成失败，请改用支付宝收银台");
             }
+            if (!isValidAlipayQrUrl(response.getQrCode())) {
+                log.warn("支付宝订单码响应二维码地址无效: orderNo={}", request.orderNo());
+                throw new BusinessException("支付宝扫码支付二维码地址无效，请改用支付宝收银台");
+            }
             return new AlipayPrecreateResult(response.getQrCode());
         } catch (AlipayApiException e) {
-            log.warn("支付宝订单码预下单异常: orderNo={}, message={}", request.orderNo(), e.getErrMsg());
+            if (isRetryableTransportFailure(e)) {
+                log.warn("支付宝订单码预下单暂时不可用: orderNo={}", request.orderNo());
+                throw new RetryablePaymentGatewayException("支付宝扫码支付预下单暂时不可用", e);
+            }
+            log.warn("支付宝订单码预下单异常: orderNo={}", request.orderNo());
             throw new BusinessException("支付宝扫码支付下单异常，请稍后重试或改用支付宝收银台");
         }
     }
@@ -124,7 +154,7 @@ public class DefaultAlipayPaymentClient implements AlipayPaymentClient {
                     : new BigDecimal(response.getTotalAmount());
             return new AlipayQueryResult(orderNo, response.getTradeNo(), response.getTradeStatus(), totalAmount);
         } catch (AlipayApiException e) {
-            log.warn("支付宝交易查询异常: orderNo={}, message={}", orderNo, e.getErrMsg());
+            log.warn("支付宝交易查询异常: orderNo={}", orderNo);
             throw new BusinessException("支付宝交易查询异常，请稍后重试");
         }
     }
@@ -149,7 +179,7 @@ public class DefaultAlipayPaymentClient implements AlipayPaymentClient {
                     response.getAction()
             );
         } catch (AlipayApiException e) {
-            log.warn("支付宝交易撤销异常: orderNo={}, message={}", orderNo, e.getErrMsg());
+            log.warn("支付宝交易撤销异常: orderNo={}", orderNo);
             return new AlipayCancelResult(false, true, null);
         }
     }
@@ -165,7 +195,7 @@ public class DefaultAlipayPaymentClient implements AlipayPaymentClient {
                     properties.getSignType()
             );
         } catch (AlipayApiException e) {
-            log.warn("支付宝异步通知验签异常: {}", e.getErrMsg());
+            log.warn("支付宝异步通知验签异常");
             return false;
         }
     }
@@ -198,6 +228,47 @@ public class DefaultAlipayPaymentClient implements AlipayPaymentClient {
         if (!properties.credentialsConfigured()) {
             throw new BusinessException("支付宝凭证配置未完成，请配置环境变量后重试");
         }
+    }
+
+    private boolean isValidAlipayQrUrl(String qrCode) {
+        try {
+            URI uri = new URI(qrCode);
+            return "https".equalsIgnoreCase(uri.getScheme())
+                    && "qr.alipay.com".equalsIgnoreCase(uri.getHost())
+                    && uri.getRawUserInfo() == null
+                    && (uri.getPort() == -1 || uri.getPort() == 443);
+        } catch (URISyntaxException e) {
+            return false;
+        }
+    }
+
+    private boolean isRetryableTransportFailure(AlipayApiException exception) {
+        if (containsRetryableTransportDiagnostic(exception.getErrCode())
+                || containsRetryableTransportDiagnostic(exception.getErrMsg())) {
+            return true;
+        }
+
+        Throwable diagnostic = exception;
+        for (int depth = 0; diagnostic != null && depth < 8; depth++) {
+            if (containsRetryableTransportDiagnostic(diagnostic.getMessage())
+                    || RETRYABLE_TIMEOUT_EXCEPTION_NAMES.contains(
+                    diagnostic.getClass().getSimpleName())) {
+                return true;
+            }
+            diagnostic = diagnostic.getCause();
+        }
+        return false;
+    }
+
+    private boolean containsRetryableTransportDiagnostic(String diagnostic) {
+        if (!notBlank(diagnostic)) {
+            return false;
+        }
+        String normalized = diagnostic.trim().toLowerCase(Locale.ROOT);
+        return RETRYABLE_HTTP_STATUS.matcher(normalized).find()
+                || RETRYABLE_TIMEOUT_DIAGNOSTIC.matcher(normalized).matches()
+                || normalized.contains("connection reset")
+                || normalized.contains("connection refused");
     }
 
     private boolean notBlank(String value) {
