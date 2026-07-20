@@ -3,6 +3,7 @@ from pathlib import Path
 from unittest.mock import Mock, patch
 
 from django.conf import settings
+from django.contrib.staticfiles import finders
 from django.test import Client, TestCase
 from django.urls import resolve
 
@@ -27,6 +28,10 @@ class MembershipQrPaymentTests(TestCase):
         self.assertEqual(package['version'], '1.5.3')
         self.assertTrue((vendor_dir / 'qrcode.min.js').is_file())
         self.assertIn('MIT License', (vendor_dir / 'LICENSE').read_text(encoding='utf-8'))
+
+    def test_payment_qr_runtime_assets_are_discoverable(self):
+        self.assertIsNotNone(finders.find('vendor/qrcode/qrcode.min.js'))
+        self.assertIsNotNone(finders.find('js/payment-center-core.js'))
 
     def test_membership_page_offers_choice_before_creating_order(self):
         template = (
