@@ -15,6 +15,7 @@ import com.manga.ai.payment.dto.PaymentOrderCreateResponse;
 import com.manga.ai.payment.dto.PaymentOrderStatusResponse;
 import com.manga.ai.payment.dto.PaymentProductsResponse;
 import com.manga.ai.payment.dto.PaymentSettlement;
+import com.manga.ai.payment.dto.PendingPaymentOrderResponse;
 import com.manga.ai.payment.entity.PaymentOrder;
 import com.manga.ai.payment.entity.UserMembership;
 import com.manga.ai.payment.enums.MembershipPeriod;
@@ -29,7 +30,6 @@ import com.manga.ai.payment.model.RechargePackage;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionTemplate;
 
 import java.math.BigDecimal;
@@ -40,6 +40,8 @@ import java.time.format.DateTimeFormatter;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.locks.ReentrantLock;
+import java.util.function.Supplier;
 
 @Service
 @RequiredArgsConstructor
@@ -49,9 +51,12 @@ public class PaymentOrderServiceImpl implements PaymentOrderService {
     private static final DateTimeFormatter ORDER_TIME_FORMATTER = DateTimeFormatter.ofPattern("yyyyMMddHHmmssSSS");
     private static final SecureRandom RANDOM = new SecureRandom();
     private static final int QR_PRECREATE_MAX_ATTEMPTS = 3;
+    private static final int ORDER_OPERATION_LOCK_STRIPES = 64;
     private static final String QR_TIMEOUT_EXPRESS = "2h";
     private static final String QR_UNAVAILABLE_MESSAGE =
             "支付宝扫码支付服务暂时不可用，请稍后重试或改用支付宝收银台";
+    private static final String PAYMENT_STATE_UNCERTAIN_MESSAGE =
+            "支付状态暂未确认，请稍后查询，请勿重复支付";
 
     private final PaymentOrderMapper paymentOrderMapper;
     private final CreditAccountService creditAccountService;
@@ -61,6 +66,7 @@ public class PaymentOrderServiceImpl implements PaymentOrderService {
     private final AlipayPaymentClient alipayPaymentClient;
     private final PaymentRetrySleeper paymentRetrySleeper;
     private final TransactionTemplate transactionTemplate;
+    private final ReentrantLock[] orderOperationLocks = createOrderOperationLocks();
 
     @Override
     public PaymentProductsResponse products(Long userId) {
@@ -120,28 +126,156 @@ public class PaymentOrderServiceImpl implements PaymentOrderService {
     }
 
     @Override
-    @Transactional
     public PaymentOrderStatusResponse syncOrder(Long userId, String orderNo) {
-        ensureLoggedIn(userId);
-        PaymentOrder order = findOrder(orderNo);
-        if (!order.getUserId().equals(userId)) {
-            throw new BusinessException("订单不存在");
-        }
+        return withOrderOperationLock(orderNo, () -> doSyncOrder(userId, orderNo));
+    }
+
+    private PaymentOrderStatusResponse doSyncOrder(Long userId, String orderNo) {
+        PaymentOrder order = findOwnedOrder(userId, orderNo);
         if (PaymentOrderStatus.CREATED.name().equals(order.getStatus())) {
             AlipayQueryResult queryResult = alipayPaymentClient.query(orderNo);
             if (queryResult != null && queryResult.paid()) {
                 settlePaidOrder(orderNo, queryResult.alipayTradeNo(), "query-sync", queryResult.totalAmount(),
                         queryResult.tradeStatus(), alipayProperties.getAppId(), alipayProperties.getSellerId());
                 order = findOrder(orderNo);
-            } else if (queryResult != null && "TRADE_CLOSED".equals(queryResult.tradeStatus())) {
+            } else if (tradeClosed(queryResult)) {
                 closeCreatedOrder(orderNo);
                 order = findOrder(orderNo);
             } else if (isExpiredQrOrder(order, LocalDateTime.now())) {
-                cancelAndClose(order);
+                if (notFound(queryResult)) {
+                    closeCreatedOrder(orderNo);
+                } else if (waitingForBuyer(queryResult)) {
+                    cancelAndClose(order);
+                }
                 order = findOrder(orderNo);
             }
         }
         return toStatusResponse(order);
+    }
+
+    @Override
+    public List<PendingPaymentOrderResponse> pendingOrders(Long userId) {
+        ensureLoggedIn(userId);
+        LambdaQueryWrapper<PaymentOrder> wrapper = new LambdaQueryWrapper<>();
+        wrapper.eq(PaymentOrder::getUserId, userId)
+                .eq(PaymentOrder::getStatus, PaymentOrderStatus.CREATED.name())
+                .gt(PaymentOrder::getExpiresAt, LocalDateTime.now())
+                .orderByDesc(PaymentOrder::getCreatedAt)
+                .last("LIMIT 20");
+        List<PaymentOrder> orders = paymentOrderMapper.selectList(wrapper);
+        if (orders == null || orders.isEmpty()) {
+            return List.of();
+        }
+        return orders.stream().map(this::toPendingResponse).toList();
+    }
+
+    @Override
+    public PaymentOrderCreateResponse resumeOrder(Long userId, String orderNo) {
+        return withOrderOperationLock(orderNo, () -> doResumeOrder(userId, orderNo));
+    }
+
+    private PaymentOrderCreateResponse doResumeOrder(Long userId, String orderNo) {
+        PaymentOrder order = findOwnedOrder(userId, orderNo);
+        if (!PaymentOrderStatus.CREATED.name().equals(order.getStatus())) {
+            return toCreateResponseWithoutPaymentPayload(order);
+        }
+
+        if (isExpiredQrOrder(order, LocalDateTime.now())) {
+            processExpiredQrOrder(order, queryForSafePaymentAction(orderNo));
+            PaymentOrder current = findOrder(orderNo);
+            if (PaymentOrderStatus.CREATED.name().equals(current.getStatus())) {
+                return toCreateResponse(current, null, false, PAYMENT_STATE_UNCERTAIN_MESSAGE);
+            }
+            return toCreateResponseWithoutPaymentPayload(current);
+        }
+
+        AlipayQueryResult queryResult = queryForSafePaymentAction(orderNo);
+        if (queryResult != null && queryResult.paid()) {
+            settleFromQuery(order, queryResult, "resume-query");
+            return toCreateResponseWithoutPaymentPayload(findOrder(orderNo));
+        }
+        if (tradeClosed(queryResult)) {
+            closeCreatedOrder(orderNo);
+            return toCreateResponseWithoutPaymentPayload(findOrder(orderNo));
+        }
+        if (!paymentCanBeRestored(queryResult)) {
+            throw new BusinessException(PAYMENT_STATE_UNCERTAIN_MESSAGE);
+        }
+
+        if (PaymentMethod.PAGE.name().equals(order.getPaymentMethod())) {
+            AlipayPagePayResult pagePayResult = alipayPaymentClient.pagePay(pagePayRequest(order));
+            PaymentOrder current = findOrder(orderNo);
+            if (!PaymentOrderStatus.CREATED.name().equals(current.getStatus())) {
+                return toCreateResponseWithoutPaymentPayload(current);
+            }
+            return toCreateResponse(current, pagePayResult.paymentHtml(), true, null);
+        }
+        if (!PaymentMethod.QR.name().equals(order.getPaymentMethod())) {
+            throw new BusinessException("该订单支付方式不支持恢复");
+        }
+        if (notBlank(order.getQrcode())) {
+            PaymentOrder current = findOrder(orderNo);
+            if (!PaymentOrderStatus.CREATED.name().equals(current.getStatus())) {
+                return toCreateResponseWithoutPaymentPayload(current);
+            }
+            if (notBlank(current.getQrcode())) {
+                return toCreateResponse(current, null, true, null);
+            }
+            order = current;
+        }
+
+        AlipayPrecreateResult precreateResult;
+        try {
+            precreateResult = precreateQrWithRetry(order);
+        } catch (BusinessException exception) {
+            return closeOrReturnTerminalOrder(orderNo, exception);
+        }
+        if (precreateResult != null && notBlank(precreateResult.qrCode())) {
+            saveResumedQrIfCreated(orderNo, precreateResult.qrCode());
+        }
+        return reloadedQrCreateResponse(orderNo);
+    }
+
+    @Override
+    public PaymentOrderCreateResponse switchToPage(Long userId, String orderNo) {
+        return withOrderOperationLock(orderNo, () -> doSwitchToPage(userId, orderNo));
+    }
+
+    private PaymentOrderCreateResponse doSwitchToPage(Long userId, String orderNo) {
+        PaymentOrder source = findOwnedOrder(userId, orderNo);
+        if (!PaymentOrderStatus.CREATED.name().equals(source.getStatus())) {
+            throw new BusinessException("该订单当前状态不支持切换支付方式");
+        }
+        if (!PaymentMethod.QR.name().equals(source.getPaymentMethod())) {
+            throw new BusinessException("仅扫码支付订单可切换支付宝收银台");
+        }
+
+        AlipayQueryResult queryResult = queryForSafePaymentAction(orderNo);
+        if (queryResult != null && queryResult.paid()) {
+            settleFromQuery(source, queryResult, "switch-query");
+            return toCreateResponseWithoutPaymentPayload(findOrder(orderNo));
+        }
+
+        if (waitingForBuyer(queryResult)) {
+            AlipayCancelResult cancelResult = alipayPaymentClient.cancel(orderNo);
+            if (!definitivelyCancelled(cancelResult)) {
+                throw new BusinessException(PAYMENT_STATE_UNCERTAIN_MESSAGE);
+            }
+        } else if (!tradeClosed(queryResult) && !notFound(queryResult)) {
+            throw new BusinessException(PAYMENT_STATE_UNCERTAIN_MESSAGE);
+        }
+
+        int closedRows = closeCreatedOrder(orderNo);
+        PaymentOrder current = findOrder(orderNo);
+        if (PaymentOrderStatus.PAID.name().equals(current.getStatus())) {
+            return toCreateResponseWithoutPaymentPayload(current);
+        }
+        if (closedRows == 0 || !PaymentOrderStatus.CLOSED.name().equals(current.getStatus())) {
+            throw new BusinessException(PAYMENT_STATE_UNCERTAIN_MESSAGE);
+        }
+
+        PaymentOrder pageOrder = cloneAsPageOrder(source);
+        return preparePayAndInsert(pageOrder);
     }
 
     @Override
@@ -159,7 +293,14 @@ public class PaymentOrderServiceImpl implements PaymentOrderService {
         }
         for (PaymentOrder order : orders) {
             try {
-                processExpiredQrOrder(order);
+                withOrderOperationLock(order.getOrderNo(), () -> {
+                    PaymentOrder current = findOrder(order.getOrderNo());
+                    if (PaymentOrderStatus.CREATED.name().equals(current.getStatus())
+                            && isExpiredQrOrder(current, LocalDateTime.now())) {
+                        processExpiredQrOrder(current);
+                    }
+                    return null;
+                });
             } catch (Exception e) {
                 log.warn("支付宝订单码过期处理失败，保留待重试: orderNo={}, message={}",
                         order.getOrderNo(), e.getMessage());
@@ -170,8 +311,8 @@ public class PaymentOrderServiceImpl implements PaymentOrderService {
     @Override
     public PaymentSettlement settlePaidOrder(String orderNo, String alipayTradeNo, String notifyId, BigDecimal paidAmount,
                                              String tradeStatus, String appId, String sellerId) {
-        return transactionTemplate.execute(status -> doSettlePaidOrder(
-                orderNo, alipayTradeNo, notifyId, paidAmount, tradeStatus, appId, sellerId));
+        return withOrderOperationLock(orderNo, () -> transactionTemplate.execute(status -> doSettlePaidOrder(
+                orderNo, alipayTradeNo, notifyId, paidAmount, tradeStatus, appId, sellerId)));
     }
 
     private PaymentSettlement doSettlePaidOrder(String orderNo, String alipayTradeNo, String notifyId,
@@ -230,14 +371,7 @@ public class PaymentOrderServiceImpl implements PaymentOrderService {
             return prepareQrPayAndInsert(order);
         }
 
-        AlipayPagePayResult result = alipayPaymentClient.pagePay(new AlipayPagePayRequest(
-                order.getOrderNo(),
-                order.getProductName(),
-                amountAsYuan(order.getAmountCents()),
-                alipayProperties.getNotifyUrl(),
-                alipayProperties.getReturnUrl(),
-                alipayProperties.getTimeoutExpress()
-        ));
+        AlipayPagePayResult result = alipayPaymentClient.pagePay(pagePayRequest(order));
         paymentOrderMapper.insert(order);
         return toCreateResponse(order, result.paymentHtml(), true, null);
     }
@@ -251,7 +385,7 @@ public class PaymentOrderServiceImpl implements PaymentOrderService {
             return closeOrReturnTerminalOrder(order.getOrderNo(), exception);
         }
         if (result != null && notBlank(result.qrCode())) {
-            updateQrCodeForCreatedOrder(order.getOrderNo(), result.qrCode());
+            saveQrIfCreated(order.getOrderNo(), result.qrCode());
         }
         return reloadedQrCreateResponse(order.getOrderNo());
     }
@@ -294,16 +428,32 @@ public class PaymentOrderServiceImpl implements PaymentOrderService {
                 if (attempt == QR_PRECREATE_MAX_ATTEMPTS) {
                     return null;
                 }
-                paymentRetrySleeper.pauseBeforeAttempt(attempt + 1);
+                try {
+                    paymentRetrySleeper.pauseBeforeAttempt(attempt + 1);
+                } catch (BusinessException ignoredSleepInterruption) {
+                    return null;
+                }
             }
         }
         return null;
     }
 
-    private void updateQrCodeForCreatedOrder(String orderNo, String qrCode) {
+    private void saveQrIfCreated(String orderNo, String qrCode) {
         PaymentOrder update = new PaymentOrder();
         update.setQrcode(qrCode);
         update.setUpdatedAt(LocalDateTime.now());
+        LambdaUpdateWrapper<PaymentOrder> wrapper = new LambdaUpdateWrapper<>();
+        wrapper.eq(PaymentOrder::getOrderNo, orderNo)
+                .eq(PaymentOrder::getStatus, PaymentOrderStatus.CREATED.name());
+        paymentOrderMapper.update(update, wrapper);
+    }
+
+    private void saveResumedQrIfCreated(String orderNo, String qrCode) {
+        LocalDateTime now = LocalDateTime.now();
+        PaymentOrder update = new PaymentOrder();
+        update.setQrcode(qrCode);
+        update.setExpiresAt(now.plusHours(2));
+        update.setUpdatedAt(now);
         LambdaUpdateWrapper<PaymentOrder> wrapper = new LambdaUpdateWrapper<>();
         wrapper.eq(PaymentOrder::getOrderNo, orderNo)
                 .eq(PaymentOrder::getStatus, PaymentOrderStatus.CREATED.name());
@@ -328,23 +478,26 @@ public class PaymentOrderServiceImpl implements PaymentOrderService {
     }
 
     private void processExpiredQrOrder(PaymentOrder order) {
-        AlipayQueryResult queryResult = alipayPaymentClient.query(order.getOrderNo());
+        processExpiredQrOrder(order, alipayPaymentClient.query(order.getOrderNo()));
+    }
+
+    private void processExpiredQrOrder(PaymentOrder order, AlipayQueryResult queryResult) {
         if (queryResult != null && queryResult.paid()) {
-            settlePaidOrder(order.getOrderNo(), queryResult.alipayTradeNo(), "expiry-query",
-                    queryResult.totalAmount(), queryResult.tradeStatus(),
-                    alipayProperties.getAppId(), alipayProperties.getSellerId());
+            settleFromQuery(order, queryResult, "expiry-query");
             return;
         }
-        if (queryResult != null && "TRADE_CLOSED".equals(queryResult.tradeStatus())) {
+        if (tradeClosed(queryResult) || notFound(queryResult)) {
             closeCreatedOrder(order.getOrderNo());
             return;
         }
-        cancelAndClose(order);
+        if (waitingForBuyer(queryResult)) {
+            cancelAndClose(order);
+        }
     }
 
     private void cancelAndClose(PaymentOrder order) {
         AlipayCancelResult cancelResult = alipayPaymentClient.cancel(order.getOrderNo());
-        if (cancelResult != null && cancelResult.success() && !cancelResult.retryRequired()) {
+        if (definitivelyCancelled(cancelResult)) {
             closeCreatedOrder(order.getOrderNo());
         }
     }
@@ -388,6 +541,108 @@ public class PaymentOrderServiceImpl implements PaymentOrderService {
             throw new BusinessException("订单不存在");
         }
         return order;
+    }
+
+    private PaymentOrder findOwnedOrder(Long userId, String orderNo) {
+        ensureLoggedIn(userId);
+        PaymentOrder order = findOrder(orderNo);
+        if (!userId.equals(order.getUserId())) {
+            throw new BusinessException("订单不存在");
+        }
+        return order;
+    }
+
+    private AlipayPagePayRequest pagePayRequest(PaymentOrder order) {
+        return new AlipayPagePayRequest(
+                order.getOrderNo(),
+                order.getProductName(),
+                amountAsYuan(order.getAmountCents()),
+                alipayProperties.getNotifyUrl(),
+                alipayProperties.getReturnUrl(),
+                alipayProperties.getTimeoutExpress()
+        );
+    }
+
+    private PaymentOrder cloneAsPageOrder(PaymentOrder source) {
+        PaymentOrder pageOrder = baseOrder(
+                source.getUserId(),
+                PaymentOrderType.valueOf(source.getOrderType()),
+                source.getProductCode(),
+                source.getProductName(),
+                safe(source.getAmountCents()),
+                PaymentMethod.PAGE
+        );
+        pageOrder.setBaseCredits(safe(source.getBaseCredits()));
+        pageOrder.setBonusCredits(safe(source.getBonusCredits()));
+        pageOrder.setTotalCredits(safe(source.getTotalCredits()));
+        pageOrder.setMembershipTier(source.getMembershipTier());
+        pageOrder.setMembershipPeriod(source.getMembershipPeriod());
+        pageOrder.setMembershipMonths(source.getMembershipMonths());
+        return pageOrder;
+    }
+
+    private void settleFromQuery(PaymentOrder order, AlipayQueryResult queryResult, String notifyId) {
+        settlePaidOrder(
+                order.getOrderNo(),
+                queryResult.alipayTradeNo(),
+                notifyId,
+                queryResult.totalAmount(),
+                queryResult.tradeStatus(),
+                alipayProperties.getAppId(),
+                alipayProperties.getSellerId()
+        );
+    }
+
+    private boolean paymentCanBeRestored(AlipayQueryResult queryResult) {
+        return waitingForBuyer(queryResult) || notFound(queryResult);
+    }
+
+    private boolean waitingForBuyer(AlipayQueryResult queryResult) {
+        return queryResult != null && "WAIT_BUYER_PAY".equals(queryResult.tradeStatus());
+    }
+
+    private boolean tradeClosed(AlipayQueryResult queryResult) {
+        return queryResult != null && "TRADE_CLOSED".equals(queryResult.tradeStatus());
+    }
+
+    private boolean notFound(AlipayQueryResult queryResult) {
+        return queryResult != null && queryResult.notFound();
+    }
+
+    private boolean definitivelyCancelled(AlipayCancelResult cancelResult) {
+        if (cancelResult == null || !cancelResult.success() || cancelResult.retryRequired()) {
+            return false;
+        }
+        return "close".equalsIgnoreCase(cancelResult.action())
+                || "refund".equalsIgnoreCase(cancelResult.action());
+    }
+
+    private AlipayQueryResult queryForSafePaymentAction(String orderNo) {
+        try {
+            return alipayPaymentClient.query(orderNo);
+        } catch (BusinessException exception) {
+            throw new BusinessException(PAYMENT_STATE_UNCERTAIN_MESSAGE);
+        }
+    }
+
+    // Guarantees same-JVM order-operation serialization; the current deployment runs in one JVM.
+    private <T> T withOrderOperationLock(String orderNo, Supplier<T> operation) {
+        int stripe = Math.floorMod(orderNo == null ? 0 : orderNo.hashCode(), orderOperationLocks.length);
+        ReentrantLock lock = orderOperationLocks[stripe];
+        lock.lock();
+        try {
+            return operation.get();
+        } finally {
+            lock.unlock();
+        }
+    }
+
+    private static ReentrantLock[] createOrderOperationLocks() {
+        ReentrantLock[] locks = new ReentrantLock[ORDER_OPERATION_LOCK_STRIPES];
+        for (int index = 0; index < locks.length; index++) {
+            locks[index] = new ReentrantLock();
+        }
+        return locks;
     }
 
     private void validateAmount(PaymentOrder order, BigDecimal paidAmount) {
@@ -452,6 +707,26 @@ public class PaymentOrderServiceImpl implements PaymentOrderService {
                 order.getExpiresAt(),
                 order.getPaidAt()
         );
+    }
+
+    private PendingPaymentOrderResponse toPendingResponse(PaymentOrder order) {
+        boolean paymentReady = PaymentMethod.PAGE.name().equals(order.getPaymentMethod())
+                || (PaymentMethod.QR.name().equals(order.getPaymentMethod()) && notBlank(order.getQrcode()));
+        return new PendingPaymentOrderResponse(
+                order.getOrderNo(),
+                order.getOrderType(),
+                order.getProductName(),
+                safe(order.getAmountCents()),
+                order.getPaymentMethod(),
+                paymentReady,
+                order.getStatus(),
+                order.getExpiresAt(),
+                order.getCreatedAt()
+        );
+    }
+
+    private PaymentOrderCreateResponse toCreateResponseWithoutPaymentPayload(PaymentOrder order) {
+        return toCreateResponse(order, null, false, null);
     }
 
     private int safe(Integer value) {

@@ -4,9 +4,11 @@ import com.manga.ai.payment.dto.PaymentOrderCreateResponse;
 import com.manga.ai.payment.dto.PaymentOrderStatusResponse;
 import com.manga.ai.payment.dto.PaymentProductsResponse;
 import com.manga.ai.payment.dto.PaymentSettlement;
+import com.manga.ai.payment.dto.PendingPaymentOrderResponse;
 import com.manga.ai.payment.enums.PaymentMethod;
 
 import java.math.BigDecimal;
+import java.util.List;
 
 public interface PaymentOrderService {
 
@@ -27,6 +29,12 @@ public interface PaymentOrderService {
     PaymentOrderStatusResponse getOrder(Long userId, String orderNo);
 
     PaymentOrderStatusResponse syncOrder(Long userId, String orderNo);
+
+    List<PendingPaymentOrderResponse> pendingOrders(Long userId);
+
+    PaymentOrderCreateResponse resumeOrder(Long userId, String orderNo);
+
+    PaymentOrderCreateResponse switchToPage(Long userId, String orderNo);
 
     void processExpiredQrOrders();
 

@@ -380,6 +380,38 @@ class DefaultAlipayPaymentClientTest {
     }
 
     @Test
+    void queryMapsNonSuccessCodeAndSubCodeWithoutTreatingEveryFailureAsNotFound()
+            throws AlipayApiException {
+        AlipayClient sdkClient = mock(AlipayClient.class);
+        AlipayTradeQueryResponse response = new AlipayTradeQueryResponse();
+        response.setCode("40004");
+        response.setSubCode("ACQ.SYSTEM_ERROR");
+        response.setTradeNo("2026071700002");
+        when(sdkClient.execute(any(AlipayTradeQueryRequest.class))).thenReturn(response);
+
+        AlipayQueryResult result = paymentClient(sdkClient).query("PAY202607170002");
+
+        assertThat(result.code()).isEqualTo("40004");
+        assertThat(result.subCode()).isEqualTo("ACQ.SYSTEM_ERROR");
+        assertThat(result.notFound()).isFalse();
+    }
+
+    @Test
+    void queryClassifiesOnlyTradeNotExistAsNotFound() throws AlipayApiException {
+        AlipayClient sdkClient = mock(AlipayClient.class);
+        AlipayTradeQueryResponse response = new AlipayTradeQueryResponse();
+        response.setCode("40004");
+        response.setSubCode("ACQ.TRADE_NOT_EXIST");
+        when(sdkClient.execute(any(AlipayTradeQueryRequest.class))).thenReturn(response);
+
+        AlipayQueryResult result = paymentClient(sdkClient).query("PAY202607170003");
+
+        assertThat(result.code()).isEqualTo("40004");
+        assertThat(result.subCode()).isEqualTo("ACQ.TRADE_NOT_EXIST");
+        assertThat(result.notFound()).isTrue();
+    }
+
+    @Test
     void verifyNotifyOnlyRequiresSdkCredentials() {
         AlipayProperties properties = properties();
         properties.setNotifyUrl(null);

@@ -147,12 +147,26 @@ public class DefaultAlipayPaymentClient implements AlipayPaymentClient {
             if (!response.isSuccess()) {
                 log.info("支付宝交易查询未成功: orderNo={}, code={}, subCode={}",
                         orderNo, response.getCode(), response.getSubCode());
-                return new AlipayQueryResult(orderNo, response.getTradeNo(), response.getTradeStatus(), null);
+                return new AlipayQueryResult(
+                        orderNo,
+                        response.getTradeNo(),
+                        response.getTradeStatus(),
+                        null,
+                        response.getCode(),
+                        response.getSubCode()
+                );
             }
             BigDecimal totalAmount = response.getTotalAmount() == null
                     ? null
                     : new BigDecimal(response.getTotalAmount());
-            return new AlipayQueryResult(orderNo, response.getTradeNo(), response.getTradeStatus(), totalAmount);
+            return new AlipayQueryResult(
+                    orderNo,
+                    response.getTradeNo(),
+                    response.getTradeStatus(),
+                    totalAmount,
+                    response.getCode(),
+                    response.getSubCode()
+            );
         } catch (AlipayApiException e) {
             log.warn("支付宝交易查询异常: orderNo={}", orderNo);
             throw new BusinessException("支付宝交易查询异常，请稍后重试");
