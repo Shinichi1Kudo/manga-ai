@@ -207,6 +207,14 @@ class MembershipQrPaymentTests(TestCase):
         self.assertIn('this.refreshInFlight = false;', refresh_source)
         self.assertNotIn('this.close()', refresh_source)
 
+        close_start = controller.index('close() {')
+        close_end = controller.index('handleKeydown(event)', close_start)
+        self.assertIn('if (this.root.hidden || this.refreshInFlight) return;', controller[close_start:close_end])
+
+        show_pending_start = controller.index('showPending() {')
+        show_pending_end = controller.index('async chooseMethod(method)', show_pending_start)
+        self.assertIn('if (this.refreshInFlight) return;', controller[show_pending_start:show_pending_end])
+
         for method_name, next_method in (
             ('async resume(orderNo)', 'async refreshCurrentQr()'),
             ('async switchCurrentQrToPage()', 'async syncCurrentOrder('),
@@ -223,6 +231,33 @@ class MembershipQrPaymentTests(TestCase):
         self.assertIn('this.elements.qrRefresh.hidden = !(', render_source)
         self.assertIn('this.elements.qrRefresh.disabled = this.refreshInFlight', render_source)
         self.assertIn('ui !== PaymentCenterCore.UI.REFRESHING_QR', render_source)
+        self.assertIn('this.elements.close.disabled = this.refreshInFlight;', render_source)
+        self.assertIn('this.elements.pendingTab.disabled = this.refreshInFlight;', render_source)
+        self.assertIn('this.updatePendingActionState();', render_source)
+
+    def test_payment_center_polls_created_qr_orders_even_when_qr_is_unavailable(self):
+        controller = (
+            Path(settings.BASE_DIR) / 'static/js/payment-center.js'
+        ).read_text(encoding='utf-8')
+
+        response_start = controller.index('async handleOrderResponse(order)')
+        response_end = controller.index('clearVisibleQrCanvas()', response_start)
+        response_source = controller[response_start:response_end]
+        self.assertIn('this.startPolling();', response_source)
+        self.assertNotIn('this.startCountdownOnly();', response_source)
+
+        qr_start = controller.index('async showQrOrder(order)')
+        qr_end = controller.index('renderPending(orders)', qr_start)
+        qr_source = controller[qr_start:qr_end]
+        self.assertEqual(qr_source.count('this.startPolling();'), 2)
+        self.assertNotIn('this.startCountdownOnly();', qr_source)
+
+        lifecycle_start = controller.index('restoreCurrentQrLifecycle() {')
+        lifecycle_end = controller.index('submitAlipayForm(paymentHtml)', lifecycle_start)
+        lifecycle_source = controller[lifecycle_start:lifecycle_end]
+        self.assertIn("this.currentOrder.paymentMethod === 'QR'", lifecycle_source)
+        self.assertIn('this.startPolling();', lifecycle_source)
+        self.assertNotIn('this.currentOrder.paymentReady', lifecycle_source)
 
     def test_payment_center_close_invalidates_late_redirects_and_traps_visible_focus(self):
         controller = (
@@ -439,8 +474,8 @@ class MembershipQrPaymentTests(TestCase):
         response_end = controller.index('async showQrOrder(order)', response_start)
         response_source = controller[response_start:response_end]
         create_error = response_source.index('PaymentCenterCore.UI.CREATE_ERROR')
-        countdown = response_source.index('this.startCountdownOnly()', create_error)
-        self.assertLess(create_error, countdown)
+        polling = response_source.index('this.startPolling()', create_error)
+        self.assertLess(create_error, polling)
 
         closed_start = response_source.index("if (order.status === 'CLOSED')")
         closed_end = response_source.index("if (order.paymentMethod === 'QR')", closed_start)
@@ -534,8 +569,8 @@ class MembershipQrPaymentTests(TestCase):
 
         render_catch_start = show_source.index('} catch (error) {', draw_position)
         render_catch = show_source[render_catch_start:]
-        self.assertIn('this.startCountdownOnly();', render_catch)
-        self.assertNotIn('this.startPolling();', render_catch)
+        self.assertIn('this.startPolling();', render_catch)
+        self.assertNotIn('this.startCountdownOnly();', render_catch)
 
         purchase_start = controller.index('openPurchase(purchase, trigger)')
         purchase_end = controller.index('openPending(trigger = null)', purchase_start)
@@ -768,8 +803,8 @@ class MembershipQrPaymentTests(TestCase):
 
         assets = (
             "{% static 'vendor/qrcode/qrcode.min.js' %}?v=1.5.3",
-            "{% static 'js/payment-center-core.js' %}?v=20260720-refresh1",
-            "{% static 'js/payment-center.js' %}?v=20260720-refresh1",
+            "{% static 'js/payment-center-core.js' %}?v=20260720-refresh2",
+            "{% static 'js/payment-center.js' %}?v=20260720-refresh2",
         )
         for asset in assets:
             self.assertIn(asset, template)
@@ -1126,6 +1161,8 @@ class MembershipQrPaymentTests(TestCase):
             ('post', '/api/payments/orders/PAY-PENDING/resume/', 404, 404),
             ('post', '/api/payments/orders/PAY-PENDING/switch-to-page/', 409, 409),
             ('post', '/api/payments/orders/PAY-PENDING/refresh-qr/', 409, 409),
+            ('get', '/api/payments/orders/PAY-PENDING/', 503, 503),
+            ('post', '/api/payments/orders/PAY-PENDING/sync/', 409, 409),
             ('get', '/api/payments/orders/pending/', 503, 503),
             ('post', '/api/payments/orders/PAY-PENDING/switch-to-page/', 700, 502),
         )

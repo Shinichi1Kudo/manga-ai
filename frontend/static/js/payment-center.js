@@ -190,7 +190,7 @@
         }
 
         close() {
-            if (this.root.hidden) return;
+            if (this.root.hidden || this.refreshInFlight) return;
             this.operationSequence += 1;
             this.stopTimers();
             this.renderSequence += 1;
@@ -281,6 +281,7 @@
         }
 
         showPending() {
+            if (this.refreshInFlight) return;
             this.elements.currentTab.setAttribute('aria-selected', 'false');
             this.elements.pendingTab.setAttribute('aria-selected', 'true');
             this.elements.currentView.hidden = true;
@@ -350,7 +351,7 @@
                         orderStatus: order.status,
                         error: order.paymentMessage || '二维码暂不可用，可刷新二维码或切换支付宝收银台',
                     });
-                    this.startCountdownOnly();
+                    this.startPolling();
                 }
                 return;
             }
@@ -412,7 +413,7 @@
                 this.clearVisibleQrCanvas();
                 this.state = PaymentCenterCore.withRenderFailure(this.state, error.message);
                 this.render();
-                this.startCountdownOnly();
+                this.startPolling();
             }
         }
 
@@ -451,6 +452,13 @@
                 this.resumeButtons.set(order.orderNo, button);
                 item.appendChild(button);
                 this.elements.pendingList.appendChild(item);
+            });
+            this.updatePendingActionState();
+        }
+
+        updatePendingActionState() {
+            this.resumeButtons.forEach((button, orderNo) => {
+                button.disabled = this.refreshInFlight || this.resumeInFlight.has(orderNo);
             });
         }
 
@@ -644,9 +652,7 @@
                 this.stopTimers();
                 return;
             }
-            if (this.currentOrder.paymentMethod === 'QR'
-                    && this.currentOrder.paymentReady
-                    && this.currentOrder.qrCode) {
+            if (this.currentOrder.paymentMethod === 'QR') {
                 this.startPolling();
                 return;
             }
@@ -881,10 +887,7 @@
             this.resumePollingOnVisibility = false;
             if (document.hidden || this.root.hidden || !this.currentOrder
                     || this.currentOrder.status !== 'CREATED') return;
-            const canPollQr = this.currentOrder.paymentMethod === 'QR'
-                && this.currentOrder.paymentReady
-                && (this.state.ui === PaymentCenterCore.UI.QR_READY
-                    || this.state.ui === PaymentCenterCore.UI.QR_RENDER_ERROR);
+            const canPollQr = this.currentOrder.paymentMethod === 'QR';
             if (canPollQr) this.startPolling();
             else this.startCountdownOnly();
         }
@@ -893,6 +896,10 @@
             const ui = this.state.ui;
             const order = this.currentOrder;
             const summary = order || this.currentPurchase;
+            this.elements.close.disabled = this.refreshInFlight;
+            this.elements.currentTab.disabled = this.refreshInFlight;
+            this.elements.pendingTab.disabled = this.refreshInFlight;
+            this.updatePendingActionState();
             const showQrDetails = Boolean(order) && (
                 order.paymentMethod === 'QR'
                 || ui === PaymentCenterCore.UI.PAID

@@ -2754,7 +2754,7 @@ def payment_order_status(request, order_no):
         result = client.get(f'/v1/payments/orders/{order_no}')
         return JsonResponse({'code': 200, 'data': result})
     except BackendAPIError as e:
-        return JsonResponse({'code': e.status_code, 'message': e.message}, status=400)
+        return _payment_error_response(e.status_code, e.message)
 
 
 @require_http_methods(["POST"])
@@ -2765,7 +2765,7 @@ def payment_order_sync(request, order_no):
         result = client.post(f'/v1/payments/orders/{order_no}/sync')
         return JsonResponse({'code': 200, 'data': result})
     except BackendAPIError as e:
-        return JsonResponse({'code': e.status_code, 'message': e.message}, status=400)
+        return _payment_error_response(e.status_code, e.message)
 
 
 def credit_records(request):

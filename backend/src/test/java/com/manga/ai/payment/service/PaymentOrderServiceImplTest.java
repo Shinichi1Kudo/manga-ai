@@ -1355,12 +1355,39 @@ class PaymentOrderServiceImplTest {
         assertThat(replacement.getMembershipTier()).isEqualTo("STANDARD");
         assertThat(replacement.getMembershipPeriod()).isEqualTo("MONTH");
         assertThat(replacement.getMembershipMonths()).isEqualTo(1);
+        assertThat(replacement.getAppId()).isEqualTo(source.getAppId());
+        assertThat(replacement.getSellerId()).isEqualTo(source.getSellerId());
         assertThat(replacement.getExpiresAt()).isAfter(LocalDateTime.now().plusMinutes(119));
         assertThat(response.orderNo()).isEqualTo(replacement.getOrderNo());
         assertThat(response.qrCode()).isEqualTo("https://qr.alipay.com/refreshed");
         assertThat(response.paymentReady()).isTrue();
         verify(client).cancel(source.getOrderNo());
         verify(mapper).insert(replacement);
+    }
+
+    @Test
+    void refreshQrRejectsOrderFromDifferentAlipayMerchantBeforeGatewayLookup() {
+        PaymentOrderMapper mapper = mock(PaymentOrderMapper.class);
+        AlipayPaymentClient client = mock(AlipayPaymentClient.class);
+        PaymentOrder source = resumableQrOrder("PAY-REFRESH-OLD-MERCHANT");
+        source.setAppId("legacy-app");
+        source.setSellerId("legacy-seller");
+        when(mapper.selectOne(any())).thenReturn(source);
+        PaymentOrderServiceImpl service = service(
+                mapper,
+                mock(UserMembershipMapper.class),
+                mock(CreditAccountService.class),
+                mock(MembershipService.class),
+                client
+        );
+
+        assertThatThrownBy(() -> service.refreshQrOrder(7L, source.getOrderNo()))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("订单支付配置已变更，请先查询原订单状态，请勿重复支付");
+        verifyNoInteractions(client);
+        verify(mapper, never()).update(any(), any());
+        verify(mapper, never()).insert(any());
+        assertThat(source.getStatus()).isEqualTo(PaymentOrderStatus.CREATED.name());
     }
 
     @Test
