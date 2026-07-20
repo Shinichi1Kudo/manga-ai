@@ -143,57 +143,146 @@ class MembershipQrPaymentTests(TestCase):
         initialization_start = base_template.find(authenticated_initialization)
         self.assertGreater(initialization_start, interceptor_end)
 
-    def test_membership_page_offers_choice_before_creating_order(self):
+    def test_membership_page_has_unified_payment_center_shell(self):
         template = (
             Path(settings.BASE_DIR) / 'templates/payments/membership.html'
         ).read_text(encoding='utf-8')
 
-        self.assertIn('id="paymentMethodModal"', template)
-        self.assertIn('id="paymentMethodQr"', template)
-        self.assertIn('id="paymentMethodPage"', template)
-        self.assertIn('选择支付方式', template)
-        self.assertIn("openPaymentMethodModal('MEMBERSHIP'", template)
-        self.assertIn("openPaymentMethodModal('RECHARGE'", template)
-        self.assertIn("paymentMethod: selectedPaymentMethod", template)
-        self.assertNotIn('onclick="purchaseMembership(', template)
-        self.assertNotIn('onclick="purchaseRecharge(', template)
+        for element_id in (
+            'paymentCenterOverlay',
+            'paymentCenterPanel',
+            'paymentCenterClose',
+            'paymentCenterCurrentTab',
+            'paymentCenterPendingTab',
+            'paymentCenterPendingCount',
+            'paymentCenterCurrentView',
+            'paymentCenterPendingView',
+            'paymentPendingList',
+            'paymentQrCanvas',
+        ):
+            self.assertIn(f'id="{element_id}"', template)
 
-    def test_membership_page_uses_local_qrcode_and_polling_lifecycle(self):
+        self.assertNotIn('id="paymentMethodModal"', template)
+        self.assertNotIn('id="paymentQrModal"', template)
+        self.assertIn("{% static 'css/payment-center.css' %}", template)
+
+        panel_start = template.index('<aside id="paymentCenterPanel"')
+        panel_tag = template[panel_start:template.index('>', panel_start) + 1]
+        self.assertIn('aria-hidden="true"', panel_tag)
+        self.assertIn(' hidden', panel_tag)
+        self.assertIn(' inert', panel_tag)
+
+    def test_payment_center_current_view_has_stable_state_and_action_hooks(self):
         template = (
             Path(settings.BASE_DIR) / 'templates/payments/membership.html'
         ).read_text(encoding='utf-8')
 
-        self.assertIn("{% static 'vendor/qrcode/qrcode.min.js' %}", template)
-        self.assertIn('id="paymentQrModal"', template)
-        self.assertIn('id="paymentQrCanvas"', template)
-        self.assertIn('id="paymentQrCountdown"', template)
-        self.assertIn('id="paymentQrSync"', template)
-        self.assertIn('id="paymentQrRegenerate"', template)
-        self.assertIn('QRCode.toCanvas', template)
-        self.assertIn('setInterval(', template)
-        self.assertIn('5000', template)
-        self.assertIn("document.addEventListener('visibilitychange'", template)
-        self.assertIn('document.hidden', template)
-        self.assertIn('stopQrPolling()', template)
-        self.assertIn("status === 'PAID'", template)
-        self.assertIn("status === 'CLOSED' || status === 'FAILED'", template)
-        self.assertIn('loadUserCredits()', template)
-        self.assertNotIn('cdn.jsdelivr.net/npm/qrcode', template)
-        self.assertNotIn('unpkg.com/qrcode', template)
+        for element_id in (
+            'paymentCurrentProduct',
+            'paymentCurrentAmount',
+            'paymentMethodSelection',
+            'paymentMethodQr',
+            'paymentMethodPage',
+            'paymentCreatingState',
+            'paymentCreateError',
+            'paymentQrView',
+            'paymentQrOrderNo',
+            'paymentQrCountdown',
+            'paymentQrStatus',
+            'paymentQrSync',
+            'paymentQrRetryRender',
+            'paymentQrOpenLink',
+            'paymentQrCashier',
+        ):
+            self.assertIn(f'id="{element_id}"', template)
 
-    def test_cashier_flow_keeps_secure_form_reconstruction(self):
+        for icon in ('x', 'qr-code', 'external-link', 'refresh-cw', 'rotate-cw'):
+            self.assertIn(f'data-lucide="{icon}"', template)
+        self.assertIn('data-payment-purchase', template)
+        self.assertIn('data-payment-order-type="MEMBERSHIP"', template)
+        self.assertIn('data-payment-order-type="RECHARGE"', template)
+
+    def test_payment_center_css_has_desktop_mobile_and_accessibility_contracts(self):
+        css_path = Path(settings.BASE_DIR) / 'static/css/payment-center.css'
+        self.assertTrue(css_path.is_file())
+        css = css_path.read_text(encoding='utf-8')
+
+        self.assertIn('.payment-center {', css)
+        self.assertIn('width: min(520px, 92vw);', css)
+        self.assertIn('.payment-center[aria-hidden="true"] {', css)
+        self.assertIn('transform: translateX(100%);', css)
+        self.assertIn('.payment-center[hidden] {', css)
+        hidden_rule = css.split('.payment-center[hidden] {', 1)[1].split('}', 1)[0]
+        self.assertIn('display: none !important;', hidden_rule)
+        self.assertIn('.payment-center-qr {', css)
+        self.assertIn('width: 232px;', css)
+        self.assertIn('height: 232px;', css)
+        self.assertIn('@media (max-width: 768px)', css)
+        self.assertIn('width: 100%;', css)
+        self.assertIn('max-width: none;', css)
+        self.assertIn('@media (prefers-reduced-motion: reduce)', css)
+        self.assertIn('.payment-center-actions {', css)
+        self.assertIn('grid-template-columns: repeat(2, minmax(0, 1fr));', css)
+
+    def test_membership_page_loads_versioned_local_payment_assets_in_order(self):
         template = (
             Path(settings.BASE_DIR) / 'templates/payments/membership.html'
         ).read_text(encoding='utf-8')
 
-        self.assertIn('submitAlipayForm(data.data.paymentHtml)', template)
-        self.assertIn("sourceForm.method.toUpperCase() !== 'POST'", template)
-        self.assertIn("action.protocol !== 'https:'", template)
-        self.assertIn("action.pathname !== '/gateway.do'", template)
-        self.assertIn("sourceForm.querySelectorAll('input[name]')", template)
-        self.assertNotIn('innerHTML = paymentHtml', template)
-        self.assertNotIn('insertAdjacentHTML', template)
-        self.assertNotIn('document.write', template)
+        assets = (
+            "{% static 'vendor/qrcode/qrcode.min.js' %}?v=1.5.3",
+            "{% static 'js/payment-center-core.js' %}?v=20260719",
+            "{% static 'js/payment-center.js' %}?v=20260719",
+        )
+        for asset in assets:
+            self.assertIn(asset, template)
+        positions = [template.index(asset) for asset in assets]
+
+        self.assertEqual(positions, sorted(positions))
+        self.assertNotIn('cdn.jsdelivr.net', template)
+        self.assertNotIn('unpkg.com', template)
+        self.assertNotIn('QRCode.toCanvas', template)
+
+    def test_membership_catalog_values_are_escaped_before_html_interpolation(self):
+        template = (
+            Path(settings.BASE_DIR) / 'templates/payments/membership.html'
+        ).read_text(encoding='utf-8')
+
+        for escape_contract in (
+            'function escapeHtml(value) {',
+            "String(value ?? '')",
+            ".replace(/&/g, '&amp;')",
+            ".replace(/</g, '&lt;')",
+            ".replace(/>/g, '&gt;')",
+            ".replace(/\"/g, '&quot;')",
+            ".replace(/'/g, '&#39;')",
+        ):
+            self.assertIn(escape_contract, template)
+
+        for safe_interpolation in (
+            'const productCode = escapeHtml(product.code);',
+            'const productTitle = escapeHtml(product.title);',
+            "const buttonLabel = escapeHtml(product.buttonText || '购买');",
+            'const productName = escapeHtml(',
+            'const featureLabel = escapeHtml(featureText);',
+            'data-payment-product-code="${productCode}"',
+            'data-payment-product-name="${productName}"',
+            '${featureLabel}</span>',
+            'data-payment-amount-cents="${priceCents}"',
+            'data-payment-amount-cents="${amountCents}"',
+        ):
+            self.assertIn(safe_interpolation, template)
+
+        for unsafe_interpolation in (
+            '${product.title}',
+            'data-payment-product-code="${product.code}"',
+            'data-payment-product-name="${String(product.buttonText || product.title)',
+            "${product.buttonText || '购买'}</button>",
+            '${feature}</span>',
+            'data-payment-amount-cents="${product.priceCents}"',
+            'data-payment-amount-cents="${item.amountCents}"',
+        ):
+            self.assertNotIn(unsafe_interpolation, template)
 
     def test_recharge_proxy_forwards_qr_payment_method(self):
         session = self.client.session

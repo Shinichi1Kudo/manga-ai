@@ -4,6 +4,7 @@
 {% block title %}会员体系 - 海带 AI 内容智能创作平台{% endblock %}
 
 {% block extra_css %}
+<link rel="stylesheet" href="{% static 'css/payment-center.css' %}?v=20260719">
 <style>
     .membership-shell {
         max-width: 1320px;
@@ -232,261 +233,6 @@
         cursor: pointer;
     }
 
-    .payment-modal[hidden] {
-        display: none;
-    }
-
-    .payment-modal {
-        position: fixed;
-        inset: 0;
-        z-index: 1800;
-        display: grid;
-        place-items: center;
-        padding: 16px;
-        background: rgba(2, 6, 15, 0.72);
-        backdrop-filter: blur(8px);
-    }
-
-    .payment-dialog {
-        width: min(100%, 520px);
-        max-height: calc(100vh - 32px);
-        overflow-y: auto;
-        border: 1px solid rgba(255, 255, 255, 0.14);
-        border-radius: 8px;
-        background: #101722;
-        color: #f8fafc;
-        box-shadow: 0 24px 72px rgba(0, 0, 0, 0.42);
-    }
-
-    .payment-dialog--qr {
-        width: min(100%, 480px);
-    }
-
-    .payment-modal-header {
-        display: flex;
-        align-items: flex-start;
-        justify-content: space-between;
-        gap: 16px;
-        padding: 22px 22px 17px;
-        border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-    }
-
-    .payment-modal-eyebrow {
-        margin: 0 0 5px;
-        color: #7dd3fc;
-        font-size: 12px;
-        font-weight: 800;
-    }
-
-    .payment-modal-title {
-        margin: 0;
-        font-size: 20px;
-        font-weight: 800;
-        line-height: 1.35;
-        letter-spacing: 0;
-    }
-
-    .payment-icon-button {
-        width: 36px;
-        height: 36px;
-        flex: 0 0 36px;
-        display: grid;
-        place-items: center;
-        border: 1px solid rgba(255, 255, 255, 0.14);
-        border-radius: 6px;
-        background: rgba(255, 255, 255, 0.06);
-        color: #e2e8f0;
-        cursor: pointer;
-    }
-
-    .payment-icon-button i,
-    .payment-icon-button svg {
-        width: 18px;
-        height: 18px;
-    }
-
-    .payment-modal-body {
-        padding: 22px;
-    }
-
-    .payment-product-summary {
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 16px;
-        min-width: 0;
-        margin-bottom: 18px;
-        padding: 14px 16px;
-        border: 1px solid rgba(255, 255, 255, 0.1);
-        border-radius: 7px;
-        background: rgba(255, 255, 255, 0.04);
-    }
-
-    .payment-product-summary span {
-        min-width: 0;
-        color: rgba(255, 255, 255, 0.7);
-        font-size: 14px;
-        overflow-wrap: anywhere;
-    }
-
-    .payment-product-summary strong {
-        flex: 0 0 auto;
-        color: #fff;
-        font-size: 18px;
-    }
-
-    .payment-method-grid {
-        display: grid;
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-        gap: 12px;
-    }
-
-    .payment-method-option {
-        min-height: 112px;
-        display: flex;
-        flex-direction: column;
-        align-items: flex-start;
-        justify-content: center;
-        gap: 7px;
-        padding: 17px;
-        border: 1px solid rgba(255, 255, 255, 0.14);
-        border-radius: 8px;
-        background: rgba(255, 255, 255, 0.045);
-        color: #f8fafc;
-        text-align: left;
-        cursor: pointer;
-        transition: border-color 0.16s ease, background 0.16s ease;
-    }
-
-    .payment-method-option:hover,
-    .payment-method-option:focus-visible {
-        border-color: rgba(125, 211, 252, 0.7);
-        background: rgba(14, 165, 233, 0.1);
-        outline: none;
-    }
-
-    .payment-method-option i,
-    .payment-method-option svg {
-        width: 22px;
-        height: 22px;
-        color: #7dd3fc;
-    }
-
-    .payment-method-option strong {
-        font-size: 15px;
-    }
-
-    .payment-method-option span {
-        color: rgba(255, 255, 255, 0.55);
-        font-size: 12px;
-        line-height: 1.45;
-    }
-
-    .payment-method-error {
-        margin: 0 0 14px;
-        padding: 11px 12px;
-        border: 1px solid rgba(248, 113, 113, 0.32);
-        border-radius: 6px;
-        background: rgba(239, 68, 68, 0.09);
-        color: #fecaca;
-        font-size: 13px;
-        line-height: 1.5;
-    }
-
-    .payment-qr-stage {
-        width: min(100%, 256px);
-        aspect-ratio: 1;
-        display: grid;
-        place-items: center;
-        margin: 0 auto 18px;
-        padding: 12px;
-        border-radius: 8px;
-        background: #fff;
-    }
-
-    .payment-qr-stage canvas {
-        width: 100% !important;
-        height: 100% !important;
-        display: block;
-    }
-
-    .payment-qr-status {
-        margin: 0;
-        color: #bae6fd;
-        font-size: 15px;
-        font-weight: 800;
-        text-align: center;
-    }
-
-    .payment-qr-countdown {
-        min-height: 22px;
-        margin: 7px 0 17px;
-        color: rgba(255, 255, 255, 0.6);
-        font-variant-numeric: tabular-nums;
-        font-size: 13px;
-        text-align: center;
-    }
-
-    .payment-order-row {
-        display: flex;
-        align-items: baseline;
-        justify-content: space-between;
-        gap: 12px;
-        padding: 13px 0;
-        border-top: 1px solid rgba(255, 255, 255, 0.1);
-        border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-        color: rgba(255, 255, 255, 0.5);
-        font-size: 12px;
-    }
-
-    .payment-order-row code {
-        min-width: 0;
-        color: #e2e8f0;
-        font-size: 12px;
-        overflow-wrap: anywhere;
-        text-align: right;
-    }
-
-    .payment-qr-actions {
-        display: grid;
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-        gap: 10px;
-        margin-top: 18px;
-    }
-
-    .payment-action-button {
-        min-height: 42px;
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        gap: 8px;
-        padding: 9px 12px;
-        border: 1px solid rgba(255, 255, 255, 0.16);
-        border-radius: 6px;
-        background: rgba(255, 255, 255, 0.06);
-        color: #f8fafc;
-        font-size: 13px;
-        font-weight: 800;
-        cursor: pointer;
-    }
-
-    .payment-action-button--primary {
-        border-color: #e2e8f0;
-        background: #f8fafc;
-        color: #111827;
-    }
-
-    .payment-action-button:disabled {
-        cursor: wait;
-        opacity: 0.55;
-    }
-
-    .payment-action-button i,
-    .payment-action-button svg {
-        width: 16px;
-        height: 16px;
-    }
-
     @media (max-width: 1120px) {
         .membership-grid,
         .recharge-grid {
@@ -518,37 +264,8 @@
         }
     }
 
-    @media (max-width: 430px) {
-        .payment-modal {
-            padding: 12px;
-        }
-
-        .payment-dialog {
-            max-height: calc(100vh - 24px);
-        }
-
-        .payment-modal-header,
-        .payment-modal-body {
-            padding: 18px;
-        }
-
-        .payment-method-grid,
-        .payment-qr-actions {
-            grid-template-columns: 1fr;
-        }
-
-        .payment-method-option {
-            min-height: 86px;
-        }
-
-        .payment-qr-stage {
-            width: min(100%, 220px);
-        }
-    }
-
     @media (prefers-reduced-motion: reduce) {
-        .membership-action,
-        .payment-method-option {
+        .membership-action {
             transition: none;
         }
     }
@@ -579,87 +296,116 @@
     </section>
 </div>
 
-<div class="payment-modal" id="paymentMethodModal" role="dialog" aria-modal="true" aria-labelledby="paymentMethodTitle" hidden>
-    <div class="payment-dialog">
-        <div class="payment-modal-header">
-            <div>
-                <p class="payment-modal-eyebrow">支付宝</p>
-                <h2 class="payment-modal-title" id="paymentMethodTitle">选择支付方式</h2>
-            </div>
-            <button class="payment-icon-button" type="button" aria-label="关闭支付方式选择" title="关闭" data-close-payment-method>
-                <i data-lucide="x"></i>
-            </button>
+<div id="paymentCenterOverlay" class="payment-center-overlay" aria-hidden="true" hidden></div>
+<aside id="paymentCenterPanel" class="payment-center" role="dialog" aria-modal="true"
+       aria-labelledby="paymentCenterTitle" aria-hidden="true" tabindex="-1" hidden inert>
+    <header class="payment-center-header">
+        <div>
+            <p class="payment-center-eyebrow">支付宝</p>
+            <h2 id="paymentCenterTitle" class="payment-center-title">支付中心</h2>
         </div>
-        <div class="payment-modal-body">
-            <div class="payment-product-summary">
-                <span id="paymentMethodProductName"></span>
-                <strong id="paymentMethodAmount"></strong>
-            </div>
-            <p class="payment-method-error" id="paymentMethodError" role="alert" hidden></p>
-            <div class="payment-method-grid">
-                <button class="payment-method-option" id="paymentMethodQr" type="button" onclick="selectPaymentMethod('QR')">
-                    <i data-lucide="qr-code"></i>
-                    <strong>扫码支付</strong>
-                    <span>使用支付宝扫描二维码完成支付</span>
-                </button>
-                <button class="payment-method-option" id="paymentMethodPage" type="button" onclick="selectPaymentMethod('PAGE')">
-                    <i data-lucide="external-link"></i>
-                    <strong>支付宝收银台</strong>
-                    <span>跳转支付宝网页收银台完成支付</span>
-                </button>
-            </div>
-        </div>
-    </div>
-</div>
+        <button id="paymentCenterClose" type="button" class="payment-center-icon-button"
+                aria-label="关闭支付中心" title="关闭支付中心">
+            <i data-lucide="x" aria-hidden="true"></i>
+        </button>
+    </header>
 
-<div class="payment-modal" id="paymentQrModal" role="dialog" aria-modal="true" aria-labelledby="paymentQrTitle" hidden>
-    <div class="payment-dialog payment-dialog--qr">
-        <div class="payment-modal-header">
-            <div>
-                <p class="payment-modal-eyebrow">支付宝扫码支付</p>
-                <h2 class="payment-modal-title" id="paymentQrTitle">请使用支付宝扫码</h2>
-            </div>
-            <button class="payment-icon-button" type="button" aria-label="关闭扫码支付" title="关闭" data-close-payment-qr>
-                <i data-lucide="x"></i>
-            </button>
-        </div>
-        <div class="payment-modal-body">
-            <div class="payment-product-summary">
-                <span id="paymentQrProductName"></span>
-                <strong id="paymentQrAmount"></strong>
-            </div>
-            <div class="payment-qr-stage">
-                <canvas id="paymentQrCanvas" width="232" height="232" aria-label="支付宝支付二维码"></canvas>
-            </div>
-            <p class="payment-qr-status" id="paymentQrStatus" role="status" aria-live="polite">等待扫码支付</p>
-            <p class="payment-qr-countdown" id="paymentQrCountdown">正在读取有效期</p>
-            <div class="payment-order-row">
-                <span>订单号</span>
-                <code id="paymentQrOrderNo"></code>
-            </div>
-            <div class="payment-qr-actions">
-                <button class="payment-action-button payment-action-button--primary" id="paymentQrSync" type="button" onclick="syncQrOrder()">
-                    <i data-lucide="refresh-cw"></i>
-                    <span>立即查询</span>
-                </button>
-                <button class="payment-action-button" type="button" data-close-payment-qr>
-                    <i data-lucide="x"></i>
-                    <span>关闭</span>
-                </button>
-                <button class="payment-action-button" id="paymentQrRegenerate" type="button" onclick="regenerateQrPayment()" hidden>
-                    <i data-lucide="rotate-cw"></i>
-                    <span>重新生成</span>
-                </button>
-                <button class="payment-action-button" id="paymentQrCashier" type="button" onclick="switchQrToCashier()">
-                    <i data-lucide="external-link"></i>
-                    <span>切换收银台</span>
-                </button>
-            </div>
-        </div>
-    </div>
-</div>
+    <nav class="payment-center-tabs" role="tablist" aria-label="支付中心视图">
+        <button id="paymentCenterCurrentTab" class="payment-center-tab" type="button" role="tab"
+                aria-selected="true" aria-controls="paymentCenterCurrentView">
+            当前支付
+        </button>
+        <button id="paymentCenterPendingTab" class="payment-center-tab" type="button" role="tab"
+                aria-selected="false" aria-controls="paymentCenterPendingView">
+            待支付订单
+            <span id="paymentCenterPendingCount" class="payment-center-tab-count"
+                  aria-live="polite" aria-atomic="true">0</span>
+        </button>
+    </nav>
 
-<script src="{% static 'vendor/qrcode/qrcode.min.js' %}"></script>
+    <div class="payment-center-content">
+        <section id="paymentCenterCurrentView" class="payment-center-view" role="tabpanel"
+                 aria-labelledby="paymentCenterCurrentTab" tabindex="0">
+            <div id="paymentCurrentEmpty" class="payment-center-empty">
+                <p>暂无当前支付</p>
+            </div>
+
+            <div id="paymentCurrentProductSummary" class="payment-center-summary" hidden>
+                <span id="paymentCurrentProduct"></span>
+                <strong id="paymentCurrentAmount"></strong>
+            </div>
+
+            <div id="paymentMethodSelection" hidden>
+                <h3 class="payment-center-section-title">选择支付方式</h3>
+                <div class="payment-center-methods">
+                    <button id="paymentMethodQr" class="payment-center-method" type="button"
+                            aria-label="选择支付宝扫码支付" title="扫码支付">
+                        <i data-lucide="qr-code" aria-hidden="true"></i>
+                        <strong>扫码支付</strong>
+                        <span>支付宝扫码完成付款</span>
+                    </button>
+                    <button id="paymentMethodPage" class="payment-center-method" type="button"
+                            aria-label="选择支付宝官方收银台" title="支付宝收银台">
+                        <i data-lucide="external-link" aria-hidden="true"></i>
+                        <strong>支付宝收银台</strong>
+                        <span>前往官方网页完成付款</span>
+                    </button>
+                </div>
+            </div>
+
+            <div id="paymentCreatingState" class="payment-center-busy" role="status"
+                 aria-live="polite" hidden>
+                <i data-lucide="loader-circle" aria-hidden="true"></i>
+                <span>正在创建支付订单</span>
+            </div>
+            <p id="paymentCreateError" class="payment-center-error" role="alert" hidden></p>
+
+            <div id="paymentQrView" class="payment-center-qr-view" hidden>
+                <div class="payment-center-qr">
+                    <canvas id="paymentQrCanvas" width="232" height="232"
+                            aria-label="支付宝支付二维码"></canvas>
+                </div>
+                <p id="paymentQrStatus" class="payment-center-order-status" role="status"
+                   aria-live="polite">等待扫码支付</p>
+                <p id="paymentQrCountdown" class="payment-center-countdown">正在读取有效期</p>
+                <div class="payment-center-order-number">
+                    <span>订单号</span>
+                    <code id="paymentQrOrderNo"></code>
+                </div>
+                <div class="payment-center-actions">
+                    <button id="paymentQrSync" class="payment-center-action payment-center-action--primary"
+                            type="button" aria-label="立即查询支付状态" title="立即查询">
+                        <i data-lucide="refresh-cw" aria-hidden="true"></i>
+                        <span>立即查询</span>
+                    </button>
+                    <button id="paymentQrRetryRender" class="payment-center-action" type="button"
+                            aria-label="重新渲染支付宝二维码" title="重试二维码">
+                        <i data-lucide="rotate-cw" aria-hidden="true"></i>
+                        <span>重试二维码</span>
+                    </button>
+                    <button id="paymentQrOpenLink" class="payment-center-action" type="button"
+                            aria-label="打开支付宝付款链接" title="打开付款链接">
+                        <i data-lucide="external-link" aria-hidden="true"></i>
+                        <span>打开付款链接</span>
+                    </button>
+                    <button id="paymentQrCashier" class="payment-center-action" type="button"
+                            aria-label="切换支付宝官方收银台" title="切换官方收银台">
+                        <i data-lucide="landmark" aria-hidden="true"></i>
+                        <span>切换官方收银台</span>
+                    </button>
+                </div>
+            </div>
+        </section>
+
+        <section id="paymentCenterPendingView" class="payment-center-view" role="tabpanel"
+                 aria-labelledby="paymentCenterPendingTab" tabindex="0" hidden>
+            <div id="paymentPendingState" class="payment-pending-state" role="status"
+                 aria-live="polite">暂无待支付订单</div>
+            <div id="paymentPendingList" class="payment-pending-list" aria-live="polite"></div>
+        </section>
+    </div>
+</aside>
+
 <script>
     const IS_AUTHENTICATED = {{ request.session.token|yesno:"true,false" }};
     const tabs = [
@@ -705,42 +451,11 @@
     const defaultFeatures = ['Seedance 2.0', 'Seedance 1.5 Pro', '图片4.0', '标准生成通道', '无忧退款', '生成作品去除品牌水印'];
     let currentTab = 'MONTH';
     let productsState = fallbackProducts;
-    let pendingPayment = null;
-    let currentQrOrder = null;
-    let paymentFocusReturn = null;
-    let qrPollTimer = null;
-    let qrCountdownTimer = null;
-    let qrSyncInFlight = false;
 
     document.addEventListener('DOMContentLoaded', () => {
         renderTabs();
         renderAll();
         loadProducts();
-
-        document.querySelectorAll('[data-close-payment-method]').forEach(button => {
-            button.addEventListener('click', closePaymentMethodModal);
-        });
-        document.querySelectorAll('[data-close-payment-qr]').forEach(button => {
-            button.addEventListener('click', closePaymentQrModal);
-        });
-        document.getElementById('paymentMethodModal').addEventListener('click', event => {
-            if (event.target === event.currentTarget) closePaymentMethodModal();
-        });
-        document.getElementById('paymentQrModal').addEventListener('click', event => {
-            if (event.target === event.currentTarget) closePaymentQrModal();
-        });
-        document.addEventListener('keydown', handlePaymentModalKeydown);
-    });
-
-    document.addEventListener('visibilitychange', () => {
-        if (!currentQrOrder || document.getElementById('paymentQrModal').hidden) return;
-        if (document.hidden) {
-            stopQrPolling();
-            return;
-        }
-        updateQrCountdown();
-        syncQrOrder();
-        startQrPolling();
     });
 
     function renderTabs() {
@@ -780,30 +495,50 @@
     function renderMembershipCards() {
         const products = (productsState.membershipProducts || {})[currentTab] || [];
         document.getElementById('membershipGrid').innerHTML = products.map(product => {
-            const features = product.features && product.features.length ? product.features : defaultFeatures;
+            const features = Array.isArray(product.features) && product.features.length
+                ? product.features
+                : defaultFeatures;
+            const enabled = product.enabled === true;
+            const priceCents = normalizeNonNegativeInteger(product.priceCents);
+            const monthlyCredits = normalizeNonNegativeInteger(product.monthlyCredits);
+            const productCode = escapeHtml(product.code);
+            const productTitle = escapeHtml(product.title);
+            const buttonLabel = escapeHtml(product.buttonText || '购买');
+            const productName = escapeHtml(
+                String(product.buttonText || product.title || '').replace(/^购买/, '')
+            );
             return `
-                <article class="membership-card ${product.enabled ? '' : 'disabled'}">
+                <article class="membership-card ${enabled ? '' : 'disabled'}">
                     <div class="membership-card-body">
-                        <h2 class="membership-title">${product.title}</h2>
+                        <h2 class="membership-title">${productTitle}</h2>
                         <div class="membership-price">
                             <span>¥</span>
-                            <strong>${product.enabled ? formatPrice(product.priceCents) : '????'}</strong>
+                            <strong>${enabled ? formatPrice(priceCents) : '????'}</strong>
                             <span>${periodUnit(currentTab)}</span>
                         </div>
                         <p class="membership-subcopy">${periodCopy(currentTab, product)}</p>
                         <div class="credit-box">
-                            <strong>✦ ${formatNumber(product.monthlyCredits)} 积分每月</strong>
-                            <span>换算 ¥10≈${Math.round(product.monthlyCredits / 8)} 积分</span>
+                            <strong>✦ ${formatNumber(monthlyCredits)} 积分每月</strong>
+                            <span>换算 ¥10≈${Math.round(monthlyCredits / 8)} 积分</span>
                         </div>
-                        <button class="membership-action" ${product.enabled ? '' : 'disabled'} onclick="openPaymentMethodModal('MEMBERSHIP', '${product.code}', this)">${product.buttonText || '购买'}</button>
+                        <button class="membership-action" ${enabled ? '' : 'disabled'}
+                                data-payment-purchase
+                                data-payment-order-type="MEMBERSHIP"
+                                data-payment-product-code="${productCode}"
+                                data-payment-product-name="${productName}"
+                                data-payment-amount-cents="${priceCents}">${buttonLabel}</button>
                     </div>
                     <div class="membership-features">
-                        ${features.map((feature, index) => `
-                            <div class="membership-feature">
-                                <span class="flex items-center gap-3"><i data-lucide="check"></i>${feature}</span>
-                                ${featureBadge(index, feature)}
-                            </div>
-                        `).join('')}
+                        ${features.map((feature, index) => {
+                            const featureText = String(feature ?? '');
+                            const featureLabel = escapeHtml(featureText);
+                            return `
+                                <div class="membership-feature">
+                                    <span class="flex items-center gap-3"><i data-lucide="check"></i>${featureLabel}</span>
+                                    ${featureBadge(index, featureText)}
+                                </div>
+                            `;
+                        }).join('')}
                     </div>
                 </article>
             `;
@@ -815,474 +550,45 @@
 
     function renderRechargeCards() {
         const packages = productsState.rechargePackages || fallbackProducts.rechargePackages;
-        document.getElementById('rechargeGrid').innerHTML = packages.map(item => `
-            <article class="recharge-card">
-                <strong>¥${formatPrice(item.amountCents)}</strong>
-                <span>${formatNumber(item.baseCredits)} 基础积分${item.bonusCredits ? `，加赠 ${formatNumber(item.bonusCredits)} 积分` : ''}<br>合计 ${formatNumber(item.totalCredits)} 积分</span>
-                <button onclick="openPaymentMethodModal('RECHARGE', ${item.amountCents}, this)">前往支付宝支付</button>
-            </article>
-        `).join('');
+        document.getElementById('rechargeGrid').innerHTML = packages.map(item => {
+            const amountCents = normalizeNonNegativeInteger(item.amountCents);
+            const baseCredits = normalizeNonNegativeInteger(item.baseCredits);
+            const bonusCredits = normalizeNonNegativeInteger(item.bonusCredits);
+            const totalCredits = normalizeNonNegativeInteger(item.totalCredits);
+            const totalCreditsLabel = formatNumber(totalCredits);
+            return `
+                <article class="recharge-card">
+                    <strong>¥${formatPrice(amountCents)}</strong>
+                    <span>${formatNumber(baseCredits)} 基础积分${bonusCredits ? `，加赠 ${formatNumber(bonusCredits)} 积分` : ''}<br>合计 ${totalCreditsLabel} 积分</span>
+                    <button data-payment-purchase
+                            data-payment-order-type="RECHARGE"
+                            data-payment-amount-cents="${amountCents}"
+                            data-payment-product-name="积分充值 ${totalCreditsLabel} 积分">前往支付宝支付</button>
+                </article>
+            `;
+        }).join('');
     }
 
-    function openPaymentMethodModal(orderType, identifier, button) {
-        if (!ensureAuthenticated()) return;
-
-        if (orderType === 'MEMBERSHIP') {
-            const product = findMembershipProduct(identifier);
-            if (!product) return;
-            pendingPayment = {
-                orderType,
-                url: '/api/payments/membership/orders/',
-                payload: {productCode: identifier},
-                productName: String(product.buttonText || product.title).replace(/^购买/, ''),
-                amountCents: product.priceCents,
-                button
-            };
-        } else if (orderType === 'RECHARGE') {
-            const rechargePackage = findRechargePackage(identifier);
-            if (!rechargePackage) return;
-            pendingPayment = {
-                orderType,
-                url: '/api/payments/recharge/orders/',
-                payload: {amountCents: Number(identifier)},
-                productName: `积分充值 ${formatNumber(rechargePackage.totalCredits)} 积分`,
-                amountCents: rechargePackage.amountCents,
-                button
-            };
-        } else {
-            return;
-        }
-
-        paymentFocusReturn = button || document.activeElement;
-        showPaymentMethodModal();
+    function escapeHtml(value) {
+        return String(value ?? '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
     }
 
-    function findMembershipProduct(productCode) {
-        const groups = productsState.membershipProducts || {};
-        const fallbackGroups = fallbackProducts.membershipProducts;
-        for (const group of [groups, fallbackGroups]) {
-            for (const products of Object.values(group)) {
-                const product = products.find(item => item.code === productCode);
-                if (product) return product;
-            }
-        }
-        return null;
-    }
-
-    function findRechargePackage(amountCents) {
-        const packages = productsState.rechargePackages || [];
-        return packages.find(item => Number(item.amountCents) === Number(amountCents)) ||
-            fallbackProducts.rechargePackages.find(item => item.amountCents === Number(amountCents));
-    }
-
-    function showPaymentMethodModal(errorMessage = '', preferPage = false) {
-        if (!pendingPayment) return;
-        document.getElementById('paymentMethodProductName').textContent = pendingPayment.productName;
-        document.getElementById('paymentMethodAmount').textContent = formatCurrency(pendingPayment.amountCents);
-        const error = document.getElementById('paymentMethodError');
-        error.textContent = errorMessage;
-        error.hidden = !errorMessage;
-        const modal = document.getElementById('paymentMethodModal');
-        showPaymentModal(modal, document.getElementById(preferPage ? 'paymentMethodPage' : 'paymentMethodQr'));
-    }
-
-    function closePaymentMethodModal() {
-        hidePaymentModal(document.getElementById('paymentMethodModal'), true);
-    }
-
-    function selectPaymentMethod(selectedPaymentMethod) {
-        if (!pendingPayment || !['QR', 'PAGE'].includes(selectedPaymentMethod)) return;
-        hidePaymentModal(document.getElementById('paymentMethodModal'), false);
-        createOrder(selectedPaymentMethod);
-    }
-
-    async function createOrder(selectedPaymentMethod) {
-        if (!pendingPayment) return;
-        const payment = pendingPayment;
-        const button = payment.button;
-        const originalButtonText = button ? button.textContent : '';
-        if (button) {
-            button.disabled = true;
-            if (selectedPaymentMethod === 'PAGE') {
-                button.textContent = '正在前往支付宝';
-            } else {
-                button.textContent = '正在生成二维码';
-            }
-        }
-        const payload = {...payment.payload, paymentMethod: selectedPaymentMethod};
-
-        try {
-            const response = await fetch(payment.url, {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify(payload)
-            });
-            const data = await response.json().catch(() => null);
-            if (response.status === 401 || (data && data.code === 401)) {
-                window.location.href = '/auth/login/';
-                return;
-            }
-            if (!response.ok || !data || data.code !== 200 || !data.data) {
-                throw new Error((data && data.message) || '创建订单失败');
-            }
-            if (selectedPaymentMethod === 'PAGE') {
-                submitAlipayForm(data.data.paymentHtml);
-            } else {
-                await showQrPayment(data.data);
-            }
-        } catch (error) {
-            const message = error.message || '创建订单失败';
-            const qrUnavailable = selectedPaymentMethod === 'QR' && isQrUnavailableError(message);
-            showPaymentMethodModal(
-                qrUnavailable ? '当前暂未开通订单码支付，请切换支付宝收银台。' : message,
-                qrUnavailable
-            );
-        } finally {
-            if (button) restoreOrderButton(button, originalButtonText);
-        }
-    }
-
-    function restoreOrderButton(button, originalButtonText) {
-        button.disabled = false;
-        button.textContent = originalButtonText;
-    }
-
-    function submitAlipayForm(paymentHtml) {
-        if (typeof paymentHtml !== 'string' || !paymentHtml.trim()) {
-            throw new Error('支付宝支付表单为空，请稍后重试');
-        }
-
-        const parsedDocument = new DOMParser().parseFromString(paymentHtml, 'text/html');
-        const sourceForms = parsedDocument.querySelectorAll('form');
-        if (sourceForms.length !== 1) {
-            throw new Error('支付宝支付表单无效，请稍后重试');
-        }
-
-        const sourceForm = sourceForms[0];
-        if (sourceForm.method.toUpperCase() !== 'POST') {
-            throw new Error('支付宝支付方式无效，请稍后重试');
-        }
-
-        const actionValue = sourceForm.getAttribute('action');
-        let action;
-        try {
-            action = new URL(actionValue, window.location.href);
-        } catch (error) {
-            throw new Error('支付宝支付地址无效，请稍后重试');
-        }
-
-        const allowedAlipayHosts = new Set([
-            'openapi.alipay.com',
-            'openapi-sandbox.dl.alipaydev.com'
-        ]);
-        if (
-            action.protocol !== 'https:' ||
-            !allowedAlipayHosts.has(action.host) ||
-            action.pathname !== '/gateway.do'
-        ) {
-            throw new Error('支付宝支付地址不受信任，请稍后重试');
-        }
-
-        const sourceInputs = sourceForm.querySelectorAll('input[name]');
-        if (!sourceInputs.length) {
-            throw new Error('支付宝支付参数缺失，请稍后重试');
-        }
-
-        const form = document.createElement('form');
-        form.method = 'POST';
-        form.action = action.href;
-        form.target = '_self';
-        form.hidden = true;
-
-        sourceInputs.forEach(sourceInput => {
-            const input = document.createElement('input');
-            input.type = 'hidden';
-            input.name = sourceInput.getAttribute('name');
-            input.value = sourceInput.value;
-            form.appendChild(input);
-        });
-
-        document.body.appendChild(form);
-        form.submit();
-    }
-
-    async function showQrPayment(order) {
-        if (!order.orderNo || !order.qrCode) {
-            throw new Error('支付宝二维码为空，请切换支付宝收银台');
-        }
-
-        currentQrOrder = {
-            orderNo: String(order.orderNo),
-            status: order.status || 'CREATED',
-            expiresAt: parsePaymentExpiry(order.expiresAt),
-            productName: order.productName || pendingPayment.productName,
-            amountCents: Number.isFinite(Number(order.amountCents)) ? Number(order.amountCents) : pendingPayment.amountCents
-        };
-        document.getElementById('paymentQrProductName').textContent = currentQrOrder.productName;
-        document.getElementById('paymentQrAmount').textContent = formatCurrency(currentQrOrder.amountCents);
-        document.getElementById('paymentQrOrderNo').textContent = currentQrOrder.orderNo;
-        document.getElementById('paymentQrRegenerate').hidden = true;
-        document.getElementById('paymentQrSync').disabled = false;
-        setQrStatus(currentQrOrder.status);
-        showPaymentModal(document.getElementById('paymentQrModal'), document.getElementById('paymentQrSync'));
-
-        const canvas = document.getElementById('paymentQrCanvas');
-        const context = canvas.getContext('2d');
-        context.clearRect(0, 0, canvas.width, canvas.height);
-        try {
-            if (!window.QRCode || typeof QRCode.toCanvas !== 'function') {
-                throw new Error('二维码组件加载失败');
-            }
-            await QRCode.toCanvas(canvas, order.qrCode, {
-                width: 232,
-                margin: 1,
-                errorCorrectionLevel: 'M',
-                color: {dark: '#101114', light: '#ffffff'}
-            });
-            startQrPolling();
-        } catch (error) {
-            stopQrPolling();
-            currentQrOrder.status = 'FAILED';
-            document.getElementById('paymentQrStatus').textContent = '二维码生成失败，请切换支付宝收银台';
-            document.getElementById('paymentQrCountdown').textContent = '';
-            document.getElementById('paymentQrRegenerate').hidden = false;
-            document.getElementById('paymentQrSync').disabled = true;
-        }
-    }
-
-    function startQrPolling() {
-        stopQrPolling();
-        if (!isQrOrderActive()) return;
-        updateQrCountdown();
-        qrCountdownTimer = setInterval(updateQrCountdown, 1000);
-        if (!document.hidden) {
-            qrPollTimer = setInterval(() => {
-                syncQrOrder();
-            }, 5000);
-        }
-    }
-
-    function stopQrPolling() {
-        if (qrPollTimer !== null) {
-            clearInterval(qrPollTimer);
-            qrPollTimer = null;
-        }
-        if (qrCountdownTimer !== null) {
-            clearInterval(qrCountdownTimer);
-            qrCountdownTimer = null;
-        }
-    }
-
-    function isQrOrderActive() {
-        return Boolean(
-            currentQrOrder &&
-            currentQrOrder.status === 'CREATED' &&
-            !document.getElementById('paymentQrModal').hidden
-        );
-    }
-
-    function updateQrCountdown() {
-        if (!currentQrOrder) return;
-        const countdown = document.getElementById('paymentQrCountdown');
-        if (!currentQrOrder.expiresAt) {
-            countdown.textContent = '有效期以订单状态为准';
-            return;
-        }
-
-        const remainingSeconds = Math.max(0, Math.ceil((currentQrOrder.expiresAt - Date.now()) / 1000));
-        if (remainingSeconds <= 0) {
-            countdown.textContent = '二维码已过期';
-            if (currentQrOrder.status === 'CREATED') {
-                currentQrOrder.status = 'EXPIRED';
-                document.getElementById('paymentQrStatus').textContent = '订单已过期，请重新生成';
-                document.getElementById('paymentQrRegenerate').hidden = false;
-                document.getElementById('paymentQrSync').disabled = true;
-                stopQrPolling();
-            }
-            return;
-        }
-
-        const hours = Math.floor(remainingSeconds / 3600);
-        const minutes = Math.floor((remainingSeconds % 3600) / 60);
-        const seconds = remainingSeconds % 60;
-        countdown.textContent = `二维码有效期 ${padTime(hours)}:${padTime(minutes)}:${padTime(seconds)}`;
-    }
-
-    async function syncQrOrder() {
-        if (!currentQrOrder || qrSyncInFlight || currentQrOrder.status !== 'CREATED') return;
-        const orderNo = currentQrOrder.orderNo;
-        const syncButton = document.getElementById('paymentQrSync');
-        qrSyncInFlight = true;
-        syncButton.disabled = true;
-
-        try {
-            const response = await fetch(`/api/payments/orders/${encodeURIComponent(orderNo)}/sync/`, {
-                method: 'POST'
-            });
-            const data = await response.json().catch(() => null);
-            if (response.status === 401 || (data && data.code === 401)) {
-                window.location.href = '/auth/login/';
-                return;
-            }
-            if (!response.ok || !data || data.code !== 200 || !data.data) {
-                throw new Error((data && data.message) || '订单状态查询失败');
-            }
-            if (!currentQrOrder || currentQrOrder.orderNo !== orderNo) return;
-            if (data.data.expiresAt) {
-                currentQrOrder.expiresAt = parsePaymentExpiry(data.data.expiresAt);
-            }
-            setQrStatus(data.data.status || currentQrOrder.status);
-            updateQrCountdown();
-        } catch (error) {
-            if (currentQrOrder && currentQrOrder.orderNo === orderNo && currentQrOrder.status === 'CREATED') {
-                document.getElementById('paymentQrStatus').textContent = '状态查询失败，可立即重试';
-            }
-        } finally {
-            qrSyncInFlight = false;
-            if (currentQrOrder && currentQrOrder.orderNo === orderNo && currentQrOrder.status === 'CREATED') {
-                syncButton.disabled = false;
-            }
-        }
-    }
-
-    function setQrStatus(status) {
-        if (!currentQrOrder) return;
-        currentQrOrder.status = status;
-        const statusElement = document.getElementById('paymentQrStatus');
-        const regenerateButton = document.getElementById('paymentQrRegenerate');
-        const syncButton = document.getElementById('paymentQrSync');
-
-        if (status === 'PAID') {
-            stopQrPolling();
-            statusElement.textContent = '支付成功，权益已到账';
-            regenerateButton.hidden = true;
-            syncButton.disabled = true;
-            if (typeof loadUserCredits === 'function') {
-                loadUserCredits();
-            }
-            return;
-        }
-        if (status === 'CLOSED' || status === 'FAILED') {
-            stopQrPolling();
-            statusElement.textContent = status === 'CLOSED' ? '订单已关闭，请重新生成' : '支付失败，请重新生成';
-            regenerateButton.hidden = false;
-            syncButton.disabled = true;
-            return;
-        }
-
-        statusElement.textContent = '等待扫码支付';
-        regenerateButton.hidden = true;
-        syncButton.disabled = false;
-    }
-
-    function regenerateQrPayment() {
-        if (!pendingPayment) return;
-        stopQrPolling();
-        currentQrOrder = null;
-        hidePaymentModal(document.getElementById('paymentQrModal'), false);
-        createOrder('QR');
-    }
-
-    function switchQrToCashier() {
-        if (!pendingPayment) return;
-        stopQrPolling();
-        currentQrOrder = null;
-        hidePaymentModal(document.getElementById('paymentQrModal'), false);
-        createOrder('PAGE');
-    }
-
-    function closePaymentQrModal() {
-        stopQrPolling();
-        currentQrOrder = null;
-        hidePaymentModal(document.getElementById('paymentQrModal'), true);
-    }
-
-    function showPaymentModal(modal, initialFocus) {
-        modal.hidden = false;
-        document.body.style.overflow = 'hidden';
-        if (window.lucide) lucide.createIcons();
-        window.requestAnimationFrame(() => initialFocus && initialFocus.focus());
-    }
-
-    function hidePaymentModal(modal, restoreFocus) {
-        modal.hidden = true;
-        const hasOpenModal = ['paymentMethodModal', 'paymentQrModal'].some(id => !document.getElementById(id).hidden);
-        if (!hasOpenModal) document.body.style.overflow = '';
-        if (restoreFocus && paymentFocusReturn) {
-            const focusTarget = paymentFocusReturn;
-            paymentFocusReturn = null;
-            window.requestAnimationFrame(() => focusTarget.focus());
-        }
-    }
-
-    function handlePaymentModalKeydown(event) {
-        const modal = getOpenPaymentModal();
-        if (!modal) return;
-        if (event.key === 'Escape') {
-            event.preventDefault();
-            if (modal.id === 'paymentQrModal') closePaymentQrModal();
-            else closePaymentMethodModal();
-            return;
-        }
-        if (event.key !== 'Tab') return;
-
-        const focusable = Array.from(modal.querySelectorAll(
-            'button:not([disabled]):not([hidden]), [href], input:not([disabled]), [tabindex]:not([tabindex="-1"])'
-        )).filter(element => element.offsetParent !== null);
-        if (!focusable.length) return;
-        const first = focusable[0];
-        const last = focusable[focusable.length - 1];
-        if (!modal.contains(document.activeElement)) {
-            event.preventDefault();
-            (event.shiftKey ? last : first).focus();
-        } else if (event.shiftKey && document.activeElement === first) {
-            event.preventDefault();
-            last.focus();
-        } else if (!event.shiftKey && document.activeElement === last) {
-            event.preventDefault();
-            first.focus();
-        }
-    }
-
-    function getOpenPaymentModal() {
-        const qrModal = document.getElementById('paymentQrModal');
-        if (!qrModal.hidden) return qrModal;
-        const methodModal = document.getElementById('paymentMethodModal');
-        return methodModal.hidden ? null : methodModal;
-    }
-
-    function isQrUnavailableError(message) {
-        return String(message).includes('ACQ.ACCESS_FORBIDDEN') || String(message).includes('未开通订单码');
-    }
-
-    function parsePaymentExpiry(expiresAt) {
-        const timestamp = new Date(expiresAt).getTime();
-        return Number.isFinite(timestamp) ? timestamp : null;
-    }
-
-    function padTime(value) {
-        return String(value).padStart(2, '0');
-    }
-
-    function ensureAuthenticated() {
-        if (IS_AUTHENTICATED) {
-            return true;
-        }
-        window.location.href = '/auth/login/';
-        return false;
+    function normalizeNonNegativeInteger(value) {
+        const number = Number(value);
+        return Number.isFinite(number) ? Math.max(0, Math.round(number)) : 0;
     }
 
     function formatPrice(cents) {
-        return Math.round((cents || 0) / 100).toString();
-    }
-
-    function formatCurrency(cents) {
-        const amount = Number(cents || 0) / 100;
-        return `¥${amount.toLocaleString('zh-CN', {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
+        return Math.round(normalizeNonNegativeInteger(cents) / 100).toString();
     }
 
     function formatNumber(value) {
-        return Number(value || 0).toLocaleString('en-US');
+        return normalizeNonNegativeInteger(value).toLocaleString('en-US');
     }
 
     function periodUnit(period) {
@@ -1304,4 +610,7 @@
         return '';
     }
 </script>
+<script src="{% static 'vendor/qrcode/qrcode.min.js' %}?v=1.5.3"></script>
+<script src="{% static 'js/payment-center-core.js' %}?v=20260719"></script>
+<script src="{% static 'js/payment-center.js' %}?v=20260719"></script>
 {% endblock %}
