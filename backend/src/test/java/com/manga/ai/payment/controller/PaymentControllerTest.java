@@ -79,6 +79,19 @@ class PaymentControllerTest {
         verify(paymentOrderService).switchToPage(7L, "PAY-PENDING");
     }
 
+    @Test
+    void refreshesQrOrderForAuthenticatedUser() throws Exception {
+        when(paymentOrderService.refreshQrOrder(7L, "PAY-PENDING"))
+                .thenReturn(paymentResponse("QR"));
+
+        mockMvc.perform(post("/v1/payments/orders/PAY-PENDING/refresh-qr"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.paymentMethod").value("QR"))
+                .andExpect(jsonPath("$.data.qrCode").value("https://qr.alipay.com/example"));
+
+        verify(paymentOrderService).refreshQrOrder(7L, "PAY-PENDING");
+    }
+
     private PaymentOrderCreateResponse paymentResponse(String paymentMethod) {
         return new PaymentOrderCreateResponse(
                 "PAY-PENDING", "RECHARGE", "积分充值¥50", 5000,

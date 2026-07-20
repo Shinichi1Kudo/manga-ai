@@ -241,6 +241,46 @@ public class PaymentOrderServiceImpl implements PaymentOrderService {
         return withOrderOperationLock(orderNo, () -> doSwitchToPage(userId, orderNo));
     }
 
+    @Override
+    public PaymentOrderCreateResponse refreshQrOrder(Long userId, String orderNo) {
+        return withOrderOperationLock(orderNo, () -> doRefreshQrOrder(userId, orderNo));
+    }
+
+    private PaymentOrderCreateResponse doRefreshQrOrder(Long userId, String orderNo) {
+        PaymentOrder source = findOwnedOrder(userId, orderNo);
+        if (!PaymentOrderStatus.CREATED.name().equals(source.getStatus())) {
+            throw new BusinessException("该订单当前状态不支持刷新二维码");
+        }
+        if (!PaymentMethod.QR.name().equals(source.getPaymentMethod())) {
+            throw new BusinessException("仅扫码支付订单可刷新二维码");
+        }
+
+        AlipayQueryResult queryResult = queryForSafePaymentAction(orderNo);
+        if (queryResult != null && queryResult.paid()) {
+            settleFromQuery(source, queryResult, "refresh-query");
+            return toCreateResponseWithoutPaymentPayload(findOrder(orderNo));
+        }
+
+        if (waitingForBuyer(queryResult)) {
+            AlipayCancelResult cancelResult = alipayPaymentClient.cancel(orderNo);
+            if (!definitivelyCancelled(cancelResult)) {
+                throw new BusinessException(PAYMENT_STATE_UNCERTAIN_MESSAGE);
+            }
+        } else if (!tradeClosed(queryResult) && !notFound(queryResult)) {
+            throw new BusinessException(PAYMENT_STATE_UNCERTAIN_MESSAGE);
+        }
+
+        int closedRows = closeCreatedOrder(orderNo);
+        PaymentOrder current = findOrder(orderNo);
+        if (PaymentOrderStatus.PAID.name().equals(current.getStatus())) {
+            return toCreateResponseWithoutPaymentPayload(current);
+        }
+        if (closedRows == 0 || !PaymentOrderStatus.CLOSED.name().equals(current.getStatus())) {
+            throw new BusinessException(PAYMENT_STATE_UNCERTAIN_MESSAGE);
+        }
+        return preparePayAndInsert(cloneAsPaymentOrder(source, PaymentMethod.QR));
+    }
+
     private PaymentOrderCreateResponse doSwitchToPage(Long userId, String orderNo) {
         PaymentOrder source = findOwnedOrder(userId, orderNo);
         if (!PaymentOrderStatus.CREATED.name().equals(source.getStatus())) {
@@ -564,21 +604,25 @@ public class PaymentOrderServiceImpl implements PaymentOrderService {
     }
 
     private PaymentOrder cloneAsPageOrder(PaymentOrder source) {
-        PaymentOrder pageOrder = baseOrder(
+        return cloneAsPaymentOrder(source, PaymentMethod.PAGE);
+    }
+
+    private PaymentOrder cloneAsPaymentOrder(PaymentOrder source, PaymentMethod paymentMethod) {
+        PaymentOrder replacement = baseOrder(
                 source.getUserId(),
                 PaymentOrderType.valueOf(source.getOrderType()),
                 source.getProductCode(),
                 source.getProductName(),
                 safe(source.getAmountCents()),
-                PaymentMethod.PAGE
+                paymentMethod
         );
-        pageOrder.setBaseCredits(safe(source.getBaseCredits()));
-        pageOrder.setBonusCredits(safe(source.getBonusCredits()));
-        pageOrder.setTotalCredits(safe(source.getTotalCredits()));
-        pageOrder.setMembershipTier(source.getMembershipTier());
-        pageOrder.setMembershipPeriod(source.getMembershipPeriod());
-        pageOrder.setMembershipMonths(source.getMembershipMonths());
-        return pageOrder;
+        replacement.setBaseCredits(safe(source.getBaseCredits()));
+        replacement.setBonusCredits(safe(source.getBonusCredits()));
+        replacement.setTotalCredits(safe(source.getTotalCredits()));
+        replacement.setMembershipTier(source.getMembershipTier());
+        replacement.setMembershipPeriod(source.getMembershipPeriod());
+        replacement.setMembershipMonths(source.getMembershipMonths());
+        return replacement;
     }
 
     private void settleFromQuery(PaymentOrder order, AlipayQueryResult queryResult, String notifyId) {

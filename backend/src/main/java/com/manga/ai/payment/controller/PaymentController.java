@@ -66,6 +66,11 @@ public class PaymentController {
         return Result.success(paymentOrderService.switchToPage(UserContextHolder.getUserId(), orderNo));
     }
 
+    @PostMapping("/orders/{orderNo}/refresh-qr")
+    public Result<PaymentOrderCreateResponse> refreshQrOrder(@PathVariable String orderNo) {
+        return Result.success(paymentOrderService.refreshQrOrder(UserContextHolder.getUserId(), orderNo));
+    }
+
     @GetMapping("/orders/{orderNo}")
     public Result<PaymentOrderStatusResponse> getOrder(@PathVariable String orderNo) {
         return Result.success(paymentOrderService.getOrder(UserContextHolder.getUserId(), orderNo));

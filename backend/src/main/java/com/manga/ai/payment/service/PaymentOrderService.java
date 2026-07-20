@@ -36,6 +36,8 @@ public interface PaymentOrderService {
 
     PaymentOrderCreateResponse switchToPage(Long userId, String orderNo);
 
+    PaymentOrderCreateResponse refreshQrOrder(Long userId, String orderNo);
+
     void processExpiredQrOrders();
 
     PaymentSettlement settlePaidOrder(String orderNo, String alipayTradeNo, String notifyId, BigDecimal paidAmount,
