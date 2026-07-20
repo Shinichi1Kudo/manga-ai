@@ -82,3 +82,7 @@ test('render failure does not change the business order status', () => {
     assert.equal(state.renderError, 'asset-missing');
     assert.equal(original.ui, 'QR_READY');
 });
+
+test('exports a dedicated QR refresh UI state', () => {
+    assert.equal(core.UI.REFRESHING_QR, 'REFRESHING_QR');
+});

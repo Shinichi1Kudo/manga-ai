@@ -2736,6 +2736,17 @@ def payment_order_switch_to_page(request, order_no):
         return _payment_error_response(e.status_code, e.message)
 
 
+@require_http_methods(["POST"])
+def payment_order_refresh_qr(request, order_no):
+    """安全关闭旧扫码订单并生成新二维码。"""
+    client = get_client(request)
+    try:
+        result = client.post(f'/v1/payments/orders/{order_no}/refresh-qr')
+        return JsonResponse({'code': 200, 'data': result})
+    except BackendAPIError as e:
+        return _payment_error_response(e.status_code, e.message)
+
+
 def payment_order_status(request, order_no):
     """支付订单状态查询代理"""
     client = get_client(request)

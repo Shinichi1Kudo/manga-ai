@@ -51,7 +51,7 @@ class MembershipQrPaymentTests(TestCase):
 
         for state in (
             'CHOOSING', 'CREATING', 'CREATE_ERROR', 'QR_READY',
-            'QR_RENDER_ERROR', 'QUERYING', 'PAID', 'EXPIRED',
+            'QR_RENDER_ERROR', 'REFRESHING_QR', 'QUERYING', 'PAID', 'EXPIRED',
             'PAGE_REDIRECTING',
         ):
             self.assertIn(f'PaymentCenterCore.UI.{state}', controller)
@@ -81,6 +81,11 @@ class MembershipQrPaymentTests(TestCase):
         self.assertIn('order.qrCode', controller)
         self.assertIn('await this.showQrOrder(order);', controller)
 
+        self.assertIn(
+            "/${encodeURIComponent(sourceOrderNo)}/refresh-qr/`",
+            controller,
+        )
+
         resume_start = controller.index('async resume(orderNo)')
         resume_end = controller.index('async switchCurrentQrToPage()', resume_start)
         resume_source = controller[resume_start:resume_end]
@@ -105,6 +110,7 @@ class MembershipQrPaymentTests(TestCase):
             'this.postJson(endpoint, payload)',
             'this.postJson(`/api/payments/orders/${encodeURIComponent(orderNo)}/resume/`)',
             'this.postJson(`/api/payments/orders/${encodeURIComponent(this.currentOrder.orderNo)}/switch-to-page/`)',
+            'this.postJson(`/api/payments/orders/${encodeURIComponent(sourceOrderNo)}/refresh-qr/`)',
             'this.postJson(`/api/payments/orders/${encodeURIComponent(orderNo)}/sync/`)',
         ):
             self.assertIn(method_call, controller)
@@ -164,6 +170,59 @@ class MembershipQrPaymentTests(TestCase):
         self.assertIn("params.get('paymentCenter') === 'pending'", controller)
         self.assertIn("window.location.pathname !== '/membership/'", controller)
         self.assertIn('window.closeMobileNav()', controller)
+
+    def test_payment_center_refreshes_qr_without_closing_current_panel(self):
+        controller = (
+            Path(settings.BASE_DIR) / 'static/js/payment-center.js'
+        ).read_text(encoding='utf-8')
+
+        self.assertIn('this.refreshInFlight = false;', controller)
+        self.assertIn("qrRefresh: byId('paymentQrRefresh')", controller)
+        self.assertIn(
+            "this.elements.qrRefresh.addEventListener('click', () => this.refreshCurrentQr());",
+            controller,
+        )
+
+        refresh_start = controller.index('async refreshCurrentQr()')
+        refresh_end = controller.index('async switchCurrentQrToPage()', refresh_start)
+        refresh_source = controller[refresh_start:refresh_end]
+        self.assertIn("window.confirm('刷新后旧二维码将失效，是否继续？')", refresh_source)
+        self.assertIn('const sourceOrderNo = this.currentOrder.orderNo;', refresh_source)
+        self.assertLess(
+            refresh_source.index('this.stopPolling();'),
+            refresh_source.index('const operation = ++this.operationSequence;'),
+        )
+        self.assertIn('this.refreshInFlight = true;', refresh_source)
+        self.assertIn('this.invalidateQrDisplay();', refresh_source)
+        self.assertIn('PaymentCenterCore.UI.REFRESHING_QR', refresh_source)
+        self.assertIn(
+            'this.postJson(`/api/payments/orders/${encodeURIComponent(sourceOrderNo)}/refresh-qr/`)',
+            refresh_source,
+        )
+        self.assertIn('this.setCurrentOrder(order);', refresh_source)
+        self.assertIn('await this.handleOrderResponse(order);', refresh_source)
+        self.assertIn('await this.loadPending();', refresh_source)
+        self.assertIn('window.loadPendingPaymentCount()', refresh_source)
+        self.assertIn('this.restoreCurrentQrLifecycle();', refresh_source)
+        self.assertIn('this.refreshInFlight = false;', refresh_source)
+        self.assertNotIn('this.close()', refresh_source)
+
+        for method_name, next_method in (
+            ('async resume(orderNo)', 'async refreshCurrentQr()'),
+            ('async switchCurrentQrToPage()', 'async syncCurrentOrder('),
+            ('async syncCurrentOrder(', 'restoredUiAfterSync(previousUi)'),
+        ):
+            method_start = controller.index(method_name)
+            method_end = controller.index(next_method, method_start)
+            self.assertIn('this.refreshInFlight', controller[method_start:method_end])
+
+        render_start = controller.index('render() {')
+        render_end = controller.index('updateOrderStatus() {', render_start)
+        render_source = controller[render_start:render_end]
+        self.assertIn('PaymentCenterCore.UI.REFRESHING_QR', render_source)
+        self.assertIn('this.elements.qrRefresh.hidden = !(', render_source)
+        self.assertIn('this.elements.qrRefresh.disabled = this.refreshInFlight', render_source)
+        self.assertIn('ui !== PaymentCenterCore.UI.REFRESHING_QR', render_source)
 
     def test_payment_center_close_invalidates_late_redirects_and_traps_visible_focus(self):
         controller = (
@@ -665,6 +724,7 @@ class MembershipQrPaymentTests(TestCase):
             'paymentQrCountdown',
             'paymentQrStatus',
             'paymentQrSync',
+            'paymentQrRefresh',
             'paymentQrRetryRender',
             'paymentQrOpenLink',
             'paymentQrCashier',
@@ -673,6 +733,8 @@ class MembershipQrPaymentTests(TestCase):
 
         for icon in ('x', 'qr-code', 'external-link', 'refresh-cw', 'rotate-cw'):
             self.assertIn(f'data-lucide="{icon}"', template)
+        self.assertIn('aria-label="生成新的支付宝二维码"', template)
+        self.assertIn('<span>刷新二维码</span>', template)
         self.assertIn('data-payment-purchase', template)
         self.assertIn('data-payment-order-type="MEMBERSHIP"', template)
         self.assertIn('data-payment-order-type="RECHARGE"', template)
@@ -706,8 +768,8 @@ class MembershipQrPaymentTests(TestCase):
 
         assets = (
             "{% static 'vendor/qrcode/qrcode.min.js' %}?v=1.5.3",
-            "{% static 'js/payment-center-core.js' %}?v=20260719",
-            "{% static 'js/payment-center.js' %}?v=20260720",
+            "{% static 'js/payment-center-core.js' %}?v=20260720-refresh1",
+            "{% static 'js/payment-center.js' %}?v=20260720-refresh1",
         )
         for asset in assets:
             self.assertIn(asset, template)
@@ -866,10 +928,35 @@ class MembershipQrPaymentTests(TestCase):
         self.assertEqual(response.json()['data']['paymentMethod'], 'PAGE')
         backend_client.post.assert_called_once_with('/v1/payments/orders/PAY-PENDING/switch-to-page')
 
+    def test_pending_order_refresh_qr_proxy_forwards_request(self):
+        session = self.client.session
+        session['token'] = 'token-pay'
+        session.save()
+        backend_client = Mock()
+        backend_client.post.return_value = {
+            'orderNo': 'PAY-REFRESHED',
+            'paymentMethod': 'QR',
+            'qrCode': 'https://qr.alipay.com/refreshed',
+        }
+
+        with patch('apps.series.views.BackendClient', return_value=backend_client):
+            response = self.client.post('/api/payments/orders/PAY-PENDING/refresh-qr/')
+
+        self.assertEqual(
+            resolve('/api/payments/orders/PAY-PENDING/refresh-qr/').url_name,
+            'payment_order_refresh_qr',
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()['data']['orderNo'], 'PAY-REFRESHED')
+        backend_client.post.assert_called_once_with(
+            '/v1/payments/orders/PAY-PENDING/refresh-qr'
+        )
+
     def test_resume_and_switch_reject_missing_csrf_token_before_backend_call(self):
         paths = (
             '/api/payments/orders/PAY-PENDING/resume/',
             '/api/payments/orders/PAY-PENDING/switch-to-page/',
+            '/api/payments/orders/PAY-PENDING/refresh-qr/',
         )
 
         for path in paths:
@@ -893,6 +980,10 @@ class MembershipQrPaymentTests(TestCase):
             (
                 '/api/payments/orders/PAY-PENDING/switch-to-page/',
                 '/v1/payments/orders/PAY-PENDING/switch-to-page',
+            ),
+            (
+                '/api/payments/orders/PAY-PENDING/refresh-qr/',
+                '/v1/payments/orders/PAY-PENDING/refresh-qr',
             ),
         )
 
@@ -1034,6 +1125,7 @@ class MembershipQrPaymentTests(TestCase):
             ('get', '/api/payments/orders/pending/', 401, 401),
             ('post', '/api/payments/orders/PAY-PENDING/resume/', 404, 404),
             ('post', '/api/payments/orders/PAY-PENDING/switch-to-page/', 409, 409),
+            ('post', '/api/payments/orders/PAY-PENDING/refresh-qr/', 409, 409),
             ('get', '/api/payments/orders/pending/', 503, 503),
             ('post', '/api/payments/orders/PAY-PENDING/switch-to-page/', 700, 502),
         )

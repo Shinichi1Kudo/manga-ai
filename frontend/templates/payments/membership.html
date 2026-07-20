@@ -378,6 +378,11 @@
                         <i data-lucide="refresh-cw" aria-hidden="true"></i>
                         <span>立即查询</span>
                     </button>
+                    <button id="paymentQrRefresh" class="payment-center-action" type="button"
+                            aria-label="生成新的支付宝二维码" title="刷新二维码">
+                        <i data-lucide="refresh-cw" aria-hidden="true"></i>
+                        <span>刷新二维码</span>
+                    </button>
                     <button id="paymentQrRetryRender" class="payment-center-action" type="button"
                             aria-label="重新渲染支付宝二维码" title="重试二维码">
                         <i data-lucide="rotate-cw" aria-hidden="true"></i>
@@ -611,6 +616,6 @@
     }
 </script>
 <script src="{% static 'vendor/qrcode/qrcode.min.js' %}?v=1.5.3"></script>
-<script src="{% static 'js/payment-center-core.js' %}?v=20260719"></script>
-<script src="{% static 'js/payment-center.js' %}?v=20260720"></script>
+<script src="{% static 'js/payment-center-core.js' %}?v=20260720-refresh1"></script>
+<script src="{% static 'js/payment-center.js' %}?v=20260720-refresh1"></script>
 {% endblock %}

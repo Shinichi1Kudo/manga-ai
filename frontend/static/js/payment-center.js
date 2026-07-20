@@ -71,6 +71,7 @@
             this.countdownTimer = null;
             this.syncInFlight = false;
             this.switchInFlight = false;
+            this.refreshInFlight = false;
             this.resumePollingOnVisibility = false;
             this.expirySyncRequested = null;
             this.focusReturn = null;
@@ -105,6 +106,7 @@
                 qrCountdown: byId('paymentQrCountdown'),
                 qrOrderNo: byId('paymentQrOrderNo'),
                 qrSync: byId('paymentQrSync'),
+                qrRefresh: byId('paymentQrRefresh'),
                 qrRetryRender: byId('paymentQrRetryRender'),
                 qrOpenLink: byId('paymentQrOpenLink'),
                 qrCashier: byId('paymentQrCashier'),
@@ -121,6 +123,7 @@
             this.elements.methodQr.addEventListener('click', () => this.chooseMethod('QR'));
             this.elements.methodPage.addEventListener('click', () => this.chooseMethod('PAGE'));
             this.elements.qrSync.addEventListener('click', () => this.syncCurrentOrder(true));
+            this.elements.qrRefresh.addEventListener('click', () => this.refreshCurrentQr());
             this.elements.qrRetryRender.addEventListener('click', () => {
                 if (this.currentOrder) this.showQrOrder(this.currentOrder);
             });
@@ -345,7 +348,7 @@
                 } else {
                     this.transition(PaymentCenterCore.UI.CREATE_ERROR, {
                         orderStatus: order.status,
-                        error: order.paymentMessage || '二维码暂未生成，请重试预下单或切换支付宝收银台',
+                        error: order.paymentMessage || '二维码暂不可用，可刷新二维码或切换支付宝收银台',
                     });
                     this.startCountdownOnly();
                 }
@@ -443,7 +446,7 @@
                 button.type = 'button';
                 button.className = 'payment-center-action payment-center-action--primary';
                 button.textContent = '继续支付';
-                button.disabled = this.resumeInFlight.has(order.orderNo);
+                button.disabled = this.refreshInFlight || this.resumeInFlight.has(order.orderNo);
                 button.addEventListener('click', () => this.resume(order.orderNo));
                 this.resumeButtons.set(order.orderNo, button);
                 item.appendChild(button);
@@ -465,7 +468,7 @@
         }
 
         async resume(orderNo) {
-            if (this.resumeInFlight.has(orderNo)) return;
+            if (this.refreshInFlight || this.resumeInFlight.has(orderNo)) return;
             const pendingOrder = this.pendingOrders.get(orderNo);
             if (pendingOrder) {
                 this.setCurrentOrder(pendingOrder);
@@ -499,8 +502,64 @@
             }
         }
 
+        async refreshCurrentQr() {
+            if (!this.currentOrder
+                    || this.currentOrder.status !== 'CREATED'
+                    || this.currentOrder.paymentMethod !== 'QR'
+                    || this.refreshInFlight
+                    || this.syncInFlight
+                    || this.switchInFlight
+                    || this.resumeInFlight.has(this.currentOrder.orderNo)) return;
+            if (!window.confirm('刷新后旧二维码将失效，是否继续？')) return;
+
+            const sourceOrder = this.currentOrder;
+            const sourceOrderNo = this.currentOrder.orderNo;
+            this.stopPolling();
+            const operation = ++this.operationSequence;
+            this.refreshInFlight = true;
+            this.invalidateQrDisplay();
+            this.setCurrentOrder({
+                ...sourceOrder,
+                qrCode: null,
+                paymentHtml: null,
+                paymentReady: false,
+            });
+            this.transition(PaymentCenterCore.UI.REFRESHING_QR, {
+                error: '',
+                renderError: '',
+            });
+            try {
+                const responseOrder = await this.postJson(`/api/payments/orders/${encodeURIComponent(sourceOrderNo)}/refresh-qr/`);
+                if (operation !== this.operationSequence || this.root.hidden) return;
+                const order = this.normalizeOrder(responseOrder, {
+                    ...sourceOrder,
+                    qrCode: null,
+                    paymentHtml: null,
+                    paymentReady: false,
+                });
+                this.setCurrentOrder(order);
+                await this.handleOrderResponse(order);
+                await this.loadPending();
+                if (typeof window.loadPendingPaymentCount === 'function') {
+                    window.loadPendingPaymentCount();
+                }
+            } catch (error) {
+                if (operation !== this.operationSequence || this.root.hidden) return;
+                this.transition(PaymentCenterCore.UI.CREATE_ERROR, {
+                    orderStatus: this.currentOrder.status,
+                    error: error.message || '二维码刷新失败，请先查询原订单状态',
+                });
+                await this.loadPending();
+                this.restoreCurrentQrLifecycle();
+            } finally {
+                this.refreshInFlight = false;
+                this.render();
+            }
+        }
+
         async switchCurrentQrToPage() {
-            if (!this.currentOrder || this.currentOrder.paymentMethod !== 'QR' || this.switchInFlight) return;
+            if (!this.currentOrder || this.currentOrder.paymentMethod !== 'QR'
+                    || this.switchInFlight || this.refreshInFlight) return;
             this.stopPolling();
             const operation = ++this.operationSequence;
             this.switchInFlight = true;
@@ -529,7 +588,7 @@
 
         async syncCurrentOrder(manual = false) {
             if (!this.currentOrder || this.currentOrder.status !== 'CREATED'
-                    || this.syncInFlight || this.switchInFlight
+                    || this.syncInFlight || this.switchInFlight || this.refreshInFlight
                     || this.resumeInFlight.has(this.currentOrder.orderNo)) return;
             const orderNo = this.currentOrder.orderNo;
             const previousUi = this.state.ui;
@@ -848,6 +907,7 @@
             );
             this.elements.creating.hidden = !(
                 ui === PaymentCenterCore.UI.CREATING
+                || ui === PaymentCenterCore.UI.REFRESHING_QR
                 || ui === PaymentCenterCore.UI.PAGE_REDIRECTING
             );
             this.elements.createError.hidden = !(
@@ -861,9 +921,13 @@
                 this.elements.amount.textContent = formatCurrency(summary.amountCents);
             }
             this.elements.createError.textContent = this.state.error || this.state.renderError || '';
-            this.elements.creating.querySelector('span').textContent = ui === PaymentCenterCore.UI.PAGE_REDIRECTING
-                ? '正在前往支付宝官方收银台'
-                : '正在创建支付订单';
+            let busyText = '正在创建支付订单';
+            if (ui === PaymentCenterCore.UI.PAGE_REDIRECTING) {
+                busyText = '正在前往支付宝官方收银台';
+            } else if (ui === PaymentCenterCore.UI.REFRESHING_QR) {
+                busyText = '正在刷新支付宝二维码';
+            }
+            this.elements.creating.querySelector('span').textContent = busyText;
 
             const qrLabel = this.elements.methodQr.querySelector('strong');
             const pageLabel = this.elements.methodPage.querySelector('strong');
@@ -871,8 +935,9 @@
             pageLabel.textContent = '支付宝收银台';
             this.elements.methodQr.hidden = false;
             this.elements.methodPage.hidden = false;
-            this.elements.methodQr.disabled = ui === PaymentCenterCore.UI.CREATING;
-            this.elements.methodPage.disabled = ui === PaymentCenterCore.UI.CREATING || this.switchInFlight;
+            this.elements.methodQr.disabled = ui === PaymentCenterCore.UI.CREATING || this.refreshInFlight;
+            this.elements.methodPage.disabled = ui === PaymentCenterCore.UI.CREATING
+                || this.switchInFlight || this.refreshInFlight;
             if (order && order.paymentMethod === 'QR') {
                 qrLabel.textContent = order.paymentReady ? '继续扫码支付' : '重试预下单';
                 pageLabel.textContent = '切换官方收银台';
@@ -890,9 +955,16 @@
                     && order.paymentReady
                     && order.qrCode
                     && ui !== PaymentCenterCore.UI.QR_RENDER_ERROR
+                    && ui !== PaymentCenterCore.UI.REFRESHING_QR
                     && ui !== PaymentCenterCore.UI.PAID
                     && ui !== PaymentCenterCore.UI.EXPIRED;
                 qrContainer.hidden = !showQrCanvas;
+                this.elements.qrRefresh.hidden = !(
+                    order.paymentMethod === 'QR'
+                    && order.status === 'CREATED'
+                    && ui !== PaymentCenterCore.UI.PAID
+                    && ui !== PaymentCenterCore.UI.EXPIRED
+                );
                 this.elements.qrRetryRender.hidden = ui !== PaymentCenterCore.UI.QR_RENDER_ERROR;
                 this.elements.qrOpenLink.hidden = !(ui === PaymentCenterCore.UI.QR_RENDER_ERROR && trustedQr);
                 this.elements.qrCashier.hidden = !(
@@ -901,9 +973,14 @@
                     && ui !== PaymentCenterCore.UI.EXPIRED
                 );
                 this.elements.qrSync.hidden = order.status !== 'CREATED';
-                this.elements.qrSync.disabled = this.syncInFlight || ui === PaymentCenterCore.UI.EXPIRED;
-                this.elements.qrCashier.disabled = this.switchInFlight || ui === PaymentCenterCore.UI.QUERYING;
-                this.elements.qrRetryRender.disabled = ui !== PaymentCenterCore.UI.QR_RENDER_ERROR;
+                this.elements.qrSync.disabled = this.syncInFlight || this.refreshInFlight
+                    || ui === PaymentCenterCore.UI.EXPIRED;
+                this.elements.qrRefresh.disabled = this.refreshInFlight
+                    || this.syncInFlight || this.switchInFlight;
+                this.elements.qrCashier.disabled = this.switchInFlight || this.refreshInFlight
+                    || ui === PaymentCenterCore.UI.QUERYING;
+                this.elements.qrRetryRender.disabled = this.refreshInFlight
+                    || ui !== PaymentCenterCore.UI.QR_RENDER_ERROR;
                 this.updateOrderStatus();
                 this.updateCountdown();
             }
@@ -913,6 +990,7 @@
             const ui = this.state.ui;
             let text = '等待扫码支付';
             if (ui === PaymentCenterCore.UI.QUERYING) text = '正在查询支付状态';
+            if (ui === PaymentCenterCore.UI.REFRESHING_QR) text = '正在生成新的支付宝二维码';
             if (ui === PaymentCenterCore.UI.QR_RENDER_ERROR) text = '二维码显示异常，订单仍可继续支付';
             if (ui === PaymentCenterCore.UI.CREATE_ERROR) {
                 text = this.currentOrder && this.currentOrder.paymentReady

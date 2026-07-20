@@ -23,6 +23,8 @@ urlpatterns = [
     path('api/payments/orders/<str:order_no>/resume/', views.payment_order_resume, name='payment_order_resume'),
     path('api/payments/orders/<str:order_no>/switch-to-page/', views.payment_order_switch_to_page,
          name='payment_order_switch_to_page'),
+    path('api/payments/orders/<str:order_no>/refresh-qr/', views.payment_order_refresh_qr,
+         name='payment_order_refresh_qr'),
     path('api/payments/orders/<str:order_no>/', views.payment_order_status, name='payment_order_status'),
     path('api/payments/orders/<str:order_no>/sync/', views.payment_order_sync, name='payment_order_sync'),
 
