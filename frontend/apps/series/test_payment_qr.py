@@ -33,6 +33,116 @@ class MembershipQrPaymentTests(TestCase):
         self.assertIsNotNone(finders.find('vendor/qrcode/qrcode.min.js'))
         self.assertIsNotNone(finders.find('js/payment-center-core.js'))
 
+    def test_base_nav_has_independent_pending_payment_entry(self):
+        base_template = (
+            Path(settings.BASE_DIR) / 'templates/base.html'
+        ).read_text(encoding='utf-8')
+
+        self.assertIn('id="pendingPaymentButton"', base_template)
+        self.assertIn('href="/membership/?paymentCenter=pending"', base_template)
+        self.assertIn('aria-label="待支付订单"', base_template)
+        self.assertIn('title="待支付订单"', base_template)
+        self.assertIn('data-lucide="receipt-text"', base_template)
+        self.assertIn('id="pendingPaymentCount"', base_template)
+        self.assertIn('class="pending-payment-count" hidden>0</span>', base_template)
+
+        membership_pos = base_template.index('id="membershipBadgeButton"')
+        pending_pos = base_template.index('id="pendingPaymentButton"')
+        menu_pos = base_template.index('id="userMenuToggle"')
+        self.assertLess(membership_pos, pending_pos)
+        self.assertLess(pending_pos, menu_pos)
+
+        membership_button = base_template[membership_pos:pending_pos]
+        pending_button = base_template[pending_pos:menu_pos]
+        self.assertNotIn('id="pendingPaymentButton"', membership_button)
+        self.assertNotIn('id="userMenuToggle"', pending_button)
+
+        pending_anchor_start = base_template.rfind('<a ', 0, pending_pos)
+        pending_anchor_end = base_template.index('</a>', pending_pos) + len('</a>')
+        pending_anchor = base_template[pending_anchor_start:pending_anchor_end]
+        self.assertNotIn('<button', pending_anchor)
+        self.assertEqual(pending_anchor.count('<a '), 1)
+        self.assertIn('aria-live="polite"', pending_anchor)
+        self.assertIn('aria-atomic="true"', pending_anchor)
+
+    def test_pending_payment_entry_has_stable_responsive_styles(self):
+        base_template = (
+            Path(settings.BASE_DIR) / 'templates/base.html'
+        ).read_text(encoding='utf-8')
+
+        self.assertIn('.pending-payment-button {', base_template)
+        self.assertIn('width: 40px;', base_template)
+        self.assertIn('height: 40px;', base_template)
+        self.assertIn('flex: 0 0 40px;', base_template)
+        self.assertIn('.pending-payment-button:focus-visible {', base_template)
+        self.assertIn('.pending-payment-count {', base_template)
+        self.assertIn('position: absolute;', base_template)
+        self.assertIn(
+            'grid-template-columns: auto auto 40px minmax(0, 1fr);',
+            base_template,
+        )
+        self.assertIn("if (action.id === 'pendingPaymentButton') return;", base_template)
+
+    def test_pending_payment_count_loader_is_authenticated_and_refreshable(self):
+        base_template = (
+            Path(settings.BASE_DIR) / 'templates/base.html'
+        ).read_text(encoding='utf-8')
+
+        self.assertIn('function loadPendingPaymentCount()', base_template)
+        self.assertIn("fetch('/api/payments/orders/pending/')", base_template)
+        self.assertIn('response.ok', base_template)
+        self.assertIn(
+            'if (!payload || payload.code !== 200 || !Array.isArray(payload.data)) {',
+            base_template,
+        )
+        self.assertIn("throw new Error('Invalid pending payment response');", base_template)
+        self.assertIn('const count = payload.data.length;', base_template)
+        self.assertIn("count > 99 ? '99+' : String(count)", base_template)
+        self.assertIn('badge.hidden = count === 0;', base_template)
+        self.assertIn(
+            "const ariaLabel = count === 0 ? '待支付订单' : `待支付订单，${count} 笔`;",
+            base_template,
+        )
+        self.assertIn("button.setAttribute('aria-label', ariaLabel);", base_template)
+        self.assertIn('window.loadPendingPaymentCount = loadPendingPaymentCount;', base_template)
+
+    def test_pending_payment_count_failure_preserves_last_successful_state(self):
+        base_template = (
+            Path(settings.BASE_DIR) / 'templates/base.html'
+        ).read_text(encoding='utf-8')
+
+        loader_start = base_template.index('function loadPendingPaymentCount()')
+        loader_end = base_template.index(
+            'window.loadPendingPaymentCount = loadPendingPaymentCount;',
+            loader_start,
+        )
+        loader_source = base_template[loader_start:loader_end]
+        catch_start = loader_source.index('.catch(')
+        catch_source = loader_source[catch_start:]
+
+        self.assertIn('.catch(() => null);', catch_source)
+        self.assertNotIn("badge.textContent = '0'", catch_source)
+        self.assertNotIn('badge.hidden = true', catch_source)
+        self.assertNotIn("button.setAttribute('aria-label'", catch_source)
+
+    def test_authenticated_pending_count_initializes_after_fetch_interceptor(self):
+        base_template = (
+            Path(settings.BASE_DIR) / 'templates/base.html'
+        ).read_text(encoding='utf-8')
+
+        interceptor_start = base_template.index('window.fetch = function(...args) {')
+        interceptor_end = base_template.index('\n        };', interceptor_start)
+        self.assertNotIn('loadUserCredits();', base_template[:interceptor_end])
+        self.assertNotIn('loadPendingPaymentCount();', base_template[:interceptor_end])
+        authenticated_initialization = (
+            "{% if request.session.token %}\n"
+            "        loadUserCredits();\n"
+            "        loadPendingPaymentCount();\n"
+            "        {% endif %}"
+        )
+        initialization_start = base_template.find(authenticated_initialization)
+        self.assertGreater(initialization_start, interceptor_end)
+
     def test_membership_page_offers_choice_before_creating_order(self):
         template = (
             Path(settings.BASE_DIR) / 'templates/payments/membership.html'

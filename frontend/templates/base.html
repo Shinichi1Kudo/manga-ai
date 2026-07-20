@@ -661,6 +661,57 @@
             display: none;
         }
 
+        .pending-payment-button {
+            position: relative;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 40px;
+            height: 40px;
+            flex: 0 0 40px;
+            padding: 0;
+            border: 1px solid rgba(56, 189, 248, 0.3);
+            border-radius: 8px;
+            color: #bae6fd;
+            background: rgba(14, 116, 144, 0.22);
+            transition: color 0.2s ease, border-color 0.2s ease, background 0.2s ease;
+        }
+
+        .pending-payment-button:hover {
+            color: #fff;
+            border-color: rgba(125, 211, 252, 0.6);
+            background: rgba(14, 116, 144, 0.38);
+        }
+
+        .pending-payment-button:focus-visible {
+            outline: 2px solid #7dd3fc;
+            outline-offset: 2px;
+        }
+
+        .pending-payment-count {
+            position: absolute;
+            top: -7px;
+            right: -7px;
+            display: inline-flex;
+            min-width: 18px;
+            height: 18px;
+            align-items: center;
+            justify-content: center;
+            padding: 0 4px;
+            border: 2px solid #12142b;
+            border-radius: 9px;
+            background: #ef4444;
+            color: #fff;
+            font-size: 10px;
+            font-weight: 700;
+            line-height: 1;
+            pointer-events: none;
+        }
+
+        .pending-payment-count[hidden] {
+            display: none;
+        }
+
         .membership-badge-wrap {
             position: relative;
             flex: 0 0 auto;
@@ -848,14 +899,22 @@
             .user-nav-cluster {
                 position: relative;
                 display: grid;
-                grid-template-columns: auto auto minmax(0, 1fr);
+                grid-template-columns: auto auto 40px minmax(0, 1fr);
                 gap: 8px;
                 align-items: center;
+                min-width: 0;
             }
 
             .user-credit-pill {
                 height: 40px;
                 padding: 0 10px;
+                min-width: 0;
+            }
+
+            #userCredits {
+                max-width: 48px;
+                overflow: hidden;
+                text-overflow: ellipsis;
             }
 
             .membership-badge {
@@ -1016,6 +1075,12 @@
                             </a>
                         </div>
                     </div>
+                    <a id="pendingPaymentButton" href="/membership/?paymentCenter=pending"
+                       class="pending-payment-button" aria-label="待支付订单" title="待支付订单">
+                        <i data-lucide="receipt-text" class="w-4 h-4"></i>
+                        <span id="pendingPaymentCount" aria-live="polite" aria-atomic="true"
+                              class="pending-payment-count" hidden>0</span>
+                    </a>
                     <div class="relative" id="userMenu">
                         <button id="userMenuToggle" onclick="toggleUserMenu()" class="flex items-center gap-2 px-4 py-2 rounded-xl bg-white/5 border border-white/10 hover:bg-white/10 transition-all">
                             <div id="userAvatar" class="w-8 h-8 rounded-full bg-gradient-to-br from-violet-500 to-blue-500 flex items-center justify-center overflow-hidden">
@@ -1271,6 +1336,7 @@
             if (!action) return;
             if (action.id === 'userMenuToggle') return;
             if (action.id === 'membershipBadgeButton') return;
+            if (action.id === 'pendingPaymentButton') return;
             closeMobileNav();
         });
 
@@ -1405,7 +1471,34 @@
                 })
                 .catch(err => console.log('获取用户信息失败:', err));
         }
-        loadUserCredits();
+
+        function loadPendingPaymentCount() {
+            const badge = document.getElementById('pendingPaymentCount');
+            const button = document.getElementById('pendingPaymentButton');
+            return fetch('/api/payments/orders/pending/')
+                .then(response => {
+                    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+                    return response.json();
+                })
+                .then(payload => {
+                    if (!payload || payload.code !== 200 || !Array.isArray(payload.data)) {
+                        throw new Error('Invalid pending payment response');
+                    }
+                    const count = payload.data.length;
+                    if (badge) {
+                        badge.textContent = count > 99 ? '99+' : String(count);
+                        badge.hidden = count === 0;
+                    }
+                    if (button) {
+                        const ariaLabel = count === 0 ? '待支付订单' : `待支付订单，${count} 笔`;
+                        button.setAttribute('aria-label', ariaLabel);
+                    }
+                    return count;
+                })
+                .catch(() => null);
+        }
+
+        window.loadPendingPaymentCount = loadPendingPaymentCount;
 
         // Contact Modal
         function showContactModal() {
@@ -1499,6 +1592,11 @@
                 return response;
             });
         };
+
+        {% if request.session.token %}
+        loadUserCredits();
+        loadPendingPaymentCount();
+        {% endif %}
 
         // 登录过期弹窗
         let loginExpiredShown = false;
