@@ -1409,6 +1409,65 @@ class PaymentOrderServiceImplTest {
     }
 
     @Test
+    void resumeStoredQrExplicitUnknownInvalidatesQrAndPendingReadiness() {
+        PaymentOrderMapper mapper = mock(PaymentOrderMapper.class);
+        Map<String, PaymentOrder> orders = stubOrderStore(mapper);
+        PaymentOrder order = resumableQrOrder("PAY-RESUME-STORED-INITIAL-UNKNOWN");
+        order.setQrcode("https://qr.alipay.com/old-unverified");
+        orders.put(order.getOrderNo(), order);
+        when(mapper.selectList(any())).thenAnswer(invocation -> List.copyOf(orders.values()));
+        AlipayPaymentClient client = mock(AlipayPaymentClient.class);
+        when(client.query(order.getOrderNo())).thenReturn(new AlipayQueryResult(
+                order.getOrderNo(), null, null, null, "40004", "ACQ.SYSTEM_ERROR"));
+        PaymentOrderServiceImpl service = service(
+                mapper, mock(UserMembershipMapper.class), mock(CreditAccountService.class),
+                mock(MembershipService.class), client);
+
+        PaymentOrderCreateResponse response = service.resumeOrder(7L, order.getOrderNo());
+        List<PendingPaymentOrderResponse> pending = service.pendingOrders(7L);
+
+        assertThat(orders).hasSize(1);
+        assertThat(order.getStatus()).isEqualTo(PaymentOrderStatus.CREATED.name());
+        assertThat(order.getQrcode()).isNull();
+        assertThat(response.status()).isEqualTo(PaymentOrderStatus.CREATED.name());
+        assertThat(response.paymentReady()).isFalse();
+        assertThat(response.qrCode()).isNull();
+        assertThat(response.paymentMessage()).isEqualTo("支付状态暂未确认，请稍后查询，请勿重复支付");
+        assertThat(pending).singleElement().extracting(PendingPaymentOrderResponse::paymentReady).isEqualTo(false);
+        verify(client, never()).precreate(any());
+        verify(mapper, never()).insert(any());
+    }
+
+    @Test
+    void resumeStoredQrQueryExceptionInvalidatesQrAndPendingReadiness() {
+        PaymentOrderMapper mapper = mock(PaymentOrderMapper.class);
+        Map<String, PaymentOrder> orders = stubOrderStore(mapper);
+        PaymentOrder order = resumableQrOrder("PAY-RESUME-STORED-QUERY-FAILURE");
+        order.setQrcode("https://qr.alipay.com/old-unverified");
+        orders.put(order.getOrderNo(), order);
+        when(mapper.selectList(any())).thenAnswer(invocation -> List.copyOf(orders.values()));
+        AlipayPaymentClient client = mock(AlipayPaymentClient.class);
+        when(client.query(order.getOrderNo())).thenThrow(new BusinessException("gateway detail"));
+        PaymentOrderServiceImpl service = service(
+                mapper, mock(UserMembershipMapper.class), mock(CreditAccountService.class),
+                mock(MembershipService.class), client);
+
+        PaymentOrderCreateResponse response = service.resumeOrder(7L, order.getOrderNo());
+        List<PendingPaymentOrderResponse> pending = service.pendingOrders(7L);
+
+        assertThat(orders).hasSize(1);
+        assertThat(order.getStatus()).isEqualTo(PaymentOrderStatus.CREATED.name());
+        assertThat(order.getQrcode()).isNull();
+        assertThat(response.status()).isEqualTo(PaymentOrderStatus.CREATED.name());
+        assertThat(response.paymentReady()).isFalse();
+        assertThat(response.qrCode()).isNull();
+        assertThat(response.paymentMessage()).isEqualTo("支付状态暂未确认，请稍后查询，请勿重复支付");
+        assertThat(pending).singleElement().extracting(PendingPaymentOrderResponse::paymentReady).isEqualTo(false);
+        verify(client, never()).precreate(any());
+        verify(mapper, never()).insert(any());
+    }
+
+    @Test
     void resumeStoredQrNotFoundClearLosingToPaidCallbackReturnsPaidWithoutReprecreate() {
         PaymentOrderMapper mapper = mock(PaymentOrderMapper.class);
         PaymentOrder order = resumableQrOrder("PAY-RESUME-STORED-PAID-RACE");

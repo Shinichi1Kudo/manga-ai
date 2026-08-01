@@ -183,7 +183,19 @@ public class PaymentOrderServiceImpl implements PaymentOrderService {
         }
 
         if (isExpiredQrOrder(order, LocalDateTime.now())) {
-            processExpiredQrOrder(order, queryForSafePaymentAction(order));
+            AlipayQueryResult expiredQueryResult;
+            try {
+                expiredQueryResult = queryForSafePaymentAction(order);
+            } catch (BusinessException exception) {
+                if (notBlank(order.getQrcode())) {
+                    return invalidateStoredQrState(orderNo, exception.getMessage());
+                }
+                throw exception;
+            }
+            if (notBlank(order.getQrcode()) && unknownPaymentState(expiredQueryResult)) {
+                return invalidateStoredQrState(orderNo, PAYMENT_STATE_UNCERTAIN_MESSAGE);
+            }
+            processExpiredQrOrder(order, expiredQueryResult);
             PaymentOrder current = findOrder(orderNo);
             if (PaymentOrderStatus.CREATED.name().equals(current.getStatus())) {
                 return toCreateResponse(current, null, false, PAYMENT_STATE_UNCERTAIN_MESSAGE);
@@ -191,7 +203,15 @@ public class PaymentOrderServiceImpl implements PaymentOrderService {
             return toCreateResponseWithoutPaymentPayload(current);
         }
 
-        AlipayQueryResult queryResult = queryForSafePaymentAction(order);
+        AlipayQueryResult queryResult;
+        try {
+            queryResult = queryForSafePaymentAction(order);
+        } catch (BusinessException exception) {
+            if (notBlank(order.getQrcode())) {
+                return invalidateStoredQrState(orderNo, exception.getMessage());
+            }
+            throw exception;
+        }
         if (queryResult != null && queryResult.paid()) {
             settleFromQuery(order, queryResult, "resume-query");
             return toCreateResponseWithoutPaymentPayload(findOrder(orderNo));
@@ -201,6 +221,9 @@ public class PaymentOrderServiceImpl implements PaymentOrderService {
             return toCreateResponseWithoutPaymentPayload(findOrder(orderNo));
         }
         if (!paymentCanBeRestored(queryResult)) {
+            if (notBlank(order.getQrcode())) {
+                return invalidateStoredQrState(orderNo, PAYMENT_STATE_UNCERTAIN_MESSAGE);
+            }
             throw new BusinessException(PAYMENT_STATE_UNCERTAIN_MESSAGE);
         }
 
@@ -226,8 +249,6 @@ public class PaymentOrderServiceImpl implements PaymentOrderService {
                     return toCreateResponse(current, null, false, PAYMENT_STATE_UNCERTAIN_MESSAGE);
                 }
                 order = current;
-            } else if (!waitingForBuyer(queryResult)) {
-                return toCreateResponse(order, null, false, PAYMENT_STATE_UNCERTAIN_MESSAGE);
             } else {
                 PaymentOrder current = findOrder(orderNo);
                 if (!PaymentOrderStatus.CREATED.name().equals(current.getStatus())) {
@@ -610,6 +631,15 @@ public class PaymentOrderServiceImpl implements PaymentOrderService {
         return paymentOrderMapper.update(update, wrapper);
     }
 
+    private PaymentOrderCreateResponse invalidateStoredQrState(String orderNo, String message) {
+        clearStoredQrIfCreated(orderNo);
+        PaymentOrder current = findOrder(orderNo);
+        if (!PaymentOrderStatus.CREATED.name().equals(current.getStatus())) {
+            return toCreateResponseWithoutPaymentPayload(current);
+        }
+        return toCreateResponse(current, null, false, firstNotBlank(message, PAYMENT_STATE_UNCERTAIN_MESSAGE));
+    }
+
     private enum QrVerificationOutcome {
         READY,
         PAID,
@@ -780,6 +810,14 @@ public class PaymentOrderServiceImpl implements PaymentOrderService {
 
     private boolean notFound(AlipayQueryResult queryResult) {
         return queryResult != null && queryResult.notFound();
+    }
+
+    private boolean unknownPaymentState(AlipayQueryResult queryResult) {
+        return queryResult == null
+                || (!queryResult.paid()
+                && !tradeClosed(queryResult)
+                && !waitingForBuyer(queryResult)
+                && !notFound(queryResult));
     }
 
     private boolean definitivelyCancelled(AlipayCancelResult cancelResult) {
