@@ -222,3 +222,90 @@ class SiteStaticAssetTests(SimpleTestCase):
             lucide = lucide_path.read_text(encoding='utf-8')
             self.assertTrue(lucide, f'Local Lucide bundle is empty: {lucide_path}')
             self.assertIn('createIcons', lucide, 'Local Lucide bundle lacks createIcons API')
+
+    def test_lucide_placeholders_reserve_space_without_overriding_tailwind_sizes(self):
+        static_root = Path(settings.BASE_DIR) / 'static'
+        source_path = static_root / 'css/site.src.css'
+        css_path = static_root / 'css/site.css'
+        self.assertTrue(source_path.is_file(), f'Missing stylesheet source: {source_path}')
+        self.assertTrue(css_path.is_file(), f'Missing compiled stylesheet: {css_path}')
+        if not source_path.is_file() or not css_path.is_file():
+            return
+
+        source = source_path.read_text(encoding='utf-8')
+        fallback_rule = re.compile(
+            r'\[data-lucide\]\s*\{\s*width\s*:\s*1em\s*;\s*'
+            r'height\s*:\s*1em\s*;\s*vertical-align\s*:\s*middle\s*;\s*\}',
+            re.DOTALL,
+        )
+        display_rule = re.compile(
+            r'\[data-lucide\]\s*\{\s*display\s*:\s*inline-block\s*;\s*'
+            r'flex-shrink\s*:\s*0\s*;\s*\}',
+            re.DOTALL,
+        )
+        fallback_match = fallback_rule.search(source)
+        display_match = display_rule.search(source)
+        utilities_index = source.find('@tailwind utilities;')
+        self.assertIsNotNone(fallback_match, 'Missing pre-utility Lucide size fallback')
+        self.assertIsNotNone(display_match, 'Missing post-utility Lucide display fallback')
+        self.assertNotEqual(utilities_index, -1, 'Missing Tailwind utilities directive')
+        if fallback_match is not None and display_match is not None and utilities_index != -1:
+            self.assertLess(
+                fallback_match.start(),
+                utilities_index,
+                'Lucide fallback dimensions must precede Tailwind utilities',
+            )
+            self.assertGreater(
+                display_match.start(),
+                utilities_index,
+                'Lucide display fallback must follow Tailwind utilities',
+            )
+
+        compiled = css_path.read_text(encoding='utf-8')
+        self.assertRegex(
+            compiled,
+            re.compile(
+                r'\[data-lucide\]\s*\{\s*width\s*:\s*1em\s*;\s*'
+                r'height\s*:\s*1em\s*;\s*vertical-align\s*:\s*middle\s*;?\s*\}',
+                re.DOTALL,
+            ),
+            'Compiled stylesheet is missing Lucide size fallback',
+        )
+        self.assertRegex(
+            compiled,
+            re.compile(
+                r'\[data-lucide\]\s*\{\s*display\s*:\s*inline-block\s*;\s*'
+                r'flex-shrink\s*:\s*0\s*;?\s*\}',
+                re.DOTALL,
+            ),
+            'Compiled stylesheet is missing Lucide display fallback',
+        )
+
+    def test_tailwind_license_is_distributed_and_build_script_copies_it(self):
+        static_root = Path(settings.BASE_DIR) / 'static'
+        license_path = static_root / 'vendor/licenses/tailwind-MIT.txt'
+        self.assertTrue(license_path.is_file(), f'Missing Tailwind license: {license_path}')
+        if license_path.is_file():
+            license_text = license_path.read_text(encoding='utf-8')
+            self.assertTrue(license_text.strip(), 'Tailwind license is empty')
+            self.assertIn('MIT License', license_text)
+
+            package_license_path = (
+                Path(settings.BASE_DIR) / 'node_modules/tailwindcss/LICENSE'
+            )
+            if package_license_path.is_file():
+                self.assertEqual(
+                    license_text,
+                    package_license_path.read_text(encoding='utf-8'),
+                    'Distributed Tailwind license must match the pinned package license',
+                )
+
+        package_path = Path(settings.BASE_DIR) / 'package.json'
+        package = package_path.read_text(encoding='utf-8')
+        self.assertRegex(
+            package,
+            r'"build:vendor"\s*:\s*"[^"]*mkdir -p static/fonts static/vendor/lucide '
+            r'static/vendor/licenses[^"]*cp node_modules/tailwindcss/LICENSE '
+            r'static/vendor/licenses/tailwind-MIT\.txt[^"]*"',
+            'build:vendor must copy the pinned Tailwind license into distributed assets',
+        )
