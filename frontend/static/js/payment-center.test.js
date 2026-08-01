@@ -246,6 +246,40 @@ test('failed visible expiry sync is not retried after close and reopen', async (
     assert.deepEqual(timers.activeDelays(), []);
 });
 
+test('unchanged successful expiry sync stays gated across visibility and reopen', async () => {
+    const timers = createFakeTimers(Date.parse('2026-08-02T00:00:00.000Z'));
+    const {PaymentCenter, context} = loadPaymentCenter(timers);
+    const expiredOrder = qrOrder({expiresAt: '2026-08-02T00:00:01.000Z'});
+    const center = createCenter(PaymentCenter, core.UI.QR_READY, expiredOrder);
+    let syncCount = 0;
+    center.postJson = async () => {
+        syncCount += 1;
+        return expiredOrder;
+    };
+    center.ensureAuthenticated = () => true;
+    center.open = () => { center.root.hidden = false; };
+    center.showCurrent = () => {};
+
+    center.startPolling();
+    timers.advance(1000);
+    await flushAsyncWork();
+    assert.equal(syncCount, 1);
+    assert.deepEqual(timers.activeDelays(), []);
+
+    context.document.hidden = true;
+    center.handleVisibilityChange();
+    context.document.hidden = false;
+    center.handleVisibilityChange();
+    center.root.hidden = true;
+    center.openFromEntry();
+    await flushAsyncWork();
+
+    assert.equal(syncCount, 1);
+    assert.deepEqual(timers.activeDelays(), []);
+    assert.equal(center.pollTimer, null);
+    assert.equal(center.countdownTimer, null);
+});
+
 test('authoritative future expiry resets the gate and permits one sync at its new deadline', async () => {
     const timers = createFakeTimers(Date.parse('2026-08-02T00:00:00.000Z'));
     const {PaymentCenter} = loadPaymentCenter(timers);
