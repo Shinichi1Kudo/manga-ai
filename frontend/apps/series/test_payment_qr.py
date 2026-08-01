@@ -758,6 +758,7 @@ class MembershipQrPaymentTests(TestCase):
             'paymentQrOrderNo',
             'paymentQrCountdown',
             'paymentQrStatus',
+            'paymentQrActions',
             'paymentQrSync',
             'paymentQrRefresh',
             'paymentQrRetryRender',
@@ -773,6 +774,38 @@ class MembershipQrPaymentTests(TestCase):
         self.assertIn('data-payment-purchase', template)
         self.assertIn('data-payment-order-type="MEMBERSHIP"', template)
         self.assertIn('data-payment-order-type="RECHARGE"', template)
+
+        status_start = template.index('<p id="paymentQrStatus"')
+        status_tag = template[status_start:template.index('>', status_start) + 1]
+        self.assertIn(' hidden', status_tag)
+
+        actions_start = template.index('<div id="paymentQrActions"')
+        actions_tag = template[actions_start:template.index('>', actions_start) + 1]
+        self.assertIn(' hidden', actions_tag)
+
+        order_start = template.index('<div class="payment-center-order-number"')
+        order_tag = template[order_start:template.index('>', order_start) + 1]
+        self.assertNotIn(' hidden', order_tag)
+
+    def test_payment_center_keeps_background_queries_visually_silent(self):
+        controller = (
+            Path(settings.BASE_DIR) / 'static/js/payment-center.js'
+        ).read_text(encoding='utf-8')
+
+        self.assertIn("qrActions: byId('paymentQrActions')", controller)
+        self.assertIn('const showQrStatus =', controller)
+        self.assertIn('PaymentCenterCore.UI.PAID', controller)
+        self.assertIn('PaymentCenterCore.UI.EXPIRED', controller)
+        self.assertIn('PaymentCenterCore.UI.QR_RENDER_ERROR', controller)
+        self.assertIn('PaymentCenterCore.UI.CREATE_ERROR', controller)
+        self.assertIn('this.elements.qrStatus.hidden = !showQrStatus;', controller)
+        self.assertIn('this.elements.qrActions.hidden = true;', controller)
+        self.assertNotIn('正在查询支付状态', controller)
+        self.assertIn(
+            'setInterval(() => this.syncCurrentOrder(false), 5000)',
+            controller,
+        )
+        self.assertIn('/sync/`', controller)
 
     def test_payment_center_css_has_desktop_mobile_and_accessibility_contracts(self):
         css_path = Path(settings.BASE_DIR) / 'static/css/payment-center.css'
