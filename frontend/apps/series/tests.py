@@ -196,7 +196,7 @@ class MembershipPaymentPageTests(TestCase):
         self.assertContains(response, '支付宝收银台')
         self.assertContains(response, '单次支付，到期自动结束', count=1)
 
-        self.assertIn('/static/js/payment-center.js?v=20260720', template)
+        self.assertIn('/static/js/payment-center.js?v=20260801-qr-countdown', template)
         self.assertIn('paymentQrCanvas', template)
         self.assertIn("paymentMethod: method", controller)
         self.assertIn('PaymentCenterCore.renderQr', controller)

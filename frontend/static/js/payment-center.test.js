@@ -45,6 +45,14 @@ function flushAsyncWork() {
     return new Promise(resolve => setImmediate(resolve));
 }
 
+function createDeferred() {
+    let resolve;
+    const promise = new Promise(resolvePromise => {
+        resolve = resolvePromise;
+    });
+    return {promise, resolve};
+}
+
 function loadPaymentCenter(timers) {
     const source = fs.readFileSync(path.join(__dirname, 'payment-center.js'), 'utf8');
     const bootstrapStart = source.lastIndexOf("    document.addEventListener('DOMContentLoaded'");
@@ -57,7 +65,10 @@ function loadPaymentCenter(timers) {
         URL,
         URLSearchParams,
         Date: FakeDate,
-        document: {hidden: false},
+        document: {
+            hidden: false,
+            body: {classList: {add() {}, remove() {}}},
+        },
         setInterval: timers.setInterval,
         clearInterval: timers.clearInterval,
     };
@@ -72,11 +83,19 @@ function loadPaymentCenter(timers) {
 
 function fakeElement(initial = {}) {
     const nested = new Map();
+    const attributes = new Map();
     return {
         hidden: true,
         disabled: false,
         textContent: '',
         parentElement: null,
+        classList: {add() {}, remove() {}},
+        setAttribute(name, value) {
+            attributes.set(name, value);
+        },
+        removeAttribute(name) {
+            attributes.delete(name);
+        },
         querySelector(selector) {
             if (!nested.has(selector)) nested.set(selector, fakeElement({hidden: false}));
             return nested.get(selector);
@@ -119,7 +138,8 @@ function createCenter(PaymentCenter, ui, order) {
     };
     const center = Object.create(PaymentCenter.prototype);
     Object.assign(center, {
-        root: {hidden: false},
+        root: fakeElement({hidden: false}),
+        overlay: fakeElement({hidden: true}),
         state: {ui, orderStatus: order && order.status, error: '', renderError: ''},
         currentPurchase: null,
         currentOrder: order,
@@ -165,6 +185,7 @@ test('verified QR renders authoritative HH:MM:SS countdown and keeps query contr
     assert.equal(center.elements.qrCountdown.textContent, '二维码有效期 01:01:01');
     assert.equal(center.elements.qrOrderNo.textContent, 'PAY-COUNTDOWN-1');
     assert.equal(center.elements.qrStatus.hidden, true);
+    assert.equal(center.elements.qrStatus.textContent, '');
     assert.equal(center.elements.qrActions.hidden, true);
     for (const action of ['qrSync', 'qrRefresh', 'qrRetryRender', 'qrOpenLink', 'qrCashier']) {
         assert.equal(center.elements[action].hidden, true, action);
@@ -280,6 +301,71 @@ test('unchanged successful expiry sync stays gated across visibility and reopen'
     assert.equal(center.countdownTimer, null);
 });
 
+test('late paid expiry response is absorbed after close and shown on reopen', async () => {
+    const timers = createFakeTimers(Date.parse('2026-08-02T00:00:00.000Z'));
+    const {PaymentCenter} = loadPaymentCenter(timers);
+    const expiredOrder = qrOrder({expiresAt: '2026-08-02T00:00:01.000Z'});
+    const center = createCenter(PaymentCenter, core.UI.QR_READY, expiredOrder);
+    const response = createDeferred();
+    let syncCount = 0;
+    let currentViewCount = 0;
+    center.postJson = () => {
+        syncCount += 1;
+        return response.promise;
+    };
+    center.loadPending = async () => {};
+    center.ensureAuthenticated = () => true;
+    center.open = () => { center.root.hidden = false; };
+    center.showCurrent = () => { currentViewCount += 1; };
+    center.openPending = () => { throw new Error('terminal order must reopen in current view'); };
+
+    center.startPolling();
+    timers.advance(1000);
+    center.close();
+    response.resolve(qrOrder({status: 'PAID', expiresAt: expiredOrder.expiresAt}));
+    await flushAsyncWork();
+
+    assert.equal(syncCount, 1);
+    assert.equal(center.currentOrder.status, 'PAID');
+    assert.equal(center.state.ui, core.UI.PAID);
+
+    center.openFromEntry();
+
+    assert.equal(syncCount, 1);
+    assert.equal(currentViewCount, 1);
+    assert.equal(center.elements.qrStatus.hidden, false);
+    assert.equal(center.elements.qrStatus.textContent, '支付成功，权益已到账');
+});
+
+test('late expiry response cannot overwrite a replacement current order', async () => {
+    const timers = createFakeTimers(Date.parse('2026-08-02T00:00:00.000Z'));
+    const {PaymentCenter} = loadPaymentCenter(timers);
+    const expiredOrder = qrOrder({expiresAt: '2026-08-02T00:00:01.000Z'});
+    const replacementOrder = qrOrder({
+        orderNo: 'PAY-REPLACEMENT-2',
+        expiresAt: '2026-08-02T01:00:00.000Z',
+    });
+    const center = createCenter(PaymentCenter, core.UI.QR_READY, expiredOrder);
+    const response = createDeferred();
+    let syncCount = 0;
+    center.postJson = () => {
+        syncCount += 1;
+        return response.promise;
+    };
+    center.loadPending = async () => {};
+
+    center.startPolling();
+    timers.advance(1000);
+    center.close();
+    center.setCurrentOrder(replacementOrder);
+    response.resolve(qrOrder({status: 'PAID', expiresAt: expiredOrder.expiresAt}));
+    await flushAsyncWork();
+
+    assert.equal(syncCount, 1);
+    assert.equal(center.currentOrder.orderNo, 'PAY-REPLACEMENT-2');
+    assert.equal(center.currentOrder.status, 'CREATED');
+});
+
 test('authoritative future expiry resets the gate and permits one sync at its new deadline', async () => {
     const timers = createFakeTimers(Date.parse('2026-08-02T00:00:00.000Z'));
     const {PaymentCenter} = loadPaymentCenter(timers);
@@ -319,6 +405,7 @@ test('unready QR preserves order and exposes only the official cashier fallback'
     assert.equal(center.elements.qrCanvas.parentElement.hidden, true);
     assert.equal(center.elements.qrCountdown.hidden, true);
     assert.equal(center.elements.qrStatus.hidden, true);
+    assert.equal(center.elements.qrStatus.textContent, '');
     assert.equal(center.elements.methods.hidden, true);
     assert.equal(center.elements.qrActions.hidden, false);
     assert.equal(center.elements.qrCashier.hidden, false);
@@ -359,6 +446,8 @@ test('paid and closed orders clear timers, hide QR, and retain the order number'
         paidCenter.elements.qrCountdown.hidden
             || paidCenter.elements.qrCountdown.textContent === '支付已完成',
     );
+    assert.equal(paidCenter.elements.qrStatus.hidden, false);
+    assert.equal(paidCenter.elements.qrStatus.textContent, '支付成功，权益已到账');
 
     const closedCenter = createCenter(PaymentCenter, core.UI.QR_READY, qrOrder({status: 'CLOSED'}));
     closedCenter.pollTimer = timers.setInterval(() => {}, 5000);
@@ -373,4 +462,6 @@ test('paid and closed orders clear timers, hide QR, and retain the order number'
         closedCenter.elements.qrCountdown.hidden
             || closedCenter.elements.qrCountdown.textContent === '订单已过期',
     );
+    assert.equal(closedCenter.elements.qrStatus.hidden, false);
+    assert.equal(closedCenter.elements.qrStatus.textContent, '订单已过期或关闭');
 });

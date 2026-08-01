@@ -192,6 +192,13 @@
             return this.expirySyncState;
         }
 
+        matchesExpiryIdentity(expiry, order = this.currentOrder) {
+            const orderExpiry = this.expiryIdentity(order);
+            return Boolean(expiry && orderExpiry
+                && expiry.orderNo === orderExpiry.orderNo
+                && expiry.expiresAt === orderExpiry.expiresAt);
+        }
+
         markCurrentExpiryIfReached() {
             const expiry = this.expiryIdentity();
             if (!expiry || expiry.expiresAt > Date.now()) return null;
@@ -207,7 +214,10 @@
                     || !this.currentOrder || this.currentOrder.status !== 'CREATED') return false;
             expiryState.attempted = true;
             this.resumePollingOnVisibility = true;
-            this.syncCurrentOrder(false);
+            this.syncCurrentOrder(false, {
+                orderNo: expiryState.orderNo,
+                expiresAt: expiryState.expiresAt,
+            });
             return true;
         }
 
@@ -271,14 +281,18 @@
 
         openFromEntry(trigger = null) {
             if (!this.ensureAuthenticated()) return;
-            if (this.currentOrder && this.currentOrder.status === 'CREATED') {
+            if (this.currentOrder && ['CREATED', 'PAID', 'CLOSED'].includes(this.currentOrder.status)) {
                 this.open(trigger);
                 this.showCurrent();
-                this.restoreCurrentQrLifecycle();
-                if (this.markCurrentExpiryIfReached()) {
-                    this.syncExpiredOrderOnce();
+                if (this.currentOrder.status === 'CREATED') {
+                    this.restoreCurrentQrLifecycle();
+                    if (this.markCurrentExpiryIfReached()) {
+                        this.syncExpiredOrderOnce();
+                    } else {
+                        this.syncCurrentOrder(false);
+                    }
                 } else {
-                    this.syncCurrentOrder(false);
+                    this.render();
                 }
                 return;
             }
@@ -634,7 +648,7 @@
             }
         }
 
-        async syncCurrentOrder(manual = false) {
+        async syncCurrentOrder(manual = false, expiryRequest = null) {
             if (!this.currentOrder || this.currentOrder.status !== 'CREATED'
                     || this.syncInFlight || this.switchInFlight || this.refreshInFlight
                     || this.resumeInFlight.has(this.currentOrder.orderNo)) return;
@@ -645,9 +659,13 @@
             this.transition(PaymentCenterCore.UI.QUERYING, {error: ''});
             try {
                 const responseOrder = await this.postJson(`/api/payments/orders/${encodeURIComponent(orderNo)}/sync/`);
-                if (operation !== this.operationSequence || this.root.hidden) return;
+                const canAbsorbExpiryResponse = this.matchesExpiryIdentity(expiryRequest)
+                    && this.currentOrder.orderNo === orderNo;
+                if ((operation !== this.operationSequence || this.root.hidden)
+                        && !canAbsorbExpiryResponse) return;
                 if (!this.currentOrder || this.currentOrder.orderNo !== orderNo) return;
                 const order = this.normalizeOrder(responseOrder, this.currentOrder);
+                if (order.orderNo !== orderNo) return;
                 this.setCurrentOrder(order);
                 if (order.status === 'PAID') {
                     await this.completePaid(order);
@@ -1020,7 +1038,7 @@
                     && !isTerminal;
                 qrContainer.hidden = !showQrCanvas;
                 this.elements.qrCountdown.hidden = !(isVerifiedQr || isTerminal);
-                this.elements.qrStatus.hidden = true;
+                this.elements.qrStatus.hidden = !isTerminal;
                 this.elements.qrActions.hidden = !showCashierFallback;
                 this.elements.qrSync.hidden = true;
                 this.elements.qrRefresh.hidden = true;
@@ -1042,21 +1060,9 @@
 
         updateOrderStatus() {
             const ui = this.state.ui;
-            let text = '等待扫码支付';
-            if (ui === PaymentCenterCore.UI.REFRESHING_QR) text = '正在生成新的支付宝二维码';
-            if (ui === PaymentCenterCore.UI.QR_RENDER_ERROR) text = '二维码显示异常，订单仍可继续支付';
-            if (ui === PaymentCenterCore.UI.CREATE_ERROR) {
-                text = this.currentOrder && this.currentOrder.paymentReady
-                    ? '原订单仍待确认，请勿重复支付'
-                    : '二维码待生成，订单已保留';
-            }
-            if (this.currentOrder && this.currentOrder.status === 'CREATED'
-                    && this.currentExpirySyncState()) {
-                text = '正在确认订单最终状态，请勿重复支付';
-            }
+            let text = '';
             if (ui === PaymentCenterCore.UI.PAID) text = '支付成功，权益已到账';
             if (ui === PaymentCenterCore.UI.EXPIRED) text = '订单已过期或关闭';
-            if (this.state.error && ui === PaymentCenterCore.UI.QR_READY) text = this.state.error;
             this.elements.qrStatus.textContent = text;
         }
     }

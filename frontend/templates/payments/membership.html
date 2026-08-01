@@ -365,8 +365,8 @@
                     <canvas id="paymentQrCanvas" width="232" height="232"
                             aria-label="支付宝支付二维码"></canvas>
                 </div>
-                <p id="paymentQrStatus" class="payment-center-order-status" role="status"
-                   aria-live="polite" hidden>等待扫码支付</p>
+                <p id="paymentQrStatus" class="payment-center-order-status sr-only" role="status"
+                   aria-live="polite" hidden></p>
                 <p id="paymentQrCountdown" class="payment-center-countdown">二维码有效期 --:--:--</p>
                 <div class="payment-center-order-number">
                     <span>订单号</span>
@@ -617,5 +617,5 @@
 </script>
 <script src="{% static 'vendor/qrcode/qrcode.min.js' %}?v=1.5.3"></script>
 <script src="{% static 'js/payment-center-core.js' %}?v=20260720-refresh2"></script>
-<script src="{% static 'js/payment-center.js' %}?v=20260720-refresh2"></script>
+<script src="{% static 'js/payment-center.js' %}?v=20260801-qr-countdown"></script>
 {% endblock %}

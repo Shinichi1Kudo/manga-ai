@@ -465,7 +465,7 @@ class MembershipQrPaymentTests(TestCase):
         self.assertIn('this.root.hidden', helper_source)
         self.assertLess(
             helper_source.index('expiryState.attempted = true;'),
-            helper_source.index('this.syncCurrentOrder(false);'),
+            helper_source.index('this.syncCurrentOrder(false, {'),
         )
 
         ensure_start = controller.index('ensurePollingInterval() {')
@@ -781,6 +781,14 @@ class MembershipQrPaymentTests(TestCase):
         status_start = template.index('<p id="paymentQrStatus"')
         status_tag = template[status_start:template.index('>', status_start) + 1]
         self.assertIn(' hidden', status_tag)
+        self.assertIn(' sr-only', status_tag)
+        self.assertIn('role="status"', status_tag)
+        self.assertIn('aria-live="polite"', status_tag)
+        status_close = template.index('</p>', status_start)
+        self.assertEqual(
+            template[template.index('>', status_start) + 1:status_close].strip(),
+            '',
+        )
 
         countdown_start = template.index('<p id="paymentQrCountdown"')
         countdown_tag = template[
@@ -810,7 +818,10 @@ class MembershipQrPaymentTests(TestCase):
         self.assertIn('PaymentCenterCore.UI.CREATE_ERROR', controller)
         self.assertIn('const showCashierFallback =', controller)
         self.assertIn('this.elements.qrActions.hidden = !showCashierFallback;', controller)
-        self.assertIn('this.elements.qrStatus.hidden = true;', controller)
+        self.assertIn('this.elements.qrStatus.hidden = !isTerminal;', controller)
+        self.assertIn("let text = '';", controller)
+        self.assertIn("if (ui === PaymentCenterCore.UI.PAID) text = '支付成功，权益已到账';", controller)
+        self.assertIn("if (ui === PaymentCenterCore.UI.EXPIRED) text = '订单已过期或关闭';", controller)
         self.assertNotIn('正在查询支付状态', controller)
         self.assertNotIn('立即查询', controller)
         self.assertIn(
@@ -849,7 +860,7 @@ class MembershipQrPaymentTests(TestCase):
         assets = (
             "{% static 'vendor/qrcode/qrcode.min.js' %}?v=1.5.3",
             "{% static 'js/payment-center-core.js' %}?v=20260720-refresh2",
-            "{% static 'js/payment-center.js' %}?v=20260720-refresh2",
+            "{% static 'js/payment-center.js' %}?v=20260801-qr-countdown",
         )
         for asset in assets:
             self.assertIn(asset, template)
@@ -859,6 +870,10 @@ class MembershipQrPaymentTests(TestCase):
         self.assertNotIn('cdn.jsdelivr.net', template)
         self.assertNotIn('unpkg.com', template)
         self.assertNotIn('QRCode.toCanvas', template)
+        self.assertNotIn(
+            "{% static 'js/payment-center.js' %}?v=20260720-refresh2",
+            template,
+        )
 
     def test_membership_catalog_values_are_escaped_before_html_interpolation(self):
         template = (
