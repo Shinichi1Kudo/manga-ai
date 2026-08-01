@@ -832,7 +832,7 @@ public class PaymentOrderServiceImpl implements PaymentOrderService {
         ensureCurrentAlipayIdentity(order);
         try {
             return alipayPaymentClient.query(order.getOrderNo());
-        } catch (BusinessException exception) {
+        } catch (RuntimeException exception) {
             throw new BusinessException(PAYMENT_STATE_UNCERTAIN_MESSAGE);
         }
     }
