@@ -97,11 +97,26 @@
             <version>3.17.4</version>
         </dependency>
 
-        <!-- OpenCV / JavaCV for local face detection before external generation calls -->
+        <!-- OpenCV / JavaCV for local face detection before external generation calls.
+             Keep only the Linux x86_64 native runtime used by production; the
+             platform aggregate embeds every OS/architecture and produces an
+             oversized Spring Boot jar that cannot be loaded reliably. -->
         <dependency>
             <groupId>org.bytedeco</groupId>
-            <artifactId>opencv-platform</artifactId>
+            <artifactId>opencv</artifactId>
             <version>4.9.0-1.5.10</version>
+        </dependency>
+        <dependency>
+            <groupId>org.bytedeco</groupId>
+            <artifactId>opencv</artifactId>
+            <version>4.9.0-1.5.10</version>
+            <classifier>linux-x86_64</classifier>
+        </dependency>
+        <dependency>
+            <groupId>org.bytedeco</groupId>
+            <artifactId>openblas</artifactId>
+            <version>0.3.26-1.5.10</version>
+            <classifier>linux-x86_64</classifier>
         </dependency>
 
         <!-- JWT -->
@@ -181,6 +196,12 @@
                             <artifactId>lombok</artifactId>
                         </exclude>
                     </excludes>
+                    <requiresUnpack>
+                        <dependency>
+                            <groupId>com.alipay.sdk</groupId>
+                            <artifactId>alipay-sdk-java</artifactId>
+                        </dependency>
+                    </requiresUnpack>
                 </configuration>
             </plugin>
         </plugins>
