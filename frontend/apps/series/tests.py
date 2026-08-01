@@ -8,6 +8,7 @@ from django.conf import settings
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase
 from django.utils.html import escapejs
+from PIL import Image
 
 from api.backend_client import BackendAPIError, BackendClient
 from apps.series.views import (
@@ -567,6 +568,25 @@ class EpisodeEntryPerformanceTests(TestCase):
 
 
 class SiteBrandingTests(TestCase):
+    def test_brand_assets_are_local_and_optimized(self):
+        image_root = Path(settings.BASE_DIR) / 'static/images'
+        expected = {
+            'site-logo-128.webp': ((128, 128), 'WEBP', 5_000),
+            'site-logo-256.webp': ((256, 256), 'WEBP', 8_000),
+            'logo.png': ((512, 512), 'PNG', 220_000),
+            'favicon.png': ((64, 64), 'PNG', 8_000),
+            'apple-touch-icon.png': ((180, 180), 'PNG', 40_000),
+        }
+
+        for filename, (size, image_format, max_bytes) in expected.items():
+            with self.subTest(filename=filename):
+                path = image_root / filename
+                self.assertTrue(path.is_file())
+                with Image.open(path) as image:
+                    self.assertEqual(image.size, size)
+                    self.assertEqual(image.format, image_format)
+                self.assertLessEqual(path.stat().st_size, max_bytes)
+
     def test_visible_templates_use_haidai_site_name(self):
         template_root = Path(settings.BASE_DIR) / 'templates'
         templates = [
