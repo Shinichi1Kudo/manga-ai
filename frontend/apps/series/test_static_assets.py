@@ -122,6 +122,38 @@ class SiteStaticAssetTests(SimpleTestCase):
                         f'{relative_path}: local stylesheet must precede Lucide script',
                     )
 
+    def test_entry_templates_bootstrap_lucide_before_deferred_bundle_load(self):
+        bootstrap = re.compile(
+            r"window\.lucide\s*=\s*window\.lucide\s*\|\|\s*"
+            r"\{\s*createIcons\(\)\s*\{\s*\}\s*\}",
+            re.DOTALL,
+        )
+        deferred_bundle = re.compile(
+            r'<script\s+defer\s+src="\{% static \'vendor/lucide/lucide\.min\.js\' %\}\?v=20260801"'
+            r'\s+onload="if \(window\.lucide && typeof window\.lucide\.createIcons === \'function\'\) '
+            r'window\.lucide\.createIcons\(\);"></script>',
+            re.DOTALL,
+        )
+        for relative_path in self.template_paths:
+            with self.subTest(template=relative_path):
+                source = self.template_source(relative_path)
+                bootstrap_match = bootstrap.search(source)
+                bundle_match = deferred_bundle.search(source)
+                self.assertIsNotNone(
+                    bootstrap_match,
+                    f'{relative_path}: missing safe Lucide compatibility bootstrap',
+                )
+                self.assertIsNotNone(
+                    bundle_match,
+                    f'{relative_path}: missing deferred Lucide onload icon render',
+                )
+                if bootstrap_match is not None and bundle_match is not None:
+                    self.assertLess(
+                        bootstrap_match.start(),
+                        bundle_match.start(),
+                        f'{relative_path}: Lucide compatibility bootstrap must precede bundle',
+                    )
+
     def test_entry_templates_have_no_render_time_external_dependencies(self):
         forbidden = (
             'cdn.tailwindcss.com',

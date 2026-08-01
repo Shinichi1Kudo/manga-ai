@@ -8,28 +8,12 @@
     <meta name="robots" content="noindex,nofollow">
     <link rel="canonical" href="{{ seo.canonical_url }}">
 
-    <!-- Google Fonts -->
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Noto+Sans+SC:wght@300;400;500;600;700&family=Noto+Serif+SC:wght@700;900&display=swap" rel="stylesheet">
-
-    <!-- Tailwind CSS -->
-    <script src="https://cdn.tailwindcss.com"></script>
-
-    <!-- Lucide Icons -->
-    <script src="https://unpkg.com/lucide@latest"></script>
-
+    <link rel="stylesheet" href="{% static 'css/site.css' %}?v=20260801">
     <script>
-        tailwind.config = {
-            theme: {
-                extend: {
-                    fontFamily: {
-                        sans: ['Inter', 'Noto Sans SC', 'sans-serif'],
-                    },
-                }
-            }
-        }
+        window.lucide = window.lucide || {createIcons() {}};
     </script>
+    <script defer src="{% static 'vendor/lucide/lucide.min.js' %}?v=20260801"
+            onload="if (window.lucide && typeof window.lucide.createIcons === 'function') window.lucide.createIcons();"></script>
 
     <style>
         * {
@@ -39,7 +23,8 @@
         }
 
         body {
-            font-family: 'Inter', 'Noto Sans SC', sans-serif;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI',
+                'Microsoft YaHei', 'PingFang SC', sans-serif;
             min-height: 100vh;
             color: #fff;
             display: flex;
@@ -214,7 +199,7 @@
         .brand-name {
             position: relative;
             display: inline-block;
-            font-family: 'Noto Serif SC', 'Songti SC', 'STSong', serif;
+            font-family: 'Songti SC', 'STSong', serif;
             font-size: 38px;
             font-weight: 900;
             letter-spacing: 0;
@@ -238,7 +223,8 @@
         }
 
         .brand-subtitle {
-            font-family: 'Inter', 'Noto Sans SC', sans-serif;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI',
+                'Microsoft YaHei', 'PingFang SC', sans-serif;
             font-size: 20px;
             font-weight: 700;
             letter-spacing: 0;
