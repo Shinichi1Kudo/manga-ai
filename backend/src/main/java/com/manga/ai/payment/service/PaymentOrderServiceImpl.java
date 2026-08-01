@@ -52,7 +52,6 @@ public class PaymentOrderServiceImpl implements PaymentOrderService {
     private static final SecureRandom RANDOM = new SecureRandom();
     private static final int QR_PRECREATE_MAX_ATTEMPTS = 3;
     private static final int ORDER_OPERATION_LOCK_STRIPES = 64;
-    private static final String QR_TIMEOUT_EXPRESS = "2h";
     private static final String QR_UNAVAILABLE_MESSAGE =
             "支付宝扫码支付服务暂时不可用，请稍后重试或改用支付宝收银台";
     private static final String PAYMENT_STATE_UNCERTAIN_MESSAGE =
@@ -459,8 +458,7 @@ public class PaymentOrderServiceImpl implements PaymentOrderService {
                 order.getOrderNo(),
                 order.getProductName(),
                 amountAsYuan(order.getAmountCents()),
-                alipayProperties.getNotifyUrl(),
-                QR_TIMEOUT_EXPRESS
+                alipayProperties.getNotifyUrl()
         );
         for (int attempt = 1; attempt <= QR_PRECREATE_MAX_ATTEMPTS; attempt++) {
             try {

@@ -43,12 +43,13 @@ import static org.mockito.Mockito.when;
 class DefaultAlipayPaymentClientTest {
 
     @Test
-    void precreateBuildsOrderCodeRequestWithTwoHourExpiry() throws AlipayApiException {
+    void precreateUsesOnlyDocumentedOrderCodeFieldsAndReturnsMatchedOrderNumber()
+            throws AlipayApiException {
         AlipayClient sdkClient = mock(AlipayClient.class);
-        AlipayTradePrecreateResponse response = new AlipayTradePrecreateResponse();
-        response.setCode("10000");
-        response.setOutTradeNo("PAY202607170010");
-        response.setQrCode("https://qr.alipay.com/example");
+        AlipayTradePrecreateResponse response = successfulPrecreateResponse(
+                "PAY202607170010",
+                "https://qr.alipay.com/example"
+        );
         when(sdkClient.execute(any(AlipayTradePrecreateRequest.class))).thenReturn(response);
         DefaultAlipayPaymentClient paymentClient = paymentClient(sdkClient);
 
@@ -56,8 +57,7 @@ class DefaultAlipayPaymentClientTest {
                 "PAY202607170010",
                 "高级会员",
                 new BigDecimal("50.00"),
-                "https://www.yzmovie.cn/api/v1/payments/alipay/notify",
-                "2h"
+                "https://www.yzmovie.cn/api/v1/payments/alipay/notify"
         ));
 
         ArgumentCaptor<AlipayTradePrecreateRequest> requestCaptor =
@@ -66,6 +66,7 @@ class DefaultAlipayPaymentClientTest {
         AlipayTradePrecreateRequest captured = requestCaptor.getValue();
         AlipayTradePrecreateModel model = (AlipayTradePrecreateModel) captured.getBizModel();
 
+        assertThat(result.orderNo()).isEqualTo("PAY202607170010");
         assertThat(result.qrCode()).isEqualTo("https://qr.alipay.com/example");
         assertThat(captured.getNotifyUrl())
                 .isEqualTo("https://www.yzmovie.cn/api/v1/payments/alipay/notify");
@@ -73,15 +74,40 @@ class DefaultAlipayPaymentClientTest {
         assertThat(model.getSubject()).isEqualTo("高级会员");
         assertThat(model.getTotalAmount()).isEqualTo("50.00");
         assertThat(model.getProductCode()).isEqualTo("QR_CODE_OFFLINE");
-        assertThat(model.getQrCodeTimeoutExpress()).isEqualTo("2h");
+        assertThat(model.getQrCodeTimeoutExpress()).isNull();
+    }
+
+    @Test
+    void precreateRejectsBlankResponseOrderNumber() throws AlipayApiException {
+        AlipayClient sdkClient = mock(AlipayClient.class);
+        when(sdkClient.execute(any(AlipayTradePrecreateRequest.class))).thenReturn(
+                successfulPrecreateResponse(" ", "https://qr.alipay.com/example")
+        );
+
+        assertThatThrownBy(() -> paymentClient(sdkClient).precreate(precreateRequest()))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("支付宝扫码支付订单校验失败，请改用支付宝收银台");
+    }
+
+    @Test
+    void precreateRejectsResponseForAnotherOrder() throws AlipayApiException {
+        AlipayClient sdkClient = mock(AlipayClient.class);
+        when(sdkClient.execute(any(AlipayTradePrecreateRequest.class))).thenReturn(
+                successfulPrecreateResponse("PAY-OTHER", "https://qr.alipay.com/example")
+        );
+
+        assertThatThrownBy(() -> paymentClient(sdkClient).precreate(precreateRequest()))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("支付宝扫码支付订单校验失败，请改用支付宝收银台");
     }
 
     @Test
     void precreateRejectsBlankQrCodeWithUserSafeMessage() throws AlipayApiException {
         AlipayClient sdkClient = mock(AlipayClient.class);
-        AlipayTradePrecreateResponse response = new AlipayTradePrecreateResponse();
-        response.setCode("10000");
-        response.setQrCode(" ");
+        AlipayTradePrecreateResponse response = successfulPrecreateResponse(
+                precreateRequest().orderNo(),
+                " "
+        );
         when(sdkClient.execute(any(AlipayTradePrecreateRequest.class))).thenReturn(response);
 
         assertThatThrownBy(() -> paymentClient(sdkClient).precreate(precreateRequest()))
@@ -185,9 +211,10 @@ class DefaultAlipayPaymentClientTest {
     @Test
     void precreateRejectsLookalikeQrHostWithUserSafeMessage() throws AlipayApiException {
         AlipayClient sdkClient = mock(AlipayClient.class);
-        AlipayTradePrecreateResponse response = new AlipayTradePrecreateResponse();
-        response.setCode("10000");
-        response.setQrCode("https://qr.alipay.com.evil.example/pay");
+        AlipayTradePrecreateResponse response = successfulPrecreateResponse(
+                precreateRequest().orderNo(),
+                "https://qr.alipay.com.evil.example/pay"
+        );
         when(sdkClient.execute(any(AlipayTradePrecreateRequest.class))).thenReturn(response);
 
         assertThatThrownBy(() -> paymentClient(sdkClient).precreate(precreateRequest()))
@@ -198,9 +225,10 @@ class DefaultAlipayPaymentClientTest {
     @Test
     void precreateRejectsNonHttpsQrUrlWithUserSafeMessage() throws AlipayApiException {
         AlipayClient sdkClient = mock(AlipayClient.class);
-        AlipayTradePrecreateResponse response = new AlipayTradePrecreateResponse();
-        response.setCode("10000");
-        response.setQrCode("http://qr.alipay.com/pay");
+        AlipayTradePrecreateResponse response = successfulPrecreateResponse(
+                precreateRequest().orderNo(),
+                "http://qr.alipay.com/pay"
+        );
         when(sdkClient.execute(any(AlipayTradePrecreateRequest.class))).thenReturn(response);
 
         assertThatThrownBy(() -> paymentClient(sdkClient).precreate(precreateRequest()))
@@ -211,9 +239,10 @@ class DefaultAlipayPaymentClientTest {
     @Test
     void precreateRejectsQrUrlWithUserInfoWithUserSafeMessage() throws AlipayApiException {
         AlipayClient sdkClient = mock(AlipayClient.class);
-        AlipayTradePrecreateResponse response = new AlipayTradePrecreateResponse();
-        response.setCode("10000");
-        response.setQrCode("https://user@qr.alipay.com/pay");
+        AlipayTradePrecreateResponse response = successfulPrecreateResponse(
+                precreateRequest().orderNo(),
+                "https://user@qr.alipay.com/pay"
+        );
         when(sdkClient.execute(any(AlipayTradePrecreateRequest.class))).thenReturn(response);
 
         assertThatThrownBy(() -> paymentClient(sdkClient).precreate(precreateRequest()))
@@ -224,9 +253,10 @@ class DefaultAlipayPaymentClientTest {
     @Test
     void precreateRejectsNonstandardHttpsPortWithUserSafeMessage() throws AlipayApiException {
         AlipayClient sdkClient = mock(AlipayClient.class);
-        AlipayTradePrecreateResponse response = new AlipayTradePrecreateResponse();
-        response.setCode("10000");
-        response.setQrCode("https://qr.alipay.com:8080/pay");
+        AlipayTradePrecreateResponse response = successfulPrecreateResponse(
+                precreateRequest().orderNo(),
+                "https://qr.alipay.com:8080/pay"
+        );
         when(sdkClient.execute(any(AlipayTradePrecreateRequest.class))).thenReturn(response);
 
         assertThatThrownBy(() -> paymentClient(sdkClient).precreate(precreateRequest()))
@@ -237,9 +267,10 @@ class DefaultAlipayPaymentClientTest {
     @Test
     void precreateAcceptsExactHttpsQrAlipayHost() throws AlipayApiException {
         AlipayClient sdkClient = mock(AlipayClient.class);
-        AlipayTradePrecreateResponse response = new AlipayTradePrecreateResponse();
-        response.setCode("10000");
-        response.setQrCode("https://qr.alipay.com/pay");
+        AlipayTradePrecreateResponse response = successfulPrecreateResponse(
+                precreateRequest().orderNo(),
+                "https://qr.alipay.com/pay"
+        );
         when(sdkClient.execute(any(AlipayTradePrecreateRequest.class))).thenReturn(response);
 
         AlipayPrecreateResult result = paymentClient(sdkClient).precreate(precreateRequest());
@@ -250,9 +281,10 @@ class DefaultAlipayPaymentClientTest {
     @Test
     void precreateAcceptsExplicitDefaultHttpsPort() throws AlipayApiException {
         AlipayClient sdkClient = mock(AlipayClient.class);
-        AlipayTradePrecreateResponse response = new AlipayTradePrecreateResponse();
-        response.setCode("10000");
-        response.setQrCode("https://qr.alipay.com:443/pay");
+        AlipayTradePrecreateResponse response = successfulPrecreateResponse(
+                precreateRequest().orderNo(),
+                "https://qr.alipay.com:443/pay"
+        );
         when(sdkClient.execute(any(AlipayTradePrecreateRequest.class))).thenReturn(response);
 
         AlipayPrecreateResult result = paymentClient(sdkClient).precreate(precreateRequest());
@@ -471,9 +503,19 @@ class DefaultAlipayPaymentClientTest {
                 "PAY202607170010",
                 "高级会员",
                 new BigDecimal("50.00"),
-                "https://www.yzmovie.cn/api/v1/payments/alipay/notify",
-                "2h"
+                "https://www.yzmovie.cn/api/v1/payments/alipay/notify"
         );
+    }
+
+    private AlipayTradePrecreateResponse successfulPrecreateResponse(
+            String orderNo,
+            String qrCode
+    ) {
+        AlipayTradePrecreateResponse response = new AlipayTradePrecreateResponse();
+        response.setCode("10000");
+        response.setOutTradeNo(orderNo);
+        response.setQrCode(qrCode);
+        return response;
     }
 
     private AlipayProperties properties() {

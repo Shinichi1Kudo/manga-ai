@@ -32,6 +32,7 @@ import org.junit.jupiter.params.provider.NullSource;
 import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.ArgumentCaptor;
 import org.mockito.InOrder;
+import org.mockito.invocation.InvocationOnMock;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.TransactionStatus;
 import org.springframework.transaction.annotation.Transactional;
@@ -80,7 +81,10 @@ class PaymentOrderServiceImplTest {
         AtomicReference<PaymentOrder> persisted = stubOrderPersistence(paymentOrderMapper);
         when(alipayPaymentClient.precreate(any()))
                 .thenThrow(new RetryablePaymentGatewayException("temporary", new RuntimeException("504")))
-                .thenReturn(new AlipayPrecreateResult("https://qr.alipay.com/example"));
+                .thenAnswer(invocation -> precreateResult(
+                        invocation,
+                        "https://qr.alipay.com/example"
+                ));
         PaymentOrderServiceImpl service = service(
                 paymentOrderMapper,
                 mock(UserMembershipMapper.class),
@@ -116,7 +120,6 @@ class PaymentOrderServiceImplTest {
         assertThat(requests.get(0).subject()).isEqualTo(order.getProductName());
         assertThat(requests.get(0).totalAmount()).isEqualByComparingTo("50.00");
         assertThat(requests.get(0).notifyUrl()).isEqualTo(alipayProperties().getNotifyUrl());
-        assertThat(requests.get(0).timeoutExpress()).isEqualTo("2h");
         assertThat(persisted.get()).isSameAs(order);
         assertThat(response.orderNo()).isEqualTo(order.getOrderNo());
         assertThat(response.paymentMethod()).isEqualTo(PaymentMethod.QR.name());
@@ -335,7 +338,10 @@ class PaymentOrderServiceImplTest {
         PaymentRetrySleeper paymentRetrySleeper = mock(PaymentRetrySleeper.class);
         stubOrderPersistence(paymentOrderMapper);
         when(alipayPaymentClient.precreate(any()))
-                .thenReturn(new AlipayPrecreateResult("https://qr.alipay.com/example"));
+                .thenAnswer(invocation -> precreateResult(
+                        invocation,
+                        "https://qr.alipay.com/example"
+                ));
         PaymentOrderServiceImpl service = service(
                 paymentOrderMapper,
                 mock(UserMembershipMapper.class),
@@ -377,7 +383,10 @@ class PaymentOrderServiceImplTest {
         when(paymentOrderMapper.update(any(), any())).thenReturn(0);
         when(paymentOrderMapper.selectOne(any())).thenAnswer(invocation -> inserted.get());
         when(alipayPaymentClient.precreate(any()))
-                .thenReturn(new AlipayPrecreateResult("https://qr.alipay.com/not-persisted"));
+                .thenAnswer(invocation -> precreateResult(
+                        invocation,
+                        "https://qr.alipay.com/not-persisted"
+                ));
         PaymentOrderServiceImpl service = service(
                 paymentOrderMapper,
                 mock(UserMembershipMapper.class),
@@ -411,7 +420,8 @@ class PaymentOrderServiceImplTest {
             return 1;
         });
         when(paymentOrderMapper.selectOne(any())).thenAnswer(invocation -> inserted.get());
-        when(alipayPaymentClient.precreate(any())).thenReturn(new AlipayPrecreateResult(qrCode));
+        when(alipayPaymentClient.precreate(any()))
+                .thenAnswer(invocation -> precreateResult(invocation, qrCode));
         PaymentOrderServiceImpl service = service(
                 paymentOrderMapper,
                 mock(UserMembershipMapper.class),
@@ -449,7 +459,10 @@ class PaymentOrderServiceImplTest {
         });
         when(paymentOrderMapper.selectOne(any())).thenAnswer(invocation -> inserted.get());
         when(alipayPaymentClient.precreate(any()))
-                .thenReturn(new AlipayPrecreateResult("https://qr.alipay.com/example"));
+                .thenAnswer(invocation -> precreateResult(
+                        invocation,
+                        "https://qr.alipay.com/example"
+                ));
         PaymentOrderServiceImpl service = service(
                 paymentOrderMapper,
                 mock(UserMembershipMapper.class),
@@ -1102,8 +1115,10 @@ class PaymentOrderServiceImplTest {
         when(client.query(order.getOrderNo())).thenReturn(new AlipayQueryResult(
                 order.getOrderNo(), null, null, null, "40004", "ACQ.TRADE_NOT_EXIST"
         ));
-        when(client.precreate(any())).thenReturn(
-                new AlipayPrecreateResult("https://qr.alipay.com/resume"));
+        when(client.precreate(any())).thenAnswer(invocation -> precreateResult(
+                invocation,
+                "https://qr.alipay.com/resume"
+        ));
         PaymentOrderServiceImpl service = service(
                 mapper,
                 mock(UserMembershipMapper.class),
@@ -1329,8 +1344,10 @@ class PaymentOrderServiceImplTest {
                 source.getOrderNo(), null, "WAIT_BUYER_PAY", null));
         when(client.cancel(source.getOrderNo())).thenReturn(
                 new AlipayCancelResult(true, false, "close"));
-        when(client.precreate(any())).thenReturn(
-                new AlipayPrecreateResult("https://qr.alipay.com/refreshed"));
+        when(client.precreate(any())).thenAnswer(invocation -> precreateResult(
+                invocation,
+                "https://qr.alipay.com/refreshed"
+        ));
         PaymentOrderServiceImpl service = service(
                 mapper,
                 mock(UserMembershipMapper.class),
@@ -2348,7 +2365,7 @@ class PaymentOrderServiceImplTest {
             precreateEntered.countDown();
             assertThat(allowPrecreate.await(2, TimeUnit.SECONDS)).isTrue();
             qrPayable.set(true);
-            return new AlipayPrecreateResult("https://qr.alipay.com/concurrent-resume-first");
+            return precreateResult(invocation, "https://qr.alipay.com/concurrent-resume-first");
         });
         when(client.cancel(source.getOrderNo())).thenAnswer(invocation -> {
             qrPayable.set(false);
@@ -2455,7 +2472,7 @@ class PaymentOrderServiceImplTest {
         when(client.precreate(any())).thenAnswer(invocation -> {
             precreateEntered.countDown();
             qrPayable.set(true);
-            return new AlipayPrecreateResult("https://qr.alipay.com/unsafe-late-precreate");
+            return precreateResult(invocation, "https://qr.alipay.com/unsafe-late-precreate");
         });
         when(client.pagePay(any())).thenReturn(new AlipayPagePayResult("<form>page</form>"));
         PaymentOrderServiceImpl service = service(
@@ -2570,7 +2587,7 @@ class PaymentOrderServiceImplTest {
             assertThat(allowPrecreate.await(2, TimeUnit.SECONDS)).isTrue();
             qrPayable.set(true);
             precreateCompletedAt.set(LocalDateTime.now());
-            return new AlipayPrecreateResult("https://qr.alipay.com/concurrent-resume-sync");
+            return precreateResult(invocation, "https://qr.alipay.com/concurrent-resume-sync");
         });
         when(client.cancel(order.getOrderNo())).thenAnswer(invocation -> {
             qrPayable.set(false);
@@ -2688,7 +2705,7 @@ class PaymentOrderServiceImplTest {
             assertThat(allowPrecreate.await(2, TimeUnit.SECONDS)).isTrue();
             qrPayable.set(true);
             precreateCompletedAt.set(LocalDateTime.now());
-            return new AlipayPrecreateResult("https://qr.alipay.com/concurrent-resume-expiry");
+            return precreateResult(invocation, "https://qr.alipay.com/concurrent-resume-expiry");
         });
         when(client.cancel(current.getOrderNo())).thenAnswer(invocation -> {
             qrPayable.set(false);
@@ -2963,6 +2980,11 @@ class PaymentOrderServiceImplTest {
         });
         when(paymentOrderMapper.selectOne(any())).thenAnswer(invocation -> persisted.get());
         return persisted;
+    }
+
+    private AlipayPrecreateResult precreateResult(InvocationOnMock invocation, String qrCode) {
+        AlipayPrecreateRequest request = invocation.getArgument(0);
+        return new AlipayPrecreateResult(request.orderNo(), qrCode);
     }
 
     @SuppressWarnings("rawtypes")

@@ -102,7 +102,6 @@ public class DefaultAlipayPaymentClient implements AlipayPaymentClient {
         model.setSubject(request.subject());
         model.setTotalAmount(request.totalAmount().toPlainString());
         model.setProductCode("QR_CODE_OFFLINE");
-        model.setQrCodeTimeoutExpress("2h");
         alipayRequest.setBizModel(model);
 
         try {
@@ -115,6 +114,12 @@ public class DefaultAlipayPaymentClient implements AlipayPaymentClient {
                 }
                 throw new BusinessException("支付宝扫码支付下单失败，请稍后重试或改用支付宝收银台");
             }
+            if (!notBlank(response.getOutTradeNo())
+                    || !request.orderNo().equals(response.getOutTradeNo())) {
+                log.warn("支付宝订单码响应订单号不匹配: requestOrderNo={}, responseOrderNo={}",
+                        request.orderNo(), response.getOutTradeNo());
+                throw new BusinessException("支付宝扫码支付订单校验失败，请改用支付宝收银台");
+            }
             if (!notBlank(response.getQrCode())) {
                 log.warn("支付宝订单码响应缺少二维码: orderNo={}", request.orderNo());
                 throw new BusinessException("支付宝扫码支付二维码生成失败，请改用支付宝收银台");
@@ -123,7 +128,7 @@ public class DefaultAlipayPaymentClient implements AlipayPaymentClient {
                 log.warn("支付宝订单码响应二维码地址无效: orderNo={}", request.orderNo());
                 throw new BusinessException("支付宝扫码支付二维码地址无效，请改用支付宝收银台");
             }
-            return new AlipayPrecreateResult(response.getQrCode());
+            return new AlipayPrecreateResult(response.getOutTradeNo(), response.getQrCode());
         } catch (AlipayApiException e) {
             if (isRetryableTransportFailure(e)) {
                 log.warn("支付宝订单码预下单暂时不可用: orderNo={}", request.orderNo());

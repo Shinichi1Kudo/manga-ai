@@ -6,7 +6,6 @@ public record AlipayPrecreateRequest(
         String orderNo,
         String subject,
         BigDecimal totalAmount,
-        String notifyUrl,
-        String timeoutExpress
+        String notifyUrl
 ) {
 }
