@@ -51,6 +51,7 @@ public class PaymentOrderServiceImpl implements PaymentOrderService {
     private static final DateTimeFormatter ORDER_TIME_FORMATTER = DateTimeFormatter.ofPattern("yyyyMMddHHmmssSSS");
     private static final SecureRandom RANDOM = new SecureRandom();
     private static final int QR_PRECREATE_MAX_ATTEMPTS = 3;
+    private static final int QR_VERIFICATION_MAX_ATTEMPTS = 3;
     private static final int ORDER_OPERATION_LOCK_STRIPES = 64;
     private static final String QR_UNAVAILABLE_MESSAGE =
             "支付宝扫码支付服务暂时不可用，请稍后重试或改用支付宝收银台";
@@ -225,16 +226,7 @@ public class PaymentOrderServiceImpl implements PaymentOrderService {
             order = current;
         }
 
-        AlipayPrecreateResult precreateResult;
-        try {
-            precreateResult = precreateQrWithRetry(order);
-        } catch (BusinessException exception) {
-            return closeOrReturnTerminalOrder(orderNo, exception);
-        }
-        if (precreateResult != null && notBlank(precreateResult.qrCode())) {
-            saveResumedQrIfCreated(orderNo, precreateResult.qrCode());
-        }
-        return reloadedQrCreateResponse(orderNo);
+        return prepareVerifiedQr(order, true);
     }
 
     @Override
@@ -343,8 +335,8 @@ public class PaymentOrderServiceImpl implements PaymentOrderService {
                     return null;
                 });
             } catch (Exception e) {
-                log.warn("支付宝订单码过期处理失败，保留待重试: orderNo={}, message={}",
-                        order.getOrderNo(), e.getMessage());
+                log.warn("支付宝订单码过期处理失败，保留待重试: orderNo={}, failureType={}",
+                        order.getOrderNo(), e.getClass().getSimpleName());
             }
         }
     }
@@ -404,12 +396,16 @@ public class PaymentOrderServiceImpl implements PaymentOrderService {
     }
 
     private PaymentOrderCreateResponse preparePayAndInsert(PaymentOrder order) {
+        return preparePayAndInsert(order, true);
+    }
+
+    private PaymentOrderCreateResponse preparePayAndInsert(PaymentOrder order, boolean allowQrReplacement) {
         LocalDateTime now = LocalDateTime.now();
         order.setExpiresAt(now.plusHours(2));
         order.setCreatedAt(now);
         order.setUpdatedAt(now);
         if (PaymentMethod.QR.name().equals(order.getPaymentMethod())) {
-            return prepareQrPayAndInsert(order);
+            return prepareQrPayAndInsert(order, allowQrReplacement);
         }
 
         AlipayPagePayResult result = alipayPaymentClient.pagePay(pagePayRequest(order));
@@ -417,18 +413,119 @@ public class PaymentOrderServiceImpl implements PaymentOrderService {
         return toCreateResponse(order, result.paymentHtml(), true, null);
     }
 
-    private PaymentOrderCreateResponse prepareQrPayAndInsert(PaymentOrder order) {
+    private PaymentOrderCreateResponse prepareQrPayAndInsert(PaymentOrder order, boolean allowReplacement) {
         paymentOrderMapper.insert(order);
+        return prepareVerifiedQr(order, allowReplacement);
+    }
+
+    private PaymentOrderCreateResponse prepareVerifiedQr(PaymentOrder order, boolean allowReplacement) {
         AlipayPrecreateResult result;
         try {
             result = precreateQrWithRetry(order);
         } catch (BusinessException exception) {
             return closeOrReturnTerminalOrder(order.getOrderNo(), exception);
         }
-        if (result != null && notBlank(result.qrCode())) {
-            saveQrIfCreated(order.getOrderNo(), result.qrCode());
+        if (result == null || !notBlank(result.qrCode())) {
+            return qrCreateResponse(order.getOrderNo(), QR_UNAVAILABLE_MESSAGE);
         }
-        return reloadedQrCreateResponse(order.getOrderNo());
+        if (!order.getOrderNo().equals(result.orderNo())) {
+            log.warn("支付宝预下单订单号不一致，拒绝二维码: orderNo={}", order.getOrderNo());
+            return qrCreateResponse(order.getOrderNo(), PAYMENT_STATE_UNCERTAIN_MESSAGE);
+        }
+
+        QrVerification verification = verifyQrOrder(order);
+        return switch (verification.outcome()) {
+            case READY -> {
+                saveVerifiedQrIfCreated(order.getOrderNo(), result.qrCode(), verification.verifiedAt());
+                yield reloadedQrCreateResponse(order.getOrderNo());
+            }
+            case PAID -> {
+                settleFromQuery(order, verification.queryResult(), "qr-verification-query");
+                yield toCreateResponseWithoutPaymentPayload(findOrder(order.getOrderNo()));
+            }
+            case CLOSED -> {
+                closeCreatedOrder(order.getOrderNo());
+                yield toCreateResponseWithoutPaymentPayload(findOrder(order.getOrderNo()));
+            }
+            case NOT_FOUND -> replaceMissingQrOrder(order, allowReplacement);
+            case UNKNOWN -> qrCreateResponse(order.getOrderNo(), PAYMENT_STATE_UNCERTAIN_MESSAGE);
+        };
+    }
+
+    private PaymentOrderCreateResponse replaceMissingQrOrder(PaymentOrder source, boolean allowReplacement) {
+        if (!allowReplacement) {
+            return qrCreateResponse(source.getOrderNo(), QR_UNAVAILABLE_MESSAGE);
+        }
+
+        int closedRows = closeCreatedOrder(source.getOrderNo());
+        PaymentOrder current = findOrder(source.getOrderNo());
+        if (PaymentOrderStatus.PAID.name().equals(current.getStatus())) {
+            return toCreateResponseWithoutPaymentPayload(current);
+        }
+        if (closedRows == 0 || !PaymentOrderStatus.CLOSED.name().equals(current.getStatus())) {
+            if (PaymentOrderStatus.CREATED.name().equals(current.getStatus())) {
+                return toCreateResponse(current, null, false, PAYMENT_STATE_UNCERTAIN_MESSAGE);
+            }
+            return toCreateResponseWithoutPaymentPayload(current);
+        }
+
+        PaymentOrder replacement = cloneAsPaymentOrder(source, PaymentMethod.QR);
+        log.warn("支付宝订单验证未找到，创建有界替换订单: sourceOrderNo={}, replacementOrderNo={}",
+                source.getOrderNo(), replacement.getOrderNo());
+        return preparePayAndInsert(replacement, false);
+    }
+
+    private QrVerification verifyQrOrder(PaymentOrder order) {
+        ensureCurrentAlipayIdentity(order);
+        try {
+            paymentRetrySleeper.pauseBeforeQrVerification();
+        } catch (BusinessException interrupted) {
+            log.warn("支付宝二维码验证等待中断: orderNo={}", order.getOrderNo());
+            return QrVerification.unknown();
+        }
+
+        for (int attempt = 1; attempt <= QR_VERIFICATION_MAX_ATTEMPTS; attempt++) {
+            AlipayQueryResult queryResult;
+            try {
+                queryResult = alipayPaymentClient.query(order.getOrderNo());
+            } catch (RuntimeException queryFailure) {
+                log.warn("支付宝二维码验证查询失败: orderNo={}, attempt={}/{}",
+                        order.getOrderNo(), attempt, QR_VERIFICATION_MAX_ATTEMPTS);
+                return QrVerification.unknown();
+            }
+
+            if (waitingForBuyer(queryResult)) {
+                return new QrVerification(QrVerificationOutcome.READY, queryResult, LocalDateTime.now());
+            }
+            if (queryResult != null && queryResult.paid()) {
+                return new QrVerification(QrVerificationOutcome.PAID, queryResult, LocalDateTime.now());
+            }
+            if (tradeClosed(queryResult)) {
+                return new QrVerification(QrVerificationOutcome.CLOSED, queryResult, LocalDateTime.now());
+            }
+            if (!notFound(queryResult)) {
+                return QrVerification.unknown();
+            }
+            if (attempt == QR_VERIFICATION_MAX_ATTEMPTS) {
+                return new QrVerification(QrVerificationOutcome.NOT_FOUND, queryResult, LocalDateTime.now());
+            }
+            try {
+                paymentRetrySleeper.pauseBeforeQrVerificationRetry();
+            } catch (BusinessException interrupted) {
+                log.warn("支付宝二维码验证重试等待中断: orderNo={}, attempt={}/{}",
+                        order.getOrderNo(), attempt, QR_VERIFICATION_MAX_ATTEMPTS);
+                return QrVerification.unknown();
+            }
+        }
+        return QrVerification.unknown();
+    }
+
+    private PaymentOrderCreateResponse qrCreateResponse(String orderNo, String unreadyMessage) {
+        PaymentOrder current = findOrder(orderNo);
+        if (!PaymentOrderStatus.CREATED.name().equals(current.getStatus())) {
+            return toCreateResponseWithoutPaymentPayload(current);
+        }
+        return toCreateResponse(current, null, false, unreadyMessage);
     }
 
     private PaymentOrderCreateResponse reloadedQrCreateResponse(String orderNo) {
@@ -478,26 +575,31 @@ public class PaymentOrderServiceImpl implements PaymentOrderService {
         return null;
     }
 
-    private void saveQrIfCreated(String orderNo, String qrCode) {
+    private void saveVerifiedQrIfCreated(String orderNo, String qrCode, LocalDateTime verifiedAt) {
         PaymentOrder update = new PaymentOrder();
         update.setQrcode(qrCode);
-        update.setUpdatedAt(LocalDateTime.now());
+        update.setExpiresAt(verifiedAt.plusHours(2));
+        update.setUpdatedAt(verifiedAt);
         LambdaUpdateWrapper<PaymentOrder> wrapper = new LambdaUpdateWrapper<>();
         wrapper.eq(PaymentOrder::getOrderNo, orderNo)
                 .eq(PaymentOrder::getStatus, PaymentOrderStatus.CREATED.name());
         paymentOrderMapper.update(update, wrapper);
     }
 
-    private void saveResumedQrIfCreated(String orderNo, String qrCode) {
-        LocalDateTime now = LocalDateTime.now();
-        PaymentOrder update = new PaymentOrder();
-        update.setQrcode(qrCode);
-        update.setExpiresAt(now.plusHours(2));
-        update.setUpdatedAt(now);
-        LambdaUpdateWrapper<PaymentOrder> wrapper = new LambdaUpdateWrapper<>();
-        wrapper.eq(PaymentOrder::getOrderNo, orderNo)
-                .eq(PaymentOrder::getStatus, PaymentOrderStatus.CREATED.name());
-        paymentOrderMapper.update(update, wrapper);
+    private enum QrVerificationOutcome {
+        READY,
+        PAID,
+        NOT_FOUND,
+        CLOSED,
+        UNKNOWN
+    }
+
+    private record QrVerification(QrVerificationOutcome outcome,
+                                  AlipayQueryResult queryResult,
+                                  LocalDateTime verifiedAt) {
+        private static QrVerification unknown() {
+            return new QrVerification(QrVerificationOutcome.UNKNOWN, null, LocalDateTime.now());
+        }
     }
 
     private PaymentOrder baseOrder(Long userId, PaymentOrderType type, String productCode, String productName,
