@@ -1,13 +1,13 @@
 """
 URL configuration for manga_ai project.
 """
-from django.http import HttpResponse
 from django.urls import path, include
 from apps.role import urls as role_urls
+from apps.series import views as series_views
 from apps.series.seo import robots_txt, sitemap_xml
 
 urlpatterns = [
-    path('favicon.ico', lambda request: HttpResponse(status=204)),
+    path('favicon.ico', series_views.site_favicon, name='site_favicon'),
     path('robots.txt', robots_txt, name='robots_txt'),
     path('sitemap.xml', sitemap_xml, name='sitemap_xml'),
 

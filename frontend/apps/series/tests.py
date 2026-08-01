@@ -40,40 +40,32 @@ class AnonymousPublicEndpointTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()['data']['url'], 'https://example.com/contact.jpg')
 
-    def test_site_logo_endpoint_is_public(self):
-        backend_client = Mock()
-        backend_client.get.return_value = {'url': 'https://oss.example.com/brand/haidai-logo.png'}
-        logo_response = Mock()
-        logo_response.status_code = 200
-        logo_response.content = b'png-bytes'
-        logo_response.headers = {'Content-Type': 'image/png'}
-
-        with patch('apps.series.views.BackendClient', return_value=backend_client), \
-                patch('apps.series.views.requests.get', return_value=logo_response) as requests_get:
-            response = self.client.get('/api/v1/common/site-logo/')
+    def assert_local_brand_response(self, url, filename):
+        expected = (Path(settings.BASE_DIR) / 'static/images' / filename).read_bytes()
+        with patch('apps.series.views.BackendClient') as backend_client, \
+                patch('apps.series.views.requests.get') as requests_get:
+            response = self.client.get(url)
+            body = (
+                b''.join(response.streaming_content)
+                if response.streaming
+                else response.content
+            )
 
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.content, b'png-bytes')
+        self.assertEqual(body, expected)
         self.assertEqual(response['Content-Type'], 'image/png')
-        self.assertEqual(response['Content-Disposition'], 'inline; filename="site-logo.png"')
-        self.assertEqual(response['Cache-Control'], 'public, max-age=86400')
-        backend_client.get.assert_called_once_with('/v1/common/site-logo')
-        requests_get.assert_called_once_with('https://oss.example.com/brand/haidai-logo.png', timeout=15)
+        self.assertEqual(response['Cache-Control'], 'public, max-age=31536000, immutable')
+        backend_client.assert_not_called()
+        requests_get.assert_not_called()
+
+    def test_site_logo_endpoint_is_public(self):
+        self.assert_local_brand_response('/api/v1/common/site-logo/', 'logo.png')
 
     def test_site_logo_png_endpoint_is_public(self):
-        backend_client = Mock()
-        backend_client.get.return_value = {'url': 'https://oss.example.com/brand/haidai-logo.png'}
-        logo_response = Mock()
-        logo_response.status_code = 200
-        logo_response.content = b'png-bytes'
-        logo_response.headers = {'Content-Type': 'image/png'}
+        self.assert_local_brand_response('/site-logo.png', 'logo.png')
 
-        with patch('apps.series.views.BackendClient', return_value=backend_client), \
-                patch('apps.series.views.requests.get', return_value=logo_response):
-            response = self.client.get('/site-logo.png?v=20260515')
-
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.content, b'png-bytes')
+    def test_favicon_endpoint_is_public(self):
+        self.assert_local_brand_response('/favicon.ico', 'favicon.png')
 
     def test_private_api_request_does_not_store_login_next(self):
         response = self.client.get('/api/user/info/')

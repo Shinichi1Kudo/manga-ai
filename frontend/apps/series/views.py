@@ -1,10 +1,12 @@
+from django.conf import settings
 from django.shortcuts import render, redirect
-from django.http import JsonResponse, HttpResponse, HttpResponseForbidden
+from django.http import FileResponse, JsonResponse, HttpResponse, HttpResponseForbidden
 from django.views.decorators.http import require_http_methods
 from django.views.decorators.csrf import csrf_exempt, ensure_csrf_cookie
 from django.contrib import messages
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
+from pathlib import Path
 from urllib.parse import urlencode
 import json
 import requests
@@ -15,6 +17,8 @@ from api.backend_client import BackendClient, BackendAPIError
 
 
 logger = logging.getLogger(__name__)
+
+BRAND_CACHE_CONTROL = 'public, max-age=31536000, immutable'
 
 COMMERCE_ASPECT_RATIOS = ('9:16', '3:4', '1:1', '16:9')
 COMMERCE_ASPECT_RATIO_OPTIONS = (
@@ -2592,28 +2596,22 @@ def contact_image(request):
         return JsonResponse({'code': 400, 'message': e.message}, status=400)
 
 
+def _brand_asset_response(filename, download_name):
+    asset_path = Path(settings.BASE_DIR) / 'static/images' / filename
+    response = FileResponse(asset_path.open('rb'), content_type='image/png')
+    response['Content-Disposition'] = f'inline; filename="{download_name}"'
+    response['Cache-Control'] = BRAND_CACHE_CONTROL
+    return response
+
+
 def site_logo(request):
-    """获取网站 Logo 图片URL"""
-    client = BackendClient()
-    try:
-        result = client.get('/v1/common/site-logo')
-        url = result.get('url') if isinstance(result, dict) else None
-        if not url:
-            return JsonResponse({'code': 500, 'message': '获取 Logo 失败'}, status=500)
+    """返回本地缓存的网站 Logo。"""
+    return _brand_asset_response('logo.png', 'site-logo.png')
 
-        logo_response = requests.get(url, timeout=15)
-        if logo_response.status_code != 200:
-            return JsonResponse({'code': 500, 'message': '获取 Logo 失败'}, status=500)
 
-        response = HttpResponse(
-            logo_response.content,
-            content_type=logo_response.headers.get('Content-Type') or 'image/png'
-        )
-        response['Content-Disposition'] = 'inline; filename="site-logo.png"'
-        response['Cache-Control'] = 'public, max-age=86400'
-        return response
-    except BackendAPIError as e:
-        return JsonResponse({'code': 400, 'message': e.message}, status=400)
+def site_favicon(request):
+    """返回本地缓存的网站 favicon。"""
+    return _brand_asset_response('favicon.png', 'favicon.png')
 
 
 def showcase_assets(request):
