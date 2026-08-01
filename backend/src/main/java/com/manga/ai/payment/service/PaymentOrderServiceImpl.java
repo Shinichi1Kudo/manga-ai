@@ -216,14 +216,28 @@ public class PaymentOrderServiceImpl implements PaymentOrderService {
             throw new BusinessException("该订单支付方式不支持恢复");
         }
         if (notBlank(order.getQrcode())) {
-            PaymentOrder current = findOrder(orderNo);
-            if (!PaymentOrderStatus.CREATED.name().equals(current.getStatus())) {
-                return toCreateResponseWithoutPaymentPayload(current);
+            if (notFound(queryResult)) {
+                int clearedRows = clearStoredQrIfCreated(orderNo);
+                PaymentOrder current = findOrder(orderNo);
+                if (!PaymentOrderStatus.CREATED.name().equals(current.getStatus())) {
+                    return toCreateResponseWithoutPaymentPayload(current);
+                }
+                if (clearedRows == 0 || notBlank(current.getQrcode())) {
+                    return toCreateResponse(current, null, false, PAYMENT_STATE_UNCERTAIN_MESSAGE);
+                }
+                order = current;
+            } else if (!waitingForBuyer(queryResult)) {
+                return toCreateResponse(order, null, false, PAYMENT_STATE_UNCERTAIN_MESSAGE);
+            } else {
+                PaymentOrder current = findOrder(orderNo);
+                if (!PaymentOrderStatus.CREATED.name().equals(current.getStatus())) {
+                    return toCreateResponseWithoutPaymentPayload(current);
+                }
+                if (notBlank(current.getQrcode())) {
+                    return toCreateResponse(current, null, true, null);
+                }
+                order = current;
             }
-            if (notBlank(current.getQrcode())) {
-                return toCreateResponse(current, null, true, null);
-            }
-            order = current;
         }
 
         return prepareVerifiedQr(order, true);
@@ -584,6 +598,16 @@ public class PaymentOrderServiceImpl implements PaymentOrderService {
         wrapper.eq(PaymentOrder::getOrderNo, orderNo)
                 .eq(PaymentOrder::getStatus, PaymentOrderStatus.CREATED.name());
         paymentOrderMapper.update(update, wrapper);
+    }
+
+    private int clearStoredQrIfCreated(String orderNo) {
+        PaymentOrder update = new PaymentOrder();
+        update.setUpdatedAt(LocalDateTime.now());
+        LambdaUpdateWrapper<PaymentOrder> wrapper = new LambdaUpdateWrapper<>();
+        wrapper.eq(PaymentOrder::getOrderNo, orderNo)
+                .eq(PaymentOrder::getStatus, PaymentOrderStatus.CREATED.name())
+                .set(PaymentOrder::getQrcode, null);
+        return paymentOrderMapper.update(update, wrapper);
     }
 
     private enum QrVerificationOutcome {

@@ -1339,6 +1339,106 @@ class PaymentOrderServiceImplTest {
     }
 
     @Test
+    void resumeStoredQrNotFoundClearsOldQrAndReturnsOnlyNewVerifiedQr() {
+        PaymentOrderMapper mapper = mock(PaymentOrderMapper.class);
+        Map<String, PaymentOrder> orders = stubOrderStore(mapper);
+        PaymentOrder order = resumableQrOrder("PAY-RESUME-STORED-MISSING");
+        order.setQrcode("https://qr.alipay.com/old-invalid");
+        orders.put(order.getOrderNo(), order);
+        AlipayPaymentClient client = mock(AlipayPaymentClient.class);
+        PaymentRetrySleeper sleeper = mock(PaymentRetrySleeper.class);
+        when(client.query(order.getOrderNo())).thenReturn(
+                notFoundResult(order.getOrderNo()),
+                waitingResult(order.getOrderNo()));
+        when(client.precreate(any())).thenAnswer(invocation -> precreateResult(
+                invocation, "https://qr.alipay.com/new-verified"));
+        PaymentOrderServiceImpl service = service(
+                mapper, mock(UserMembershipMapper.class), mock(CreditAccountService.class),
+                mock(MembershipService.class), client, sleeper);
+
+        PaymentOrderCreateResponse response = service.resumeOrder(7L, order.getOrderNo());
+
+        assertThat(response.orderNo()).isEqualTo(order.getOrderNo());
+        assertThat(response.paymentReady()).isTrue();
+        assertThat(response.qrCode()).isEqualTo("https://qr.alipay.com/new-verified");
+        assertThat(response.qrCode()).isNotEqualTo("https://qr.alipay.com/old-invalid");
+        assertThat(orders.get(order.getOrderNo()).getQrcode()).isEqualTo(response.qrCode());
+        verify(client).precreate(any());
+        verify(sleeper).pauseBeforeQrVerification();
+        verify(client, times(2)).query(order.getOrderNo());
+        @SuppressWarnings("rawtypes")
+        ArgumentCaptor<LambdaUpdateWrapper> wrappers = ArgumentCaptor.forClass(LambdaUpdateWrapper.class);
+        verify(mapper, times(2)).update(any(), wrappers.capture());
+        assertThat(wrappers.getAllValues().get(0).getSqlSet()).contains("qrcode");
+        assertCreatedGuard(wrappers.getAllValues().get(0), order.getOrderNo());
+    }
+
+    @Test
+    void resumeStoredQrNotFoundThenUnknownKeepsCreatedOrderWithoutAnyQr() {
+        PaymentOrderMapper mapper = mock(PaymentOrderMapper.class);
+        Map<String, PaymentOrder> orders = stubOrderStore(mapper);
+        PaymentOrder order = resumableQrOrder("PAY-RESUME-STORED-UNKNOWN");
+        order.setQrcode("https://qr.alipay.com/old-invalid");
+        orders.put(order.getOrderNo(), order);
+        AlipayPaymentClient client = mock(AlipayPaymentClient.class);
+        PaymentRetrySleeper sleeper = mock(PaymentRetrySleeper.class);
+        when(client.query(order.getOrderNo())).thenReturn(
+                notFoundResult(order.getOrderNo()),
+                new AlipayQueryResult(
+                        order.getOrderNo(), null, null, null, "40004", "ACQ.SYSTEM_ERROR"));
+        when(client.precreate(any())).thenAnswer(invocation -> precreateResult(
+                invocation, "https://qr.alipay.com/new-unverified"));
+        PaymentOrderServiceImpl service = service(
+                mapper, mock(UserMembershipMapper.class), mock(CreditAccountService.class),
+                mock(MembershipService.class), client, sleeper);
+
+        PaymentOrderCreateResponse response = service.resumeOrder(7L, order.getOrderNo());
+
+        assertThat(orders).hasSize(1);
+        assertThat(order.getStatus()).isEqualTo(PaymentOrderStatus.CREATED.name());
+        assertThat(order.getQrcode()).isNull();
+        assertThat(response.status()).isEqualTo(PaymentOrderStatus.CREATED.name());
+        assertThat(response.paymentReady()).isFalse();
+        assertThat(response.qrCode()).isNull();
+        assertThat(response.paymentMessage()).isEqualTo("支付状态暂未确认，请稍后查询，请勿重复支付");
+        verify(client).precreate(any());
+        verify(sleeper).pauseBeforeQrVerification();
+        verify(client, times(2)).query(order.getOrderNo());
+        verify(mapper).update(any(), any());
+        verify(mapper, never()).insert(any());
+    }
+
+    @Test
+    void resumeStoredQrNotFoundClearLosingToPaidCallbackReturnsPaidWithoutReprecreate() {
+        PaymentOrderMapper mapper = mock(PaymentOrderMapper.class);
+        PaymentOrder order = resumableQrOrder("PAY-RESUME-STORED-PAID-RACE");
+        order.setQrcode("https://qr.alipay.com/old-invalid");
+        AtomicReference<PaymentOrder> persisted = new AtomicReference<>(order);
+        when(mapper.selectOne(any())).thenAnswer(invocation -> persisted.get());
+        when(mapper.update(any(), any())).thenAnswer(invocation -> {
+            PaymentOrder paid = paidCopy(order);
+            paid.setPaymentMethod(PaymentMethod.QR.name());
+            paid.setQrcode(order.getQrcode());
+            persisted.set(paid);
+            return 0;
+        });
+        AlipayPaymentClient client = mock(AlipayPaymentClient.class);
+        when(client.query(order.getOrderNo())).thenReturn(notFoundResult(order.getOrderNo()));
+        PaymentOrderServiceImpl service = service(
+                mapper, mock(UserMembershipMapper.class), mock(CreditAccountService.class),
+                mock(MembershipService.class), client);
+
+        PaymentOrderCreateResponse response = service.resumeOrder(7L, order.getOrderNo());
+
+        assertThat(response.status()).isEqualTo(PaymentOrderStatus.PAID.name());
+        assertThat(response.paymentReady()).isFalse();
+        assertThat(response.qrCode()).isNull();
+        verify(mapper).update(any(), any());
+        verify(client, never()).precreate(any());
+        verify(mapper, never()).insert(any());
+    }
+
+    @Test
     void resumeStoredQrStripsPayloadWhenCallbackWinsBeforeResponse() {
         PaymentOrderMapper mapper = mock(PaymentOrderMapper.class);
         AlipayPaymentClient client = mock(AlipayPaymentClient.class);
@@ -3284,6 +3384,9 @@ class PaymentOrderServiceImplTest {
             }
             if (update.getQrcode() != null) {
                 current.setQrcode(update.getQrcode());
+            }
+            if (wrapper.getSqlSet() != null && wrapper.getSqlSet().contains("qrcode")) {
+                current.setQrcode(null);
             }
             if (update.getExpiresAt() != null) {
                 current.setExpiresAt(update.getExpiresAt());
