@@ -779,6 +779,12 @@ class MembershipQrPaymentTests(TestCase):
         status_tag = template[status_start:template.index('>', status_start) + 1]
         self.assertIn(' hidden', status_tag)
 
+        countdown_start = template.index('<p id="paymentQrCountdown"')
+        countdown_tag = template[
+            countdown_start:template.index('>', countdown_start) + 1
+        ]
+        self.assertIn(' hidden', countdown_tag)
+
         actions_start = template.index('<div id="paymentQrActions"')
         actions_tag = template[actions_start:template.index('>', actions_start) + 1]
         self.assertIn(' hidden', actions_tag)
