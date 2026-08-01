@@ -366,13 +366,13 @@
                             aria-label="支付宝支付二维码"></canvas>
                 </div>
                 <p id="paymentQrStatus" class="payment-center-order-status" role="status"
-                   aria-live="polite">等待扫码支付</p>
+                   aria-live="polite" hidden>等待扫码支付</p>
                 <p id="paymentQrCountdown" class="payment-center-countdown">正在读取有效期</p>
                 <div class="payment-center-order-number">
                     <span>订单号</span>
                     <code id="paymentQrOrderNo"></code>
                 </div>
-                <div class="payment-center-actions">
+                <div id="paymentQrActions" class="payment-center-actions" hidden>
                     <button id="paymentQrSync" class="payment-center-action payment-center-action--primary"
                             type="button" aria-label="立即查询支付状态" title="立即查询">
                         <i data-lucide="refresh-cw" aria-hidden="true"></i>

@@ -103,6 +103,7 @@
                 qrView: byId('paymentQrView'),
                 qrCanvas: byId('paymentQrCanvas'),
                 qrStatus: byId('paymentQrStatus'),
+                qrActions: byId('paymentQrActions'),
                 qrCountdown: byId('paymentQrCountdown'),
                 qrOrderNo: byId('paymentQrOrderNo'),
                 qrSync: byId('paymentQrSync'),
@@ -966,6 +967,12 @@
                     && ui !== PaymentCenterCore.UI.PAID
                     && ui !== PaymentCenterCore.UI.EXPIRED;
                 qrContainer.hidden = !showQrCanvas;
+                const showQrStatus = ui === PaymentCenterCore.UI.PAID
+                    || ui === PaymentCenterCore.UI.EXPIRED
+                    || ui === PaymentCenterCore.UI.QR_RENDER_ERROR
+                    || ui === PaymentCenterCore.UI.CREATE_ERROR;
+                this.elements.qrStatus.hidden = !showQrStatus;
+                this.elements.qrActions.hidden = true;
                 this.elements.qrRefresh.hidden = !(
                     order.paymentMethod === 'QR'
                     && order.status === 'CREATED'
@@ -996,7 +1003,6 @@
         updateOrderStatus() {
             const ui = this.state.ui;
             let text = '等待扫码支付';
-            if (ui === PaymentCenterCore.UI.QUERYING) text = '正在查询支付状态';
             if (ui === PaymentCenterCore.UI.REFRESHING_QR) text = '正在生成新的支付宝二维码';
             if (ui === PaymentCenterCore.UI.QR_RENDER_ERROR) text = '二维码显示异常，订单仍可继续支付';
             if (ui === PaymentCenterCore.UI.CREATE_ERROR) {
