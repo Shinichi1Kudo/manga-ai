@@ -1,3 +1,4 @@
+{% load static %}
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -572,7 +573,10 @@
 
         <div class="logo-wrap">
             <div class="logo-icon-wrap">
-                <img src="/site-logo.png?v=20260515" alt="海带 AI 内容智能创作平台 Logo" class="brand-logo-img">
+                <img src="{% static 'images/logo.png' %}?v=20260801"
+                     srcset="{% static 'images/site-logo-128.webp' %}?v=20260801 1x, {% static 'images/site-logo-256.webp' %}?v=20260801 2x"
+                     alt="海带 AI 内容智能创作平台 Logo" class="brand-logo-img"
+                     width="128" height="128" decoding="async" fetchpriority="high">
             </div>
             <div class="logo-text">
                 <span class="brand-wordmark" aria-label="海带 AI 内容智能创作平台">

@@ -1,3 +1,4 @@
+{% load static %}
 <!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -40,8 +41,8 @@
     <meta name="applicable-device" content="pc,mobile">
     <meta http-equiv="Cache-Control" content="no-siteapp">
     <meta http-equiv="Cache-Control" content="no-transform">
-    <link rel="icon" type="image/png" href="/site-logo.png?v=20260515">
-    <link rel="apple-touch-icon" href="/site-logo.png?v=20260515">
+    <link rel="icon" type="image/png" sizes="64x64" href="{% static 'images/favicon.png' %}?v=20260801">
+    <link rel="apple-touch-icon" sizes="180x180" href="{% static 'images/apple-touch-icon.png' %}?v=20260801">
 
     <!-- Google Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -1026,7 +1027,10 @@
         <div class="site-nav-inner max-w-7xl mx-auto flex items-center justify-between">
             <a href="/" class="flex items-center gap-3 group">
                 <div class="brand-logo-shell nav-brand-logo">
-                    <img src="/site-logo.png?v=20260515" alt="海带 AI 内容智能创作平台 Logo" class="brand-logo-img">
+                    <img src="{% static 'images/logo.png' %}?v=20260801"
+                         srcset="{% static 'images/site-logo-128.webp' %}?v=20260801 1x, {% static 'images/site-logo-256.webp' %}?v=20260801 2x"
+                         alt="海带 AI 内容智能创作平台 Logo" class="brand-logo-img"
+                         width="128" height="128" decoding="async" fetchpriority="high">
                 </div>
                 <span class="brand-wordmark nav-brand-wordmark" aria-label="海带 AI 内容智能创作平台">
                     <span class="brand-name">海带</span>

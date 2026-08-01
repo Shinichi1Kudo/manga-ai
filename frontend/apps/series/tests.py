@@ -610,19 +610,26 @@ class SiteBrandingTests(TestCase):
         self.assertIn('brand-name">海带</span>', combined)
         self.assertIn('brand-subtitle">AI 内容智能创作平台</span>', combined)
 
-    def test_brand_uses_oss_backed_logo_image(self):
+    def test_brand_uses_local_optimized_logo_images(self):
         template_root = Path(settings.BASE_DIR) / 'templates'
         combined = '\n'.join([
             (template_root / 'base.html').read_text(encoding='utf-8'),
             (template_root / 'series/series_list.html').read_text(encoding='utf-8'),
             (template_root / 'auth/login.html').read_text(encoding='utf-8'),
             (template_root / 'auth/register.html').read_text(encoding='utf-8'),
+            (template_root / 'auth/bind_phone.html').read_text(encoding='utf-8'),
         ])
 
-        self.assertIn('src="/site-logo.png?v=20260515"', combined)
-        self.assertIn('rel="icon" type="image/png" href="/site-logo.png?v=20260515"', combined)
-        self.assertNotIn('src="/api/v1/common/site-logo/"', combined)
+        self.assertNotIn('/site-logo.png?v=20260515', combined)
+        self.assertIn("images/site-logo-128.webp", combined)
+        self.assertIn("images/site-logo-256.webp", combined)
+        self.assertIn("images/logo.png", combined)
+        self.assertIn("images/favicon.png", combined)
+        self.assertIn("images/apple-touch-icon.png", combined)
+        self.assertGreaterEqual(combined.count('decoding="async"'), 5)
         self.assertIn('class="brand-logo-img', combined)
+        self.assertIn('brand-name">海带</span>', combined)
+        self.assertIn('brand-subtitle">AI 内容智能创作平台</span>', combined)
         nav_brand = combined.split('<a href="/" class="flex items-center gap-3 group">', 1)[1].split('</a>', 1)[0]
         self.assertNotIn('data-lucide=', nav_brand)
 
@@ -669,6 +676,11 @@ class SearchEngineVisibilityTests(TestCase):
         self.assertContains(response, '<link rel="canonical" href="https://www.yzmovie.cn/">', html=False)
         self.assertContains(response, '<meta property="og:title" content="海带 AI 内容智能创作平台">', html=False)
         self.assertContains(response, '<meta property="og:url" content="https://www.yzmovie.cn/">', html=False)
+        self.assertContains(
+            response,
+            '<meta property="og:image" content="https://www.yzmovie.cn/static/images/logo.png?v=20260801">',
+            html=False,
+        )
 
     def test_public_tool_landing_pages_are_crawlable(self):
         expected = {

@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load static %}
 
 {% block title %}首页 - 海带 AI 内容智能创作平台{% endblock %}
 
@@ -59,7 +60,10 @@
         </div>
     </div>
 
-    <img src="/site-logo.png?v=20260515" alt="海带 AI 内容智能创作平台 Logo" class="brand-logo-img hero-site-logo mx-auto mb-5">
+    <img src="{% static 'images/logo.png' %}?v=20260801"
+         srcset="{% static 'images/site-logo-128.webp' %}?v=20260801 1x, {% static 'images/site-logo-256.webp' %}?v=20260801 2x"
+         alt="海带 AI 内容智能创作平台 Logo" class="brand-logo-img hero-site-logo mx-auto mb-5"
+         width="256" height="256" decoding="async" fetchpriority="high">
     <h1 class="mb-4">
         <span class="brand-wordmark hero-brand-wordmark" aria-label="海带 AI 内容智能创作平台">
             <span class="brand-name">海带</span>
