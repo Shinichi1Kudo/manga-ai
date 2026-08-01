@@ -450,32 +450,33 @@ class MembershipQrPaymentTests(TestCase):
         self.assertIn('this.stopCountdown();', expiry_source)
         self.assertIn('this.stopPolling();', expiry_source)
         self.assertIn("? '正在确认订单最终状态，请勿重复支付'", expiry_source)
-        self.assertIn(": '二维码已过期，请勿重复支付';", expiry_source)
-        self.assertIn('this.expirySyncRequested !== orderNo', expiry_source)
-        self.assertIn('this.syncCurrentOrder(false);', expiry_source)
-        self.assertIn(
-            'if (shouldSync && !document.hidden && !this.root.hidden)',
-            expiry_source,
-        )
-        self.assertNotIn('if (shouldSync) this.syncCurrentOrder(false);', expiry_source)
+        self.assertIn("? '二维码已过期，请勿重复支付'", expiry_source)
+        self.assertIn("this.markCurrentExpiryIfReached();", expiry_source)
+        self.assertIn('this.syncExpiredOrderOnce();', expiry_source)
+        self.assertNotIn('this.syncCurrentOrder(false);', expiry_source)
         self.assertNotIn('setInterval(', expiry_source)
         self.assertNotIn('this.ensurePollingInterval();', expiry_source)
+
+        helper_start = controller.index('syncExpiredOrderOnce() {')
+        helper_end = controller.index('open(trigger = null)', helper_start)
+        helper_source = controller[helper_start:helper_end]
+        self.assertIn('expiryState.attempted', helper_source)
+        self.assertIn('document.hidden', helper_source)
+        self.assertIn('this.root.hidden', helper_source)
+        self.assertLess(
+            helper_source.index('expiryState.attempted = true;'),
+            helper_source.index('this.syncCurrentOrder(false);'),
+        )
 
         ensure_start = controller.index('ensurePollingInterval() {')
         ensure_end = controller.index('startCountdownOnly() {', ensure_start)
         ensure_source = controller[ensure_start:ensure_end]
         self.assertIn('if (this.pollTimer', ensure_source)
         self.assertEqual(ensure_source.count('setInterval('), 1)
-        self.assertIn(
-            'this.expirySyncRequested === this.currentOrder.orderNo',
-            ensure_source,
-        )
+        self.assertIn('this.currentExpirySyncState()', ensure_source)
         self.assertIn('this.ensurePollingInterval();', polling_source)
-        self.assertIn(
-            'this.expirySyncRequested === this.currentOrder.orderNo',
-            polling_source,
-        )
-        self.assertIn('this.expirySyncRequested = null;', controller)
+        self.assertIn('this.currentExpirySyncState()', polling_source)
+        self.assertIn('this.expirySyncState = null;', controller)
 
         response_start = controller.index('async handleOrderResponse(order)')
         response_end = controller.index('async showQrOrder(order)', response_start)

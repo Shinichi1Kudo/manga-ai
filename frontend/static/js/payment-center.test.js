@@ -41,6 +41,10 @@ function createFakeTimers(start) {
     };
 }
 
+function flushAsyncWork() {
+    return new Promise(resolve => setImmediate(resolve));
+}
+
 function loadPaymentCenter(timers) {
     const source = fs.readFileSync(path.join(__dirname, 'payment-center.js'), 'utf8');
     const bootstrapStart = source.lastIndexOf("    document.addEventListener('DOMContentLoaded'");
@@ -125,8 +129,10 @@ function createCenter(PaymentCenter, ui, order) {
         resumeInFlight: new Set(),
         pollTimer: null,
         countdownTimer: null,
-        expirySyncRequested: null,
+        expirySyncState: null,
+        resumePollingOnVisibility: false,
         renderSequence: 0,
+        operationSequence: 0,
         elements,
         updatePendingActionState() {},
     });
@@ -184,6 +190,85 @@ test('expired countdown stops all timers and requests exactly one safe sync', ()
     assert.equal(syncCount, 1);
     assert.deepEqual(timers.activeDelays(), []);
     assert.equal(center.countdownTimer, null);
+});
+
+test('hidden expiry syncs on first visible event only', () => {
+    const timers = createFakeTimers(Date.parse('2026-08-02T00:00:00.000Z'));
+    const {PaymentCenter, context} = loadPaymentCenter(timers);
+    const center = createCenter(PaymentCenter, core.UI.QR_READY, qrOrder({
+        expiresAt: '2026-08-02T00:00:01.000Z',
+    }));
+    let syncCount = 0;
+    center.syncCurrentOrder = () => { syncCount += 1; };
+
+    context.document.hidden = true;
+    timers.advance(1000);
+    center.handleVisibilityChange();
+    assert.equal(syncCount, 0);
+
+    context.document.hidden = false;
+    center.handleVisibilityChange();
+    assert.equal(syncCount, 1);
+
+    context.document.hidden = true;
+    center.handleVisibilityChange();
+    context.document.hidden = false;
+    center.handleVisibilityChange();
+    assert.equal(syncCount, 1);
+});
+
+test('failed visible expiry sync is not retried after close and reopen', async () => {
+    const timers = createFakeTimers(Date.parse('2026-08-02T00:00:00.000Z'));
+    const {PaymentCenter} = loadPaymentCenter(timers);
+    const center = createCenter(PaymentCenter, core.UI.QR_READY, qrOrder({
+        expiresAt: '2026-08-02T00:00:01.000Z',
+    }));
+    let syncCount = 0;
+    center.postJson = async () => {
+        syncCount += 1;
+        throw new Error('temporary network failure');
+    };
+    center.ensureAuthenticated = () => true;
+    center.open = () => { center.root.hidden = false; };
+    center.showCurrent = () => {};
+
+    center.startPolling();
+    timers.advance(1000);
+    await flushAsyncWork();
+    assert.equal(syncCount, 1);
+
+    center.root.hidden = true;
+    center.openFromEntry();
+    center.root.hidden = true;
+    center.openFromEntry();
+
+    assert.equal(syncCount, 1);
+    assert.deepEqual(timers.activeDelays(), []);
+});
+
+test('authoritative future expiry resets the gate and permits one sync at its new deadline', async () => {
+    const timers = createFakeTimers(Date.parse('2026-08-02T00:00:00.000Z'));
+    const {PaymentCenter} = loadPaymentCenter(timers);
+    const center = createCenter(PaymentCenter, core.UI.QR_READY, qrOrder({
+        expiresAt: '2026-08-02T00:00:01.000Z',
+    }));
+    let syncCount = 0;
+    center.postJson = async () => {
+        syncCount += 1;
+        return qrOrder({expiresAt: '2026-08-02T00:00:03.000Z'});
+    };
+
+    center.startPolling();
+    timers.advance(1000);
+    await flushAsyncWork();
+    assert.equal(syncCount, 1);
+    assert.deepEqual(timers.activeDelays(), [1000, 5000]);
+
+    timers.advance(2000);
+    await flushAsyncWork();
+
+    assert.equal(syncCount, 2);
+    assert.deepEqual(timers.activeDelays(), []);
 });
 
 test('unready QR preserves order and exposes only the official cashier fallback', () => {

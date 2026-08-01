@@ -73,7 +73,7 @@
             this.switchInFlight = false;
             this.refreshInFlight = false;
             this.resumePollingOnVisibility = false;
-            this.expirySyncRequested = null;
+            this.expirySyncState = null;
             this.focusReturn = null;
             this.renderSequence = 0;
             this.operationSequence = 0;
@@ -168,12 +168,47 @@
         }
 
         setCurrentOrder(order) {
-            const currentOrderNo = this.currentOrder && this.currentOrder.orderNo;
-            const nextOrderNo = order && order.orderNo;
-            if (!order || currentOrderNo !== nextOrderNo) {
-                this.expirySyncRequested = null;
+            const nextExpiry = this.expiryIdentity(order);
+            if (this.expirySyncState && (!nextExpiry
+                    || this.expirySyncState.orderNo !== nextExpiry.orderNo
+                    || this.expirySyncState.expiresAt !== nextExpiry.expiresAt)) {
+                this.expirySyncState = null;
             }
             this.currentOrder = order;
+        }
+
+        expiryIdentity(order = this.currentOrder) {
+            if (!order || !order.orderNo || !order.expiresAt) return null;
+            const expiresAt = new Date(order.expiresAt).getTime();
+            if (!Number.isFinite(expiresAt)) return null;
+            return {orderNo: String(order.orderNo), expiresAt};
+        }
+
+        currentExpirySyncState() {
+            const expiry = this.expiryIdentity();
+            if (!expiry || !this.expirySyncState
+                    || this.expirySyncState.orderNo !== expiry.orderNo
+                    || this.expirySyncState.expiresAt !== expiry.expiresAt) return null;
+            return this.expirySyncState;
+        }
+
+        markCurrentExpiryIfReached() {
+            const expiry = this.expiryIdentity();
+            if (!expiry || expiry.expiresAt > Date.now()) return null;
+            const currentState = this.currentExpirySyncState();
+            if (currentState) return currentState;
+            this.expirySyncState = {...expiry, attempted: false};
+            return this.expirySyncState;
+        }
+
+        syncExpiredOrderOnce() {
+            const expiryState = this.markCurrentExpiryIfReached();
+            if (!expiryState || expiryState.attempted || document.hidden || this.root.hidden
+                    || !this.currentOrder || this.currentOrder.status !== 'CREATED') return false;
+            expiryState.attempted = true;
+            this.resumePollingOnVisibility = true;
+            this.syncCurrentOrder(false);
+            return true;
         }
 
         open(trigger = null) {
@@ -240,7 +275,11 @@
                 this.open(trigger);
                 this.showCurrent();
                 this.restoreCurrentQrLifecycle();
-                this.syncCurrentOrder(false);
+                if (this.markCurrentExpiryIfReached()) {
+                    this.syncExpiredOrderOnce();
+                } else {
+                    this.syncCurrentOrder(false);
+                }
                 return;
             }
             this.openPending(trigger);
@@ -793,15 +832,14 @@
             this.startCountdownOnly();
             if (this.state.ui === PaymentCenterCore.UI.PAID
                     || this.state.ui === PaymentCenterCore.UI.EXPIRED
-                    || (this.currentOrder
-                        && this.expirySyncRequested === this.currentOrder.orderNo)) return;
+                    || this.currentExpirySyncState()) return;
             this.ensurePollingInterval();
         }
 
         ensurePollingInterval() {
             if (this.pollTimer || document.hidden || this.root.hidden || !this.currentOrder
                     || this.currentOrder.status !== 'CREATED'
-                    || this.expirySyncRequested === this.currentOrder.orderNo) return;
+                    || this.currentExpirySyncState()) return;
             this.pollTimer = setInterval(() => this.syncCurrentOrder(false), 5000);
         }
 
@@ -814,7 +852,7 @@
                     || this.state.ui === PaymentCenterCore.UI.EXPIRED) return;
             if (document.hidden || this.root.hidden || !this.currentOrder
                     || !this.currentOrder.expiresAt
-                    || this.expirySyncRequested === this.currentOrder.orderNo) return;
+                    || this.currentExpirySyncState()) return;
             this.countdownTimer = setInterval(() => this.updateCountdown(), 1000);
         }
 
@@ -852,24 +890,18 @@
                 return;
             }
             const remaining = Math.max(0, Math.ceil((expiresAt - Date.now()) / 1000));
-            const orderNo = this.currentOrder.orderNo;
             if (remaining <= 0) {
-                const shouldSync = this.expirySyncRequested !== orderNo;
-                this.expirySyncRequested = orderNo;
+                const expiryState = this.markCurrentExpiryIfReached();
                 this.stopCountdown();
                 this.stopPolling();
                 this.elements.qrCanvas.parentElement.hidden = true;
-                this.elements.qrCountdown.textContent = shouldSync || this.syncInFlight
+                const syncStarted = this.syncExpiredOrderOnce();
+                this.elements.qrCountdown.textContent = syncStarted || this.syncInFlight
                     ? '正在确认订单最终状态，请勿重复支付'
-                    : '二维码已过期，请勿重复支付';
-                if (shouldSync && !document.hidden && !this.root.hidden) {
-                    this.syncCurrentOrder(false);
-                }
+                    : expiryState && expiryState.attempted
+                        ? '二维码已过期，请勿重复支付'
+                        : '二维码已过期，返回页面后将确认订单状态';
                 return;
-            }
-            if (this.expirySyncRequested === orderNo) {
-                this.expirySyncRequested = null;
-                this.updateOrderStatus();
             }
             const hours = Math.floor(remaining / 3600);
             const minutes = Math.floor((remaining % 3600) / 60);
@@ -885,6 +917,10 @@
                 return;
             }
             if (this.root.hidden || !this.currentOrder || this.currentOrder.status !== 'CREATED') return;
+            if (this.markCurrentExpiryIfReached()) {
+                this.syncExpiredOrderOnce();
+                return;
+            }
             this.resumePollingOnVisibility = true;
             this.syncCurrentOrder(false);
         }
@@ -1015,7 +1051,7 @@
                     : '二维码待生成，订单已保留';
             }
             if (this.currentOrder && this.currentOrder.status === 'CREATED'
-                    && this.expirySyncRequested === this.currentOrder.orderNo) {
+                    && this.currentExpirySyncState()) {
                 text = '正在确认订单最终状态，请勿重复支付';
             }
             if (ui === PaymentCenterCore.UI.PAID) text = '支付成功，权益已到账';
