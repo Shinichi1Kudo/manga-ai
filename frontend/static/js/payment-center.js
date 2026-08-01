@@ -792,13 +792,16 @@
             }
             this.startCountdownOnly();
             if (this.state.ui === PaymentCenterCore.UI.PAID
-                    || this.state.ui === PaymentCenterCore.UI.EXPIRED) return;
+                    || this.state.ui === PaymentCenterCore.UI.EXPIRED
+                    || (this.currentOrder
+                        && this.expirySyncRequested === this.currentOrder.orderNo)) return;
             this.ensurePollingInterval();
         }
 
         ensurePollingInterval() {
             if (this.pollTimer || document.hidden || this.root.hidden || !this.currentOrder
-                    || this.currentOrder.status !== 'CREATED') return;
+                    || this.currentOrder.status !== 'CREATED'
+                    || this.expirySyncRequested === this.currentOrder.orderNo) return;
             this.pollTimer = setInterval(() => this.syncCurrentOrder(false), 5000);
         }
 
@@ -831,16 +834,16 @@
         }
 
         updateCountdown() {
-            if (!this.currentOrder || !this.currentOrder.expiresAt) {
-                this.elements.qrCountdown.textContent = '有效期以支付宝页面为准';
-                return;
-            }
             if (this.state.ui === PaymentCenterCore.UI.PAID) {
                 this.elements.qrCountdown.textContent = '支付已完成';
                 return;
             }
             if (this.state.ui === PaymentCenterCore.UI.EXPIRED) {
                 this.elements.qrCountdown.textContent = '订单已过期';
+                return;
+            }
+            if (!this.currentOrder || !this.currentOrder.expiresAt) {
+                this.elements.qrCountdown.textContent = '有效期以支付宝页面为准';
                 return;
             }
             const expiresAt = new Date(this.currentOrder.expiresAt).getTime();
@@ -854,8 +857,11 @@
                 const shouldSync = this.expirySyncRequested !== orderNo;
                 this.expirySyncRequested = orderNo;
                 this.stopCountdown();
-                this.elements.qrCountdown.textContent = '正在确认订单最终状态，请勿重复支付';
-                this.ensurePollingInterval();
+                this.stopPolling();
+                this.elements.qrCanvas.parentElement.hidden = true;
+                this.elements.qrCountdown.textContent = shouldSync || this.syncInFlight
+                    ? '正在确认订单最终状态，请勿重复支付'
+                    : '二维码已过期，请勿重复支付';
                 if (shouldSync && !document.hidden && !this.root.hidden) {
                     this.syncCurrentOrder(false);
                 }
@@ -911,7 +917,7 @@
             this.elements.summary.hidden = !summary;
             this.elements.methods.hidden = !(
                 ui === PaymentCenterCore.UI.CHOOSING
-                || ui === PaymentCenterCore.UI.CREATE_ERROR
+                || (ui === PaymentCenterCore.UI.CREATE_ERROR && !order)
             );
             this.elements.creating.hidden = !(
                 ui === PaymentCenterCore.UI.CREATING
@@ -957,36 +963,34 @@
             if (order) {
                 this.elements.qrOrderNo.textContent = order.orderNo;
                 const trustedQr = PaymentCenterCore.isTrustedQrUrl(order.qrCode);
-                const qrContainer = this.elements.qrCanvas.parentElement;
-                const showQrCanvas = order.status === 'CREATED'
+                const expiresAt = new Date(order.expiresAt).getTime();
+                const hasAuthoritativeExpiry = Boolean(order.expiresAt)
+                    && Number.isFinite(expiresAt);
+                const isVerifiedQr = order.status === 'CREATED'
                     && order.paymentMethod === 'QR'
                     && order.paymentReady
-                    && order.qrCode
+                    && trustedQr
+                    && hasAuthoritativeExpiry;
+                const isTerminal = ui === PaymentCenterCore.UI.PAID
+                    || ui === PaymentCenterCore.UI.EXPIRED;
+                const showCashierFallback = order.status === 'CREATED'
+                    && order.paymentMethod === 'QR'
+                    && !isVerifiedQr;
+                const qrContainer = this.elements.qrCanvas.parentElement;
+                const showQrCanvas = isVerifiedQr
+                    && expiresAt > Date.now()
                     && ui !== PaymentCenterCore.UI.QR_RENDER_ERROR
                     && ui !== PaymentCenterCore.UI.REFRESHING_QR
-                    && ui !== PaymentCenterCore.UI.PAID
-                    && ui !== PaymentCenterCore.UI.EXPIRED;
+                    && !isTerminal;
                 qrContainer.hidden = !showQrCanvas;
-                const showQrStatus = ui === PaymentCenterCore.UI.PAID
-                    || ui === PaymentCenterCore.UI.EXPIRED
-                    || ui === PaymentCenterCore.UI.QR_RENDER_ERROR
-                    || ui === PaymentCenterCore.UI.CREATE_ERROR;
-                this.elements.qrStatus.hidden = !showQrStatus;
-                this.elements.qrActions.hidden = true;
-                this.elements.qrRefresh.hidden = !(
-                    order.paymentMethod === 'QR'
-                    && order.status === 'CREATED'
-                    && ui !== PaymentCenterCore.UI.PAID
-                    && ui !== PaymentCenterCore.UI.EXPIRED
-                );
-                this.elements.qrRetryRender.hidden = ui !== PaymentCenterCore.UI.QR_RENDER_ERROR;
-                this.elements.qrOpenLink.hidden = !(ui === PaymentCenterCore.UI.QR_RENDER_ERROR && trustedQr);
-                this.elements.qrCashier.hidden = !(
-                    order.paymentMethod === 'QR'
-                    && order.status === 'CREATED'
-                    && ui !== PaymentCenterCore.UI.EXPIRED
-                );
-                this.elements.qrSync.hidden = order.status !== 'CREATED';
+                this.elements.qrCountdown.hidden = !(isVerifiedQr || isTerminal);
+                this.elements.qrStatus.hidden = true;
+                this.elements.qrActions.hidden = !showCashierFallback;
+                this.elements.qrSync.hidden = true;
+                this.elements.qrRefresh.hidden = true;
+                this.elements.qrRetryRender.hidden = true;
+                this.elements.qrOpenLink.hidden = true;
+                this.elements.qrCashier.hidden = !showCashierFallback;
                 this.elements.qrSync.disabled = this.syncInFlight || this.refreshInFlight
                     || ui === PaymentCenterCore.UI.EXPIRED;
                 this.elements.qrRefresh.disabled = this.refreshInFlight

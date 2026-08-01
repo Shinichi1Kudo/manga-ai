@@ -228,7 +228,7 @@ class MembershipQrPaymentTests(TestCase):
         render_end = controller.index('updateOrderStatus() {', render_start)
         render_source = controller[render_start:render_end]
         self.assertIn('PaymentCenterCore.UI.REFRESHING_QR', render_source)
-        self.assertIn('this.elements.qrRefresh.hidden = !(', render_source)
+        self.assertIn('this.elements.qrRefresh.hidden = true;', render_source)
         self.assertIn('this.elements.qrRefresh.disabled = this.refreshInFlight', render_source)
         self.assertIn('ui !== PaymentCenterCore.UI.REFRESHING_QR', render_source)
         self.assertIn('this.elements.close.disabled = this.refreshInFlight;', render_source)
@@ -422,7 +422,7 @@ class MembershipQrPaymentTests(TestCase):
         self.assertIn('this.startPolling();', restore_source)
         self.assertIn('this.startCountdownOnly();', restore_source)
 
-    def test_payment_center_waits_for_authoritative_expiry_and_reuses_poll_timer(self):
+    def test_payment_center_waits_for_authoritative_expiry_and_stops_polling(self):
         controller = (
             Path(settings.BASE_DIR) / 'static/js/payment-center.js'
         ).read_text(encoding='utf-8')
@@ -448,11 +448,9 @@ class MembershipQrPaymentTests(TestCase):
         expiry_source = update_source[expiry_start:]
         self.assertNotIn('this.transition(PaymentCenterCore.UI.EXPIRED', expiry_source)
         self.assertIn('this.stopCountdown();', expiry_source)
-        self.assertIn(
-            "this.elements.qrCountdown.textContent = '正在确认订单最终状态，请勿重复支付';",
-            expiry_source,
-        )
-        self.assertIn('this.ensurePollingInterval();', expiry_source)
+        self.assertIn('this.stopPolling();', expiry_source)
+        self.assertIn("? '正在确认订单最终状态，请勿重复支付'", expiry_source)
+        self.assertIn(": '二维码已过期，请勿重复支付';", expiry_source)
         self.assertIn('this.expirySyncRequested !== orderNo', expiry_source)
         self.assertIn('this.syncCurrentOrder(false);', expiry_source)
         self.assertIn(
@@ -461,13 +459,22 @@ class MembershipQrPaymentTests(TestCase):
         )
         self.assertNotIn('if (shouldSync) this.syncCurrentOrder(false);', expiry_source)
         self.assertNotIn('setInterval(', expiry_source)
+        self.assertNotIn('this.ensurePollingInterval();', expiry_source)
 
         ensure_start = controller.index('ensurePollingInterval() {')
         ensure_end = controller.index('startCountdownOnly() {', ensure_start)
         ensure_source = controller[ensure_start:ensure_end]
         self.assertIn('if (this.pollTimer', ensure_source)
         self.assertEqual(ensure_source.count('setInterval('), 1)
+        self.assertIn(
+            'this.expirySyncRequested === this.currentOrder.orderNo',
+            ensure_source,
+        )
         self.assertIn('this.ensurePollingInterval();', polling_source)
+        self.assertIn(
+            'this.expirySyncRequested === this.currentOrder.orderNo',
+            polling_source,
+        )
         self.assertIn('this.expirySyncRequested = null;', controller)
 
         response_start = controller.index('async handleOrderResponse(order)')
@@ -531,8 +538,9 @@ class MembershipQrPaymentTests(TestCase):
         render_source = controller[render_start:render_end]
         self.assertIn("order.status === 'CREATED'", render_source)
         self.assertIn('ui !== PaymentCenterCore.UI.QR_RENDER_ERROR', render_source)
-        self.assertIn('ui !== PaymentCenterCore.UI.PAID', render_source)
-        self.assertIn('ui !== PaymentCenterCore.UI.EXPIRED', render_source)
+        self.assertIn('const isTerminal = ui === PaymentCenterCore.UI.PAID', render_source)
+        self.assertIn('|| ui === PaymentCenterCore.UI.EXPIRED;', render_source)
+        self.assertIn('&& !isTerminal;', render_source)
         self.assertIn('qrContainer.hidden = !showQrCanvas;', render_source)
 
     def test_payment_center_clears_stale_canvas_and_hides_it_on_render_failure(self):
@@ -586,21 +594,15 @@ class MembershipQrPaymentTests(TestCase):
         render_start = controller.index('render() {')
         render_end = controller.index('updateOrderStatus() {', render_start)
         render_source = controller[render_start:render_end]
-        self.assertIn('ui === PaymentCenterCore.UI.QR_RENDER_ERROR', render_source)
+        self.assertIn('ui !== PaymentCenterCore.UI.QR_RENDER_ERROR', render_source)
         self.assertIn('qrContainer.hidden =', render_source)
         self.assertIn('this.elements.qrView.hidden = !showQrDetails;', render_source)
         self.assertIn('this.elements.qrOrderNo.textContent = order.orderNo;', render_source)
         self.assertIn('this.updateCountdown();', render_source)
-        self.assertIn("this.elements.qrSync.hidden = order.status !== 'CREATED';", render_source)
-        self.assertIn(
-            'this.elements.qrRetryRender.hidden = ui !== PaymentCenterCore.UI.QR_RENDER_ERROR;',
-            render_source,
-        )
-        self.assertIn(
-            'this.elements.qrOpenLink.hidden = !(ui === PaymentCenterCore.UI.QR_RENDER_ERROR && trustedQr);',
-            render_source,
-        )
-        self.assertIn('this.elements.qrCashier.hidden = !(', render_source)
+        self.assertIn('this.elements.qrSync.hidden = true;', render_source)
+        self.assertIn('this.elements.qrRetryRender.hidden = true;', render_source)
+        self.assertIn('this.elements.qrOpenLink.hidden = true;', render_source)
+        self.assertIn('this.elements.qrCashier.hidden = !showCashierFallback;', render_source)
 
     def test_base_nav_has_independent_pending_payment_entry(self):
         base_template = (
@@ -783,7 +785,7 @@ class MembershipQrPaymentTests(TestCase):
         countdown_tag = template[
             countdown_start:template.index('>', countdown_start) + 1
         ]
-        self.assertIn(' hidden', countdown_tag)
+        self.assertNotIn(' hidden', countdown_tag)
 
         actions_start = template.index('<div id="paymentQrActions"')
         actions_tag = template[actions_start:template.index('>', actions_start) + 1]
@@ -792,6 +794,8 @@ class MembershipQrPaymentTests(TestCase):
         order_start = template.index('<div class="payment-center-order-number"')
         order_tag = template[order_start:template.index('>', order_start) + 1]
         self.assertNotIn(' hidden', order_tag)
+        self.assertNotIn('立即查询', template)
+        self.assertNotIn('正在查询支付状态', template)
 
     def test_payment_center_keeps_background_queries_visually_silent(self):
         controller = (
@@ -799,14 +803,15 @@ class MembershipQrPaymentTests(TestCase):
         ).read_text(encoding='utf-8')
 
         self.assertIn("qrActions: byId('paymentQrActions')", controller)
-        self.assertIn('const showQrStatus =', controller)
         self.assertIn('PaymentCenterCore.UI.PAID', controller)
         self.assertIn('PaymentCenterCore.UI.EXPIRED', controller)
         self.assertIn('PaymentCenterCore.UI.QR_RENDER_ERROR', controller)
         self.assertIn('PaymentCenterCore.UI.CREATE_ERROR', controller)
-        self.assertIn('this.elements.qrStatus.hidden = !showQrStatus;', controller)
-        self.assertIn('this.elements.qrActions.hidden = true;', controller)
+        self.assertIn('const showCashierFallback =', controller)
+        self.assertIn('this.elements.qrActions.hidden = !showCashierFallback;', controller)
+        self.assertIn('this.elements.qrStatus.hidden = true;', controller)
         self.assertNotIn('正在查询支付状态', controller)
+        self.assertNotIn('立即查询', controller)
         self.assertIn(
             'setInterval(() => this.syncCurrentOrder(false), 5000)',
             controller,
