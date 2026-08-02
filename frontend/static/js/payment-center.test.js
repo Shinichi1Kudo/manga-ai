@@ -337,6 +337,70 @@ test('late paid expiry response is absorbed after close and shown on reopen', as
     assert.equal(center.elements.qrStatus.textContent, '支付成功，权益已到账');
 });
 
+test('late closed expiry response is absorbed after close and reopens without another post', async () => {
+    const timers = createFakeTimers(Date.parse('2026-08-02T00:00:00.000Z'));
+    const {PaymentCenter} = loadPaymentCenter(timers);
+    const expiredOrder = qrOrder({expiresAt: '2026-08-02T00:00:01.000Z'});
+    const center = createCenter(PaymentCenter, core.UI.QR_READY, expiredOrder);
+    const response = createDeferred();
+    let syncCount = 0;
+    center.postJson = () => {
+        syncCount += 1;
+        return response.promise;
+    };
+    center.loadPending = async () => {};
+    center.ensureAuthenticated = () => true;
+    center.open = () => { center.root.hidden = false; };
+    center.showCurrent = () => {};
+    center.openPending = () => { throw new Error('closed order must reopen in current view'); };
+
+    center.startPolling();
+    timers.advance(1000);
+    center.close();
+    response.resolve(qrOrder({status: 'CLOSED', expiresAt: expiredOrder.expiresAt}));
+    await flushAsyncWork();
+    center.openFromEntry();
+
+    assert.equal(syncCount, 1);
+    assert.equal(center.currentOrder.status, 'CLOSED');
+    assert.equal(center.state.ui, core.UI.EXPIRED);
+    assert.equal(center.elements.qrStatus.hidden, false);
+    assert.equal(center.elements.qrStatus.textContent, '订单已过期或关闭');
+    assert.deepEqual(timers.activeDelays(), []);
+});
+
+test('late future expiry response resumes timers on reopen without an immediate post', async () => {
+    const timers = createFakeTimers(Date.parse('2026-08-02T00:00:00.000Z'));
+    const {PaymentCenter} = loadPaymentCenter(timers);
+    const expiredOrder = qrOrder({expiresAt: '2026-08-02T00:00:01.000Z'});
+    const renewedOrder = qrOrder({expiresAt: '2026-08-02T01:00:01.000Z'});
+    const center = createCenter(PaymentCenter, core.UI.QR_READY, expiredOrder);
+    const response = createDeferred();
+    let syncCount = 0;
+    center.postJson = () => {
+        syncCount += 1;
+        return response.promise;
+    };
+    center.ensureAuthenticated = () => true;
+    center.open = () => { center.root.hidden = false; };
+    center.showCurrent = () => {};
+
+    center.startPolling();
+    timers.advance(1000);
+    center.close();
+    response.resolve(renewedOrder);
+    await flushAsyncWork();
+    assert.equal(syncCount, 1);
+    assert.deepEqual(timers.activeDelays(), []);
+
+    center.openFromEntry();
+
+    assert.equal(syncCount, 1);
+    assert.equal(center.currentOrder.expiresAt, renewedOrder.expiresAt);
+    assert.equal(center.elements.qrCountdown.textContent, '二维码有效期 01:00:00');
+    assert.deepEqual(timers.activeDelays(), [1000, 5000]);
+});
+
 test('late expiry response cannot overwrite a replacement current order', async () => {
     const timers = createFakeTimers(Date.parse('2026-08-02T00:00:00.000Z'));
     const {PaymentCenter} = loadPaymentCenter(timers);
@@ -363,6 +427,33 @@ test('late expiry response cannot overwrite a replacement current order', async 
 
     assert.equal(syncCount, 1);
     assert.equal(center.currentOrder.orderNo, 'PAY-REPLACEMENT-2');
+    assert.equal(center.currentOrder.status, 'CREATED');
+});
+
+test('late expiry response cannot overwrite a newer expiry on the same order', async () => {
+    const timers = createFakeTimers(Date.parse('2026-08-02T00:00:00.000Z'));
+    const {PaymentCenter} = loadPaymentCenter(timers);
+    const expiredOrder = qrOrder({expiresAt: '2026-08-02T00:00:01.000Z'});
+    const renewedOrder = qrOrder({expiresAt: '2026-08-02T01:00:00.000Z'});
+    const center = createCenter(PaymentCenter, core.UI.QR_READY, expiredOrder);
+    const response = createDeferred();
+    let syncCount = 0;
+    center.postJson = () => {
+        syncCount += 1;
+        return response.promise;
+    };
+    center.loadPending = async () => {};
+
+    center.startPolling();
+    timers.advance(1000);
+    center.close();
+    center.setCurrentOrder(renewedOrder);
+    response.resolve(qrOrder({status: 'PAID', expiresAt: expiredOrder.expiresAt}));
+    await flushAsyncWork();
+
+    assert.equal(syncCount, 1);
+    assert.equal(center.currentOrder.orderNo, expiredOrder.orderNo);
+    assert.equal(center.currentOrder.expiresAt, renewedOrder.expiresAt);
     assert.equal(center.currentOrder.status, 'CREATED');
 });
 

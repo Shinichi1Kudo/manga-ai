@@ -74,6 +74,7 @@
             this.refreshInFlight = false;
             this.resumePollingOnVisibility = false;
             this.expirySyncState = null;
+            this.suppressOpenSyncIdentity = null;
             this.focusReturn = null;
             this.renderSequence = 0;
             this.operationSequence = 0;
@@ -174,6 +175,12 @@
                     || this.expirySyncState.expiresAt !== nextExpiry.expiresAt)) {
                 this.expirySyncState = null;
             }
+            if (this.suppressOpenSyncIdentity && (!nextExpiry
+                    || !order || order.status !== 'CREATED'
+                    || this.suppressOpenSyncIdentity.orderNo !== nextExpiry.orderNo
+                    || this.suppressOpenSyncIdentity.expiresAt !== nextExpiry.expiresAt)) {
+                this.suppressOpenSyncIdentity = null;
+            }
             this.currentOrder = order;
         }
 
@@ -197,6 +204,12 @@
             return Boolean(expiry && orderExpiry
                 && expiry.orderNo === orderExpiry.orderNo
                 && expiry.expiresAt === orderExpiry.expiresAt);
+        }
+
+        consumeSuppressedOpenSync() {
+            const suppressedIdentity = this.suppressOpenSyncIdentity;
+            this.suppressOpenSyncIdentity = null;
+            return this.matchesExpiryIdentity(suppressedIdentity);
         }
 
         markCurrentExpiryIfReached() {
@@ -288,7 +301,7 @@
                     this.restoreCurrentQrLifecycle();
                     if (this.markCurrentExpiryIfReached()) {
                         this.syncExpiredOrderOnce();
-                    } else {
+                    } else if (!this.consumeSuppressedOpenSync()) {
                         this.syncCurrentOrder(false);
                     }
                 } else {
@@ -661,12 +674,22 @@
                 const responseOrder = await this.postJson(`/api/payments/orders/${encodeURIComponent(orderNo)}/sync/`);
                 const canAbsorbExpiryResponse = this.matchesExpiryIdentity(expiryRequest)
                     && this.currentOrder.orderNo === orderNo;
-                if ((operation !== this.operationSequence || this.root.hidden)
+                const responseArrivedWhileHidden = this.root.hidden;
+                const responseArrivedWhileInactive = operation !== this.operationSequence
+                    || responseArrivedWhileHidden;
+                if (responseArrivedWhileInactive
                         && !canAbsorbExpiryResponse) return;
                 if (!this.currentOrder || this.currentOrder.orderNo !== orderNo) return;
                 const order = this.normalizeOrder(responseOrder, this.currentOrder);
                 if (order.orderNo !== orderNo) return;
                 this.setCurrentOrder(order);
+                const renewedExpiry = this.expiryIdentity(order);
+                if (responseArrivedWhileHidden && expiryRequest
+                        && order.status === 'CREATED' && renewedExpiry
+                        && renewedExpiry.expiresAt > Date.now()
+                        && renewedExpiry.expiresAt !== expiryRequest.expiresAt) {
+                    this.suppressOpenSyncIdentity = renewedExpiry;
+                }
                 if (order.status === 'PAID') {
                     await this.completePaid(order);
                     return;
