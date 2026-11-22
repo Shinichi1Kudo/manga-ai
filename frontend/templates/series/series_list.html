@@ -1,851 +1,92 @@
 {% extends "base.html" %}
+{% load static %}
 
 {% block title %}首页 - 海带 AI 内容智能创作平台{% endblock %}
 
+{% block body_class %}studio-home{% endblock %}
+
+{% block home_nav %}
+<div class="studio-nav-links" aria-label="首页分区">
+    <a href="#studio-tools">创作工具</a>
+    <a href="#studio-series">我的系列</a>
+    <a href="#studio-showcase">主体替换示例</a>
+</div>
+{% endblock %}
+
+{% block trash_shortcut %}{% endblock %}
+
 {% block extra_css %}
-<style>
-.line-clamp-2 {
-    display: -webkit-box;
-    -webkit-line-clamp: 2;
-    -webkit-box-orient: vertical;
-    overflow: hidden;
-}
-
-.series-card {
-    min-height: 180px;
-}
-
-.home-hero {
-    position: relative;
-}
-
-.home-announcement {
-    position: absolute;
-    top: -12px;
-    left: -40px;
-    width: 400px;
-    height: 286px;
-    padding: 14px 14px 12px;
-    overflow: hidden;
-    border: 1px solid rgba(125, 211, 252, 0.28);
-    border-radius: 20px;
-    background:
-        linear-gradient(135deg, rgba(8, 47, 73, 0.82), rgba(15, 23, 42, 0.64) 44%, rgba(6, 78, 59, 0.5)),
-        linear-gradient(90deg, rgba(45, 212, 191, 0.17), rgba(14, 165, 233, 0.1));
-    box-shadow:
-        0 24px 58px rgba(2, 6, 23, 0.32),
-        0 0 34px rgba(20, 184, 166, 0.11),
-        inset 0 1px 0 rgba(255, 255, 255, 0.13);
-    backdrop-filter: blur(18px);
-    -webkit-backdrop-filter: blur(18px);
-    text-align: left;
-}
-
-.home-announcement::before {
-    content: '';
-    position: absolute;
-    inset: 0;
-    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.08), transparent);
-    transform: translateX(-100%);
-    animation: announcement-sheen 5.5s ease-in-out infinite;
-    pointer-events: none;
-}
-
-.home-announcement::after {
-    content: '';
-    position: absolute;
-    left: 18px;
-    right: 18px;
-    bottom: 0;
-    height: 1px;
-    background: linear-gradient(90deg, transparent, rgba(125, 211, 252, 0.72), rgba(52, 211, 153, 0.62), transparent);
-    pointer-events: none;
-}
-
-.home-announcement-header {
-    position: relative;
-    z-index: 1;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 8px;
-}
-
-.home-announcement-badge {
-    position: relative;
-    z-index: 1;
-    display: inline-flex;
-    height: 30px;
-    align-items: center;
-    gap: 7px;
-    border-radius: 999px;
-    background: linear-gradient(135deg, rgba(45, 212, 191, 0.98), rgba(14, 165, 233, 0.94));
-    padding: 0 12px 0 9px;
-    color: white;
-    font-size: 12px;
-    font-weight: 800;
-    line-height: 1;
-    box-shadow: 0 12px 28px rgba(14, 165, 233, 0.26);
-    white-space: nowrap;
-}
-
-.home-announcement-signal {
-    display: inline-flex;
-    align-items: flex-end;
-    gap: 2px;
-    height: 12px;
-}
-
-.home-announcement-signal span {
-    display: block;
-    width: 3px;
-    border-radius: 999px;
-    background: rgba(255, 255, 255, 0.92);
-    box-shadow: 0 0 10px rgba(255, 255, 255, 0.42);
-}
-
-.home-announcement-signal span:nth-child(1) { height: 5px; }
-.home-announcement-signal span:nth-child(2) { height: 9px; }
-.home-announcement-signal span:nth-child(3) { height: 12px; }
-
-.home-announcement-date {
-    position: relative;
-    z-index: 1;
-    display: inline-flex;
-    height: 28px;
-    align-items: center;
-    border-radius: 999px;
-    border: 1px solid rgba(255, 255, 255, 0.13);
-    background: rgba(2, 6, 23, 0.28);
-    padding: 0 10px;
-    color: rgba(224, 242, 254, 0.86);
-    font-size: 11px;
-    font-weight: 800;
-    line-height: 1;
-    white-space: nowrap;
-}
-
-.home-announcement-meta {
-    position: relative;
-    z-index: 1;
-    margin-top: 12px;
-    color: rgba(186, 230, 253, 0.72);
-    font-size: 11px;
-    font-weight: 800;
-    line-height: 1;
-}
-
-.home-announcement-pinned {
-    position: relative;
-    z-index: 1;
-    margin-top: 12px;
-    border: 1px solid rgba(251, 191, 36, 0.28);
-    border-radius: 14px;
-    background:
-        linear-gradient(135deg, rgba(250, 204, 21, 0.16), rgba(244, 114, 182, 0.1)),
-        rgba(15, 23, 42, 0.34);
-    padding: 9px 10px 8px;
-    box-shadow:
-        inset 0 1px 0 rgba(255, 255, 255, 0.1),
-        0 12px 24px rgba(234, 179, 8, 0.08);
-}
-
-.home-announcement-pinned-head {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 8px;
-}
-
-.home-announcement-pinned-label,
-.home-announcement-pinned-hot {
-    display: inline-flex;
-    height: 20px;
-    align-items: center;
-    gap: 5px;
-    border-radius: 999px;
-    font-size: 10px;
-    font-weight: 900;
-    line-height: 1;
-    white-space: nowrap;
-}
-
-.home-announcement-pinned-label {
-    background: rgba(251, 191, 36, 0.18);
-    color: rgb(254, 243, 199);
-    padding: 0 8px;
-    box-shadow: inset 0 0 0 1px rgba(251, 191, 36, 0.24);
-}
-
-.home-announcement-pinned-hot {
-    background: linear-gradient(135deg, rgba(244, 63, 94, 0.95), rgba(251, 146, 60, 0.92));
-    color: white;
-    padding: 0 8px;
-    box-shadow: 0 8px 18px rgba(244, 63, 94, 0.22);
-}
-
-.home-announcement-pinned-title {
-    margin-top: 7px;
-    color: rgb(255, 251, 235);
-    font-size: 14px;
-    font-weight: 900;
-    line-height: 1.2;
-}
-
-.home-announcement-pinned p {
-    margin: 4px 0 0;
-    color: rgba(255, 251, 235, 0.78);
-    font-size: 10.5px;
-    font-weight: 650;
-    line-height: 1.36;
-}
-
-.home-announcement-scroll {
-    position: relative;
-    z-index: 1;
-    height: 112px;
-    margin-top: 11px;
-    overflow: hidden;
-    color: rgba(255, 255, 255, 0.8);
-    font-size: 12px;
-    font-weight: 600;
-    line-height: 1.58;
-    mask-image: linear-gradient(180deg, transparent 0, black 12px, black calc(100% - 18px), transparent 100%);
-}
-
-.home-announcement-scroll:hover .home-announcement-story {
-    animation-play-state: paused;
-}
-
-.home-announcement-story {
-    display: grid;
-    gap: 8px;
-    padding-bottom: 14px;
-    animation: announcement-scroll-y 12s linear infinite;
-}
-
-.home-announcement-story p {
-    display: grid;
-    grid-template-columns: 30px minmax(0, 1fr);
-    align-items: start;
-    gap: 9px;
-    margin: 0;
-    border: 1px solid rgba(255, 255, 255, 0.075);
-    border-radius: 10px;
-    background: rgba(255, 255, 255, 0.045);
-    padding: 8px 9px;
-}
-
-.home-announcement-index {
-    display: inline-flex;
-    height: 20px;
-    align-items: center;
-    justify-content: center;
-    border-radius: 999px;
-    background: rgba(94, 234, 212, 0.16);
-    color: rgb(153, 246, 228);
-    font-size: 10px;
-    font-weight: 900;
-    line-height: 1;
-    box-shadow: inset 0 0 0 1px rgba(94, 234, 212, 0.28);
-}
-
-.home-announcement-chip-row {
-    position: relative;
-    z-index: 1;
-    display: flex;
-    flex-wrap: wrap;
-    gap: 7px;
-    margin-top: 10px;
-}
-
-.home-announcement-chip-row span {
-    display: inline-flex;
-    height: 24px;
-    align-items: center;
-    border-radius: 999px;
-    border: 1px solid rgba(125, 211, 252, 0.2);
-    background: rgba(2, 6, 23, 0.26);
-    padding: 0 9px;
-    color: rgba(224, 242, 254, 0.78);
-    font-size: 10px;
-    font-weight: 800;
-    line-height: 1;
-}
-
-.home-action-board {
-    display: flex;
-    align-items: flex-start;
-    gap: 14px;
-    max-width: 1120px;
-    margin: 0 auto;
-    text-align: left;
-}
-
-.home-action-group {
-    flex: 1.25 1 0;
-    min-width: 0;
-    align-self: flex-start;
-    height: auto;
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    border-radius: 18px;
-    background: rgba(255, 255, 255, 0.045);
-    padding: 12px;
-    box-shadow: 0 18px 42px rgba(0, 0, 0, 0.14);
-}
-
-.home-action-group-accent {
-    background: linear-gradient(135deg, rgba(16, 185, 129, 0.11), rgba(14, 165, 233, 0.09));
-    border-color: rgba(125, 211, 252, 0.18);
-}
-
-.home-action-group-account {
-    flex-grow: 0.72;
-    min-width: 210px;
-}
-
-.home-action-label {
-    margin: 0 0 9px 2px;
-    color: rgba(255, 255, 255, 0.48);
-    font-size: 11px;
-    font-weight: 700;
-    line-height: 1;
-}
-
-.home-action-workspaces {
-    display: grid;
-    gap: 12px;
-}
-
-.home-action-subgroup {
-    border-radius: 14px;
-    border: 1px solid rgba(255, 255, 255, 0.08);
-    background: rgba(2, 6, 23, 0.14);
-    padding: 10px;
-}
-
-.home-action-subgroup-commerce {
-    border-color: rgba(45, 212, 191, 0.15);
-    background: linear-gradient(135deg, rgba(16, 185, 129, 0.08), rgba(14, 165, 233, 0.055));
-}
-
-.home-commerce-launch {
-    position: relative;
-    overflow: hidden;
-    border-color: rgba(251, 191, 36, 0.38);
-    background:
-        linear-gradient(135deg, rgba(251, 191, 36, 0.14), rgba(16, 185, 129, 0.14) 46%, rgba(14, 165, 233, 0.1)),
-        rgba(2, 6, 23, 0.18);
-    box-shadow:
-        inset 0 1px 0 rgba(255, 255, 255, 0.1),
-        0 18px 38px rgba(6, 95, 70, 0.2),
-        0 0 0 1px rgba(20, 184, 166, 0.08);
-}
-
-.home-commerce-launch::before {
-    content: "";
-    position: absolute;
-    inset: 0;
-    border-radius: inherit;
-    pointer-events: none;
-    background:
-        linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.16), transparent),
-        linear-gradient(135deg, rgba(251, 191, 36, 0.16), transparent 34%, rgba(45, 212, 191, 0.12));
-    transform: translateX(-70%);
-    animation: commerce-launch-sheen 4.8s ease-in-out infinite;
-}
-
-.home-commerce-launch::after {
-    content: "";
-    position: absolute;
-    left: 10px;
-    right: 10px;
-    top: 0;
-    height: 2px;
-    border-radius: 999px;
-    background: linear-gradient(90deg, rgba(251, 191, 36, 0.12), rgba(251, 191, 36, 0.9), rgba(45, 212, 191, 0.78), rgba(14, 165, 233, 0.14));
-    box-shadow: 0 0 18px rgba(251, 191, 36, 0.3);
-}
-
-.home-action-subgroup-label {
-    margin: 0 0 8px 2px;
-    color: rgba(226, 232, 240, 0.62);
-    font-size: 12px;
-    font-weight: 800;
-    line-height: 1;
-}
-
-.home-commerce-label {
-    position: relative;
-    z-index: 1;
-    display: flex;
-    min-height: 24px;
-    align-items: center;
-    justify-content: space-between;
-    gap: 8px;
-    color: rgba(255, 255, 255, 0.86);
-}
-
-.home-commerce-launch-badge {
-    display: inline-flex;
-    min-width: 0;
-    height: 24px;
-    align-items: center;
-    justify-content: center;
-    gap: 4px;
-    border-radius: 999px;
-    border: 1px solid rgba(253, 224, 71, 0.5);
-    background:
-        linear-gradient(135deg, rgba(254, 240, 138, 0.98), rgba(251, 191, 36, 0.98)),
-        rgba(15, 23, 42, 0.88);
-    padding: 0 9px;
-    color: rgb(69, 26, 3);
-    font-size: 10px;
-    font-weight: 900;
-    line-height: 1;
-    white-space: nowrap;
-    box-shadow:
-        0 9px 22px rgba(251, 191, 36, 0.24),
-        0 0 0 3px rgba(251, 191, 36, 0.08);
-}
-
-.home-commerce-launch-badge i {
-    color: rgb(120, 53, 15);
-}
-
-.home-action-row {
-    position: relative;
-    z-index: 1;
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 10px;
-}
-
-.home-action {
-    min-height: 48px;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    gap: 8px;
-    border-radius: 14px;
-    border: 1px solid rgba(255, 255, 255, 0.12);
-    padding: 0 14px;
-    color: white;
-    font-size: 15px;
-    font-weight: 700;
-    line-height: 1.15;
-    transition: transform 160ms ease, border-color 160ms ease, background 160ms ease, box-shadow 160ms ease;
-    white-space: nowrap;
-}
-
-.home-action:hover {
-    transform: translateY(-1px);
-}
-
-.home-action-primary {
-    background: linear-gradient(135deg, rgba(124, 58, 237, 0.96), rgba(37, 99, 235, 0.95));
-    box-shadow: 0 12px 28px rgba(79, 70, 229, 0.26);
-}
-
-.home-action-warm {
-    background: linear-gradient(135deg, rgba(249, 115, 22, 0.95), rgba(236, 72, 153, 0.95));
-    box-shadow: 0 12px 28px rgba(236, 72, 153, 0.18);
-}
-
-.home-action-emerald {
-    background: linear-gradient(135deg, rgba(16, 185, 129, 0.96), rgba(6, 182, 212, 0.92));
-    color: rgb(240, 253, 250);
-    box-shadow: 0 12px 28px rgba(20, 184, 166, 0.22);
-}
-
-.home-action-commerce-primary {
-    border-color: rgba(254, 240, 138, 0.42);
-    background: linear-gradient(135deg, rgba(245, 158, 11, 0.98), rgba(16, 185, 129, 0.96) 54%, rgba(6, 182, 212, 0.92));
-    box-shadow:
-        0 14px 30px rgba(16, 185, 129, 0.22),
-        0 0 0 1px rgba(251, 191, 36, 0.14);
-}
-
-.home-action-commerce-primary:hover {
-    border-color: rgba(254, 240, 138, 0.62);
-    box-shadow:
-        0 16px 34px rgba(16, 185, 129, 0.28),
-        0 0 22px rgba(251, 191, 36, 0.14);
-}
-
-.home-commerce-launch .home-action {
-    justify-content: center;
-}
-
-.home-action-sky {
-    background: linear-gradient(135deg, rgba(14, 165, 233, 0.95), rgba(45, 212, 191, 0.9));
-    color: rgb(240, 249, 255);
-    box-shadow: 0 12px 28px rgba(14, 165, 233, 0.2);
-}
-
-.home-action-muted {
-    background: rgba(255, 255, 255, 0.065);
-    color: rgba(255, 255, 255, 0.86);
-}
-
-.home-action-muted:hover {
-    background: rgba(255, 255, 255, 0.1);
-}
-
-.home-action-disabled {
-    grid-column: 1 / -1;
-    justify-content: flex-start;
-    min-height: 56px;
-    border-style: dashed;
-    border-color: rgba(203, 213, 225, 0.22);
-    background:
-        linear-gradient(135deg, rgba(148, 163, 184, 0.16), rgba(71, 85, 105, 0.13)),
-        rgba(15, 23, 42, 0.22);
-    color: rgba(226, 232, 240, 0.68);
-    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
-    cursor: not-allowed;
-}
-
-.home-action-disabled:hover {
-    transform: none;
-    background:
-        linear-gradient(135deg, rgba(148, 163, 184, 0.16), rgba(71, 85, 105, 0.13)),
-        rgba(15, 23, 42, 0.22);
-}
-
-.home-action-disabled i {
-    color: rgba(226, 232, 240, 0.58);
-}
-
-.home-action-disabled:disabled {
-    opacity: 0.92;
-}
-
-.home-action-copy {
-    display: inline-flex;
-    min-width: 0;
-    flex: 1;
-    flex-direction: column;
-    gap: 3px;
-}
-
-.home-action-copy small {
-    color: rgba(203, 213, 225, 0.58);
-    font-size: 11px;
-    font-weight: 700;
-    line-height: 1;
-}
-
-.home-coming-soon-badge {
-    display: inline-flex;
-    height: 22px;
-    align-items: center;
-    border-radius: 999px;
-    border: 1px solid rgba(203, 213, 225, 0.16);
-    background: rgba(15, 23, 42, 0.32);
-    padding: 0 9px;
-    color: rgba(226, 232, 240, 0.68);
-    font-size: 10px;
-    font-weight: 900;
-    line-height: 1;
-    white-space: nowrap;
-}
-
-.home-new-badge {
-    display: inline-flex;
-    height: 18px;
-    align-items: center;
-    border-radius: 999px;
-    background: rgba(255, 255, 255, 0.96);
-    padding: 0 7px;
-    color: rgb(4, 120, 87);
-    font-size: 10px;
-    font-weight: 900;
-    letter-spacing: 0;
-    box-shadow: 0 8px 18px rgba(6, 78, 59, 0.18);
-}
-
-.series-type-tabs {
-    display: inline-grid;
-    grid-template-columns: repeat(2, minmax(92px, 1fr));
-    gap: 4px;
-    align-items: center;
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    border-radius: 12px;
-    background: rgba(255, 255, 255, 0.045);
-    padding: 4px;
-}
-
-.series-type-tab {
-    display: inline-flex;
-    min-height: 40px;
-    align-items: center;
-    justify-content: center;
-    gap: 7px;
-    border-radius: 8px;
-    color: rgba(255, 255, 255, 0.58);
-    font-size: 14px;
-    font-weight: 800;
-    line-height: 1;
-    transition: background 160ms ease, color 160ms ease, box-shadow 160ms ease;
-}
-
-.series-type-tab:hover {
-    color: rgba(255, 255, 255, 0.88);
-    background: rgba(255, 255, 255, 0.055);
-}
-
-.series-type-tab.active {
-    background: linear-gradient(135deg, rgba(124, 58, 237, 0.92), rgba(20, 184, 166, 0.88));
-    color: white;
-    box-shadow: 0 10px 24px rgba(20, 184, 166, 0.15);
-}
-
-@media (max-width: 980px) {
-    .home-action-board {
-        flex-direction: column;
-        max-width: 640px;
-    }
-
-    .home-action-group,
-    .home-action-group-account {
-        width: 100%;
-        min-width: 0;
-    }
-
-    .home-announcement {
-        position: relative;
-        top: auto;
-        left: auto;
-        width: min(100%, 440px);
-        height: 286px;
-        margin: 0 auto 22px;
-    }
-}
-
-@media (max-width: 560px) {
-    .home-announcement {
-        width: 100%;
-        height: auto;
-        min-height: 286px;
-        padding: 12px;
-    }
-
-    .home-announcement-scroll {
-        height: 112px;
-        margin-top: 10px;
-    }
-
-    .home-action-row {
-        grid-template-columns: 1fr;
-    }
-
-    .home-action {
-        justify-content: flex-start;
-        padding: 0 16px;
-    }
-
-    .home-commerce-label {
-        align-items: flex-start;
-        flex-direction: column;
-        gap: 7px;
-    }
-}
-
-@media (prefers-reduced-motion: reduce) {
-    .home-announcement::before,
-    .home-announcement-story,
-    .home-commerce-launch::before {
-        animation: none;
-    }
-
-    .home-announcement-scroll {
-        overflow-y: auto;
-        mask-image: none;
-    }
-
-    .home-announcement-story[aria-hidden="true"] {
-        display: none;
-    }
-}
-
-@keyframes announcement-scroll-y {
-    0%, 9% { transform: translateY(0); }
-    100% { transform: translateY(-50%); }
-}
-
-@keyframes announcement-sheen {
-    0%, 45% { transform: translateX(-100%); }
-    70%, 100% { transform: translateX(100%); }
-}
-
-@keyframes commerce-launch-sheen {
-    0%, 42% { transform: translateX(-72%); opacity: 0; }
-    58% { opacity: 1; }
-    78%, 100% { transform: translateX(72%); opacity: 0; }
-}
-
-/* 进度条闪烁动画 */
-.progress-animated {
-    animation: pulse-glow 1.5s ease-in-out infinite;
-    background-size: 200% 100%;
-    animation: shimmer 2s linear infinite;
-}
-
-@keyframes shimmer {
-    0% { background-position: -200% 0; }
-    100% { background-position: 200% 0; }
-}
-
-@keyframes pulse-glow {
-    0%, 100% { box-shadow: 0 0 5px rgba(139, 92, 246, 0.5); }
-    50% { box-shadow: 0 0 15px rgba(139, 92, 246, 0.8); }
-}
-</style>
+<link rel="stylesheet" href="{% static 'css/studio-home.css' %}?v=20261123.1">
 {% endblock %}
 
 {% block content %}
-<!-- Hero Section -->
-<div class="home-hero text-center py-12">
-    <div class="home-announcement" role="region" aria-label="近期更新公告">
-        <div class="home-announcement-header">
-            <div class="home-announcement-badge">
-                <span class="home-announcement-signal" aria-hidden="true">
-                    <span></span>
-                    <span></span>
-                    <span></span>
-                </span>
-                <i data-lucide="megaphone" class="w-4 h-4"></i>
-                <span>近期更新</span>
-            </div>
-            <div class="home-announcement-date">{% now "Y.m.d" %}</div>
-        </div>
-        <div class="home-announcement-pinned">
-            <div class="home-announcement-pinned-head">
-                <span class="home-announcement-pinned-label">
-                    <i data-lucide="pin" class="w-3.5 h-3.5"></i>
-                    置顶通知
-                </span>
-                <span class="home-announcement-pinned-hot">重磅</span>
-            </div>
-            <div class="home-announcement-pinned-title">积分价格全面下调</div>
-            <p>视频和图片生成积分价格今日起全面下调。</p>
-            <p>覆盖 Seedance 2.0、Fast、Kling v3 Omni、GPT-Image2，具体消耗以生成页面显示为准。</p>
-        </div>
-        <div class="home-announcement-meta">电商试穿升级 / 模特复用 / 场景库上线</div>
-        <div class="home-announcement-scroll" aria-label="AI 模特支持复用；商品支持多图参考；场景库上线；试穿视频表现升级；视频生成体验优化；当前重点开放试穿展示视频能力。">
-            <div class="home-announcement-story">
-                <p><span class="home-announcement-index">01</span><span>AI 模特支持复用，已锁定模特可从模特库沿用到新系列，不用重复生成。</span></p>
-                <p><span class="home-announcement-index">02</span><span>商品支持多图参考，可上传主图、细节图、上身参考，帮助保留颜色、版型和图案细节。</span></p>
-                <p><span class="home-announcement-index">03</span><span>场景库上线，支持街拍、棚拍、直播间、商场试衣间、海边旅拍、城市夜景等出片场景。</span></p>
-                <p><span class="home-announcement-index">04</span><span>试穿视频表现升级，支持走动、转身、细节展示、表情互动和镜头变化，不再只是站着展示。</span></p>
-                <p><span class="home-announcement-index">05</span><span>视频生成体验优化，生成中状态可恢复，完成后支持大窗播放和下载。</span></p>
-                <p><span class="home-announcement-index">06</span><span>当前重点开放试穿展示视频能力，适合电商种草、服装展示和模特穿搭内容制作。</span></p>
-            </div>
-            <div class="home-announcement-story" aria-hidden="true">
-                <p><span class="home-announcement-index">01</span><span>AI 模特支持复用，已锁定模特可从模特库沿用到新系列，不用重复生成。</span></p>
-                <p><span class="home-announcement-index">02</span><span>商品支持多图参考，可上传主图、细节图、上身参考，帮助保留颜色、版型和图案细节。</span></p>
-                <p><span class="home-announcement-index">03</span><span>场景库上线，支持街拍、棚拍、直播间、商场试衣间、海边旅拍、城市夜景等出片场景。</span></p>
-                <p><span class="home-announcement-index">04</span><span>试穿视频表现升级，支持走动、转身、细节展示、表情互动和镜头变化，不再只是站着展示。</span></p>
-                <p><span class="home-announcement-index">05</span><span>视频生成体验优化，生成中状态可恢复，完成后支持大窗播放和下载。</span></p>
-                <p><span class="home-announcement-index">06</span><span>当前重点开放试穿展示视频能力，适合电商种草、服装展示和模特穿搭内容制作。</span></p>
-            </div>
-        </div>
-        <div class="home-announcement-chip-row" aria-hidden="true">
-            <span>Seedance 2.0</span>
-            <span>真人人脸</span>
-            <span>Kling v3 Omni</span>
-            <span>分镜解析</span>
-            <span>角色创建</span>
-            <span>资产审核</span>
-        </div>
-    </div>
-
-    <img src="/site-logo.png?v=ba68be9c" alt="海带 AI 内容智能创作平台 Logo" class="brand-logo-img hero-site-logo mx-auto mb-5">
-    <h1 class="mb-4">
-        <span class="brand-wordmark hero-brand-wordmark" aria-label="海带 AI 内容智能创作平台">
-            <span class="brand-name">海带</span>
-            <span class="brand-subtitle">AI 内容智能创作平台</span>
-        </span>
-    </h1>
-    <p class="text-white/50 max-w-2xl mx-auto mb-8">
-        一键生成标准化角色资产，告别重复劳动，让创作更高效
-    </p>
-
-    <div class="home-action-board">
-        <div class="home-action-group">
-            <div class="home-action-label">基础工作台</div>
-            <div class="home-action-workspaces">
-                <div class="home-action-subgroup">
-                    <div class="home-action-subgroup-label">短剧工作台</div>
-                    <div class="home-action-row">
-                        <a href="/init/" data-login-required="true" class="home-action home-action-primary">
-                            <i data-lucide="plus" class="w-5 h-5"></i>
-                            <span>创建短剧系列</span>
-                        </a>
-                        <a href="/episodes/" data-login-required="true" class="home-action home-action-warm">
-                            <i data-lucide="film" class="w-5 h-5"></i>
-                            <span>剧集制作</span>
-                        </a>
-                    </div>
-                </div>
-                <div class="home-action-subgroup home-action-subgroup-commerce home-commerce-launch">
-                    <div class="home-action-subgroup-label home-commerce-label">
-                        <span>电商工作台</span>
-                        <span class="home-commerce-launch-badge">
-                            <i data-lucide="zap" class="w-3.5 h-3.5"></i>
-                            重磅上新
-                        </span>
-                    </div>
-                    <div class="home-action-row">
-                        <a href="/commerce/series/create/" data-login-required="true" class="home-action home-action-emerald home-action-commerce-primary">
-                            <i data-lucide="plus" class="w-5 h-5"></i>
-                            <span>创建电商系列</span>
-                        </a>
-                        <a href="/commerce/" data-login-required="true" class="home-action home-action-sky">
-                            <i data-lucide="shopping-cart" class="w-5 h-5"></i>
-                            <span>电商带货</span>
-                        </a>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <div class="home-action-group home-action-group-accent">
-            <div class="home-action-label">AI 工具</div>
-            <div class="home-action-row">
-                <a href="/subject-replacement/" data-login-required="true" class="home-action home-action-emerald">
-                    <i data-lucide="replace" class="w-5 h-5"></i>
-                    <span>主体替换</span>
-                    <span class="home-new-badge">NEW</span>
+<section class="studio-hero" aria-labelledby="studio-title">
+    <div class="studio-hero-inner studio-wrap">
+        <div class="studio-hero-copy">
+            <h1 id="studio-title"><span>海带短剧</span><span>工作室</span></h1>
+            <p>从角色设定、分镜到剧集制作，在这里完成你的下一部短剧。</p>
+            <div class="studio-hero-actions">
+                <a href="/init/" data-login-required="true" class="studio-button studio-button-primary">
+                    <i data-lucide="plus" aria-hidden="true"></i>创建短剧系列
                 </a>
-                <a href="/gpt-image2/" data-login-required="true" class="home-action home-action-sky">
-                    <i data-lucide="wand-sparkles" class="w-5 h-5"></i>
-                    <span>GPT-Image2 生图</span>
-                    <span class="home-new-badge">NEW</span>
-                </a>
-            </div>
-        </div>
-
-        <div class="home-action-group home-action-group-account">
-            <div class="home-action-label">资产与账户</div>
-            <div class="home-action-row">
-                <a href="/assets/library/" data-login-required="true" class="home-action home-action-muted">
-                    <i data-lucide="folder-open" class="w-5 h-5"></i>
-                    <span>我的资产库</span>
-                </a>
-                <a href="/credits/records/" data-login-required="true" class="home-action home-action-muted">
-                    <span>积分记录</span>
+                <a href="/episodes/" data-login-required="true" class="studio-button studio-button-secondary">
+                    <i data-lucide="clapperboard" aria-hidden="true"></i>剧集制作
                 </a>
             </div>
         </div>
     </div>
-</div>
+</section>
+
+<section id="studio-tools" class="studio-wrap studio-section" aria-labelledby="studio-tools-title">
+    <h2 id="studio-tools-title" class="studio-heading">创作工具</h2>
+    <div class="studio-tools">
+        <div class="studio-tool-group">
+            <h3><i data-lucide="clapperboard" aria-hidden="true"></i>短剧</h3>
+            <a href="/init/" data-login-required="true">创建短剧系列<i data-lucide="chevron-right" aria-hidden="true"></i></a>
+            <a href="/episodes/" data-login-required="true">剧集制作<i data-lucide="chevron-right" aria-hidden="true"></i></a>
+        </div>
+        <div class="studio-tool-group">
+            <h3><i data-lucide="shopping-bag" aria-hidden="true"></i>电商</h3>
+            <a href="/commerce/series/create/" data-login-required="true">创建电商系列<i data-lucide="chevron-right" aria-hidden="true"></i></a>
+            <a href="/commerce/" data-login-required="true">电商带货<i data-lucide="chevron-right" aria-hidden="true"></i></a>
+        </div>
+        <div class="studio-tool-group">
+            <h3><i data-lucide="wand-sparkles" aria-hidden="true"></i>AI 工具</h3>
+            <a href="/subject-replacement/" data-login-required="true">主体替换<i data-lucide="chevron-right" aria-hidden="true"></i></a>
+            <a href="/gpt-image2/" data-login-required="true">GPT-Image2 生图<i data-lucide="chevron-right" aria-hidden="true"></i></a>
+        </div>
+        <div class="studio-tool-group">
+            <h3><i data-lucide="folder-open" aria-hidden="true"></i>资产与账户</h3>
+            <a href="/assets/library/" data-login-required="true">我的资产库<i data-lucide="chevron-right" aria-hidden="true"></i></a>
+            <a href="/credits/records/" data-login-required="true">积分记录<i data-lucide="chevron-right" aria-hidden="true"></i></a>
+        </div>
+    </div>
+    <details class="studio-news">
+        <summary>
+            <i data-lucide="megaphone" aria-hidden="true"></i>
+            <span>近期更新</span>
+            <span class="studio-news-headline">积分价格全面下调</span>
+            <i class="studio-news-chevron" data-lucide="chevron-down" aria-hidden="true"></i>
+        </summary>
+        <div class="studio-news-content">
+            <p>视频和图片生成积分价格今日起全面下调。覆盖 Seedance 2.0、Fast、Kling v3 Omni、GPT-Image2，具体消耗以生成页面显示为准。</p>
+            <ul>
+                <li>AI 模特支持复用，已锁定模特可从模特库沿用到新系列，不用重复生成。</li>
+                <li>商品支持多图参考，可上传主图、细节图、上身参考，帮助保留颜色、版型和图案细节。</li>
+                <li>场景库上线，支持街拍、棚拍、直播间、商场试衣间、海边旅拍、城市夜景等出片场景。</li>
+                <li>试穿视频表现升级，支持走动、转身、细节展示、表情互动和镜头变化，不再只是站着展示。</li>
+                <li>视频生成体验优化，生成中状态可恢复，完成后支持大窗播放和下载。</li>
+                <li>当前重点开放试穿展示视频能力，适合电商种草、服装展示和模特穿搭内容制作。</li>
+            </ul>
+        </div>
+    </details>
+</section>
 
 <!-- Series List -->
-<div class="mt-8">
-    <div class="mb-6 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-        <h2 class="text-2xl font-bold">我的系列</h2>
+<section id="studio-series" class="studio-wrap studio-section" aria-labelledby="studio-series-title">
+    <div class="studio-section-head">
+        <h2 id="studio-series-title" class="studio-heading">我的系列</h2>
+        <div class="studio-series-actions">
         <div class="series-type-tabs" role="tablist" aria-label="我的系列类型">
             <button type="button" class="series-type-tab active" role="tab" id="dramaSeriesTab" aria-selected="true" aria-controls="dramaSeriesPanel" data-series-tab="drama">
                 <i data-lucide="clapperboard" class="w-4 h-4"></i>
@@ -856,9 +97,13 @@
                 <span>电商</span>
             </button>
         </div>
+        {% if request.session.token %}
+        <a href="/trash/" class="studio-text-link studio-trash"><i data-lucide="trash-2" aria-hidden="true"></i>回收站</a>
+        {% endif %}
+        </div>
     </div>
 
-    <section id="dramaSeriesPanel" role="tabpanel" aria-labelledby="dramaSeriesTab" data-series-panel="drama">
+    <section id="dramaSeriesPanel" class="studio-series-panel" role="tabpanel" aria-labelledby="dramaSeriesTab" data-series-panel="drama">
         <div class="mb-4 flex items-center justify-between">
             <h3 class="text-lg font-semibold">短剧系列</h3>
             <a href="/init/" data-login-required="true" class="text-sm font-semibold text-violet-200 hover:text-white">创建短剧系列</a>
@@ -874,7 +119,7 @@
         <div id="pagination" class="flex justify-center items-center gap-4 mt-8"></div>
     </section>
 
-    <section id="commerceSeriesPanel" role="tabpanel" aria-labelledby="commerceSeriesTab" data-series-panel="commerce" hidden>
+    <section id="commerceSeriesPanel" class="studio-series-panel" role="tabpanel" aria-labelledby="commerceSeriesTab" data-series-panel="commerce" hidden>
         <div class="mb-4 flex items-center justify-between">
             <h3 class="text-lg font-semibold">电商系列</h3>
             <a href="/commerce/" data-login-required="true" class="text-sm font-semibold text-emerald-200 hover:text-white">查看全部</a>
@@ -886,164 +131,41 @@
             </div>
         </div>
     </section>
-</div>
+</section>
 
-<!-- Feature Showcase -->
-<section class="mt-16 mb-8">
-    <div class="mb-5 flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
-        <div>
-            <div class="mb-3 inline-flex items-center gap-2 rounded-full border border-emerald-300/20 bg-emerald-300/10 px-3 py-1 text-xs font-semibold tracking-[0.18em] text-emerald-100">
-                <i data-lucide="sparkles" class="w-3.5 h-3.5"></i>
-                FEATURE SPOTLIGHT
-            </div>
-            <h2 class="text-2xl md:text-3xl font-bold leading-tight">视频主体替换 - 精准定向修改</h2>
-        </div>
-        <a href="/subject-replacement/" data-login-required="true" class="inline-flex items-center justify-center gap-2 rounded-xl border border-emerald-300/25 bg-emerald-300/10 px-4 py-2.5 text-sm font-semibold text-emerald-100 hover:bg-emerald-300/15 transition-all">
-            打开主体替换
-            <i data-lucide="arrow-right" class="w-4 h-4"></i>
-        </a>
+<section id="studio-showcase" class="studio-wrap studio-section" aria-labelledby="studio-showcase-title">
+    <div class="studio-section-head">
+        <h2 id="studio-showcase-title" class="studio-heading">主体替换示例</h2>
+        <a href="/subject-replacement/" data-login-required="true" class="studio-text-link">打开主体替换<i data-lucide="arrow-up-right" aria-hidden="true"></i></a>
     </div>
-
-    <div class="overflow-hidden rounded-3xl border border-white/10 bg-[linear-gradient(135deg,rgba(15,23,42,0.74),rgba(13,148,136,0.12))] shadow-2xl shadow-black/25">
-        <div class="grid lg:grid-cols-[280px_minmax(0,1fr)]">
-            <div class="border-b border-white/10 bg-black/[0.18] p-5 lg:border-b-0 lg:border-r">
-                <div class="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.2em] text-white/[0.38]">
-                    <span class="h-px w-8 bg-emerald-200/50"></span>
-                    Precision Edit
-                </div>
-
-                <h3 class="mt-5 text-xl font-semibold leading-tight text-white">只改你指定的主体</h3>
-                <p class="mt-3 text-sm leading-6 text-white/[0.48]">
-                    适合把原视频里的某个演员、道具或商品精准替换成参考图对象，保留原镜头里的运动和构图。
-                </p>
-
-                <div class="mt-5 grid grid-cols-2 gap-2.5">
-                    <div class="rounded-2xl border border-white/10 bg-white/[0.045] p-3">
-                        <p class="text-[11px] font-semibold uppercase tracking-[0.16em] text-cyan-100/70">Mode</p>
-                        <p class="mt-2 text-sm text-white">人物 / 物品</p>
-                    </div>
-                    <div class="rounded-2xl border border-white/10 bg-white/[0.045] p-3">
-                        <p class="text-[11px] font-semibold uppercase tracking-[0.16em] text-emerald-100/70">Output</p>
-                        <p class="mt-2 text-sm text-white">替换后视频</p>
-                    </div>
-                </div>
-
-                <div class="mt-5 space-y-2.5">
-                    <div class="rounded-2xl border border-white/10 bg-slate-950/35 p-3">
-                        <div class="mb-2 flex items-center gap-2 text-xs font-medium text-white/[0.45]">
-                            <i data-lucide="scan-line" class="w-4 h-4 text-cyan-200"></i>
-                            原视频中要替换的对象
-                        </div>
-                        <p class="text-sm text-white/[0.88]">画面中央带眼镜的女主播</p>
-                    </div>
-                    <div class="rounded-2xl border border-emerald-300/[0.15] bg-emerald-300/[0.07] p-3">
-                        <div class="mb-2 flex items-center gap-2 text-xs font-medium text-white/[0.45]">
-                            <i data-lucide="badge-check" class="w-4 h-4 text-emerald-200"></i>
-                            替换成
-                        </div>
-                        <p class="text-sm text-white/[0.88]">欧美人</p>
-                    </div>
+    <p class="studio-showcase-description">将原片中戴眼镜的女主播替换为参考图中的人物，保留原镜头的动作和构图。</p>
+    <div class="studio-showcase-grid">
+        <figure class="studio-shot">
+            <figcaption>原视频</figcaption>
+            <div class="studio-shot-media">
+                <video data-showcase-video="before" muted autoplay loop playsinline></video>
+                <div class="studio-shot-controls">
+                    <button type="button" class="showcase-audio-toggle" data-video-target="before" title="开启声音" aria-label="开启声音"><i data-lucide="volume-x" aria-hidden="true"></i></button>
+                    <button type="button" class="showcase-video-expand" data-video-target="before" title="放大视频" aria-label="放大视频"><i data-lucide="maximize-2" aria-hidden="true"></i></button>
                 </div>
             </div>
-
-            <div class="p-4 md:p-6">
-                <div class="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-white/10 bg-white/[0.035] px-4 py-3">
-                    <div class="flex items-center gap-2 text-sm font-semibold text-white/[0.88]">
-                        <i data-lucide="clapperboard" class="w-4 h-4 text-emerald-200"></i>
-                        Demo Preview
-                    </div>
-                    <div class="flex flex-wrap items-center gap-2 text-xs text-white/[0.45]">
-                        <span>BEFORE</span>
-                        <i data-lucide="arrow-right" class="w-3.5 h-3.5 text-white/[0.28]"></i>
-                        <span>REFERENCE</span>
-                        <i data-lucide="arrow-right" class="w-3.5 h-3.5 text-white/[0.28]"></i>
-                        <span class="text-emerald-100">AFTER</span>
-                    </div>
-                </div>
-
-                <div class="grid gap-4 md:grid-cols-[minmax(0,1fr)_172px_minmax(0,1fr)]">
-                    <div class="min-w-0 rounded-2xl border border-white/10 bg-black/25 p-3">
-                        <div class="mb-3 flex items-center justify-between px-1">
-                            <div>
-                                <p class="text-xs font-bold tracking-[0.16em] text-white/[0.42]">BEFORE</p>
-                                <p class="mt-1 text-sm font-medium text-white">替换前视频</p>
-                            </div>
-                            <span class="rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-[11px] text-white/[0.45]">Original</span>
-                        </div>
-                        <div class="relative aspect-video overflow-hidden rounded-xl border border-white/10 bg-[linear-gradient(135deg,rgba(15,23,42,0.94),rgba(30,64,175,0.42))]">
-                            <video
-                                class="absolute inset-0 h-full w-full object-cover"
-                                data-showcase-video="before"
-                                muted
-                                autoplay
-                                loop
-                                playsinline
-                            ></video>
-                            <div class="absolute bottom-3 right-3 flex items-center gap-2">
-                                <button type="button" class="showcase-audio-toggle inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/20 bg-black/45 text-white shadow-lg backdrop-blur-md transition hover:bg-black/60" data-video-target="before" title="开启声音" aria-label="开启声音">
-                                    <i data-lucide="volume-x" class="w-4 h-4"></i>
-                                </button>
-                                <button type="button" class="showcase-video-expand inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/20 bg-black/45 text-white shadow-lg backdrop-blur-md transition hover:bg-black/60" data-video-target="before" title="放大视频" aria-label="放大视频">
-                                    <i data-lucide="maximize-2" class="w-4 h-4"></i>
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div class="min-w-0 rounded-2xl border border-cyan-200/[0.15] bg-cyan-200/[0.045] p-3">
-                        <div class="mb-3 flex items-center justify-between px-1">
-                            <div>
-                                <p class="text-xs font-bold tracking-[0.16em] text-white/[0.42]">REFERENCE</p>
-                                <p class="mt-1 text-sm font-medium text-white">参考图</p>
-                            </div>
-                            <i data-lucide="image" class="w-4 h-4 text-cyan-100/70"></i>
-                        </div>
-                        <div class="relative aspect-video overflow-hidden rounded-xl border border-white/10 md:aspect-[4/5]">
-                            <img
-                                id="showcaseReferenceImage"
-                                class="absolute inset-0 h-full w-full object-cover"
-                                alt="主体替换参考图"
-                            >
-                            <div class="absolute inset-0 bg-gradient-to-t from-black/55 via-transparent to-transparent"></div>
-                        </div>
-                    </div>
-
-                    <div class="min-w-0 rounded-2xl border border-emerald-300/25 bg-emerald-300/[0.06] p-3 shadow-xl shadow-emerald-950/10">
-                        <div class="mb-3 flex items-center justify-between px-1">
-                            <div>
-                                <p class="text-xs font-bold tracking-[0.16em] text-emerald-100">AFTER</p>
-                                <p class="mt-1 text-sm font-medium text-white">替换后视频</p>
-                            </div>
-                            <span class="rounded-full bg-emerald-300/[0.14] px-2.5 py-1 text-[11px] font-semibold text-emerald-100">Generated</span>
-                        </div>
-                        <div class="relative aspect-video overflow-hidden rounded-xl border border-emerald-200/25 bg-[linear-gradient(135deg,rgba(6,78,59,0.72),rgba(8,47,73,0.86))]">
-                            <video
-                                class="absolute inset-0 h-full w-full object-cover"
-                                data-showcase-video="after"
-                                muted
-                                autoplay
-                                loop
-                                playsinline
-                            ></video>
-                            <div class="absolute bottom-3 right-3 flex items-center gap-2">
-                                <button type="button" class="showcase-audio-toggle inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/20 bg-black/45 text-white shadow-lg backdrop-blur-md transition hover:bg-black/60" data-video-target="after" title="开启声音" aria-label="开启声音">
-                                    <i data-lucide="volume-x" class="w-4 h-4"></i>
-                                </button>
-                                <button type="button" class="showcase-video-expand inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/20 bg-black/45 text-white shadow-lg backdrop-blur-md transition hover:bg-black/60" data-video-target="after" title="放大视频" aria-label="放大视频">
-                                    <i data-lucide="maximize-2" class="w-4 h-4"></i>
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="mt-4 flex items-start gap-3 rounded-2xl border border-white/10 bg-white/[0.035] px-4 py-3 text-sm leading-6 text-white/[0.58]">
-                    <i data-lucide="info" class="mt-0.5 h-4 w-4 flex-none text-emerald-100/70"></i>
-                    <p>上传原视频和参考图，只替换指定人物或物品，其余镜头节奏、动作关系和背景氛围尽量保持稳定。</p>
-                </div>
-
+        </figure>
+        <figure class="studio-shot">
+            <figcaption>参考图</figcaption>
+            <div class="studio-shot-media">
+                <img id="showcaseReferenceImage" alt="主体替换参考图">
             </div>
-        </div>
+        </figure>
+        <figure class="studio-shot studio-shot-final">
+            <figcaption>替换后视频</figcaption>
+            <div class="studio-shot-media">
+                <video data-showcase-video="after" muted autoplay loop playsinline></video>
+                <div class="studio-shot-controls">
+                    <button type="button" class="showcase-audio-toggle" data-video-target="after" title="开启声音" aria-label="开启声音"><i data-lucide="volume-x" aria-hidden="true"></i></button>
+                    <button type="button" class="showcase-video-expand" data-video-target="after" title="放大视频" aria-label="放大视频"><i data-lucide="maximize-2" aria-hidden="true"></i></button>
+                </div>
+            </div>
+        </figure>
     </div>
 </section>
 {% endblock %}
