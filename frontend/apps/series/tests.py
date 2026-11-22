@@ -1103,35 +1103,39 @@ class EpisodeDetailShotCreditTests(TestCase):
 
 
 class CreditAdminDashboardTests(TestCase):
-    def test_credit_admin_page_is_only_visible_to_kudo_shinichi(self):
+    def test_credit_admin_access_requires_admin_email(self):
         response = self.client.get('/admin/credits/')
         self.assertEqual(response.status_code, 302)
         self.assertEqual(response['Location'], '/auth/login/')
 
         session = self.client.session
         session['token'] = 'token-2'
-        session['nickname'] = '普通用户'
+        session['nickname'] = '工藤新一'
         session['email'] = 'creator@example.com'
         session.save()
 
         response = self.client.get('/admin/credits/')
         self.assertEqual(response.status_code, 403)
+        response = self.client.get('/api/admin/credits/dashboard/')
+        self.assertEqual(response.status_code, 403)
+        self.assertNotContains(self.client.get('/'), 'href="/admin/credits/"')
 
         session = self.client.session
         session['token'] = 'token-1'
-        session['nickname'] = '工藤新一'
-        session['email'] = '1198693014@qq.com'
+        session['nickname'] = '管理员'
+        session['email'] = '1198693014@QQ.COM'
         session.save()
 
         response = self.client.get('/admin/credits/')
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, '积分管理后台')
+        self.assertContains(response, 'href="/admin/credits/"')
 
     def test_credit_admin_dashboard_api_forwards_to_backend(self):
         session = self.client.session
         session['token'] = 'token-1'
-        session['nickname'] = '工藤新一'
-        session['email'] = '1198693014@qq.com'
+        session['nickname'] = '管理员'
+        session['email'] = '1198693014@QQ.COM'
         session.save()
 
         backend_client = Mock()

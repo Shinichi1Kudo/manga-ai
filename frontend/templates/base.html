@@ -761,7 +761,7 @@
                                 <i data-lucide="history" class="w-4 h-4"></i>
                                 <span>积分记录</span>
                             </a>
-                            {% if request.session.nickname == '工藤新一' or request.session.email|default:'' == '1198693014@qq.com' %}
+                            {% if request.session.token and request.session.email|default:''|lower == '1198693014@qq.com' %}
                             <a href="/admin/credits/" class="flex items-center gap-2 px-4 py-2 hover:bg-white/10 transition-colors text-cyan-100">
                                 <i data-lucide="bar-chart-3" class="w-4 h-4"></i>
                                 <span>积分后台</span>

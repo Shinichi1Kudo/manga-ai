@@ -2621,9 +2621,8 @@ def credit_records(request):
 
 
 def _is_credit_admin_session(request):
-    nickname = (request.session.get('nickname') or '').strip()
-    email = (request.session.get('email') or '').strip().lower()
-    return bool(request.session.get('token')) and (nickname == '工藤新一' or email == '1198693014@qq.com')
+    email = (request.session.get('email') or '').lower()
+    return bool(request.session.get('token')) and email == '1198693014@qq.com'
 
 
 def credit_admin_dashboard(request):

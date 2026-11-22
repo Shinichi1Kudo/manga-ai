@@ -37,7 +37,6 @@ public class CreditAdminServiceImpl implements CreditAdminService {
 
     private static final DateTimeFormatter RECORD_TIME_FORMATTER = DateTimeFormatter.ofPattern("MM-dd HH:mm");
     private static final DateTimeFormatter HOUR_FORMATTER = DateTimeFormatter.ofPattern("MM-dd HH:00");
-    private static final String ADMIN_NICKNAME = "工藤新一";
     private static final String ADMIN_EMAIL = "1198693014@qq.com";
 
     private final UserMapper userMapper;
@@ -79,10 +78,9 @@ public class CreditAdminServiceImpl implements CreditAdminService {
     }
 
     private boolean isCreditAdmin(User user) {
-        if (user == null) {
-            return false;
-        }
-        return ADMIN_NICKNAME.equals(user.getNickname()) || ADMIN_EMAIL.equalsIgnoreCase(user.getEmail());
+        return user != null
+                && Integer.valueOf(1).equals(user.getStatus())
+                && ADMIN_EMAIL.equalsIgnoreCase(user.getEmail());
     }
 
     private int normalizeRange(Integer value, int defaultValue, int min, int max) {

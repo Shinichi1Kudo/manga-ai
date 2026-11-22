@@ -21,7 +21,7 @@ import static org.mockito.Mockito.when;
 class CreditAdminServiceImplTest {
 
     @Test
-    void dashboardRejectsNonKudoShinichiUser() {
+    void dashboardRejectsNonAdminEmailEvenWithAdminNickname() {
         UserMapper userMapper = mock(UserMapper.class);
         CreditRecordMapper creditRecordMapper = mock(CreditRecordMapper.class);
         CreditAdminServiceImpl service = new CreditAdminServiceImpl(userMapper, creditRecordMapper);
@@ -29,7 +29,8 @@ class CreditAdminServiceImplTest {
         User current = new User();
         current.setId(2L);
         current.setEmail("other@example.com");
-        current.setNickname("普通用户");
+        current.setStatus(1);
+        current.setNickname("工藤新一");
         when(userMapper.selectById(2L)).thenReturn(current);
 
         assertThatThrownBy(() -> service.getDashboard(2L, 24, 1, 20))
@@ -38,12 +39,25 @@ class CreditAdminServiceImplTest {
     }
 
     @Test
-    void dashboardAggregatesBalancesRecordsAndHourlyUsageForKudoShinichi() {
+    void dashboardRejectsDisabledAdmin() {
+        UserMapper userMapper = mock(UserMapper.class);
+        CreditAdminServiceImpl service = new CreditAdminServiceImpl(userMapper, mock(CreditRecordMapper.class));
+        User admin = user(1L, "1198693014@qq.com", "管理员", 0);
+        admin.setStatus(0);
+        when(userMapper.selectById(1L)).thenReturn(admin);
+
+        assertThatThrownBy(() -> service.getDashboard(1L, 24, 1, 20))
+                .isInstanceOf(BusinessException.class)
+                .hasMessage("无权访问积分管理后台");
+    }
+
+    @Test
+    void dashboardAggregatesBalancesRecordsAndHourlyUsageForActiveAdmin() {
         UserMapper userMapper = mock(UserMapper.class);
         CreditRecordMapper creditRecordMapper = mock(CreditRecordMapper.class);
         CreditAdminServiceImpl service = new CreditAdminServiceImpl(userMapper, creditRecordMapper);
 
-        User admin = user(1L, "1198693014@qq.com", "工藤新一", 10808);
+        User admin = user(1L, "1198693014@qq.com", "管理员", 10808);
         User user = user(2L, "creator@example.com", "创作者", 120);
         when(userMapper.selectById(1L)).thenReturn(admin);
         when(userMapper.selectList(any(Wrapper.class))).thenReturn(List.of(admin, user));
@@ -84,7 +98,7 @@ class CreditAdminServiceImplTest {
         CreditRecordMapper creditRecordMapper = mock(CreditRecordMapper.class);
         CreditAdminServiceImpl service = new CreditAdminServiceImpl(userMapper, creditRecordMapper);
 
-        User admin = user(1L, "1198693014@qq.com", "工藤新一", 10808);
+        User admin = user(1L, "1198693014@qq.com", "管理员", 10808);
         User target = user(2L, "target@example.com", "小明创作者", 120);
         User other = user(3L, "other@example.com", "小红", 80);
         when(userMapper.selectById(1L)).thenReturn(admin);
@@ -108,6 +122,7 @@ class CreditAdminServiceImplTest {
         user.setId(id);
         user.setEmail(email);
         user.setNickname(nickname);
+        user.setStatus(1);
         user.setCredits(credits);
         return user;
     }
