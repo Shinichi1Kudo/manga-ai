@@ -1,0 +1,22 @@
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  font-display: swap;
+  font-weight: 300 800;
+  src: url('../fonts/inter-latin-variable.woff2') format('woff2-variations');
+}
+
+[data-lucide] {
+  width: 1em;
+  height: 1em;
+  vertical-align: middle;
+}
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+[data-lucide] {
+  display: inline-block;
+  flex-shrink: 0;
+}
