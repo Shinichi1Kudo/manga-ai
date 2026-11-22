@@ -38,40 +38,21 @@ class AnonymousPublicEndpointTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json()['data']['url'], 'https://example.com/contact.jpg')
 
-    def test_site_logo_endpoint_is_public(self):
-        backend_client = Mock()
-        backend_client.get.return_value = {'url': 'https://oss.example.com/brand/haidai-logo.png'}
-        logo_response = Mock()
-        logo_response.status_code = 200
-        logo_response.content = b'png-bytes'
-        logo_response.headers = {'Content-Type': 'image/png'}
-
-        with patch('apps.series.views.BackendClient', return_value=backend_client), \
-                patch('apps.series.views.requests.get', return_value=logo_response) as requests_get:
-            response = self.client.get('/api/v1/common/site-logo/')
-
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.content, b'png-bytes')
-        self.assertEqual(response['Content-Type'], 'image/png')
-        self.assertEqual(response['Content-Disposition'], 'inline; filename="site-logo.png"')
-        self.assertEqual(response['Cache-Control'], 'public, max-age=86400')
-        backend_client.get.assert_called_once_with('/v1/common/site-logo')
-        requests_get.assert_called_once_with('https://oss.example.com/brand/haidai-logo.png', timeout=15)
-
-    def test_site_logo_png_endpoint_is_public(self):
-        backend_client = Mock()
-        backend_client.get.return_value = {'url': 'https://oss.example.com/brand/haidai-logo.png'}
-        logo_response = Mock()
-        logo_response.status_code = 200
-        logo_response.content = b'png-bytes'
-        logo_response.headers = {'Content-Type': 'image/png'}
-
-        with patch('apps.series.views.BackendClient', return_value=backend_client), \
-                patch('apps.series.views.requests.get', return_value=logo_response):
-            response = self.client.get('/site-logo.png?v=20260515')
-
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.content, b'png-bytes')
+    def test_public_brand_images_match_packaged_assets(self):
+        images = Path(settings.BASE_DIR) / 'static' / 'images'
+        cases = (
+            ('/api/v1/common/site-logo/', 'logo.png', 'site-logo.png'),
+            ('/site-logo.png', 'logo.png', 'site-logo.png'),
+            ('/favicon.ico', 'favicon.png', 'favicon.png'),
+        )
+        for url, asset, filename in cases:
+            with self.subTest(url=url):
+                response = self.client.get(url)
+                self.assertEqual(response.status_code, 200)
+                self.assertEqual(response['Content-Type'], 'image/png')
+                self.assertEqual(response['Content-Disposition'], f'inline; filename="{filename}"')
+                self.assertEqual(response['Cache-Control'], 'public, max-age=86400')
+                self.assertEqual(b''.join(response.streaming_content), (images / asset).read_bytes())
 
     def test_private_api_request_does_not_store_login_next(self):
         response = self.client.get('/api/user/info/')
@@ -315,7 +296,7 @@ class SiteBrandingTests(TestCase):
         self.assertIn('brand-name">海带</span>', combined)
         self.assertIn('brand-subtitle">AI 内容智能创作平台</span>', combined)
 
-    def test_brand_uses_oss_backed_logo_image(self):
+    def test_brand_uses_packaged_logo_image(self):
         template_root = Path(settings.BASE_DIR) / 'templates'
         combined = '\n'.join([
             (template_root / 'base.html').read_text(encoding='utf-8'),
@@ -324,8 +305,8 @@ class SiteBrandingTests(TestCase):
             (template_root / 'auth/register.html').read_text(encoding='utf-8'),
         ])
 
-        self.assertIn('src="/site-logo.png?v=20260515"', combined)
-        self.assertIn('rel="icon" type="image/png" href="/site-logo.png?v=20260515"', combined)
+        self.assertIn('src="/site-logo.png?v=ba68be9c"', combined)
+        self.assertIn('rel="icon" type="image/png" href="/favicon.ico?v=ba68be9c"', combined)
         self.assertNotIn('src="/api/v1/common/site-logo/"', combined)
         self.assertIn('class="brand-logo-img', combined)
         nav_brand = combined.split('<a href="/" class="flex items-center gap-3 group">', 1)[1].split('</a>', 1)[0]

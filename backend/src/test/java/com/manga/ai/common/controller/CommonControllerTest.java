@@ -21,7 +21,9 @@ class CommonControllerTest {
     }
 
     @Test
-    void siteLogoUsesStableHaidaiLogoObjectKey() {
-        assertThat(CommonController.SITE_LOGO_OBJECT_KEY).isEqualTo("brand/haidai-logo.png");
+    void siteLogoReturnsConfiguredPublicImageUrl() {
+        String logoUrl = "https://example.com/site-logo.png";
+        CommonController controller = new CommonController(null, logoUrl);
+        assertThat(controller.getSiteLogo().getData()).containsEntry("url", logoUrl);
     }
 }

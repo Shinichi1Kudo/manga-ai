@@ -1,5 +1,6 @@
 from django.shortcuts import render, redirect
-from django.http import JsonResponse, HttpResponse, HttpResponseForbidden
+from django.conf import settings
+from django.http import FileResponse, JsonResponse, HttpResponseForbidden
 from django.views.decorators.http import require_http_methods
 from django.views.decorators.csrf import csrf_exempt
 from django.contrib import messages
@@ -2592,28 +2593,16 @@ def contact_image(request):
         return JsonResponse({'code': 400, 'message': e.message}, status=400)
 
 
-def site_logo(request):
-    """获取网站 Logo 图片URL"""
-    client = BackendClient()
-    try:
-        result = client.get('/v1/common/site-logo')
-        url = result.get('url') if isinstance(result, dict) else None
-        if not url:
-            return JsonResponse({'code': 500, 'message': '获取 Logo 失败'}, status=500)
-
-        logo_response = requests.get(url, timeout=15)
-        if logo_response.status_code != 200:
-            return JsonResponse({'code': 500, 'message': '获取 Logo 失败'}, status=500)
-
-        response = HttpResponse(
-            logo_response.content,
-            content_type=logo_response.headers.get('Content-Type') or 'image/png'
-        )
-        response['Content-Disposition'] = 'inline; filename="site-logo.png"'
-        response['Cache-Control'] = 'public, max-age=86400'
-        return response
-    except BackendAPIError as e:
-        return JsonResponse({'code': 400, 'message': e.message}, status=400)
+def site_logo(request, favicon=False):
+    asset = 'favicon.png' if favicon else 'logo.png'
+    image = settings.BASE_DIR / 'static' / 'images' / asset
+    response = FileResponse(
+        image.open('rb'),
+        content_type='image/png',
+        filename='favicon.png' if favicon else 'site-logo.png',
+    )
+    response['Cache-Control'] = 'public, max-age=86400'
+    return response
 
 
 def showcase_assets(request):

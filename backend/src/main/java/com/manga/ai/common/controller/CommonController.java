@@ -2,7 +2,7 @@ package com.manga.ai.common.controller;
 
 import com.manga.ai.common.dto.Result;
 import com.manga.ai.common.service.OssService;
-import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.*;
 
@@ -14,12 +14,17 @@ import java.util.Map;
 @Slf4j
 @RestController
 @RequestMapping("/v1/common")
-@RequiredArgsConstructor
 public class CommonController {
 
-    static final String SITE_LOGO_OBJECT_KEY = "brand/haidai-logo.png";
-
     private final OssService ossService;
+    private final String siteLogoUrl;
+
+    public CommonController(
+            OssService ossService,
+            @Value("${app.site-logo-url:https://yzmovie.cn/site-logo.png?v=ba68be9c}") String siteLogoUrl) {
+        this.ossService = ossService;
+        this.siteLogoUrl = siteLogoUrl;
+   }
 
     /**
      * 获取联系我们二维码图片URL
@@ -40,11 +45,7 @@ public class CommonController {
      */
     @GetMapping("/site-logo")
     public Result<Map<String, String>> getSiteLogo() {
-        String url = ossService.getInlineImagePresignedUrl(SITE_LOGO_OBJECT_KEY, "image/png");
-        if (url != null) {
-            return Result.success(Map.of("url", url));
-        }
-        return Result.error("获取 Logo 失败");
+        return Result.success(Map.of("url", siteLogoUrl));
     }
 
     /**

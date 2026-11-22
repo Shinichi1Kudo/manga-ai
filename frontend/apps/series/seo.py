@@ -63,7 +63,7 @@ def seo_context(request):
                 'keywords': page['keywords'],
                 'robots': 'index,follow',
                 'canonical_url': absolute_url(page['path']),
-                'image_url': absolute_url('/site-logo.png?v=20260515'),
+                'image_url': absolute_url('/site-logo.png?v=ba68be9c'),
                 'site_name': SITE_NAME,
             }
         }
@@ -75,7 +75,7 @@ def seo_context(request):
             'keywords': DEFAULT_KEYWORDS,
             'robots': 'noindex,nofollow',
             'canonical_url': absolute_url(path),
-            'image_url': absolute_url('/site-logo.png?v=20260515'),
+            'image_url': absolute_url('/site-logo.png?v=ba68be9c'),
             'site_name': SITE_NAME,
         }
     }
